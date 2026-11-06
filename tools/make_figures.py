@@ -601,6 +601,175 @@ def encodings():
     return c, meta
 
 
+# ---------------------------------------------------------------- chapter 6
+KITE_NAMES = ["Ana", "Ben", "Cleo", "Dev", "Eli", "Fay", "Gus", "Hana", "Ivo", "Jo"]
+KITE_EDGES = [(0, 1), (0, 2), (0, 3), (0, 5), (1, 3), (1, 4), (1, 6), (2, 3), (2, 5), (3, 4),
+              (3, 5), (3, 6), (4, 6), (5, 6), (5, 7), (6, 7), (7, 8), (8, 9)]
+
+
+def _kite_measures():
+    n = len(KITE_NAMES)
+    d = distances(n, KITE_EDGES)
+    adj = {i: set() for i in range(n)}
+    for a, b in KITE_EDGES:
+        adj[a].add(b)
+        adj[b].add(a)
+    degree = [len(adj[i]) for i in range(n)]
+    close = [(n - 1) / sum(d[i]) for i in range(n)]
+    sigma = []
+    for s_ in range(n):
+        cnt = {s_: 1}
+        for u in sorted(range(n), key=lambda x: d[s_][x]):
+            if u != s_:
+                cnt[u] = sum(cnt[v] for v in adj[u] if d[s_][v] == d[s_][u] - 1)
+        sigma.append(cnt)
+    between = [0.0] * n
+    for a in range(n):
+        for b in range(a + 1, n):
+            for v in range(n):
+                if v not in (a, b) and d[a][v] + d[v][b] == d[a][b]:
+                    between[v] += sigma[a][v] * sigma[v][b] / sigma[a][b]
+    x = [1.0] * n
+    for _ in range(500):
+        y = [sum(x[j] for j in adj[i]) for i in range(n)]
+        m = max(y)
+        x = [v / m for v in y]
+    return degree, close, between, x
+
+
+def four_centralities():
+    degree, close, between, eigen = _kite_measures()
+    n = len(KITE_NAMES)
+    c = Canvas(920, 300, "Four answers to who is central",
+               "The same ten-person network drawn four times. In each, node size shows one measure and the largest node is highlighted.")
+    panels = [("Degree", degree), ("Closeness", close), ("Betweenness", between), ("Eigenvector", eigen)]
+    base = fit(stress_layout(n, KITE_EDGES, seed=3), 0, 0, 190, 170)
+    tops = []
+    for k, (title, vals) in enumerate(panels):
+        x0, y0 = 15 + k * 225, 60
+        pos = [(x0 + p[0], y0 + p[1]) for p in base]
+        lo, hi = min(vals), max(vals)
+        top = max(range(n), key=lambda i: vals[i])
+        tied = [i for i in range(n) if abs(vals[i] - vals[top]) < 1e-9]
+        tops.append([KITE_NAMES[i] for i in tied])
+        c.caption(x0 + 95, 30, title)
+        for a, b in KITE_EDGES:
+            c.edge(pos[a], pos[b], ra=6, rb=6, width=1.4, color="#9ca3af")
+        for i, p in enumerate(pos):
+            r = 5 + 12 * (vals[i] - lo) / ((hi - lo) or 1)
+            on = i in tied
+            c.node(*p, "", r=r, fill=ORANGE if on else "#cfe5f3", stroke=ORANGE if on else BLUE, sw=2)
+        c.text(x0 + 95, 268, "most central: " + " and ".join(KITE_NAMES[i] for i in tied), size=13, fill=MUTED)
+    meta = dict(chapter=6,
+                caption="One network, four rankings. Each measure answers a different question, so each picks a different person as most central.",
+                alt="Four copies of the same ten-node network. In the degree and eigenvector panels the node Dev, near the middle of the left cluster, is the largest. In the closeness panel two nodes, Fay and Gus, are largest and equal. In the betweenness panel Hana, on the narrow link leading out to two more people, is largest.",
+                data={"names": KITE_NAMES, "edges": [list(e) for e in KITE_EDGES], "degree": degree,
+                      "closeness": [round(v, 4) for v in close], "betweenness": [round(v, 2) for v in between],
+                      "eigenvector": [round(v, 4) for v in eigen], "most_central": tops})
+    return c, meta
+
+
+def betweenness_paths():
+    n = len(KITE_NAMES)
+    d = distances(n, KITE_EDGES)
+    src = 9  # Jo
+    on_path = set()
+    for a, b in KITE_EDGES:
+        for u, v in ((a, b), (b, a)):
+            if d[src][v] == d[src][u] + 1:
+                on_path.add((min(a, b), max(a, b)))
+    pos = fit(stress_layout(n, KITE_EDGES, seed=3), 20, 40, 520, 250)
+    c = Canvas(900, 340, "Shortest routes from Jo",
+               "The ten-person network with the shortest routes from Jo to everyone else drawn thick and orange, all passing through Ivo and Hana.")
+    for a, b in KITE_EDGES:
+        on = (a, b) in on_path
+        c.edge(pos[a], pos[b], ra=14, rb=14, width=4 if on else 1.4, color=ORANGE if on else "#c7ccd4")
+    for i, p in enumerate(pos):
+        key = i in (9, 8, 7)
+        c.node(*p, KITE_NAMES[i][:2], r=15, fill=ORANGE + "33" if key else PAPER,
+               stroke=ORANGE if key else MUTED, sw=2, size=11)
+    c.text(600, 90, "Jo can reach everyone,", size=15, anchor="start", weight="700")
+    c.text(600, 112, "but every route starts", size=15, anchor="start", weight="700")
+    c.text(600, 134, "with Ivo and then Hana.", size=15, anchor="start", weight="700")
+    c.lines(600, 175, ["Remove Ivo or Hana and Jo", "is cut off from the rest.", "", "That is what high betweenness",
+                       "means: not many friends, but a", "position everyone else's routes", "depend on."],
+            size=13, fill=MUTED)
+    meta = dict(chapter=6,
+                caption="Betweenness is about routes. Every shortest route from Jo to anyone else passes through Ivo and Hana, so they sit in between even though neither has many ties.",
+                alt="A ten-node network. Thick orange lines mark the shortest routes starting at the node Jo: Jo to Ivo, Ivo to Hana, then Hana to the two nodes Fay and Gus, and on from them to the rest. Thin gray lines mark ties not on those routes.",
+                data={"source": KITE_NAMES[src], "edges_on_shortest_routes": [list(e) for e in sorted(on_path)]})
+    return c, meta
+
+
+def centralization():
+    c = Canvas(900, 330, "Centralization: how unevenly ties are spread",
+               "Three ten-person networks: a star, the kite network, and a ring, labeled with their degree centralization.")
+    n = 10
+    graphs = []
+    graphs.append(("A star", [(0, i) for i in range(1, n)], ring(0, 0, 1, n - 1), "star"))
+    graphs.append(("The friendship network", KITE_EDGES, None, "kite"))
+    graphs.append(("A ring", [(i, (i + 1) % n) for i in range(n)], ring(0, 0, 1, n), "ring"))
+    data = []
+    for k, (title, edges, _, kind) in enumerate(graphs):
+        x0 = 15 + k * 295
+        if kind == "star":
+            pts = [(0, 0)] + ring(0, 0, 1, n - 1)
+        elif kind == "ring":
+            pts = ring(0, 0, 1, n)
+        else:
+            pts = stress_layout(n, edges, seed=3)
+        pos = fit(pts, x0, 50, 250, 200)
+        deg = [sum(1 for e in edges if i in e) for i in range(n)]
+        cen = sum(max(deg) - x for x in deg) / ((n - 1) * (n - 2))
+        data.append({"graph": title, "centralization": round(cen, 3)})
+        c.caption(x0 + 125, 30, title)
+        for a, b in edges:
+            c.edge(pos[a], pos[b], ra=8, rb=8, width=1.5, color="#9ca3af")
+        for i, p in enumerate(pos):
+            hub = deg[i] == max(deg) and kind != "ring"
+            c.node(*p, "", r=8 + 1.2 * deg[i] if kind != "ring" else 9, fill=ORANGE if hub else "#cfe5f3",
+                   stroke=ORANGE if hub else BLUE, sw=2)
+        c.text(x0 + 125, 285, f"degree centralization {cen:.2f}", size=14, weight="600")
+    c.text(450, 316, "0 means ties are spread evenly; 1 means one person holds them all.", size=13, fill=MUTED)
+    meta = dict(chapter=6,
+                caption="Centralization summarizes a whole network: how far the most central person stands above everyone else, compared with the most extreme case.",
+                alt="Three ten-node networks side by side. A star with one hub joined to nine others is labeled 1.00. The friendship network with one slightly larger hub is labeled 0.33. A ring in which everyone has two ties is labeled 0.00.",
+                data=data)
+    return c, meta
+
+
+def in_out_bars():
+    names = ["Ana", "Ben", "Chloe", "Dev", "Eli"]
+    out = [2, 1, 1, 2, 1]
+    inn = [2, 1, 4, 0, 0]
+    c = Canvas(780, 330, "Going to and being gone to",
+               "A bar chart of out-degree and in-degree for the five-person advice network.")
+    x0, y0, h = 90, 40, 220
+    unit = h / 4.5
+    c.text(24, y0 + h / 2, "ties", size=13, anchor="middle", fill=MUTED)
+    for t in range(0, 5):
+        y = y0 + h - t * unit
+        c.edge((x0 - 10, y), (740, y), ra=0, rb=0, width=1, color="#e5e7eb")
+        c.text(x0 - 18, y + 4, str(t), size=12, anchor="end", fill=MUTED)
+    for i, nm in enumerate(names):
+        gx = x0 + 20 + i * 130
+        for j, (vals, col, lab) in enumerate([(out, BLUE, "goes to"), (inn, ORANGE, "comes to them")]):
+            bh = vals[i] * unit
+            c.rect(gx + j * 44, y0 + h - bh, 38, bh, fill=col + ("cc" if j == 0 else "ff"), stroke=col, sw=1.6,
+                   dash=None if j == 0 else "4 3")
+            c.text(gx + j * 44 + 19, y0 + h - bh - 6, str(vals[i]), size=13, weight="600")
+        c.text(gx + 41, y0 + h + 22, nm, size=14, weight="600")
+    c.rect(300, 305, 14, 14, fill=BLUE + "cc", stroke=BLUE)
+    c.text(320, 317, "goes to others (out-degree)", size=12, anchor="start", fill=MUTED)
+    c.rect(520, 305, 14, 14, fill=ORANGE, stroke=ORANGE, dash="3 2")
+    c.text(540, 317, "others come to them (in-degree)", size=12, anchor="start", fill=MUTED)
+    meta = dict(chapter=6,
+                caption="In a directed network, activity (going to others) and prestige (being gone to) are different things. Chloe is sought out by everyone and seeks out one person; Dev and Eli seek out others but nobody seeks them.",
+                alt="A grouped bar chart for Ana, Ben, Chloe, Dev and Eli. Out-degree bars are solid blue: 2, 1, 1, 2, 1. In-degree bars are dashed orange: 2, 1, 4, 0, 0. Chloe's in-degree bar is the tallest.",
+                data={"names": names, "out_degree": out, "in_degree": inn})
+    return c, meta
+
+
 FIGURES = {
     "two-teams": two_teams, "habit": habit, "dyad-triad": dyad_triad,
     "balance-triads": balance_triads, "two-camps": two_camps, "weak-ties": weak_ties,
@@ -608,6 +777,8 @@ FIGURES = {
     "three-formats": three_formats, "two-mode": two_mode, "boundary": boundary, "levels": levels,
     "layout-matters": layout_matters, "distance-lies": distance_lies,
     "hairball-matrix": hairball_matrix, "encodings": encodings,
+    "four-centralities": four_centralities, "betweenness-paths": betweenness_paths,
+    "centralization": centralization, "in-out-bars": in_out_bars,
 }
 
 

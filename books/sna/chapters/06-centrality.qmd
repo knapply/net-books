@@ -2,61 +2,208 @@
 
 ::: {.callout-note appearance="simple"}
 ## Prerequisites
-Networks as data.
+@sec-networks-as-data and @sec-getting-started. The idea of who has a structural advantage comes from @sec-foundations, especially the sections on weak ties and structural holes.
 :::
 
-## Introduction
+## Who matters here?
 
-Degree, closeness, betweenness, eigenvector and related measures, and which question each answers.
+Put ten people in a group and ask who the most important one is. You'll get an argument, and the argument will be productive, because you'll quickly discover that people mean different things. One person means the best-connected. Another means the person who knows everybody's business. A third means the person without whom the group would fall apart.
 
-TODO(prose, see docs/VOICE.md): motivating question, the idea in plain words, what the reader can
-do after this chapter.
+Network analysis turns each of those meanings into a number. The numbers are called **centrality** measures, and the first thing to learn about them is that there isn't one. There's a family, and the members disagree on purpose.
 
-## Degree and its relatives
+@fig-four-centralities shows the point. It's one network of ten friends. This ten-person structure is modeled on the "kite" network that David Krackhardt used in his work on power in organizations [@krackhardt1990assessing]. In each panel, node size shows a different measure, and the largest node is highlighted.
 
-TODO(prose): concept, definition, a small worked example by hand.
+![One network, four rankings. Each measure answers a different question, so each picks a different person as most central.](../figures/four-centralities.svg){#fig-four-centralities fig-alt="Four copies of the same ten-node network. In the degree and eigenvector panels the node Dev, near the middle of the left cluster, is the largest. In the closeness panel two nodes, Fay and Gus, are largest and equal. In the betweenness panel Hana, on the narrow link leading out to two more people, is largest."}
 
-Every code example uses this three-tab block. The tab text is placeholder until
-the library interface is final; the comment names the measure it will call.
+Dev has the most friends. Fay and Gus are the closest, on average, to everyone. Hana has only three friends, yet sits on the one road that leads out to Ivo and Jo, and by the betweenness measure she is by far the most central person in the network. Four measures, three different answers. None of them is wrong. Each is a precise answer to a different question, and the work of this chapter is learning to ask the right one.
+
+## Where the idea comes from
+
+Centrality has psychological roots, and it's worth knowing them, because they explain what the measures were *for*.
+
+In the late 1940s, Alex Bavelas and colleagues asked a small-group question: if you control who can talk to whom, what happens to how a group performs? Harold Leavitt's well-known experiment from this tradition [@leavitt1951communication] wired small groups into different communication patterns, such as a wheel, where everyone talks only through one person in the middle, and a circle, where everyone talks to their two neighbors. Groups did differently depending on the pattern, and people in different positions did differently too: they reported differences in how satisfied they were and in how likely they were to emerge as the leader. The takeaway that mattered for network analysis was simple. *Position in a pattern of communication matters, separate from who the person is.*
+
+Linton Freeman's clarifying paper on centrality [@freeman1978centrality] gathered the many intuitions that had grown up since and sorted them into three that still organize the field: centrality as **activity** (how much is going on around this person), centrality as **independence** or efficiency (how close this person is to everyone, so they don't need intermediaries), and centrality as **control** (how much of other people's communication depends on this person). Those three are degree, closeness and betweenness. A fourth idea, that it matters *who* your contacts are and not only how many, gives us eigenvector-style measures.
+
+## Degree: activity
+
+Degree is the number of ties a person has. It's the simplest centrality measure, and the one we've been computing by hand since @sec-introduction. In the friendship network, Dev has six friends, Fay and Gus have five, and Jo has one.
+
+Degree measures *activity* or *exposure*: how many people a person can reach in one step, and how many can reach them. In a network of who talks to whom, it tells you who is at the center of the conversation. In a network of who might pass an infection on, it tells you who has the most opportunities.
+
+### When ties have a direction
+
+In a directed network, degree splits in two. **Out-degree** counts the ties a person sends, and **in-degree** counts the ties they receive. In the advice network from @sec-networks-as-data they come apart sharply.
+
+![In a directed network, activity (going to others) and prestige (being gone to) are different things. Chloe is sought out by everyone and seeks out one person; Dev and Eli seek out others but nobody seeks them.](../figures/in-out-bars.svg){#fig-in-out-bars fig-alt="A grouped bar chart for Ana, Ben, Chloe, Dev and Eli. Out-degree bars are solid blue: 2, 1, 1, 2, 1. In-degree bars are dashed orange: 2, 1, 4, 0, 0. Chloe's in-degree bar is the tallest."}
+
+Network analysts use the word **prestige** for what in-degree captures when the tie means something like respect, trust or being sought out [@wasserman1994social]. It's a different quality from activity. Someone can be very active and have no prestige (Dev, who asks two people for advice and is asked by nobody) or highly prestigious and not especially active (Chloe). Before you compute anything, decide whether your question is about who *sends* or who *receives*.
+
+### When ties differ in strength
+
+Counting ties treats a close friend and a nodding acquaintance as the same. If your data carry strengths, you can sum them instead, which gives **strength** (sometimes called weighted degree). That keeps information, but it also mixes two things, how many ties someone has and how strong they are, so that a person with many weak ties can look like a person with a few strong ones. Opsahl and colleagues [@opsahl2010node] proposed a way to blend the two with a tuning parameter, so you can decide how much each should count.
+
+## Closeness: independence
+
+Closeness asks how near a person is to everyone else. Take the length of the shortest route from the person to each other person (we'll define these routes properly in @sec-paths-and-cohesion), add the lengths up, and flip it so that a smaller total gives a larger score. A common way to write this, for a network of $n$ people, is
+
+$$
+\text{closeness}(i) = \frac{n - 1}{\sum_{j \neq i} d(i, j)},
+$$
+
+where $d(i, j)$ is the number of steps on the shortest route from $i$ to $j$. A score of 1 would mean you're one step from everybody. The idea goes back to Sabidussi [@sabidussi1966centrality] and is part of Freeman's "independence" intuition: if you're near everyone, you don't depend on anyone in particular to reach the rest.
+
+There's a catch. If the network has pieces that aren't connected, the distance to someone in another piece is undefined, and the formula breaks. People handle that in different ways. One popular fix is **harmonic centrality**, which adds up the *reciprocals* of the distances, so an unreachable person simply contributes zero [@marchiori2000harmony]. When your network might not be connected, prefer it, and say so.
+
+## Betweenness: control of routes
+
+Betweenness asks something different. For every pair of *other* people, how often does the shortest route between them pass through this person? If a person lies on many such routes, a lot of what flows through the network passes through them, and they can slow it down, speed it up or reshape it. This is Freeman's "control" [@freeman1977set].
+
+@fig-betweenness-paths shows it with the friendship network. Every shortest route from Jo to anyone else goes through Ivo and then through Hana.
+
+![Betweenness is about routes. Every shortest route from Jo to anyone else passes through Ivo and Hana, so they sit in between even though neither has many ties.](../figures/betweenness-paths.svg){#fig-betweenness-paths fig-alt="A ten-node network. Thick orange lines mark the shortest routes starting at the node Jo: Jo to Ivo, Ivo to Hana, then Hana to the two nodes Fay and Gus, and on from them to the rest. Thin gray lines mark ties not on those routes."}
+
+Hana's betweenness is high not because she has many friends but because she holds the only bridge. If you read @sec-foundations you'll recognize the shape: it's the same structure as a weak tie that links two clusters, or a broker spanning a structural hole. Betweenness is the number that tells you how much a person plays that role.
+
+Two practical notes. First, the straightforward way to compute betweenness is slow on big networks, because it needs the shortest routes between every pair. Brandes found a much faster method [@brandes2001faster], and nearly every modern tool uses it. Second, if there are several equally short routes between two people, each gets a share of the credit, which is why you'll see fractional scores, like Ana's 0.8, in the table later in this chapter.
+
+## Eigenvector centrality and its relatives: it matters who you know
+
+The first three measures all count something about *you*. The fourth family says that isn't enough: being connected to well-connected people should count for more than being connected to peripheral ones.
+
+**Eigenvector centrality** makes that idea precise. A person's score is proportional to the sum of the scores of their contacts. That sounds circular, and it is, but the circle has a stable solution, which a computer finds by repeating the calculation until the scores stop changing. The idea comes from Bonacich [@bonacich1972factoring]. In the friendship network, Dev and the people near him score high, while Ivo and Jo at the far end score near zero, even though Ivo has two friends. His friends aren't well connected.
+
+Several close relatives are worth knowing by name.
+
+- **Katz centrality** [@katz1953new] counts every route out of a person, not just the shortest, but gives longer routes a smaller weight, so nearby people count more. It also gives everyone a small baseline, which helps when some people have no ties pointing at them.
+- **PageRank** [@brin1998anatomy] is the idea behind early web search. Imagine a person clicking links at random, and now and then jumping to a random page. How often do they land on each page? That's the score. It is close in spirit to Katz.
+- **Bonacich power** [@bonacich1987power] adds a twist with a tuning number. With a positive setting, being tied to central people raises your score, as in eigenvector centrality. With a negative setting, being tied to *weak* people raises it. That sounds odd, until you think about bargaining: someone who has many options and whose partners have few has the upper hand. The same structure can mean prestige in one setting and power in another, which is a good reminder to think about what your tie means.
+
+## A cheat sheet
+
+| Measure | Question it answers | What it assumes | Watch out for |
+| --- | --- | --- | --- |
+| Degree | Who has the most ties? | Every tie counts the same | Mixing up sending and receiving in directed data |
+| Closeness | Who can reach everyone fastest? | Things travel along shortest routes | Disconnected networks; use harmonic |
+| Betweenness | Who sits on the routes between others? | Things travel along shortest routes, one route at a time | Ignores routes that aren't shortest |
+| Eigenvector and relatives | Who is tied to well-connected people? | Influence comes through contacts | Scores can concentrate on one dense area |
+
+## From people to networks: centralization
+
+So far we've scored people. Sometimes you want a score for the whole network: is influence concentrated in a few hands, or spread out? **Centralization** answers that. Take a centrality measure, find the person with the highest score, and add up how far everyone else falls below them. Then divide by the largest total that sum could be for a network of that size [@freeman1978centrality]. The result runs from 0 (everyone is equal) to 1 (one person holds everything, like the hub of a star).
+
+![Centralization summarizes a whole network: how far the most central person stands above everyone else, compared with the most extreme case.](../figures/centralization.svg){#fig-centralization fig-alt="Three ten-node networks side by side. A star with one hub joined to nine others is labeled 1.00. The friendship network with one slightly larger hub is labeled 0.33. A ring in which everyone has two ties is labeled 0.00."}
+
+For degree, the friendship network comes out at 0.33: Dev stands above the others, but nowhere near the way the hub of a star does. Notice the distance from the star's 1.00 and the ring's 0.00. It's a statement about the whole network, not any one person. The levels-of-analysis warning from @sec-networks-as-data applies in full: a statement about a person is not a statement about the network.
+
+### A convention that changes the number
+
+Here's a good example of why we write down our choices. The default setting in the engine used by this book counts self-loops as possible, and it divides by a maximum that allows for them. For the friendship network, which has no self-loops, that gives 0.267. Switch loops off and you get Freeman's classic 0.333. Same network, same measure, two correct answers under two conventions. Both are in the code below, and neither is wrong. What would be wrong is to compare one tool's number with another's without checking. Each function documents its convention, and the differences between well-known tools are recorded rather than hidden.
+
+## Reading centrality honestly
+
+Centrality numbers are easy to compute and easy to over-read. A few habits keep you honest.
+
+**Match the measure to the process.** Borgatti [@borgatti2005centrality] made an argument that deserves to be better known: each centrality measure quietly assumes a model of what moves through the network and how. Betweenness assumes things take the shortest route, one trip at a time. That's a good fit for, say, a package that is routed efficiently, and a poor fit for gossip, which spreads in every direction at once. Degree suits things that spread by contact with neighbors. Before you pick a measure, ask what is flowing, and let the answer choose.
+
+**Central doesn't mean important, or good.** A person with high betweenness may be a valuable connector or a bottleneck. A person with high degree may be popular or just chatty. The number locates a *position*; what that position means has to come from what you know about the setting and the ties.
+
+**Check how much your data can bear.** Centrality scores come from the data you collected, and the data are always incomplete. Borgatti, Carley and Krackhardt [@borgatti2006robustness] studied how centrality scores hold up when parts of the network are missing or recorded wrongly. The lesson to take from this line of work is to treat the *rankings* with some humility, especially for people near the boundary you drew (@sec-networks-as-data), and to check whether your conclusions survive a little noise.
+
+**Compare like with like.** Raw scores depend on network size. Degree 6 means something different in a network of ten than in a network of ten thousand. Normalize when you compare, and say how.
+
+**Beware of key-player logic with hidden networks.** In work on covert and illicit groups, analysts often ask which few people, if removed, would most disrupt the group. Borgatti's key player problem [@borgatti2006identifying] is one way to frame it, and Everton's *Disrupting Dark Networks* [@everton2012disrupting] shows how centrality and related ideas are put to work on such networks, including their limits. Cunningham, Everton and Murphy [@cunningham2016understanding] cover the broader question of what you can responsibly conclude from incomplete, intentionally hidden data. The same care applies here as everywhere in this chapter, only more so: the people in those networks may be harmed by a wrong answer.
+
+## In code
+
+The Rust below builds the friendship network, computes all four centralities and the degree centralization, and prints them as a table. The R and Python tabs follow the same steps.
 
 ::: {.panel-tabset group="language"}
 
 ## R
 
 ```r
-# TODO(code, R): compute degree, closeness and betweenness
+# TODO(code, R): 1) build the friendship network from the edge list (undirected);
+# 2) compute degree, closeness (normalized), betweenness and eigenvector centrality;
+# 3) print them side by side and confirm Dev, Fay and Gus, and Hana lead different columns;
+# 4) compute degree centralization, with and without counting self-loops.
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): compute degree, closeness and betweenness
+# TODO(code, Python): 1) build the friendship network from the edge list (undirected);
+# 2) compute degree, closeness (normalized), betweenness and eigenvector centrality;
+# 3) print them side by side and confirm Dev, Fay and Gus, and Hana lead different columns;
+# 4) compute degree centralization, with and without counting self-loops.
 ```
 
 ## Rust
 
 ```rust
-// TODO(code, Rust): compute degree, closeness and betweenness
+use knappnet::metrics::closeness::{compute_closeness, ClosenessOptions};
+use knappnet::metrics::eigenvector::{compute_eigenvector_centrality, EigenvectorOptions};
+use knappnet::metrics::topography::{compute_centralization, CentralizationOptions};
+use knappnet::{compute_betweenness, compute_degree, BetweennessOptions, DegreeMode, Graph};
+
+fn main() -> Result<(), knappnet::Error> {
+    let names = ["Ana", "Ben", "Cleo", "Dev", "Eli", "Fay", "Gus", "Hana", "Ivo", "Jo"];
+    // Eighteen friendships, written as pairs of positions.
+    let from = [0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 4, 5, 5, 6, 7, 8];
+    let to = [1, 2, 3, 5, 3, 4, 6, 3, 5, 4, 5, 6, 6, 6, 7, 7, 8, 9];
+    let g = Graph::from_edges(names.len(), &from, &to, None, false)?;
+
+    let degree = compute_degree(&g, DegreeMode::All, true);
+    let close = compute_closeness(&g, ClosenessOptions { normalized: true, ..Default::default() })?;
+    let between = compute_betweenness(&g, BetweennessOptions::default())?;
+    let eigen = compute_eigenvector_centrality(&g, EigenvectorOptions::default())?;
+
+    println!("{:<5} {:>6} {:>9} {:>12} {:>12}", "", "degree", "closeness", "betweenness", "eigenvector");
+    for (i, name) in names.iter().enumerate() {
+        println!("{:<5} {:>6} {:>9.3} {:>12.1} {:>12.3}", name, degree[i], close[i], between[i], eigen.values[i]);
+    }
+    let spread = compute_centralization(&g, CentralizationOptions { loops: false, ..Default::default() })?;
+    println!("\ndegree centralization {spread:.3}");
+    Ok(())
+}
 ```
 
 :::
 
 ::: {.code-output}
-TODO(output): the printed result of the code above, once it runs.
+```text
+      degree closeness  betweenness  eigenvector
+Ana        4     0.529          0.8        0.732
+Ben        4     0.529          0.8        0.732
+Cleo       3     0.500          0.0        0.594
+Dev        6     0.600          3.7        1.000
+Eli        3     0.500          0.0        0.594
+Fay        5     0.643          8.3        0.827
+Gus        5     0.643          8.3        0.827
+Hana       3     0.600         14.0        0.407
+Ivo        2     0.429          8.0        0.100
+Jo         1     0.310          0.0        0.023
+
+degree centralization 0.333
+```
 :::
+
+Read the table down each column and see who's on top. Dev leads degree and eigenvector. Fay and Gus tie on closeness. Hana's betweenness of 14 is well above anyone else's (the next highest is 8.3). Then look at Jo and Ivo: low on three of the four, and Ivo near the top on betweenness. A person can be peripheral by one measure and pivotal by another.
 
 ## Exercises
 
-1. TODO(exercise): a by-hand exercise on a tiny network.
-2. TODO(exercise): a coding exercise on a dataset from the appendix.
-3. TODO(exercise): an interpretation exercise.
+1. **By hand.** In the friendship network, list every pair of people whose shortest route has to pass through Ivo. Why does Ivo get a betweenness of 8 while Jo, who is farther out, gets 0?
+2. **By hand.** Draw a star of five people and a path of five people. Compute degree and betweenness for each person in both. Which network is more centralized, and under which measure?
+3. **Design.** You're studying how rumors spread through a school staff. Which of degree, closeness, betweenness or eigenvector would you choose, and what would you assume about how rumors move? What would change if the thing spreading were a formal announcement instead?
+4. **Coding.** Compute all four measures for the advice network from @sec-getting-started, treating it as directed. For degree, compute both in and out. Who leads on each? Does anyone lead on more than one?
+5. **Interpretation.** A consultant tells a manager, "Hana is the most important person in this team because she has the highest betweenness." Write two sentences that explain what the number does say, and two that explain what it doesn't.
 
 ## Summary
 
 ::: {.callout-tip appearance="simple"}
-TODO(summary): three to five sentences, then the one-line takeaway.
+Centrality is a family of measures, each answering a different question about position: degree for activity, closeness for how near someone is to everyone, betweenness for control over routes between others, and eigenvector-style measures for being tied to well-connected people. They come from the psychology of communication in small groups and rest on assumptions about what flows through the network. In directed networks, separate sending (activity) from receiving (prestige). Centralization summarizes a whole network and depends on stated conventions. And a centrality score locates a position; what that position means depends on the ties, the setting, and how good your data are.
 :::
 
 ## Further reading
 
-TODO(refs): cite with `@key` from `shared/bib/references.bib`.
+For the three intuitions behind the classic measures, start with @freeman1978centrality, and for betweenness in particular, @freeman1977set. For the psychology of position in communication patterns, see @leavitt1951communication. For the argument that a centrality measure should match the process you care about, see @borgatti2005centrality, and for how sturdy scores are to imperfect data, @borgatti2006robustness. For the eigenvector family, see @bonacich1972factoring, @bonacich1987power, @katz1953new and @brin1998anatomy, and for weighted ties, @opsahl2010node. For the fast betweenness algorithm, see @brandes2001faster. For centrality in covert and illicit networks, see @everton2012disrupting and @cunningham2016understanding, together with @borgatti2006identifying. To practice in R, Phil Murphy's tutorials on centrality in statnet [@murphyrpubs546652], on local measures in igraph [@murphyrpubs313180] and on global measures [@murphyrpubs308024] walk through these measures step by step, and his igraph centrality page [@murphyrpubsigraphCentrality] is a handy reference.
