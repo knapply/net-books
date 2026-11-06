@@ -105,6 +105,10 @@ book:
   title: "{meta['title']}"
   subtitle: "{meta['subtitle']}"
   author: "{meta['author']}"
+  navbar:
+    title: "{meta['author']}"
+    background: light
+    pinned: true
   page-footer:
     left: "{meta['title']} by {meta['author']}"
     right: "&copy; 2026 {meta['author']} &middot; [CC BY-NC-ND 4.0](https://creativecommons.org/licenses/by-nc-nd/4.0/)"
