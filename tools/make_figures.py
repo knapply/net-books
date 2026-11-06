@@ -770,6 +770,217 @@ def in_out_bars():
     return c, meta
 
 
+# ---------------------------------------------------------------- chapter 7
+def walks_paths():
+    c = Canvas(900, 300, "Walks, paths and shortest paths",
+               "The same five-person network shown three times with a different route from Ana to Eli highlighted: a walk that doubles back, a path that never repeats a person, and a shortest path.")
+    pts = {"A": (30, 100), "B": (110, 100), "C": (170, 40), "D": (170, 160), "E": (250, 100)}
+    edges = [("A", "B"), ("B", "C"), ("C", "D"), ("B", "D"), ("D", "E")]
+    routes = [("A walk", ["A", "B", "C", "B", "D", "E"], "anything goes: B is visited twice", "5 steps"),
+              ("A path", ["A", "B", "C", "D", "E"], "no person repeats", "4 steps"),
+              ("A shortest path", ["A", "B", "D", "E"], "the fewest steps possible", "3 steps")]
+    for k, (title, route, note, steps) in enumerate(routes):
+        x0, y0 = 20 + k * 295, 50
+        pos = {n: (x0 + x, y0 + y) for n, (x, y) in pts.items()}
+        for a, b in edges:
+            c.edge(pos[a], pos[b], ra=15, rb=15, width=1.6, color="#c7ccd4")
+        for i in range(len(route) - 1):
+            a, b = route[i], route[i + 1]
+            curve = 0
+            if title == "A walk" and (i, route[i], route[i + 1]) in ((1, "B", "C"), (2, "C", "B")):
+                curve = 17
+            c.edge(pos[a], pos[b], ra=15, rb=15, directed=True, width=3.2, color=ORANGE if title != "A shortest path" else BLUE,
+                   curve=curve)
+            mx, my = (pos[a][0] + pos[b][0]) / 2, (pos[a][1] + pos[b][1]) / 2
+        for n, p in pos.items():
+            on = n in route
+            col = (BLUE if title == "A shortest path" else ORANGE) if on else MUTED
+            c.node(*p, {"A": "Ana", "B": "Ben", "C": "Cleo", "D": "Dev", "E": "Eli"}[n][:2], r=15,
+                   fill=PAPER, stroke=col, sw=2.2, size=11)
+        c.caption(x0 + 140, 255, title)
+        c.text(x0 + 140, 276, note + " (" + steps + ")", size=12, fill=MUTED)
+    meta = dict(chapter=7,
+                caption="Three kinds of route from Ana to Eli. A walk may repeat anything; a path never repeats a person; a shortest path (a geodesic) uses the fewest steps. Distance is the length of a shortest path.",
+                alt="Three drawings of a five-person network in which Ben, Cleo and Dev form a triangle, Ana hangs off Ben and Eli hangs off Dev. Left: a walk from Ana to Eli that goes to Cleo and back to Ben, five steps. Middle: a path through Ben, Cleo and Dev, four steps. Right: a shortest path through Ben and Dev, three steps.",
+                data={"edges": [list(e) for e in edges], "routes": {t: r for t, r, _, _ in routes}})
+    return c, meta
+
+
+def distance_matrix():
+    n = len(KITE_NAMES)
+    d = distances(n, KITE_EDGES)
+    ecc = [max(r) for r in d]
+    c = Canvas(820, 420, "Who is how far from whom",
+               "A ten by ten table of the number of steps between every pair of people in the friendship network, shaded from light (near) to dark (far).")
+    cell, x0, y0 = 34, 90, 50
+    shades = ["#ffffff", "#e6f1f9", "#b5d5ea", "#6aa9d2", "#1f6fa8"]
+    for j, nm in enumerate(KITE_NAMES):
+        c.text(x0 + j * cell + cell / 2, y0 - 10, nm, size=11)
+        c.text(x0 - 10, y0 + j * cell + cell / 2 + 4, nm, size=11, anchor="end")
+    for i in range(n):
+        for j in range(n):
+            v = d[i][j]
+            c.rect(x0 + j * cell, y0 + i * cell, cell, cell, fill=shades[v], stroke="#e5e7eb", sw=0.8)
+            c.text(x0 + j * cell + cell / 2, y0 + i * cell + cell / 2 + 4, str(v), size=12,
+                   fill=PAPER if v >= 3 else INK, weight="600" if v == max(ecc) else "400")
+    c.text(x0 + n * cell + 48, y0 - 10, "furthest", size=11, fill=MUTED)
+    for i in range(n):
+        c.text(x0 + n * cell + 48, y0 + i * cell + cell / 2 + 4, str(ecc[i]), size=12, weight="600",
+               fill=ORANGE if ecc[i] == max(ecc) else INK)
+    avg = sum(sum(r) for r in d) / (n * (n - 1))
+    c.text(410, 408, f"Largest entry (the diameter): {max(ecc)}.  Average over all pairs: {avg:.2f} steps.", size=13, fill=MUTED)
+    meta = dict(chapter=7,
+                caption="The distance table for the friendship network. Its largest entry is the diameter; its average over pairs is the mean distance; each row's largest entry is that person's eccentricity.",
+                alt="A ten by ten grid of numbers. The diagonal is zero. Most entries are 1, 2 or 3. The darkest entries, 4, appear between Jo and each of the first five people in the list. A column at the right gives each person's largest distance.",
+                data={"names": KITE_NAMES, "distances": d, "eccentricity": ecc, "mean_distance": round(avg, 3)})
+    return c, meta
+
+
+def density_dice():
+    c = Canvas(900, 295, "Density: how many of the possible ties exist",
+               "The same six people with five ties, nine ties and all fifteen ties, labeled with their density.")
+    n = 6
+    allp = list(combinations(range(n), 2))
+    sets = [("A path", [(i, i + 1) for i in range(5)]),
+            ("Some shortcuts", [(i, (i + 1) % 6) for i in range(6)] + [(0, 3), (1, 4), (2, 5)]),
+            ("Everyone ties to everyone", allp)]
+    data = []
+    for k, (title, edges) in enumerate(sets):
+        x0 = 20 + k * 295
+        pos = ring(x0 + 130, 148, 85, n)
+        for a, b in edges:
+            c.edge(pos[a], pos[b], ra=11, rb=11, width=1.8, color="#9ca3af")
+        for p in pos:
+            c.node(*p, "", r=11, fill="#cfe5f3", stroke=BLUE, sw=2)
+        c.caption(x0 + 130, 30, title)
+        dens = len(edges) / len(allp)
+        data.append({"graph": title, "ties": len(edges), "possible": len(allp), "density": round(dens, 3)})
+        c.text(x0 + 130, 268, f"{len(edges)} of {len(allp)} possible = {dens:.2f}", size=14, weight="600")
+    meta = dict(chapter=7,
+                caption="Density is the share of possible ties that are present. With six people there are 15 possible ties.",
+                alt="Three drawings of six people on a circle. A path of five ties has density 0.33. A ring with three crossing ties, nine in all, has density 0.60. All fifteen ties give density 1.00.",
+                data=data)
+    return c, meta
+
+
+def clustering_idea():
+    c = Canvas(900, 300, "Do my friends know each other?",
+               "Three views of one person and their four friends: none of the friends know each other, two pairs do, and all pairs do.")
+    cases = [("No friends of friends", []), ("Some friends know each other", [(0, 1), (2, 3)]),
+             ("All friends know each other", list(combinations(range(4), 2)))]
+    data = []
+    for k, (title, links) in enumerate(cases):
+        x0 = 20 + k * 295
+        ctr = (x0 + 130, 135)
+        pts = ring(ctr[0], ctr[1], 80, 4, start=-135)
+        for p in pts:
+            c.edge(ctr, p, ra=14, rb=11, width=1.8, color="#9ca3af")
+        for a, b in links:
+            c.edge(pts[a], pts[b], ra=11, rb=11, width=3, color=ORANGE)
+        for p in pts:
+            c.node(*p, "", r=11, fill="#cfe5f3", stroke=BLUE, sw=2)
+        c.node(*ctr, "", r=14, fill=ORANGE, stroke=ORANGE, sw=2)
+        c.caption(x0 + 130, 30, title)
+        val = len(links) / 6
+        data.append({"links_among_friends": len(links), "possible": 6, "clustering": round(val, 3)})
+        c.text(x0 + 130, 262, f"{len(links)} of 6 pairs are tied = {val:.2f}", size=14, weight="600")
+    meta = dict(chapter=7,
+                caption="Local clustering for the person in the middle: of all pairs of their friends, what share are friends with each other?",
+                alt="Three drawings of a person in the middle tied to four friends. In the first no two friends are tied, giving 0 of 6, clustering 0.00. In the second two pairs of friends are tied, 2 of 6, clustering 0.33. In the third all pairs are tied, 6 of 6, clustering 1.00.",
+                data=data)
+    return c, meta
+
+
+def components_fig():
+    c = Canvas(900, 320, "Components: pieces that do not connect",
+               "Left: an undirected network in two separate pieces. Right: a directed network that is one piece if arrows are ignored, but two strong components when arrows are followed.")
+    c.caption(215, 30, "Two separate pieces")
+    A = [(40, 100), (110, 70), (110, 140), (180, 100)]
+    B = [(300, 90), (360, 140), (395, 70)]
+    for a, b in [(0, 1), (0, 2), (1, 2), (1, 3), (2, 3)]:
+        c.edge((A[a][0] + 20, A[a][1] + 60), (A[b][0] + 20, A[b][1] + 60), ra=12, rb=12, width=2, color="#9ca3af")
+    for a, b in [(0, 1), (1, 2), (0, 2)]:
+        c.edge((B[a][0] - 30, B[a][1] + 60), (B[b][0] - 30, B[b][1] + 60), ra=12, rb=12, width=2, color="#9ca3af")
+    for p in A:
+        c.node(p[0] + 20, p[1] + 60, "", r=12, fill="#cfe5f3", stroke=BLUE, sw=2)
+    for p in B:
+        c.node(p[0] - 30, p[1] + 60, "", r=12, fill="#fbe7c2", stroke=ORANGE, sw=2, shape="square")
+    c.text(215, 270, "2 components, of sizes 4 and 3", size=14, weight="600")
+    c.caption(680, 30, "Weak and strong")
+    cyc = [(570, 110), (630, 70), (640, 150)]
+    mut = [(740, 100), (810, 150)]
+    for a, b in [(0, 1), (1, 2), (2, 0)]:
+        c.edge((cyc[a][0], cyc[a][1] + 40), (cyc[b][0], cyc[b][1] + 40), ra=13, rb=13, directed=True, width=2,
+               color=BLUE, curve=0)
+    for a, b in [(0, 1), (1, 0)]:
+        c.edge((mut[a][0], mut[a][1] + 40), (mut[b][0], mut[b][1] + 40), ra=13, rb=13, directed=True, width=2,
+               color=ORANGE, curve=10)
+    c.edge((cyc[2][0], cyc[2][1] + 40), (mut[0][0], mut[0][1] + 40), ra=13, rb=13, directed=True, width=2, color="#9ca3af", dash="5 4")
+    for p in cyc:
+        c.node(p[0], p[1] + 40, "", r=13, fill="#cfe5f3", stroke=BLUE, sw=2)
+    for p in mut:
+        c.node(p[0], p[1] + 40, "", r=13, fill="#fbe7c2", stroke=ORANGE, sw=2, shape="square")
+    c.text(680, 270, "1 weak component, 2 strong components", size=14, weight="600")
+    c.text(680, 292, "the dashed arrow only goes one way", size=12, fill=MUTED)
+    meta = dict(chapter=7,
+                caption="Components. In an undirected network a component is a piece in which everyone can reach everyone. In a directed network we distinguish weak components (ignore arrow direction) from strong ones (follow the arrows both ways).",
+                alt="Left: a four-person cluster and a separate three-person triangle, with no tie between them. Right: three people joined in a one-way cycle and two people who point at each other, with one dashed arrow from the cycle to the pair.",
+                data={"undirected_component_sizes": [4, 3], "strong_components": [3, 2], "weak_components": 1})
+    return c, meta
+
+
+def cores_fig():
+    n = len(KITE_NAMES)
+    core = [3, 3, 3, 3, 3, 3, 3, 2, 1, 1]
+    pos = fit(stress_layout(n, KITE_EDGES, seed=3), 20, 40, 520, 250)
+    c = Canvas(900, 330, "Cores: peeling a network from the outside in",
+               "The friendship network with each person marked by core number: seven people in the 3-core, one in the 2-core, and two in the 1-core.")
+    styles = {3: (BLUE, "circle"), 2: (ORANGE, "square"), 1: (PURPLE, "diamond")}
+    for a, b in KITE_EDGES:
+        c.edge(pos[a], pos[b], ra=14, rb=14, width=1.6, color="#9ca3af")
+    for i, p in enumerate(pos):
+        col, shape = styles[core[i]]
+        c.node(*p, KITE_NAMES[i][:2], r=14, fill=col + "33", stroke=col, shape=shape, sw=2.2, size=10.5)
+    y = 90
+    for k, txt in [(3, "core 3: 3+ friends inside the group"),
+                   (2, "core 2: joins the group with 2 ties"),
+                   (1, "core 1: a thread hanging off the rest")]:
+        col, shape = styles[k]
+        c.node(590, y, "", r=9, fill=col + "33", stroke=col, shape=shape, sw=2)
+        c.text(612, y + 4, txt, size=13, anchor="start")
+        y += 38
+    c.lines(580, 230, ["Peel off anyone with fewer than 3", "friends, and repeat until no one can", "be peeled. What is left is the 3-core."],
+            size=12.5, fill=MUTED)
+    meta = dict(chapter=7,
+                caption="k-cores. A person's core number is the largest k for which they belong to a group where everyone has at least k ties inside the group. Seven people are in the 3-core.",
+                alt="The ten-person friendship network. Seven nodes drawn as blue circles form the dense cluster. Hana, drawn as an orange square, hangs off it. Ivo and Jo, drawn as purple diamonds, trail off at the far end.",
+                data={"names": KITE_NAMES, "coreness": core})
+    return c, meta
+
+
+def triad_types():
+    c = Canvas(900, 280, "Three triads out of sixteen",
+               "Three small directed triangles: a mutual pair and a stranger, a transitive triple, and a cycle.")
+    cases = [("Mutual pair, one stranger", "102", [(0, 1), (1, 0)], "reciprocity"),
+             ("Transitive triple", "030T", [(0, 1), (0, 2), (1, 2)], "a pecking order"),
+             ("Cycle", "030C", [(0, 1), (1, 2), (2, 0)], "no top, round and round")]
+    for k, (title, code, arcs, note) in enumerate(cases):
+        x0 = 20 + k * 295
+        pts = [(x0 + 130, 70), (x0 + 60, 170), (x0 + 200, 170)]
+        for a, b in arcs:
+            curve = 12 if (a, b) in ((0, 1), (1, 0)) and len(arcs) == 2 else 0
+            c.edge(pts[a], pts[b], ra=15, rb=15, directed=True, width=2.6, color=BLUE, curve=curve)
+        for i, p in enumerate(pts):
+            c.node(*p, "ABC"[i], r=15, fill=PAPER, stroke=INK, sw=2)
+        c.caption(x0 + 130, 30, title)
+        c.text(x0 + 130, 232, f"{code}: {note}", size=13, fill=MUTED)
+    meta = dict(chapter=7,
+                caption="Three of the sixteen triad types in the triad census. Counting how often each type occurs across all triples of people is a way to ask about reciprocity, ranking and exchange.",
+                alt="Three directed triangles on nodes A, B and C. Left: A and B point at each other, C has no ties. Middle: A points at B and C, and B points at C. Right: A points at B, B at C, and C at A.",
+                data={"types": ["102", "030T", "030C"]})
+    return c, meta
+
+
 FIGURES = {
     "two-teams": two_teams, "habit": habit, "dyad-triad": dyad_triad,
     "balance-triads": balance_triads, "two-camps": two_camps, "weak-ties": weak_ties,
@@ -779,6 +990,9 @@ FIGURES = {
     "hairball-matrix": hairball_matrix, "encodings": encodings,
     "four-centralities": four_centralities, "betweenness-paths": betweenness_paths,
     "centralization": centralization, "in-out-bars": in_out_bars,
+    "walks-paths": walks_paths, "distance-matrix": distance_matrix, "density-dice": density_dice,
+    "clustering-idea": clustering_idea, "components": components_fig, "cores": cores_fig,
+    "triad-types": triad_types,
 }
 
 
