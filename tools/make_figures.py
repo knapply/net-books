@@ -15,6 +15,7 @@ from itertools import combinations
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from fig_layout import community_graph, crossings, distances, fit, stress_layout  # noqa: E402
 from figs import (BLUE, FAINT, GREEN, INK, MUTED, ORANGE, PAPER, PURPLE, RED, SKY,  # noqa: E402
                   Canvas, bfs_mean_distance, ring)
 
@@ -450,11 +451,163 @@ def levels():
     return c, meta
 
 
+# ---------------------------------------------------------------- chapter 5
+GROUP_STYLE = [(BLUE, "circle"), (ORANGE, "square"), (PURPLE, "diamond")]
+
+
+def _shuffled_ring(n, cx, cy, r, seed):
+    import random
+    order = list(range(n))
+    random.Random(seed).shuffle(order)
+    pts = ring(cx, cy, r, n)
+    pos = [None] * n
+    for slot, node in enumerate(order):
+        pos[node] = pts[slot]
+    return pos
+
+
+def _draw_graph(c, pos, edges, groups, r=8, width=1.4, color="#9ca3af"):
+    for a, b in edges:
+        c.edge(pos[a], pos[b], ra=r, rb=r, width=width, color=color)
+    for i, p in enumerate(pos):
+        col, shape = GROUP_STYLE[groups[i]]
+        c.node(*p, "", r=r, fill=col + "33", stroke=col, shape=shape, sw=2)
+
+
+def layout_matters():
+    import random
+    n, edges, groups = community_graph([6, 6, 6], 0.7, 0.04, 3)
+    c = Canvas(900, 330, "One network, three layouts",
+               "The same eighteen-person network drawn with random positions, with people placed around a circle in the order they appear in the data, and with a stress layout.")
+    w = 260
+    rnd = random.Random(5)
+    pos_r = fit([(rnd.uniform(0, 1), rnd.uniform(0, 1)) for _ in range(n)], 20, 60, w, 220)
+    pos_c = _shuffled_ring(n, 20 + w / 2 + 300, 170, 105, 2)
+    pos_s = fit(stress_layout(n, edges), 20 + 2 * 300, 60, w, 220)
+    panels = [("Random positions", pos_r), ("Around a circle", pos_c), ("Stress layout", pos_s)]
+    counts = []
+    for k, (title, pos) in enumerate(panels):
+        x0 = 20 + k * 300
+        if title == "Around a circle":
+            pass
+        c.caption(x0 + w / 2, 30, title)
+        _draw_graph(c, pos, edges, groups)
+        cr = crossings(pos, edges)
+        counts.append(cr)
+        c.text(x0 + w / 2, 304, f"{cr} edge crossings", size=13, fill=MUTED)
+    meta = dict(chapter=5,
+                caption="One network, three pictures. Nothing about the data changed; only the positions did. Only the last layout lets the three groups show.",
+                alt="Three drawings of the same eighteen nodes, which belong to three groups drawn as circles, squares and diamonds. In the first, positions are random and ties form a tangle. In the second, nodes sit on a circle and many ties cross the middle. In the third, each group forms its own tight cluster with a few ties between the clusters.",
+                data={"nodes": n, "edges": [list(e) for e in edges], "groups": groups, "crossings": counts})
+    return c, meta
+
+
+def distance_lies():
+    n, edges, groups = community_graph([6, 6, 6], 0.7, 0.04, 3)
+    d = distances(n, edges)
+    pos_c = _shuffled_ring(n, 150, 175, 105, 2)
+    import math
+    best = None
+    for i in range(n):
+        for j in range(i + 1, n):
+            gap = d[i][j] - 0
+            near = math.dist(pos_c[i], pos_c[j])
+            if d[i][j] >= 3 and (best is None or near < best[0]):
+                best = (near, i, j)
+    _, a, b = best
+    c = Canvas(780, 340, "Close on the page is not close in the network",
+               "Two drawings of the same network, each with one pair of people highlighted.")
+    c.caption(150, 30, "Around a circle")
+    _draw_graph(c, pos_c, edges, groups)
+    for k in (a, b):
+        c.node(*pos_c[k], "", r=11, fill="none", stroke=RED, sw=3)
+    c.edge(pos_c[a], pos_c[b], ra=11, rb=11, width=2.4, color=RED, dash="5 4")
+    c.text(150, 306, "neighbors on the page,", size=13, fill=MUTED)
+    c.text(150, 324, f"{int(d[a][b])} steps apart in the network", size=13, fill=MUTED)
+    pos_s = fit(stress_layout(n, edges), 420, 60, 330, 220)
+    c.caption(585, 30, "Stress layout")
+    _draw_graph(c, pos_s, edges, groups)
+    for k in (a, b):
+        c.node(*pos_s[k], "", r=11, fill="none", stroke=RED, sw=3)
+    c.edge(pos_s[a], pos_s[b], ra=11, rb=11, width=2.4, color=RED, dash="5 4")
+    c.text(585, 306, "the same pair, now drawn far apart,", size=13, fill=MUTED)
+    c.text(585, 324, "which is how far apart they are", size=13, fill=MUTED)
+    meta = dict(chapter=5,
+                caption="Distance on the page can mislead. A stress layout tries to make distance on the page match steps in the network; a circle ignores it.",
+                alt="Left: a circular drawing of an eighteen-node network with two nodes ringed in red that sit next to each other on the circle, joined by a dashed red line. Right: a stress-layout drawing of the same network with the same two nodes ringed in red, now far apart.",
+                data={"pair": [a, b], "graph_distance": int(d[a][b])})
+    return c, meta
+
+
+def hairball_matrix():
+    n, edges, groups = community_graph([8, 8, 8], 0.65, 0.04, 11)
+    c = Canvas(900, 400, "A hairball and the same network as a matrix",
+               "A twenty-four person network as a node-link drawing on a circle and as a sorted adjacency matrix.")
+    pos = _shuffled_ring(n, 220, 205, 150, 4)
+    c.caption(220, 30, "As a node-link drawing")
+    _draw_graph(c, pos, edges, groups, r=7, width=1.1)
+    c.text(220, 385, f"{len(edges)} ties, and the groups are hard to see", size=13, fill=MUTED)
+    cell, x0, y0 = 12.5, 530, 60
+    c.caption(x0 + cell * n / 2, 30, "As a matrix, sorted by group")
+    es = {tuple(sorted(e)) for e in edges}
+    order = sorted(range(n), key=lambda i: (groups[i], i))
+    for ri, i in enumerate(order):
+        for ci, j in enumerate(order):
+            on = (min(i, j), max(i, j)) in es and i != j
+            col = GROUP_STYLE[groups[i]][0] if (on and groups[i] == groups[j]) else (INK if on else None)
+            c.rect(x0 + ci * cell, y0 + ri * cell, cell, cell, fill=(col or "#ffffff"), stroke="#e5e7eb", sw=0.6)
+    start = 0
+    for g in range(3):
+        size = groups.count(g)
+        c.rect(x0 + start * cell, y0 + start * cell, size * cell, size * cell, stroke=INK, sw=1.6)
+        start += size
+    c.text(x0 + cell * n / 2, 385, "colored blocks: ties inside groups. dark squares: ties between groups", size=13, fill=MUTED)
+    meta = dict(chapter=5,
+                caption="The same network twice. When a node-link drawing turns into a hairball, a matrix with rows sorted by group shows the block structure immediately.",
+                alt="Left: a tangled circular drawing of twenty-four nodes in three groups. Right: a twenty-four by twenty-four grid of squares, with three dense blocks along the diagonal outlined in black and very few filled squares outside them.",
+                data={"nodes": n, "edges": [list(e) for e in edges], "groups": groups})
+    return c, meta
+
+
+def encodings():
+    n, edges, groups = community_graph([5, 5], 0.8, 0.08, 6)
+    deg = [sum(1 for e in edges if i in e) for i in range(n)]
+    c = Canvas(900, 360, "Four ways to show what a node or tie is like",
+               "A ten-node network where node size shows number of ties, shape and color show group, and line thickness shows tie strength. Callouts name each channel.")
+    pos = fit(stress_layout(n, edges), 30, 40, 520, 270)
+    import random
+    rnd = random.Random(2)
+    strength = {e: rnd.choice([1, 1, 2, 4]) for e in edges}
+    for e in edges:
+        c.edge(pos[e[0]], pos[e[1]], ra=10, rb=10, width=1 + strength[e] * 1.3, color="#9ca3af")
+    for i, p in enumerate(pos):
+        col, shape = GROUP_STYLE[groups[i]]
+        c.node(*p, "", r=7 + deg[i] * 2.2, fill=col + "33", stroke=col, shape=shape, sw=2)
+    rows = [("Size", "number of ties", "bigger node, more ties"),
+            ("Shape and color", "group", "both, so it reads in greyscale"),
+            ("Thickness", "tie strength", "thicker line, stronger tie"),
+            ("Position", "closeness in the network", "set by the layout, not by you")]
+    y = 70
+    for head, what, note in rows:
+        c.text(600, y, head, size=15, anchor="start", weight="700")
+        c.text(600, y + 20, what, size=13, anchor="start", fill=INK)
+        c.text(600, y + 38, note, size=12, anchor="start", fill=MUTED)
+        y += 72
+    meta = dict(chapter=5,
+                caption="Four visual channels and what each can carry. Pick one idea per channel and say what it is in a legend.",
+                alt="A ten-node network drawn in two clusters. Larger nodes have more ties. Circles and squares in different colors mark the two groups. Thicker lines mark stronger ties. A list on the right names each channel and what it encodes.",
+                data={"nodes": n, "edges": [list(e) for e in edges], "groups": groups, "degree": deg,
+                      "strength": [strength[e] for e in edges]})
+    return c, meta
+
+
 FIGURES = {
     "two-teams": two_teams, "habit": habit, "dyad-triad": dyad_triad,
     "balance-triads": balance_triads, "two-camps": two_camps, "weak-ties": weak_ties,
     "structural-hole": structural_hole, "homophily": homophily, "small-world": small_world,
     "three-formats": three_formats, "two-mode": two_mode, "boundary": boundary, "levels": levels,
+    "layout-matters": layout_matters, "distance-lies": distance_lies,
+    "hairball-matrix": hairball_matrix, "encodings": encodings,
 }
 
 

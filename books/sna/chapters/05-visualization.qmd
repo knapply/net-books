@@ -2,52 +2,151 @@
 
 ::: {.callout-note appearance="simple"}
 ## Prerequisites
-Getting started.
+@sec-networks-as-data. If you want to run the code, @sec-getting-started shows how to load a network. The ideas in this chapter work without it.
 :::
 
-## Introduction
+## A picture is an argument
 
-Layouts, encodings, and when a picture misleads.
+Network pictures are the most tempting thing in this field. They're beautiful, they get shared, and they make a room full of strangers lean in. They're also the easiest place to fool yourself, because a picture feels like evidence when it's often closer to an opinion.
 
-TODO(prose, see docs/VOICE.md): motivating question, the idea in plain words, what the reader can
-do after this chapter.
+Here's the catch. In a network, a node has no natural location. There's no map to anchor it to, no axis that means anything. Where you put each dot is a choice, and that choice decides which structure the reader sees. We touched on this in @sec-introduction with two teams that shared a table of attributes but not a pattern of ties. This chapter is about drawing networks so the picture says what the data says, and about noticing when a picture says more than it should.
 
-## From layout to picture
+By the end you should be able to explain what a layout algorithm is trying to do, pick one for your question, choose visual encodings that survive a black-and-white printer, and know when to give up on dots and lines altogether.
 
-TODO(prose): concept, definition, a small worked example by hand.
+## A short history of drawing relations
 
-Every code example uses this three-tab block. The tab text is placeholder until
-the library interface is final; the comment names the measure it will call.
+Drawing social relations is as old as the field. Jacob Moreno's *Who Shall Survive?* [@moreno1934who] is full of what he called sociograms: hand-drawn diagrams of who chose whom, built to make the structure of a group visible at a glance. Linton Freeman's history of the field [@freeman2004development] follows how pictures like these, and the arguments about how to draw them well, ran alongside the measures we meet in later chapters.
+
+Early diagrams were drawn by hand, and the person drawing moved nodes around until the picture looked right. That's a useful memory. When you move nodes around until the picture looks right, you're doing exactly what a layout algorithm does, just slowly. The algorithms automate a judgment about what "right" means, and different algorithms mean different things by it.
+
+## Positions are free, so they need a rule
+
+Look at @fig-layout-matters. It's one network of eighteen people in three groups, drawn three ways. Nothing about the data changed between panels. Only the positions did.
+
+![One network, three pictures. Nothing about the data changed; only the positions did. Only the last layout lets the three groups show.](../figures/layout-matters.svg){#fig-layout-matters fig-alt="Three drawings of the same eighteen nodes, which belong to three groups drawn as circles, squares and diamonds. In the first, positions are random and ties form a tangle. In the second, nodes sit on a circle and many ties cross the middle. In the third, each group forms its own tight cluster with a few ties between the clusters."}
+
+The first panel scatters the nodes at random. The second puts them around a circle in the order they happen to appear in the file. Both are honest in the sense that every tie is there, and both are close to useless for seeing groups. The third panel uses a *stress layout*, and the three groups jump out.
+
+A good layout turns a vague wish ("show me the structure") into a rule a computer can follow. The most common rule is this: **people who are close in the network should be close on the page, and people who are far apart in the network should be far apart on the page.**
+
+## How layout algorithms think
+
+You don't need the math to use a layout, but one idea is worth having. Take every pair of people, find how many steps apart they are in the network (their graph distance, which we meet properly in @sec-paths-and-cohesion), and compare that to how far apart you drew them. The mismatch, added up over all pairs, is called *stress*. A stress layout moves the nodes to make that total mismatch as small as it can [@gansner2005graph]. For the curious, the quantity being minimized is
+
+$$
+\text{stress} = \sum_{i<j} w_{ij}\,\big(\lVert x_i - x_j\rVert - d_{ij}\big)^2, \qquad w_{ij} = d_{ij}^{-2},
+$$
+
+where $x_i$ is where person $i$ sits on the page, $d_{ij}$ is the number of steps between $i$ and $j$, and the weights $w_{ij}$ make mismatches between near neighbors count more than mismatches between distant pairs. In words: care most about getting the neighbors right.
+
+Several families of layouts share this spirit:
+
+- **Spring layouts.** Imagine every tie is a spring and every node pushes other nodes away. Let go and the whole thing settles into a shape. Fruchterman and Reingold's classic version [@fruchterman1991graph] works like this. Kamada and Kawai's [@kamada1989algorithm] sets each spring's resting length to the graph distance between its two ends, which makes it a close cousin of stress. A popular variant tuned for large networks and for interactive exploration is ForceAtlas2 [@jacomy2014forceatlas2], the default layout in Gephi [@bastian2009gephi].
+- **Stress and scaling layouts.** These work directly from the distances. They're related to multidimensional scaling, the older statistical idea of recovering a map from a table of distances [@torgerson1952multidimensional; @kruskal1964multidimensional; @borg2005modern]. Brandes and Pich compare how well several ways of doing this perform [@brandes2009experimental], and for big networks there are faster approximations, such as sparse stress [@ortmann2017sparse].
+- **Geometric layouts.** Circles, grids and lines. Nothing in them depends on the data, which is their strength (nothing is hidden) and their weakness (nothing is revealed). A mathematical cousin, Tutte's "How to Draw a Graph" [@tutte1963draw], shows that for some graphs the placement can be pinned down by a simple rule, and is a landmark in the field of graph drawing.
+
+If you only remember one recommendation, make it this: start with a stress layout for small and medium networks, because it tries to make the distances on the page mean something.
+
+## Distance on the page is a hint, not a measurement
+
+Even the best layout can't do everything. A network with many ties lives in many more "directions" than a flat page has, so the algorithm squeezes. Some distances come out right, others don't, and you can't tell which from looking.
+
+@fig-distance-lies shows the effect from the other side. On the circle, two people sit right next to each other. In the network, they're five steps apart. The circle ignores distance entirely, so adjacency on the page tells you nothing. In the stress layout the same two people land far apart, which is where they belong.
+
+![Distance on the page can mislead. A stress layout tries to make distance on the page match steps in the network; a circle ignores it.](../figures/distance-lies.svg){#fig-distance-lies fig-alt="Left: a circular drawing of an eighteen-node network with two nodes ringed in red that sit next to each other on the circle, joined by a dashed red line. Right: a stress-layout drawing of the same network with the same two nodes ringed in red, now far apart."}
+
+Some rules of thumb follow from this.
+
+- **Don't read the axes.** Left, right, up and down mean nothing. Rotate or flip a layout and it's the same picture. What carries information is relative position: who's near whom.
+- **A different run can give a different picture.** Many algorithms start from random positions. Save the random seed so the picture can be reproduced (more on this in @sec-reproducibility).
+- **Centers tend to be well connected.** Layouts often pull highly connected people toward the middle, so the center of a picture tends to line up with degree, one kind of centrality (@sec-centrality). But "tends to" is not "is". Check with the measure, not the picture.
+- **Don't count crossings as a verdict.** The stress layout in @fig-layout-matters has far fewer crossings than the random one, but fewer crossings isn't the goal. The goal is that distance on the page means something.
+
+## Ties and nodes can carry information, too
+
+Position is only one of the things you can use. Nodes can vary in size, shape and color. Ties can vary in thickness, style and color. Each of these is a *channel*, and each can carry one idea.
+
+![Four visual channels and what each can carry. Pick one idea per channel and say what it is in a legend.](../figures/encodings.svg){#fig-encodings fig-alt="A ten-node network drawn in two clusters. Larger nodes have more ties. Circles and squares in different colors mark the two groups. Thicker lines mark stronger ties. A list on the right names each channel and what it encodes."}
+
+A handful of habits keep these channels honest.
+
+1. **One idea per channel.** If node size means number of ties, don't also use size to mean group. Readers will assume size always means the same thing.
+2. **Say what each channel means.** A short legend turns a pretty picture into a readable one.
+3. **Make color optional.** Pair color with shape or line style, as the figures in this book do, so the picture works in greyscale and for readers who can't tell certain colors apart. The palette here comes from Okabe and Ito's color-blind-friendly set [@okabe2008color]. If you build your own palettes, the colorspace toolbox [@zeileis2020colorspace] can check them.
+4. **Match the channel to the data.** Size and thickness suit amounts. Shape and color suit categories. Using a rainbow of colors for a number is hard to read.
+5. **Label sparingly.** Names on every node make a crowded picture unreadable. Label the nodes your argument is about.
+
+Where the labels are people, remember the point from @sec-networks-as-data: a node with a name is a person, and a picture can identify someone even if a table wouldn't. Think about who will see the picture before you share it.
+
+## When the hairball wins, switch pictures
+
+Add enough ties and any node-link drawing becomes what network people call a hairball: a ball of lines in which nothing can be seen. No layout can rescue a network that's dense enough, because there simply isn't room on a page.
+
+The fix isn't a cleverer algorithm. It's a different picture. An *adjacency matrix* (the table from @sec-networks-as-data) shows every possible tie as a cell, so nothing overlaps. And if you sort the rows and columns so people in the same group sit together, the structure appears.
+
+![The same network twice. When a node-link drawing turns into a hairball, a matrix with rows sorted by group shows the block structure immediately.](../figures/hairball-matrix.svg){#fig-hairball-matrix fig-alt="Left: a tangled circular drawing of twenty-four nodes in three groups. Right: a twenty-four by twenty-four grid of squares, with three dense blocks along the diagonal outlined in black and very few filled squares outside them."}
+
+In @fig-hairball-matrix the picture on the left hides what the one on the right makes obvious: three dense blocks and a few ties between them. We'll return to this when we look for subgroups (@sec-subgroups) and positions (@sec-positions-and-roles), where sorting a matrix is the core idea, not just a drawing trick.
+
+Two warnings. First, a matrix is only as good as its ordering. Sort by the wrong thing and the blocks vanish, so say how you sorted. Second, if you thin out a network to make it drawable, for example by hiding ties below some strength, you've made an analytic choice. Report the threshold, and check that your conclusion survives a different one.
+
+## Pictures that move
+
+A network that changes over time is harder still. You can draw a sequence of snapshots, animate them, or draw time as an axis, and each choice emphasizes something different. Moody, McFarland and Bender-deMoll [@moody2005dynamic] lay out the options and the traps. We return to this in @sec-dynamics.
+
+## Choosing a picture
+
+Here's a quick guide. None of it is law, but it's a good place to start.
+
+| Situation | Try | Watch out for |
+| --- | --- | --- |
+| A small or medium network, and you want to see groups | A stress layout | Reading the axes; reading distance too literally |
+| A very large network, exploring | A force layout built for scale | Beautiful blobs that mean little |
+| A dense network | A sorted adjacency matrix | Unsorted matrices that look like noise |
+| Comparing two networks | The same layout and scales for both | Layouts that differ for no reason |
+| Showing time | Snapshots on a shared layout | Animations that move nodes needlessly |
+| A figure for print | Shape and line style, not only color | Color-only legends |
+
+## In code
+
+The steps below draw the same network with a circle, a random layout and a stress layout, map node size to degree and color to group, and finally draw a sorted adjacency matrix. The tabs describe each step. The working code will replace these placeholders once the software is ready.
 
 ::: {.panel-tabset group="language"}
 
 ## R
 
 ```r
-# TODO(code, R): draw a network with a stress layout
+# TODO(code, R): 1) draw the network with a random layout, a circle layout and a stress layout;
+# 2) map node size to degree, and shape and color to group;
+# 3) set a seed, redraw, and confirm the picture is the same;
+# 4) draw the adjacency matrix sorted by group.
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): draw a network with a stress layout
+# TODO(code, Python): 1) draw the network with a random layout, a circle layout and a stress layout;
+# 2) map node size to degree, and shape and color to group;
+# 3) set a seed, redraw, and confirm the picture is the same;
+# 4) draw the adjacency matrix sorted by group.
 ```
-
 
 :::
 
 ## Exercises
 
-1. TODO(exercise): a by-hand exercise on a tiny network.
-2. TODO(exercise): a coding exercise on a dataset from the appendix.
-3. TODO(exercise): an interpretation exercise.
+1. **By hand.** Draw a path of five people, A through E, four times: once as a straight line, once as a circle in the order A, C, E, B, D, once with A and E side by side, and once as you like. For each picture, which pairs look close that aren't, and which look far that aren't?
+2. **By hand.** Take the five-person advice network from @sec-networks-as-data. Draw it so that the most sought-after person is at the center, and again so that person is at the edge. Does your reading of who matters change? What does that say about reading centrality off a picture?
+3. **Design.** A friend wants to show a network of 2,000 people with 30,000 ties as one picture. Suggest two alternatives to a single node-link drawing, and say what each would reveal and hide.
+4. **Coding.** Draw one dataset from the appendix with two layouts, then with and without a seed. Write two sentences about what changed and what didn't.
+5. **Interpretation.** A report says "the two groups are far apart in the network" and points to a layout where the groups sit at opposite corners. Write down three things you'd want to check before agreeing.
 
 ## Summary
 
 ::: {.callout-tip appearance="simple"}
-TODO(summary): three to five sentences, then the one-line takeaway.
+A network has no natural place to put its nodes, so every picture is a choice, and the choice shapes what a reader sees. Layout algorithms turn "show the structure" into a rule, most often that nearness on the page should match nearness in the network, as stress layouts try to do. Even so, distance on the page is a hint, not a measurement, and the axes mean nothing. Use size, shape, color and thickness for one idea each, explain them in a legend, and make sure the picture survives greyscale. When a drawing becomes a hairball, switch to a sorted matrix. And remember that a picture of people can expose them.
 :::
 
 ## Further reading
 
-TODO(refs): cite with `@key` from `shared/bib/references.bib`.
+For the history of network images and the ideas behind them, see @moreno1934who and @freeman2004development. For the layout algorithms mentioned here, see @fruchterman1991graph, @kamada1989algorithm, @gansner2005graph, @ortmann2017sparse and @jacomy2014forceatlas2, and for the statistical roots of scaling, @borg2005modern. For networks that change over time, see @moody2005dynamic. For drawing networks in software, @bastian2009gephi describes Gephi, @batagelj2026pajekmanual documents Pajek, and @epskamp2012qgraph shows how network drawings are used for relationships in psychological data. To practice drawing networks in R, Phil Murphy's tutorials on getting started with igraph [@murphyrpubs523135] and an introduction to R and igraph [@murphyrpubs653242] are a friendly way in, and for a color-blind-friendly palette see @okabe2008color.
