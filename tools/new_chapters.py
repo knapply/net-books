@@ -20,7 +20,18 @@ def stamp(chapter: dict) -> str:
     return TEMPLATE.format(**chapter)
 
 
+def renumber(path: Path) -> None:
+    """If the outline moved a chapter, rename its existing file to the new
+    number so written text follows the chapter (matching on the slug)."""
+    if path.exists():
+        return
+    slug = path.name.split("-", 1)[1]
+    for old in path.parent.glob(f"[0-9][0-9]-{slug}") if path.parent.exists() else []:
+        old.rename(path)
+
+
 def write_if_missing(path: Path, text: str) -> bool:
+    renumber(path)
     if path.exists():
         return False
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -94,6 +105,9 @@ book:
   title: "{meta['title']}"
   subtitle: "{meta['subtitle']}"
   author: "{meta['author']}"
+  page-footer:
+    left: "{meta['title']} by {meta['author']}"
+    right: "&copy; 2026 {meta['author']} &middot; [CC BY-NC-ND 4.0](https://creativecommons.org/licenses/by-nc-nd/4.0/)"
   site-url: {site}
   repo-url: https://github.com/knapply/net-books
   repo-branch: main

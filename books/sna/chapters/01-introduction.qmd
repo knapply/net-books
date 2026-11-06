@@ -2,57 +2,149 @@
 
 ::: {.callout-note appearance="simple"}
 ## Prerequisites
-None.
+None. You don't need any network analysis background, and you don't need to be comfortable in both languages. Pick the one you know best and follow along in it.
 :::
 
-## Introduction
+## Two groups, one table
 
-What a network is, what questions network analysis answers, and how this book is organized.
+Here is a small puzzle. Five people work on the same project: Ana, Ben, Chloe, Dev and Eli. A survey tells us their ages, their job titles, and how long they've been at the company. Now suppose I hand you two different versions of "who actually talks to whom on this project," and the attribute table is identical in both.
 
-TODO(prose, see docs/VOICE.md): motivating question, the idea in plain words, what the reader can
-do after this chapter.
+In the first version, everyone talks to everyone. In the second, Ana sits in the middle and is the only person who talks to all the others, while Ben, Chloe, Dev and Eli only talk to her.
+
+Same people. Same ages, same titles, same tenures. And yet if the project hits a crisis, these two teams will behave nothing alike. In the second team, a bad week for Ana is a bad week for everyone, because she is the only road between the others. Information moves differently. Rumors move differently. Who gets credit, who gets blamed, who finds out first: all of it depends on a thing the attribute table never recorded.
+
+That thing is the **network**: the pattern of who is connected to whom. This book is about learning to see it, measure it, and make sense of it.
+
+## What a network is
+
+A network, at its simplest, is two ingredients:
+
+- a set of **nodes** (the people, organizations, countries, accounts, genes, or whatever you're studying), and
+- a set of **ties** between them (friendship, advice, trade, citation, co-membership, whatever kind of relationship matters for your question).
+
+That's it. The rest of the book is about being thoughtful with those two ingredients.
+
+Different fields use different words for the same things. Mathematicians say *vertices* and *edges*. Computer scientists say *nodes* and *links*. Sociologists often say *actors* and *ties*. Physicists say *sites* and *bonds*. In this book we'll use **node** and **tie** (and **arc** when a tie has a direction), and we'll point out other names when you're likely to meet them in the wild.
+
+## What makes this a way of thinking, not just a toolbox
+
+If you've used a network library, you may think of network analysis as a pile of functions: compute this centrality, run that community detection. Those functions are real and useful, and we'll use them throughout. But the field's historian, Linton Freeman, argues that social network analysis is defined by something more than its tools. In his account, the approach rests on four features: a guiding intuition that the *structure* of ties among actors matters, a commitment to systematic empirical data, heavy use of graphic images, and the use of mathematical or computational models [@freeman2004development]. Intuition, data, pictures, models. If you only collect the models, you get number-crunching with nothing to say. If you only keep the intuition, you get a nice story you can't check.
+
+Barry Wellman put the intuition in a way that's worth carrying around. A structural approach, he argued, explains what people do by looking at the patterns of relations they are embedded in, instead of (only) by the attributes or inner motives of the individuals [@wellman1983network]. Notice what that doesn't say. It doesn't say attributes don't matter. It says that two people with identical attributes can face very different opportunities and constraints, depending on where they sit.
+
+And the idea has traveled a long way. A review of network research across the social sciences found the same basic move at work in sociology, organizational research, economics, political science, and beyond [@borgatti2009network]. Once you start looking for networks, you see them everywhere.
+
+## The questions networks help you answer
+
+It helps to sort network questions into a few families. Most real projects touch more than one.
+
+**Description.** What does this network look like? Is it dense or sparse? Is it one big connected cluster or several islands? Who is at the center, and who is on the edge?
+
+**Explanation.** Why do ties form where they do? Do people tend to connect to those similar to them? Do friends of friends become friends? Do ties come in reciprocal pairs?
+
+**Consequences.** What does position in a network do for the people (or organizations) in it? Does it shape who hears about a job, who gets promoted, who adopts a new practice, who falls sick?
+
+**Change.** How does the network evolve? Which ties persist, which fade, and how does the structure at one moment set up the structure at the next?
+
+Notice that the third family, consequences, is where network analysis is most often asked to earn its keep. "This person has high betweenness" is a number. "This person holds a position that lets them control what others hear, and here is what that does to their team" is an interpretation. Getting from the first sentence to the second is the skill this book cares about most.
+
+## The habit this book tries to build
+
+Each measure and model in this book follows the same five-step rhythm. Learn it now, and the rest of the chapters will feel familiar.
+
+1. **Start with the idea.** What social or psychological claim is this measure trying to capture? Where did the claim come from, and who first made it? (That's the job of @sec-foundations.)
+2. **Decide what the data have to look like.** What counts as a node, what counts as a tie, and who is left out? (@sec-networks-as-data.)
+3. **Compute the measure**, by hand on a tiny example first, then in code.
+4. **Interpret it**, tying the number back to the idea from step one. What does a high value mean? What does it not mean?
+5. **Doubt it a little.** How might missing data, a different definition of a tie, or a different convention change the answer?
+
+Step five matters more than it sounds. Two software packages can compute "the same" measure and return different numbers, because they chose different conventions. Learning to spot that, and to say which convention you used, is part of doing honest network analysis. We'll come back to it in @sec-reproducibility.
 
 ## A first network
 
-TODO(prose): concept, definition, a small worked example by hand.
+Let's build the smallest possible example, using the team from the start of the chapter. Here are the two versions as edge lists, one row per tie.
 
-Every code example uses this three-tab block. The tab text is placeholder until
-the library interface is final; the comment names the measure it will call.
+**Everyone talks to everyone** (ten ties):
+
+| from | to |
+| --- | --- |
+| Ana | Ben |
+| Ana | Chloe |
+| Ana | Dev |
+| Ana | Eli |
+| Ben | Chloe |
+| Ben | Dev |
+| Ben | Eli |
+| Chloe | Dev |
+| Chloe | Eli |
+| Dev | Eli |
+
+**Ana is the hub** (four ties):
+
+| from | to |
+| --- | --- |
+| Ana | Ben |
+| Ana | Chloe |
+| Ana | Dev |
+| Ana | Eli |
+
+Now try something you can do without a computer. For each person, count how many ties they have. In the first team, everyone has four. In the second, Ana has four and everyone else has one. That count is the simplest thing you can say about a node, and it already tells the two teams apart, even though the attribute table couldn't. (It's called **degree**, and @sec-centrality starts with it.)
+
+Next, here is the same idea in code. The tabs below hold the same steps in R and Python. Pick your language once and every example in the book will follow your choice on the website. (In the printed book, the versions appear one after another.)
 
 ::: {.panel-tabset group="language"}
 
 ## R
 
 ```r
-# TODO(code, R): build and print a five-node network
+# TODO(code, R): build the two five-person networks from the edge lists above,
+# print the number of nodes and ties in each, and compute each person's degree.
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): build and print a five-node network
+# TODO(code, Python): build the two five-person networks from the edge lists above,
+# print the number of nodes and ties in each, and compute each person's degree.
 ```
 
-## JavaScript
-
-```{.javascript}
-// TODO(code, JavaScript): build and print a five-node network
-```
 
 :::
 
+The code examples are placeholders for now: they say what each example will do, and the working code will arrive once the software they use is finished. The prose and the by-hand examples are meant to stand on their own in the meantime.
+
+## How this book is organized
+
+The book has four parts.
+
+**Foundations** (this part) gives you the vocabulary, the intellectual history, and the habits for representing network data well.
+
+**Describing networks** covers pictures, centrality, paths and cohesion, subgroups, positions and roles, and ego networks. These are the workhorse tools of network analysis, and each comes tied to the idea it was built to capture.
+
+**Modeling networks** moves from description to inference: permutation tests and null models, exponential random graph models, latent space and block models, longitudinal and temporal networks, and two-mode and multilayer data.
+
+**In practice** covers collecting network data responsibly and keeping your work reproducible, including how to handle the large graphs that make hand calculation impossible.
+
+You can read front to back, and I hope you will. But the chapters are written so you can also dip in: every chapter opens with what it assumes, closes with a summary and exercises, and points to the sources it draws on.
+
+## A note on credit
+
+Network analysis is a field built by people who shared their ideas generously, and I want this book to reflect that. Throughout, I cite the original source for an idea whenever I can trace it, and I link to that source when a stable link exists. The reference list at the end gathers everything, with links where available. If you want to go deeper on a topic, follow the citations: the people who wrote those papers and books are the best teachers the field has, and they deserve the readers.
+
+A few books will come up again and again, and they are worth knowing now. Wasserman and Faust's *Social Network Analysis: Methods and Applications* is the field's classic reference [@wasserman1994social]. Kadushin's *Understanding Social Networks* is a gentle, theory-rich introduction [@kadushin2012understanding]. Borgatti, Everett, Johnson and Agneessens wrote a hands-on guide in R [@borgatti2022analyzing], as did Rawlings, Smith, Moody and McFarland [@rawlings2023network]. For the physics and computer science side of the story, Newman's *Networks* [@newman2018networks] and Easley and Kleinberg's *Networks, Crowds, and Markets* [@easley2010networks] are excellent companions. This book tries to complement them, not replace them.
+
 ## Exercises
 
-1. TODO(exercise): a by-hand exercise on a tiny network.
-2. TODO(exercise): a coding exercise on a dataset from the appendix.
-3. TODO(exercise): an interpretation exercise.
+1. **By hand.** Draw the "Ana is the hub" team as a picture: dots for people, lines for ties. Now remove Ana. What happens to the picture? Write one sentence about what that means for the team.
+2. **By hand.** Invent a third version of the five-person team where Ana and Ben each have three ties and the other three people have two. Is there more than one way to do it? (Hint: try listing the ties first and then counting.)
+3. **Interpretation.** Think of a group you belong to (a class, a team, a family, a group chat). Name one question about it that is about *attributes* and one that is about *ties*. Which one is harder to answer from a spreadsheet of the members' details?
 
 ## Summary
 
 ::: {.callout-tip appearance="simple"}
-TODO(summary): three to five sentences, then the one-line takeaway.
+A network is a set of nodes and the ties between them. Network analysis asks how the pattern of those ties shapes what happens to the people or things inside it, and it combines a structural intuition, real data, pictures and models to answer. This book teaches measures and models, and also how to tie each result back to the social idea behind it and to doubt it a little along the way.
 :::
 
 ## Further reading
 
-TODO(refs): cite with `@key` from `shared/bib/references.bib`.
+For the history and defining features of the field, start with @freeman2004development. For the structural intuition, read @wellman1983network. For a short, wide-angle view of network research across the social sciences, see @borgatti2009network. Book-length introductions are listed in the credit note above.

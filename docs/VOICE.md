@@ -21,7 +21,7 @@ In this order, stopping as soon as the reader has it:
 2. A tiny example you can check by hand (five nodes, not five thousand).
 3. The idea in words, with an analogy only when it really fits.
 4. The formula, once the reader knows what it says. Say what each symbol means.
-5. The code, in the three-language tab block.
+5. The code, in the language tab block.
 6. What the result means, and what it doesn't.
 
 ## Habits

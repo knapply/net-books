@@ -6,7 +6,7 @@ is built from this repository and published with GitHub Pages.
 
 | Book | Folder | Status |
 | --- | --- | --- |
-| Social Network Analysis (R, Python, JavaScript) | `books/sna/` | skeleton |
+| Social Network Analysis (R, Python) | `books/sna/` | skeleton |
 
 Author: Brendan Knapp. License: CC BY-NC-ND 4.0 (see `LICENSE.md`).
 
@@ -17,9 +17,10 @@ Author: Brendan Knapp. License: CC BY-NC-ND 4.0 (see `LICENSE.md`).
 - Plain-text sources (`.qmd`: Markdown plus code chunks), one file per chapter,
   in the style of R for Data Science and bookdown books: short chapters, a
   prerequisites box, runnable examples, exercises, a summary.
-- Every code example has three tabs: R, Python, JavaScript. In the HTML book the
+- Every code example has two tabs, R and Python (JavaScript and other languages
+  come later). In the HTML book the
   reader picks a language once and every example follows. In print each example
-  shows the three versions one after another (see `shared/tex/`).
+  shows the versions one after another (see `shared/tex/`).
 - One source, three outputs: HTML (website), PDF (print, via LaTeX) and EPUB.
   `docs/PUBLISHING.md` covers trim sizes, soft and hard cover, and what a
   printer asks for.
@@ -47,7 +48,7 @@ shared/
   css/book.css       web styling
   tex/               print preamble (trim size, fonts, code blocks)
   bib/references.bib one bibliography for all books
-  templates/         chapter template with the three-language tabset
+  templates/         chapter template with the language tabset
 tools/
   new_chapters.py    stamp chapter files from a book's outline.toml
   export_machine.py  plain-text and JSON export of every book (published with the site)

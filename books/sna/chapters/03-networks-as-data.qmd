@@ -1,0 +1,193 @@
+# Networks as data {#sec-networks-as-data}
+
+::: {.callout-note appearance="simple"}
+## Prerequisites
+@sec-introduction. @sec-foundations will make the "why" behind several choices in this chapter clearer, but you can read this one first.
+:::
+
+## A network is a claim
+
+When you turn a piece of social life into a network dataset, you make a series of decisions that sound technical and are actually theoretical. Who counts as a node? What counts as a tie? Where does the network stop? Each answer is a small claim about how the world works, and the measures you compute later inherit every one of them.
+
+That's not a reason to worry. It's a reason to be deliberate. A good network dataset is one where you can say, in plain words, *what the nodes are, what the ties mean, and who got left out*, and where those answers fit the question you're asking.
+
+This chapter is about making those choices well, and about the formats we use to write them down.
+
+## What counts as a tie
+
+Ties come in many flavors, and which flavor you pick decides which theory you're testing. One useful way to organize them splits relations into four broad types [@borgatti2009network]:
+
+| Type | What it means | Examples |
+| --- | --- | --- |
+| Similarities | Two nodes share a location, a membership, or an attribute | Same neighborhood, same club, same employer |
+| Social relations | A standing relationship of some kind | Kinship, friendship, liking, knowing, being someone's boss |
+| Interactions | Something two nodes did together or to each other | Talked, emailed, advised, helped |
+| Flows | Something moved between nodes | Information, money, goods, a disease |
+
+Why bother with the distinction? Because the ideas from @sec-foundations assume different kinds of ties. Heider's balance rule needs *sentiment* ties (like and dislike), a kind of social relation. Granovetter's strong and weak ties mix time spent together (interaction) with emotional closeness (social relation). Anything about "information reaching someone" is about flows. If you measure the wrong kind of tie, you can compute every measure perfectly and still not be testing the idea you care about.
+
+A practical test: finish this sentence. "There is a tie from A to B if ______." If you can't fill in the blank clearly, your readers won't be able to interpret the results either.
+
+## Kinds of networks
+
+Once you've decided what a tie is, you'll face a handful of design questions. Each one has a name, and each changes what you can measure.
+
+**Directed or undirected.** Does the tie run from one node to another, or is it mutual by nature? "Asked advice from" is directed: Ana can seek Ben's advice without the reverse. "Works in the same office as" is undirected. Directed ties are sometimes called *arcs*. In a directed network, you need to be careful with everything that assumes symmetry, and you gain new questions such as reciprocity (do people return the tie?) and popularity (who receives many ties?).
+
+**Binary or valued.** Is a tie either present or absent, or does it have a strength, count, frequency or amount? "Emailed at least once" is binary. "Number of emails sent" is valued. Valued data carries more information, but many classic measures were designed for binary data, so you'll often decide whether to keep the values or to apply a threshold.
+
+**Signed.** Are ties positive or negative, as in friendship versus antagonism? Signed ties are what Heider's balance rule needs.
+
+**One-mode or two-mode.** In a one-mode network, ties connect nodes of one kind to each other (people to people). In a two-mode network, there are two different kinds of nodes and ties only run between the kinds, such as people and the events they attended, or authors and the papers they wrote. A classic example is the dataset gathered by Davis, Gardner and Gardner in their study of social class in a Southern U.S. town, which records which of 18 women attended which of 14 social events [@davis1941deep]. Ronald Breiger's idea of the duality of persons and groups shows how a two-mode network can be turned into two one-mode networks: one linking people who share events, the other linking events that share people [@breiger1974duality]. We'll come back to this in @sec-multilayer.
+
+**Single-layer or multiplex.** Do you have one kind of tie, or several kinds among the same nodes (friends *and* coworkers *and* neighbors)? Several kinds at once makes a *multiplex* or *multilayer* network. White and colleagues' work on positions was built on exactly this: people are alike when their patterns across several kinds of relation line up [@white1976social].
+
+**Static or changing.** Is the network a snapshot, or do you have ties across time? We take this up in @sec-dynamics.
+
+**Whole network or ego network.** Did you try to record ties among *everyone* in a defined group, or did you ask a sample of people (egos) about their own contacts? Whole-network data lets you study the overall structure. Ego-network data lets you study people's personal circles, typically when you can't survey an entire population [@marsden2002egocentric; @perry2018egocentric]. They answer different questions, and mixing them up is a common source of confusion.
+
+## Three ways to write a network down
+
+Say we have a small advice network: five coworkers, and ties that mean "goes to for advice." Here it is as a directed network, in the three standard formats.
+
+### 1. The edge list
+
+One row per tie. It's compact, it's flexible, and it's what most real data files look like.
+
+| from | to |
+| --- | --- |
+| Ana | Ben |
+| Ana | Chloe |
+| Ben | Chloe |
+| Chloe | Ana |
+| Dev | Ana |
+| Dev | Chloe |
+| Eli | Chloe |
+
+Read the first row as "Ana goes to Ben for advice." Notice that Ana → Chloe and Chloe → Ana are two separate rows, because the network is directed.
+
+An edge list can carry extra columns: a weight (how often?), a sign, a time stamp, or a tie type. That's one of its big strengths.
+
+### 2. The adjacency matrix
+
+A square table with one row and one column per node. The entry in row *i*, column *j* is 1 if there's a tie from *i* to *j*, and 0 otherwise. For our network:
+
+| | Ana | Ben | Chloe | Dev | Eli |
+| --- | --- | --- | --- | --- | --- |
+| **Ana** | 0 | 1 | 1 | 0 | 0 |
+| **Ben** | 0 | 0 | 1 | 0 | 0 |
+| **Chloe** | 1 | 0 | 0 | 0 | 0 |
+| **Dev** | 1 | 0 | 1 | 0 | 0 |
+| **Eli** | 0 | 0 | 1 | 0 | 0 |
+
+A few things to notice. Rows are senders and columns are receivers. The diagonal is all zeros, because nobody goes to themselves for advice (a tie from a node to itself is called a *loop*, and some networks have them). If the network were undirected, the matrix would be symmetric: the entry for (Ana, Ben) would always equal the entry for (Ben, Ana).
+
+The matrix is the standard format for the mathematics of networks, and many classic textbooks work with it [@wasserman1994social]. Its downside is size. A network of a million people needs a million-by-million table, almost all of it zeros. That's why large networks are stored in more clever ways.
+
+### 3. The adjacency list
+
+For each node, a list of the nodes it points to:
+
+- Ana: Ben, Chloe
+- Ben: Chloe
+- Chloe: Ana
+- Dev: Ana, Chloe
+- Eli: Chloe
+
+This is the format that scales to big, sparse networks, because it only stores the ties that exist. Behind the scenes, many software packages store networks in something like this form even if you gave them a matrix.
+
+**Which should you use?** For collecting and sharing data, edge lists are friendliest. For by-hand math and small examples, matrices are clearest. For software working on very large networks, adjacency lists (or cleverer relatives of them) win. They hold the same information, and a good tool lets you move between them freely.
+
+## Attributes: the table beside the network
+
+Ties describe relationships, but you usually also know things about the *nodes*: age, role, department, group membership. These go in a separate **attribute table**, with one row per node:
+
+| name | role | team | years |
+| --- | --- | --- | --- |
+| Ana | manager | north | 7 |
+| Ben | analyst | north | 2 |
+| Chloe | senior analyst | south | 5 |
+| Dev | analyst | south | 1 |
+| Eli | intern | south | 0 |
+
+Keeping the attribute table separate from the tie list, joined by a node name or ID, is a good habit. It avoids repeating each person's details on every row of the edge list, and it lets you add new attributes without touching the ties. The same idea extends to attributes of *ties* (a weight, a type, a date), which belong in extra columns on the edge list.
+
+Attributes are what let you ask the questions from @sec-foundations about homophily and about structure versus individual characteristics. "Do people from the same team go to each other for advice more than chance would predict?" needs both the ties and the team column.
+
+## Where the network stops: boundaries and sampling
+
+Real social life doesn't come with borders. Everyone is connected to someone outside whatever group you chose to study. So every network dataset involves a decision about where to draw the line, and that line affects your results.
+
+Some boundaries are natural: a school class, a firm's employees, a set of countries. Others are chosen by you: everyone who posted using a hashtag this month, say. If your boundary cuts through a cluster of people who are all closely tied together, your measures for the people near the cut will be off, because you've dropped some of their ties.
+
+Marsden's overview of network data collection is a good place to learn the standard approaches, including how surveys ask people to name those they're connected to, and the many ways wording and format shape the answers [@marsden1990network]. The key habit is to write down, along with your data, exactly how you drew the boundary and how you collected the ties, so that someone reading your results knows what the numbers refer to.
+
+## Missing and mistaken ties
+
+No network dataset is perfect, and in network data the problems are especially sneaky.
+
+**Missing nodes and ties.** In a survey, some people don't respond. Their *outgoing* ties are missing, but their *incoming* ties may be reported by others. That asymmetry is usually worth handling deliberately. Kossinets studied how different kinds of missing data distort common network measures, and found that the effects vary by the measure and by how the data went missing [@kossinets2006effects]. For models that deal with missing data directly, see Robins, Pattison and Woolcock's treatment in the exponential random graph framework [@robins2004missing], which we take up in @sec-ergm.
+
+**Whose report is it?** As we saw in @sec-foundations, ties are reported by people, and people's pictures of the network differ [@krackhardt1987cognitive]. If Ana says Ben is a friend and Ben doesn't say the same of Ana, is there a tie? You'll need a rule: count it if either person reports it, only if both do, or keep the two reports separate and treat the disagreement as data. There's no universally right answer, but there is a right habit: pick a rule on purpose and state it.
+
+**Mistakes in coding.** Names that don't match across files, duplicate rows, or a person who appears twice under different spellings can quietly create phantom nodes or break real ties. A cheap, powerful check is to count your nodes and see whether the number matches what you expect.
+
+## Levels of analysis
+
+Network data lets you look at the same system at several scales, and different questions live at different scales:
+
+- **Node level**: one person or unit, such as how many ties they have.
+- **Dyad level**: a pair, such as whether a tie is reciprocated.
+- **Triad level**: a trio, such as whether friends-of-friends are friends. Holland and Leinhardt's work on local structure builds a whole way of describing networks out of dyads and triads [@holland1976local].
+- **Group level**: clusters, communities, positions.
+- **Whole-network level**: overall density, how connected it is, how centralized.
+
+When you read a result, ask which level it's about. A statement about a node's position is not a statement about the network's overall structure, and vice versa. Mixing levels is one of the most common ways to over-claim.
+
+## A note on the people in your data
+
+One last point, and an important one. Network data is data about *relationships*, which means it's almost always data about people who didn't all agree to be in your study. When a respondent names their contacts, those contacts are in your dataset without being asked. Networks can also reveal things about people (who they spend time with, who they confide in) that they never chose to share. Treat this seriously: collect only what you need, protect names, think about whether a published picture could identify someone, and follow the ethics guidelines of whatever institution you work with. We return to this in @sec-collecting-data.
+
+## In code
+
+Here are the pieces we'll build with the five-coworker example: a network from an edge list, the same network from an adjacency matrix, and an attribute table joined to the nodes. The tabs describe each step. The working code will replace these placeholders once the software is ready.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# TODO(code, R): 1) read the edge list above into a directed network;
+# 2) print the adjacency matrix and confirm it matches the table;
+# 3) attach the attribute table by name and list each person's role;
+# 4) convert back to an edge list and check you get the same seven rows.
+```
+
+## Python
+
+```python
+# TODO(code, Python): 1) read the edge list above into a directed network;
+# 2) print the adjacency matrix and confirm it matches the table;
+# 3) attach the attribute table by name and list each person's role;
+# 4) convert back to an edge list and check you get the same seven rows.
+```
+
+:::
+
+## Exercises
+
+1. **By hand.** Write the advice network above as an adjacency list. Then count each person's *outgoing* ties (the people they go to) and *incoming* ties (the people who come to them). Who is the most sought-after?
+2. **By hand.** Suppose the network were undirected: a tie exists if either person goes to the other. Write the new edge list and adjacency matrix. What do you notice about the matrix?
+3. **Design.** You want to study who in a school's staff trusts whom. Write the sentence "There is a tie from A to B if ______." Then say whether your tie is directed, valued, signed, and which of the four tie types it is. What boundary would you use, and who would be left out?
+4. **Two-mode.** Six people each attended some of three events. Invent the attendance table, then derive the one-mode network that links two people if they attended at least one event together. What information did the one-mode network throw away?
+5. **Interpretation.** Ben says Chloe is a close friend. Chloe doesn't list Ben at all. Describe two different rules for recording this tie, and one research question where each rule would be the better choice.
+
+## Summary
+
+::: {.callout-tip appearance="simple"}
+A network dataset is a set of decisions: what the nodes are, what a tie means, how far the boundary reaches, and who reported what. Ties can be similarities, social relations, interactions or flows; networks can be directed, valued, signed, one-mode or two-mode, single-layer or multiplex, whole or ego. The same network can be written as an edge list, an adjacency matrix or an adjacency list, with node attributes in a separate table. Missing data, differing reports and boundary choices all change your results, so write them down. And remember that behind every node is a person who may not have chosen to be there.
+:::
+
+## Further reading
+
+For a wide-angle view of kinds of network ties and why they matter, see @borgatti2009network. For classic coverage of network data and notation, see @wasserman1994social. For the practicalities of collecting data from surveys, see @marsden1990network, and for personal-network data in particular, @perry2018egocentric. For how missing data affects results, see @kossinets2006effects.

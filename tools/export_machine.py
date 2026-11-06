@@ -28,7 +28,7 @@ SITE = "https://knapply.github.io/net-books"
 REPO = "https://github.com/knapply/net-books"
 LICENSE = {"name": "CC BY-NC-ND 4.0",
            "url": "https://creativecommons.org/licenses/by-nc-nd/4.0/"}
-LANGUAGES = ["R", "Python", "JavaScript"]
+LANGUAGES = ["R", "Python"]
 
 
 def plain(md: str) -> str:
@@ -53,6 +53,14 @@ def plain(md: str) -> str:
     return md.strip() + "\n"
 
 
+def status(source: str) -> str:
+    """placeholder: prose still to write; text-complete: prose done, code
+    examples pending; complete: nothing pending."""
+    if re.search(r"TODO\((prose|exercise|summary|refs)", source):
+        return "placeholder"
+    return "text-complete" if "TODO(code" in source else "complete"
+
+
 def sections(md: str) -> list[str]:
     return re.findall(r"^## (.+)$", md, flags=re.M)
 
@@ -69,7 +77,8 @@ def export_book(book: Path, out_root: Path) -> dict:
     parts_of = []
 
     def add(kind: str, rel: str, item: dict, part: str | None, num: int | None):
-        text = plain((book / rel).read_text())
+        text_source = (book / rel).read_text()
+        text = plain(text_source)
         stem = Path(rel).stem
         entry = {
             "id": item["slug"],
@@ -85,7 +94,7 @@ def export_book(book: Path, out_root: Path) -> dict:
             "source_url": f"{REPO}/blob/main/books/{book.name}/{rel}",
             "html": f"{SITE}/{book.name}/{rel[:-4]}.html",
             "text": f"{SITE}/{book.name}/machine/chapters/{stem}.md",
-            "status": "placeholder" if "TODO(" in (book / rel).read_text() else "written",
+            "status": status(text_source),
         }
         (out / "chapters" / f"{stem}.md").write_text(text)
         entries.append(entry)
