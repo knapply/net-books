@@ -62,6 +62,9 @@ def check_book(book: Path, keys: set[str]) -> int:
             tabs = re.findall(r"^## (.+)$", tabset, flags=re.M)
             if tabs != TABS:
                 problems.append(f"{name}: tabset tabs {tabs}, expected {TABS}")
+        for m in re.finditer(r"panel-tabset[^\n]*\n.*?\n:::\n", text, flags=re.S):
+            if not text[m.end():].lstrip().startswith("::: {.code-output}"):
+                problems.append(f"{name}: a code tabset has no code-output block after it")
         for key in re.findall(r"(?<![\w`])@([A-Za-z][\w:.-]*\d\w*)", text):
             if key not in keys and not key.startswith(("sec-", "fig-", "tbl-", "eq-")):
                 problems.append(f"{name}: citation @{key} not in references.bib")

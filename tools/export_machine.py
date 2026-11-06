@@ -49,6 +49,8 @@ def plain(md: str) -> str:
     md = re.sub(r"^(#{1,6} .*?)\s*\{[#.][^}]*\}\s*$", r"\1", md, flags=re.M)
     md = re.sub(r"!\[([^\]]*)\]\(([^)]+)\)\{[^}]*fig-alt=\"([^\"]*)\"[^}]*\}",
                 lambda m: f"*Figure: {m.group(3)}* {m.group(1)}", md)
+    md = re.sub(r"^::: \{\.code-output\}\n(.*?)^:::[ \t]*$", lambda m: "**Output**\n\n" + m.group(1), md,
+                flags=re.S | re.M)
     md = re.sub(r"^```\{\.(\w+)\}", r"```\1", md, flags=re.M)
     md = re.sub(r"^(#{1,6} .*)\n(?!\n)", r"\1\n\n", md, flags=re.M)
     md = re.sub(r"\n{3,}", "\n\n", md)
@@ -60,7 +62,7 @@ def status(source: str) -> str:
     examples pending; complete: nothing pending."""
     if re.search(r"TODO\((prose|exercise|summary|refs)", source):
         return "placeholder"
-    return "text-complete" if "TODO(code" in source else "complete"
+    return "text-complete" if "TODO(code" in source or "TODO(output" in source else "complete"
 
 
 def sections(md: str) -> list[str]:

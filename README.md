@@ -65,7 +65,8 @@ shared/
 tools/
   new_chapters.py    stamp chapter files from a book's outline.toml
   export_machine.py  plain-text and JSON export of every book (published with the site)
-  check_books.py     structure checks (tabs present, ids unique, citations resolve)
+  check_books.py     structure checks (tabs present, output blocks present, ids unique, citations resolve)
+  check_examples.py  runs the Rust examples and compares their output with what the book shows
   build.sh           render a book to html, pdf or epub
 .github/workflows/
   pages.yml          build the site and publish it with GitHub Pages
