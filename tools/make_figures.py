@@ -1727,6 +1727,97 @@ def dl_bars():
     return c, meta
 
 
+TEMPORAL_NAMES = ["Ana", "Ben", "Cleo", "Dev", "Eli", "Fay"]
+TEMPORAL_CONTACTS = [(1, 0, 1), (2, 2, 3), (3, 1, 2), (4, 3, 4), (5, 0, 1), (6, 4, 5)]  # (time, person, person)
+STREAM_TIMES = [0.3, 0.8, 3.3, 4.8, 6.8, 25.4, 28.4, 33.4, 35.2, 36.8, 37.0, 38.0, 43.6, 44.5, 46.3, 46.6, 48.2, 49.0, 49.3, 50.1, 50.4, 50.7, 52.4, 52.7, 53.3, 55.0, 56.0, 56.9, 57.8, 58.6, 58.8, 63.3, 64.5, 64.6, 65.6, 77.9, 78.0, 85.1, 98.6, 99.4, 99.7, 102.9, 105.4, 106.1, 107.1, 107.2, 108.0, 128.2, 128.6, 128.8, 129.2, 130.8, 134.5, 135.2, 148.1, 149.0, 149.3, 176.8, 182.2, 182.4, 182.6, 182.8, 183.1, 183.6, 184.6, 185.9, 193.0, 195.1, 196.2, 202.8, 203.2, 204.4, 204.7, 205.8, 206.1, 208.4, 208.5, 214.4, 215.2, 217.3]
+
+
+def time_respecting():
+    c = Canvas(900, 410, "Who can pass something on to whom, when contacts happen in order",
+               "Two timelines of the same six contacts. The left highlights what Ana can reach, the right what Dev can reach.")
+    row = 44
+    panels = [("Ana can reach 2 people", 0, {1, 3}, {1: 1, 2: 3}, BLUE, 30),
+              ("Dev can reach 5 people", 3, {2, 3, 4, 5, 6}, {2: 3, 1: 3, 4: 4, 0: 5, 5: 6}, ORANGE, 470)]
+    # contacts used: Ana uses times 1 and 3; Dev uses every contact
+    used_sets = [{1, 3}, {1, 2, 3, 4, 5, 6}]
+    arrivals = [{1: 1, 2: 3}, {2: 2, 1: 3, 4: 4, 0: 5, 5: 6}]
+    for p, (title, root, _, _, col, x0) in enumerate(panels):
+        used, arr = used_sets[p], arrivals[p]
+        c.text(x0 + 180, 36, title, size=15, weight="700")
+        left, right = x0 + 70, x0 + 320
+        tx = lambda t: left + (t - 0.5) * (right - left) / 6  # noqa: E731
+        ry = lambda k: 80 + k * row  # noqa: E731
+        for k, name in enumerate(TEMPORAL_NAMES):
+            c.text(left - 14, ry(k) + 5, name, size=13, anchor="end", weight="700" if k == root else "400")
+            c.add(f'<line x1="{left}" y1="{ry(k)}" x2="{right}" y2="{ry(k)}" stroke="#e5e7eb" stroke-width="1.5"/>')
+        for t, a, b in TEMPORAL_CONTACTS:
+            on = t in used
+            colr = col if on else "#cbd5e1"
+            c.add(f'<line x1="{tx(t)}" y1="{ry(a)}" x2="{tx(t)}" y2="{ry(b)}" stroke="{colr}" stroke-width="{4 if on else 2.5}"/>')
+            for k in (a, b):
+                c.node(tx(t), ry(k), "", r=6, fill=colr if on else "#ffffff", stroke=colr, sw=2)
+            c.text(tx(t), ry(5) + 36, f"t={t}", size=12, fill=MUTED)
+        for k, t in arr.items():
+            c.text(right + 14, ry(k) + 5, f"at t={t}", size=12, anchor="start", fill=col)
+        c.node(left - 2, ry(root), "", r=9, fill=col + "55", stroke=col, sw=2.5)
+    c.text(450, 385, "Dev reaches Ana, but Ana cannot reach Dev: the Cleo to Dev contact (t=2) happened before Ben and Cleo met (t=3).", size=12.5, fill=MUTED)
+    meta = dict(chapter=14,
+                caption="The same six contacts, drawn as a timeline. Left: Ana reaches Ben at time 1 and Cleo at time 3, then runs out of later contacts. Right: Dev reaches everyone, because the contacts arrive in a useful order. A network drawn without time would make all six people equally connected.",
+                alt="Two timelines side by side, with six horizontal lines for Ana, Ben, Cleo, Dev, Eli and Fay and vertical bars for six contacts at times 1 to 6. On the left, only the contacts at times 1 (Ana and Ben) and 3 (Ben and Cleo) are highlighted. On the right, all six contacts are highlighted and each person is labeled with the time Dev's message reaches them: Cleo 2, Ben 3, Eli 4, Ana 5, Fay 6.",
+                data={"contacts": [{"time": t, "a": TEMPORAL_NAMES[a], "b": TEMPORAL_NAMES[b]} for t, a, b in TEMPORAL_CONTACTS], "reach_counts": [2, 2, 5, 5, 2, 1]})
+    return c, meta
+
+
+def burst_ticks():
+    c = Canvas(900, 250, "Regular and bursty message times",
+               "Two rows of tick marks on a timeline, one evenly spaced and one clustered into bursts.")
+    left, right = 200, 860
+    tx = lambda t: left + (t / 220) * (right - left)  # noqa: E731
+    rows = [("A metronome", [i * 220 / 79 for i in range(80)], "B = -1.00"),
+            ("The message stream", STREAM_TIMES, "B = +0.27")]
+    for k, (name, times, label) in enumerate(rows):
+        y = 80 + k * 70
+        c.text(left - 14, y + 5, name, size=14, anchor="end")
+        c.add(f'<line x1="{left}" y1="{y}" x2="{right}" y2="{y}" stroke="#e5e7eb" stroke-width="1.5"/>')
+        for t in times:
+            c.add(f'<line x1="{tx(t):.1f}" y1="{y - 14}" x2="{tx(t):.1f}" y2="{y + 14}" stroke="{BLUE if k else ORANGE}" stroke-width="2"/>')
+        c.text(right + 0, y - 26, label, size=13, weight="700", anchor="end")
+    c.text(left, 210, "time", size=12.5, anchor="start", fill=MUTED)
+    c.text(450, 232, "Bursty gaps: mostly short, sometimes very long. A metronome has no bursts at all.", size=12.5, fill=MUTED)
+    meta = dict(chapter=14,
+                caption="Burstiness B compares the spread of the waiting times between events with their average. Evenly spaced events have B of -1. Events that arrive in clumps with long silences between have B above 0.",
+                alt="Two rows of vertical tick marks across a timeline. The top row, labeled a metronome with B of minus 1, has ticks at equal spacing. The bottom row, labeled the message stream with B of 0.27, has 80 ticks gathered into clumps separated by long empty stretches.",
+                data={"stream_times": STREAM_TIMES, "stream_B": 0.27})
+    return c, meta
+
+
+def saom_sim():
+    c = Canvas(900, 360, "What the reciprocity coefficient does to a simulated network",
+               "Bars for the average number of ties and of mutual pairs at the start of the period and after simulating it with and without a reciprocity effect.")
+    groups = [("Ties", [13.0, 5.78, 7.33]), ("Mutual pairs", [1.0, 0.18, 1.17])]
+    labels = [("start of period", "#9ca3af"), ("reciprocity 0", ORANGE), ("reciprocity 1.5", BLUE)]
+    base, scale = 290, 16
+    x0 = 150
+    for g, (gname, vals) in enumerate(groups):
+        gx = x0 + g * 400
+        c.text(gx + 110, 60, gname, size=15, weight="700")
+        for k, v in enumerate(vals):
+            col = labels[k][1]
+            h = v * (scale if g == 0 else scale * 7)
+            x = gx + k * 70
+            c.rect(x, base - h, 52, h, fill=col + "55", stroke=col, sw=2)
+            c.text(x + 26, base - h - 8, f"{v:.2f}".rstrip("0").rstrip(".") if g == 0 else f"{v:.2f}", size=13, weight="600", fill=col)
+        c.add(f'<line x1="{gx - 10}" y1="{base}" x2="{gx + 220}" y2="{base}" stroke="#9ca3af" stroke-width="1.5"/>')
+    for k, (name, col) in enumerate(labels):
+        c.rect(220 + k * 190, 322, 16, 16, fill=col + "55", stroke=col, sw=2)
+        c.text(244 + k * 190, 335, name, size=12.5, anchor="start")
+    meta = dict(chapter=14,
+                caption="Simulating one period of the office advice network (@sec-positions-and-roles) forward from its starting point, 2,000 times for each setting. Left: ties thin out either way because the outdegree coefficient is negative. Right: with a positive reciprocity coefficient, the ties that survive are much more often mutual.",
+                alt="Two groups of three bars. In the Ties group, the start has 13 ties, the run without reciprocity averages 5.78 and the run with reciprocity 1.5 averages 7.33. In the Mutual pairs group, the start has 1, the run without reciprocity 0.18, and the run with reciprocity 1.17.",
+                data={"ties": [13.0, 5.78, 7.33], "mutual_pairs": [1.0, 0.18, 1.17]})
+    return c, meta
+
+
 FIGURES = {
     "two-teams": two_teams, "habit": habit, "dyad-triad": dyad_triad,
     "balance-triads": balance_triads, "two-camps": two_camps, "weak-ties": weak_ties,
@@ -1745,6 +1836,7 @@ FIGURES = {
     "brokerage-roles": brokerage_roles, "ei-index": ei_index, "qap-null": qap_null,
     "ergm-terms": ergm_terms, "ergm-gof": ergm_gof,
     "latent-map": latent_map, "sbm-matrix": sbm_matrix, "dl-bars": dl_bars,
+    "time-respecting": time_respecting, "burst-ticks": burst_ticks, "saom-sim": saom_sim,
     "karate-communities": karate_communities, "modularity-bars": modularity_bars,
     "resolution-sweep": resolution_sweep, "group-ladder": group_ladder,
 }
