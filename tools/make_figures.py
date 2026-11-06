@@ -1818,6 +1818,80 @@ def saom_sim():
     return c, meta
 
 
+DAVIS_WOMEN = ['Evelyn', 'Laura', 'Theresa', 'Brenda', 'Charlotte', 'Frances', 'Eleanor', 'Pearl', 'Ruth', 'Verne', 'Myra', 'Katherine', 'Sylvia', 'Nora', 'Helen', 'Dorothy', 'Olive', 'Flora']
+DAVIS_ATTENDED = [[0, 1, 2, 3, 4, 5, 7, 8], [0, 1, 2, 4, 5, 6, 7], [1, 2, 3, 4, 5, 6, 7, 8], [0, 2, 3, 4, 5, 6, 7], [2, 3, 4, 6], [2, 4, 5, 7], [4, 5, 6, 7], [5, 7, 8], [4, 6, 7, 8], [6, 7, 8, 11], [7, 8, 9, 11], [7, 8, 9, 11, 12, 13], [6, 7, 8, 9, 11, 12, 13], [5, 6, 8, 9, 10, 11, 12, 13], [6, 7, 9, 10, 11], [7, 8], [8, 10], [8, 10]]  # 0-based event numbers each woman attended
+DAVIS_EVENT_SIZES = [3, 3, 6, 4, 8, 8, 10, 14, 12, 5, 4, 6, 3, 3]
+
+
+def _mix(hex_color, t):
+    r, g, b = (int(hex_color[i:i + 2], 16) for i in (1, 3, 5))
+    return "#%02x%02x%02x" % tuple(round(255 + (v - 255) * t) for v in (r, g, b))
+
+
+def davis_matrix():
+    n, m = 18, 14
+    inc = [[1 if j in DAVIS_ATTENDED[i] else 0 for j in range(m)] for i in range(n)]
+    shared = [[sum(inc[i][e] * inc[k][e] for e in range(m)) if i != k else None for k in range(n)] for i in range(n)]
+    c = Canvas(900, 520, "Who attended what, and who shared events with whom",
+               "On the left, an 18 by 14 grid of which women attended which events. On the right, an 18 by 18 grid of how many events each pair of women shared.")
+    cell = 20
+    xl, xr, y0 = 110, 500, 80
+    c.text(xl + m * cell / 2, 30, "Women by events", size=14, weight="700")
+    c.text(xr + n * cell / 2, 30, "Women by women: events shared", size=14, weight="700")
+    for i, name in enumerate(DAVIS_WOMEN):
+        c.text(xl - 8, y0 + i * cell + 14, name, size=11, anchor="end")
+    for j in range(m):
+        c.text(xl + j * cell + cell / 2, y0 - 8, str(j + 1), size=10.5, fill=MUTED)
+    for i in range(n):
+        for j in range(m):
+            c.rect(xl + j * cell, y0 + i * cell, cell, cell, fill=BLUE if inc[i][j] else "#ffffff", stroke="#eef0f3", sw=0.6)
+        for k in range(n):
+            v = shared[i][k]
+            fill = "#f3f4f6" if v is None else _mix(BLUE, v / 7)
+            c.rect(xr + k * cell, y0 + i * cell, cell, cell, fill=fill, stroke="#ffffff", sw=0.8)
+            if v:
+                c.text(xr + k * cell + cell / 2, y0 + i * cell + 14, str(v), size=10, fill=PAPER if v >= 4 else INK)
+    for k in range(n):
+        c.text(xr + k * cell + cell / 2, y0 - 8, DAVIS_WOMEN[k][:2], size=9.5, fill=MUTED)
+    c.add(f'<line x1="{xl - 4}" y1="{y0 + 9 * cell}" x2="{xl + m * cell + 4}" y2="{y0 + 9 * cell}" stroke="{INK}" stroke-width="1.6" stroke-dasharray="5 4"/>')
+    for pos in (9,):
+        c.add(f'<line x1="{xr + pos * cell}" y1="{y0 - 2}" x2="{xr + pos * cell}" y2="{y0 + n * cell + 2}" stroke="{INK}" stroke-width="1.6" stroke-dasharray="5 4"/>')
+        c.add(f'<line x1="{xr - 2}" y1="{y0 + pos * cell}" x2="{xr + n * cell + 2}" y2="{y0 + pos * cell}" stroke="{INK}" stroke-width="1.6" stroke-dasharray="5 4"/>')
+    c.text(450, 488, "Dashed lines split the women, as listed, into the first nine and the last nine.", size=12.5, fill=MUTED)
+    c.text(450, 508, "Events are numbered 1 to 14 across the top of the left grid.", size=12.5, fill=MUTED)
+    meta = dict(chapter=15,
+                caption="Davis, Gardner and Gardner's southern women [@davis1941deep]. Left: the incidence matrix, one blue cell for every attendance (89 in all). Right: its projection onto the women, where each cell counts the events a pair shared. The two groups of women show up as two dense blocks, with a thin bridge between them.",
+                alt="Two grids. The left grid has 18 rows for women and 14 columns for events, with 89 blue cells. Blue cells form a band that runs from the upper left, where the first women attended events 1 to 9, to the lower right, where the last women attended events 7 to 14. The right grid has 18 rows and 18 columns shaded by the number of shared events from 0 to 7. Dark shading fills the top-left block of the first nine women and the bottom-right block of the last nine, with lighter shading elsewhere.",
+                data={"women": DAVIS_WOMEN, "attended": DAVIS_ATTENDED, "shared": [[v if v is not None else 0 for v in row] for row in shared]})
+    return c, meta
+
+
+def event_sizes():
+    c = Canvas(900, 360, "Big events make many ties in a projection",
+               "A bar for each of the fourteen events showing how many women attended, with the number of pairs of women each event ties together in the projection.")
+    left, base, scale = 90, 250, 12
+    bw = 44
+    for e, size in enumerate(DAVIS_EVENT_SIZES):
+        x = left + e * 55
+        pairs = size * (size - 1) // 2
+        big = size >= 12
+        col = ORANGE if big else BLUE
+        c.rect(x, base - size * scale, bw, size * scale, fill=col + "55", stroke=col, sw=2)
+        c.text(x + bw / 2, base - size * scale - 8, str(size), size=13, weight="700", fill=col)
+        c.text(x + bw / 2, base + 20, f"E{e + 1}", size=12)
+        c.text(x + bw / 2, base + 48, str(pairs), size=12.5, weight="700" if big else "400", fill=ORANGE if big else INK)
+    c.add(f'<line x1="{left - 10}" y1="{base}" x2="{left + 14 * 55}" y2="{base}" stroke="#9ca3af" stroke-width="1.5"/>')
+    c.text(left - 14, base + 20, "event", size=12, anchor="end", fill=MUTED)
+    c.text(left - 14, base + 48, "pairs tied", size=12, anchor="end", fill=MUTED)
+    c.text(left - 14, base - 40, "attended", size=12, anchor="end", fill=MUTED)
+    c.text(450, 335, "Events 8 and 9 together account for 157 of the 322 shared-event counts, almost half.", size=12.5, fill=MUTED)
+    meta = dict(chapter=15,
+                caption="Attendance at each of the fourteen events (bars) and the number of pairs of women each one ties together when the data are projected onto the women (the row beneath). A pair count grows with the square of the attendance, so the two biggest events account for almost half of all the shared-event counts.",
+                alt="A bar chart of 14 events. Attendance is 3, 3, 6, 4, 8, 8, 10, 14, 12, 5, 4, 6, 3 and 3. Beneath each bar is the number of pairs the event ties: 3, 3, 15, 6, 28, 28, 45, 91, 66, 10, 6, 15, 3, 3. Events 8 and 9, with 14 and 12 attendees, are highlighted.",
+                data={"sizes": DAVIS_EVENT_SIZES, "pairs": [s * (s - 1) // 2 for s in DAVIS_EVENT_SIZES]})
+    return c, meta
+
+
 FIGURES = {
     "two-teams": two_teams, "habit": habit, "dyad-triad": dyad_triad,
     "balance-triads": balance_triads, "two-camps": two_camps, "weak-ties": weak_ties,
@@ -1837,6 +1911,7 @@ FIGURES = {
     "ergm-terms": ergm_terms, "ergm-gof": ergm_gof,
     "latent-map": latent_map, "sbm-matrix": sbm_matrix, "dl-bars": dl_bars,
     "time-respecting": time_respecting, "burst-ticks": burst_ticks, "saom-sim": saom_sim,
+    "davis-matrix": davis_matrix, "event-sizes": event_sizes,
     "karate-communities": karate_communities, "modularity-bars": modularity_bars,
     "resolution-sweep": resolution_sweep, "group-ladder": group_ladder,
 }
