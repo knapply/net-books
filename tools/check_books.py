@@ -65,6 +65,12 @@ def check_book(book: Path, keys: set[str]) -> int:
         for key in re.findall(r"(?<![\w`])@([A-Za-z][\w:.-]*\d\w*)", text):
             if key not in keys and not key.startswith(("sec-", "fig-", "tbl-", "eq-")):
                 problems.append(f"{name}: citation @{key} not in references.bib")
+        for m in re.finditer(r"!\[[^\]]*\]\(([^)]+)\)(\{[^}]*\})?", text):
+            target = (path.parent / m.group(1)).resolve()
+            if not target.exists():
+                problems.append(f"{name}: figure {m.group(1)} not found")
+            if 'fig-alt="' not in (m.group(2) or "") or 'fig-alt=""' in (m.group(2) or ""):
+                problems.append(f"{name}: figure {m.group(1)} needs fig-alt text")
     return len(files)
 
 

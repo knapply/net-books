@@ -47,6 +47,8 @@ def plain(md: str) -> str:
     md = re.sub(r"^::: \{\.callout-(\w+)[^\n]*\}\n(.*?)^:::[ \t]*$", callout, md,
                 flags=re.S | re.M)
     md = re.sub(r"^(#{1,6} .*?)\s*\{[#.][^}]*\}\s*$", r"\1", md, flags=re.M)
+    md = re.sub(r"!\[([^\]]*)\]\(([^)]+)\)\{[^}]*fig-alt=\"([^\"]*)\"[^}]*\}",
+                lambda m: f"*Figure: {m.group(3)}* {m.group(1)}", md)
     md = re.sub(r"^```\{\.(\w+)\}", r"```\1", md, flags=re.M)
     md = re.sub(r"^(#{1,6} .*)\n(?!\n)", r"\1\n\n", md, flags=re.M)
     md = re.sub(r"\n{3,}", "\n\n", md)
