@@ -958,26 +958,197 @@ def cores_fig():
     return c, meta
 
 
+TRIAD_16 = [
+    # code, plain gloss, arcs on nodes 0 (top), 1 (bottom left), 2 (bottom right); checked against the engine
+    ("003", "no ties", []),
+    ("012", "one tie", [(0, 1)]),
+    ("102", "one mutual pair", [(0, 1), (1, 0)]),
+    ("021D", "one sends to two", [(0, 1), (0, 2)]),
+    ("021U", "two send to one", [(1, 0), (2, 0)]),
+    ("021C", "a chain", [(1, 0), (0, 2)]),
+    ("111D", "mutual pair, and one more points at it", [(0, 1), (1, 0), (2, 0)]),
+    ("111U", "mutual pair, and it points at one more", [(0, 1), (1, 0), (0, 2)]),
+    ("030T", "transitive: a pecking order", [(0, 1), (0, 2), (1, 2)]),
+    ("030C", "a cycle, no top", [(0, 1), (2, 0), (1, 2)]),
+    ("201", "two mutual pairs", [(0, 1), (1, 0), (0, 2), (2, 0)]),
+    ("120D", "mutual pair, one sends to both", [(1, 0), (0, 2), (2, 0), (1, 2)]),
+    ("120U", "mutual pair, both send to one", [(0, 1), (1, 0), (0, 2), (1, 2)]),
+    ("120C", "mutual pair, with a chain", [(0, 1), (1, 0), (2, 0), (1, 2)]),
+    ("210", "two mutual pairs and one more", [(0, 1), (1, 0), (0, 2), (2, 0), (1, 2)]),
+    ("300", "everyone mutual", [(0, 1), (1, 0), (0, 2), (2, 0), (1, 2), (2, 1)]),
+]
+
+
 def triad_types():
-    c = Canvas(900, 280, "Three triads out of sixteen",
-               "Three small directed triangles: a mutual pair and a stranger, a transitive triple, and a cycle.")
-    cases = [("Mutual pair, one stranger", "102", [(0, 1), (1, 0)], "reciprocity"),
-             ("Transitive triple", "030T", [(0, 1), (0, 2), (1, 2)], "a pecking order"),
-             ("Cycle", "030C", [(0, 1), (1, 2), (2, 0)], "no top, round and round")]
-    for k, (title, code, arcs, note) in enumerate(cases):
-        x0 = 20 + k * 295
-        pts = [(x0 + 130, 70), (x0 + 60, 170), (x0 + 200, 170)]
+    c = Canvas(900, 800, "All sixteen triad types",
+               "The sixteen ways three people can be connected once direction is tracked, each labeled with its census code and a plain description.")
+    w, h = 225, 195
+    for k, (code, gloss, arcs) in enumerate(TRIAD_16):
+        x0, y0 = (k % 4) * w, (k // 4) * h + 10
+        cx = x0 + w / 2
+        pts = [(cx, y0 + 28), (cx - 48, y0 + 108), (cx + 48, y0 + 108)]
+        have = set(arcs)
         for a, b in arcs:
-            curve = 12 if (a, b) in ((0, 1), (1, 0)) and len(arcs) == 2 else 0
-            c.edge(pts[a], pts[b], ra=15, rb=15, directed=True, width=2.6, color=BLUE, curve=curve)
+            curve = 9 if (b, a) in have else 0
+            c.edge(pts[a], pts[b], ra=11, rb=11, directed=True, width=2.2, color=BLUE, curve=curve)
         for i, p in enumerate(pts):
-            c.node(*p, "ABC"[i], r=15, fill=PAPER, stroke=INK, sw=2)
-        c.caption(x0 + 130, 30, title)
-        c.text(x0 + 130, 232, f"{code}: {note}", size=13, fill=MUTED)
+            c.node(*p, "", r=11, fill=PAPER, stroke=INK, sw=2)
+        c.text(cx, y0 + 150, code, size=15, weight="700")
+        c.text(cx, y0 + 169, gloss if len(gloss) < 30 else gloss[:gloss.rfind(" ", 0, 30)], size=11.5, fill=MUTED)
+        if len(gloss) >= 30:
+            c.text(cx, y0 + 183, gloss[gloss.rfind(" ", 0, 30) + 1:], size=11.5, fill=MUTED)
     meta = dict(chapter=7,
-                caption="Three of the sixteen triad types in the triad census. Counting how often each type occurs across all triples of people is a way to ask about reciprocity, ranking and exchange.",
-                alt="Three directed triangles on nodes A, B and C. Left: A and B point at each other, C has no ties. Middle: A points at B and C, and B points at C. Right: A points at B, B at C, and C at A.",
-                data={"types": ["102", "030T", "030C"]})
+                caption="All sixteen triad types. In each triangle the same three people appear in the same places; only the ties differ. The code reads as the number of mutual pairs, asymmetric pairs and empty pairs, with a letter for the finer shape.",
+                alt="A four by four grid of sixteen small directed triangles, each with its code and description. Row one: 003 no ties, 012 one tie, 102 one mutual pair, 021D one person sends to two. Row two: 021U two send to one, 021C a chain, 111D a mutual pair with one more pointing at it, 111U a mutual pair that points at one more. Row three: 030T a transitive pecking order, 030C a cycle, 201 two mutual pairs, 120D a mutual pair where one sends to both. Row four: 120U a mutual pair where both send to one, 120C a mutual pair with a chain, 210 two mutual pairs and one more tie, 300 everyone mutual.",
+                data={"types": [t[0] for t in TRIAD_16]})
+    return c, meta
+
+
+# ---------------------------------------------------------------- chapter 8
+KARATE_EDGES = [(0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (0, 6), (0, 7), (0, 8), (0, 10), (0, 11), (0, 12), (0, 13),
+                (0, 17), (0, 19), (0, 21), (0, 31), (1, 2), (1, 3), (1, 7), (1, 13), (1, 17), (1, 19), (1, 21),
+                (1, 30), (2, 3), (2, 7), (2, 8), (2, 9), (2, 13), (2, 27), (2, 28), (2, 32), (3, 7), (3, 12),
+                (3, 13), (4, 6), (4, 10), (5, 6), (5, 10), (5, 16), (6, 16), (8, 30), (8, 32), (8, 33), (9, 33),
+                (13, 33), (14, 32), (14, 33), (15, 32), (15, 33), (18, 32), (18, 33), (19, 33), (20, 32),
+                (20, 33), (22, 32), (22, 33), (23, 25), (23, 27), (23, 29), (23, 32), (23, 33), (24, 25),
+                (24, 27), (24, 31), (25, 31), (26, 29), (26, 33), (27, 33), (28, 31), (28, 33), (29, 32),
+                (29, 33), (30, 32), (30, 33), (31, 32), (31, 33), (32, 33)]
+# Which side each member took when the club split (0 = Mr. Hi, 1 = the officer), and the communities
+# found by Louvain with resolution 1 and seed 1 (the numbers printed by the chapter's Rust example).
+KARATE_SIDES = [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+KARATE_LOUVAIN = [0, 0, 0, 0, 1, 1, 1, 0, 2, 0, 1, 0, 0, 0, 2, 2, 1, 0, 2, 0, 2, 0, 2, 3, 3, 3, 2, 3, 3, 2, 2, 3, 2, 2]
+RESOLUTION_SWEEP = [(0.5, 2, 0.372), (1.0, 4, 0.419), (1.5, 5, 0.381), (2.0, 8, 0.325), (3.0, 12, 0.226)]
+COMM_COLORS = [BLUE, ORANGE, GREEN, PURPLE]
+
+
+def karate_communities():
+    n = 34
+    pos = fit(stress_layout(n, KARATE_EDGES, seed=2), 20, 30, 560, 380)
+    c = Canvas(900, 440, "The karate club, two ways",
+               "The karate club network with each member's shape showing which side they took when the club split and each member's color showing the community found by Louvain.")
+    for a, b in KARATE_EDGES:
+        c.edge(pos[a], pos[b], ra=9, rb=9, width=1.3, color="#b6bcc6")
+    for i, p in enumerate(pos):
+        col = COMM_COLORS[KARATE_LOUVAIN[i]]
+        c.node(*p, "", r=9, fill=col + "55", stroke=col, shape="circle" if KARATE_SIDES[i] == 0 else "square", sw=2.2)
+    c.text(620, 80, "Shape: the side each member took", size=14, anchor="start", weight="700")
+    c.node(634, 108, "", r=8, fill="#e5e7eb", stroke=INK, sw=2)
+    c.text(652, 113, "stayed with Mr. Hi, the instructor", size=13, anchor="start")
+    c.node(634, 138, "", r=8, fill="#e5e7eb", stroke=INK, shape="square", sw=2)
+    c.text(652, 143, "followed the officer, the administrator", size=13, anchor="start")
+    c.text(620, 195, "Color: community found by Louvain", size=14, anchor="start", weight="700")
+    names = ["community 1", "community 2", "community 3", "community 4"]
+    for k in range(4):
+        c.node(634, 223 + 28 * k, "", r=8, fill=COMM_COLORS[k] + "55", stroke=COMM_COLORS[k], sw=2)
+        c.text(652, 228 + 28 * k, names[k], size=13, anchor="start")
+    c.lines(620, 350, ["Four communities, but they nest", "inside the two real sides, apart", "from two members who sit between."],
+            size=12.5, fill=MUTED)
+    meta = dict(chapter=8,
+                caption="Zachary's karate club. Shape shows who sided with whom when the club split; color shows the four communities found by Louvain. The communities refine the split rather than contradicting it.",
+                alt="A network of 34 people. Circles are members who stayed with the instructor and squares followed the administrator. Four colors mark communities: two colors cover almost only circles, two cover almost only squares, with one circle among the squares' communities and one square among the circles' communities.",
+                data={"edges": [list(e) for e in KARATE_EDGES], "sides": KARATE_SIDES, "louvain": KARATE_LOUVAIN})
+    return c, meta
+
+
+def modularity_bars():
+    n, m = 34, len(KARATE_EDGES)
+    comm = KARATE_LOUVAIN
+    deg = [sum(1 for e in KARATE_EDGES if i in e) for i in range(n)]
+    obs, exp = [], []
+    for k in range(4):
+        nodes = [i for i in range(n) if comm[i] == k]
+        inside = sum(1 for a, b in KARATE_EDGES if comm[a] == k and comm[b] == k)
+        obs.append(inside / m)
+        exp.append((sum(deg[i] for i in nodes) / (2 * m)) ** 2)
+    q = sum(o - e for o, e in zip(obs, exp))
+    c = Canvas(780, 330, "Modularity: more ties inside groups than chance predicts",
+               "For each of four communities, a bar for the share of all ties inside it and a bar for the share expected if ties were rewired at random keeping everyone's degree.")
+    x0, y0, h = 80, 40, 220
+    unit = h / 0.35
+    for t in (0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35):
+        y = y0 + h - t * unit
+        c.edge((x0 - 8, y), (730, y), ra=0, rb=0, width=1, color="#e5e7eb")
+        c.text(x0 - 14, y + 4, f"{t:.2f}", size=11, anchor="end", fill=MUTED)
+    for k in range(4):
+        gx = x0 + 30 + k * 155
+        for j, (v, col, dash) in enumerate([(obs[k], COMM_COLORS[k], None), (exp[k], "#9ca3af", "4 3")]):
+            bh = v * unit
+            c.rect(gx + j * 52, y0 + h - bh, 46, bh, fill=col + ("dd" if j == 0 else "55"), stroke=col if j == 0 else "#6b7280", sw=1.6, dash=dash)
+            c.text(gx + j * 52 + 23, y0 + h - bh - 6, f"{v:.3f}", size=12, weight="600")
+        c.text(gx + 49, y0 + h + 22, f"community {k + 1}", size=13, weight="600")
+    c.rect(250, 305, 14, 14, fill=BLUE + "dd", stroke=BLUE)
+    c.text(270, 317, "share of all ties inside the community", size=12, anchor="start", fill=MUTED)
+    c.rect(520, 305, 14, 14, fill="#9ca3af55", stroke="#6b7280", dash="3 2")
+    c.text(540, 317, "share expected by chance", size=12, anchor="start", fill=MUTED)
+    c.text(700, 28, f"Q = {q:.3f}", size=15, anchor="end", weight="700")
+    meta = dict(chapter=8,
+                caption="Modularity adds up, over communities, how much more of the network's ties fall inside the community than random rewiring would put there. Here the four communities sum to Q = 0.419.",
+                alt="A grouped bar chart with four pairs of bars, one pair per community. In every pair the solid bar, the observed share of ties inside the community, is taller than the dashed bar, the share expected by chance.",
+                data={"observed": [round(o, 4) for o in obs], "expected": [round(e, 4) for e in exp], "Q": round(q, 4)})
+    return c, meta
+
+
+def resolution_sweep():
+    c = Canvas(780, 330, "More communities is not better communities",
+               "A chart of how many communities Louvain finds, and the modularity of the result, as the resolution setting rises from 0.5 to 3.")
+    x0, y0, w, h = 80, 40, 620, 220
+    xs = [x0 + 40 + i * (w - 80) / (len(RESOLUTION_SWEEP) - 1) for i in range(len(RESOLUTION_SWEEP))]
+    for t in range(0, 13, 3):
+        y = y0 + h - t * h / 12
+        c.edge((x0, y), (x0 + w, y), ra=0, rb=0, width=1, color="#e5e7eb")
+        c.text(x0 - 10, y + 4, str(t), size=11, anchor="end", fill=MUTED)
+    for i, (r, g, q) in enumerate(RESOLUTION_SWEEP):
+        bh = g * h / 12
+        best = abs(q - max(v[2] for v in RESOLUTION_SWEEP)) < 1e-9
+        c.rect(xs[i] - 26, y0 + h - bh, 52, bh, fill=(ORANGE if best else BLUE) + "99", stroke=ORANGE if best else BLUE, sw=1.8)
+        c.text(xs[i], y0 + h - bh - 8, str(g), size=13, weight="700")
+        c.text(xs[i], y0 + h + 22, f"resolution {r:g}", size=12)
+        c.text(xs[i], y0 + h + 42, f"Q = {q:.3f}", size=12, weight="600" if best else "400", fill=ORANGE if best else MUTED)
+    c.text(x0, 26, "number of communities found", size=12, anchor="start", fill=MUTED)
+    meta = dict(chapter=8,
+                caption="The resolution setting controls how fine the communities are. The setting with the highest modularity is not necessarily the one that matches your question.",
+                alt="A bar chart with five bars for resolution settings 0.5, 1, 1.5, 2 and 3, showing 2, 4, 5, 8 and 12 communities. The bar for resolution 1, four communities, is highlighted because it has the highest modularity, 0.419.",
+                data=[{"resolution": r, "communities": g, "modularity_at_1": q} for r, g, q in RESOLUTION_SWEEP])
+    return c, meta
+
+
+def group_ladder():
+    c = Canvas(900, 300, "Three kinds of tight group",
+               "A clique where everyone is tied to everyone, a near-clique where everyone is missing at most one tie, and a community that is dense inside and sparse to the outside.")
+    c.caption(150, 30, "Clique")
+    pts = ring(150, 135, 70, 5)
+    for a, b in combinations(range(5), 2):
+        c.edge(pts[a], pts[b], ra=12, rb=12, width=1.8, color="#9ca3af")
+    for p in pts:
+        c.node(*p, "", r=12, fill="#cfe5f3", stroke=BLUE, sw=2)
+    c.text(150, 245, "every pair is tied", size=13, fill=MUTED)
+    c.caption(450, 30, "Near-clique")
+    pts = ring(450, 135, 70, 5)
+    missing = {(0, 2), (1, 3)}
+    for a, b in combinations(range(5), 2):
+        if (a, b) in missing:
+            c.edge(pts[a], pts[b], ra=12, rb=12, width=1.6, color=RED, dash="4 4", opacity=0.7)
+        else:
+            c.edge(pts[a], pts[b], ra=12, rb=12, width=1.8, color="#9ca3af")
+    for p in pts:
+        c.node(*p, "", r=12, fill="#cfe5f3", stroke=BLUE, sw=2)
+    c.text(450, 245, "everyone misses at most one tie", size=13, fill=MUTED)
+    c.caption(750, 30, "Community")
+    left = [(690, 110), (720, 150), (680, 170), (730, 100)]
+    right = [(790, 130), (820, 90), (830, 160), (780, 180)]
+    for grp, col in ((left, BLUE), (right, ORANGE)):
+        for a, b in combinations(range(4), 2):
+            c.edge(grp[a], grp[b], ra=10, rb=10, width=1.6, color="#9ca3af")
+    c.edge(left[1], right[3], ra=10, rb=10, width=1.6, color="#9ca3af")
+    for p in left:
+        c.node(*p, "", r=10, fill="#cfe5f3", stroke=BLUE, sw=2)
+    for p in right:
+        c.node(*p, "", r=10, fill="#fbe7c2", stroke=ORANGE, sw=2, shape="square")
+    c.text(750, 245, "dense inside, sparse between", size=13, fill=MUTED)
+    meta = dict(chapter=8,
+                caption="Subgroup definitions run from strict to loose. A clique allows no missing ties; a near-clique allows a few; a community only asks for more ties inside than you would expect by chance.",
+                alt="Left: five people on a circle with every pair tied. Middle: five people on a circle with two dashed red lines marking the two missing ties, so each person is missing at most one. Right: two small clusters of four, blue circles and orange squares, joined by a single tie.",
+                data={"clique": 5, "near_clique_missing": [list(e) for e in sorted(missing)]})
     return c, meta
 
 
@@ -993,6 +1164,8 @@ FIGURES = {
     "walks-paths": walks_paths, "distance-matrix": distance_matrix, "density-dice": density_dice,
     "clustering-idea": clustering_idea, "components": components_fig, "cores": cores_fig,
     "triad-types": triad_types,
+    "karate-communities": karate_communities, "modularity-bars": modularity_bars,
+    "resolution-sweep": resolution_sweep, "group-ladder": group_ladder,
 }
 
 

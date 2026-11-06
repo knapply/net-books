@@ -7,6 +7,11 @@
 
 ## Who matters here?
 
+::: {.callout-tip appearance="simple"}
+## Code lives next to the idea
+Each measure comes with its code right where it is explained. The Rust blocks in this chapter run top to bottom as one script: the first builds the friendship network, and later ones reuse it.
+:::
+
 Put ten people in a group and ask who the most important one is. You'll get an argument, and the argument will be productive, because you'll quickly discover that people mean different things. One person means the best-connected. Another means the person who knows everybody's business. A third means the person without whom the group would fall apart.
 
 Network analysis turns each of those meanings into a number. The numbers are called **centrality** measures, and the first thing to learn about them is that there isn't one. There's a family, and the members disagree on purpose.
@@ -43,6 +48,58 @@ Network analysts use the word **prestige** for what in-degree captures when the 
 
 Counting ties treats a close friend and a nodding acquaintance as the same. If your data carry strengths, you can sum them instead, which gives **strength** (sometimes called weighted degree). That keeps information, but it also mixes two things, how many ties someone has and how strong they are, so that a person with many weak ties can look like a person with a few strong ones. Opsahl and colleagues [@opsahl2010node] proposed a way to blend the two with a tuning parameter, so you can decide how much each should count.
 
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# TODO(code, R): build the ten-person friendship network and print each person's degree.
+```
+
+## Python
+
+```python
+# TODO(code, Python): build the ten-person friendship network and print each person's degree.
+```
+
+## Rust
+
+```rust
+use knappnet::{compute_degree, DegreeMode, Graph};
+
+// People are numbered from zero; the names stay in a list on the side.
+let names = ["Ana", "Ben", "Cleo", "Dev", "Eli", "Fay", "Gus", "Hana", "Ivo", "Jo"];
+// Eighteen friendships. One position in each list is one tie.
+let from = [0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 4, 5, 5, 6, 7, 8];
+let to = [1, 2, 3, 5, 3, 4, 6, 3, 5, 4, 5, 6, 6, 6, 7, 7, 8, 9];
+let g = Graph::from_edges(names.len(), &from, &to, None, false)?;
+
+// The `true` counts self-loops; there are none here.
+let degree = compute_degree(&g, DegreeMode::All, true);
+for (i, name) in names.iter().enumerate() {
+    println!("{name:<5} {}", degree[i]);
+}
+```
+
+:::
+
+::: {.code-output}
+```text
+Ana   4
+Ben   4
+Cleo  3
+Dev   6
+Eli   3
+Fay   5
+Gus   5
+Hana  3
+Ivo   2
+Jo    1
+```
+:::
+
+Dev has six friends, the most. Jo has one, and Ivo two. This is what you would get by counting the lines at each name in the picture.
+
 ## Closeness: independence
 
 Closeness asks how near a person is to everyone else. Take the length of the shortest route from the person to each other person (we'll define these routes properly in @sec-paths-and-cohesion), add the lengths up, and flip it so that a smaller total gives a larger score. A common way to write this, for a network of $n$ people, is
@@ -54,6 +111,51 @@ $$
 where $d(i, j)$ is the number of steps on the shortest route from $i$ to $j$. A score of 1 would mean you're one step from everybody. The idea goes back to Sabidussi [@sabidussi1966centrality] and is part of Freeman's "independence" intuition: if you're near everyone, you don't depend on anyone in particular to reach the rest.
 
 There's a catch. If the network has pieces that aren't connected, the distance to someone in another piece is undefined, and the formula breaks. People handle that in different ways. One popular fix is **harmonic centrality**, which adds up the *reciprocals* of the distances, so an unreachable person simply contributes zero [@marchiori2000harmony]. When your network might not be connected, prefer it, and say so.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# TODO(code, R): compute normalized closeness for everyone in the friendship network.
+```
+
+## Python
+
+```python
+# TODO(code, Python): compute normalized closeness for everyone in the friendship network.
+```
+
+## Rust
+
+```rust
+use knappnet::metrics::closeness::{compute_closeness, ClosenessOptions};
+
+// `normalized` divides by the best possible score, so the answer runs from 0 to 1.
+let close = compute_closeness(&g, ClosenessOptions { normalized: true, ..Default::default() })?;
+for (i, name) in names.iter().enumerate() {
+    println!("{name:<5} {:.3}", close[i]);
+}
+```
+
+:::
+
+::: {.code-output}
+```text
+Ana   0.529
+Ben   0.529
+Cleo  0.500
+Dev   0.600
+Eli   0.500
+Fay   0.643
+Gus   0.643
+Hana  0.600
+Ivo   0.429
+Jo    0.310
+```
+:::
+
+Fay and Gus are the closest to everyone, at 0.643. Hana, the bridge, is close to the whole network at 0.600 even though she has only three friends, and Jo, at the far end of the chain, is farthest at 0.310.
 
 ## Betweenness: control of routes
 
@@ -67,6 +169,50 @@ Hana's betweenness is high not because she has many friends but because she hold
 
 Two practical notes. First, the straightforward way to compute betweenness is slow on big networks, because it needs the shortest routes between every pair. Brandes found a much faster method [@brandes2001faster], and nearly every modern tool uses it. Second, if there are several equally short routes between two people, each gets a share of the credit, which is why you'll see fractional scores, like Ana's 0.8, in the table later in this chapter.
 
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# TODO(code, R): compute betweenness for everyone in the friendship network.
+```
+
+## Python
+
+```python
+# TODO(code, Python): compute betweenness for everyone in the friendship network.
+```
+
+## Rust
+
+```rust
+use knappnet::{compute_betweenness, BetweennessOptions};
+
+let between = compute_betweenness(&g, BetweennessOptions::default())?;
+for (i, name) in names.iter().enumerate() {
+    println!("{name:<5} {:.1}", between[i]);
+}
+```
+
+:::
+
+::: {.code-output}
+```text
+Ana   0.8
+Ben   0.8
+Cleo  0.0
+Dev   3.7
+Eli   0.0
+Fay   8.3
+Gus   8.3
+Hana  14.0
+Ivo   8.0
+Jo    0.0
+```
+:::
+
+Hana scores 14, because every shortest route between the dense group and the three people past her runs through her. Ivo scores 8, and Jo, at the very end, scores 0.
+
 ## Eigenvector centrality and its relatives: it matters who you know
 
 The first three measures all count something about *you*. The fourth family says that isn't enough: being connected to well-connected people should count for more than being connected to peripheral ones.
@@ -78,6 +224,50 @@ Several close relatives are worth knowing by name.
 - **Katz centrality** [@katz1953new] counts every route out of a person, not just the shortest, but gives longer routes a smaller weight, so nearby people count more. It also gives everyone a small baseline, which helps when some people have no ties pointing at them.
 - **PageRank** [@brin1998anatomy] is the idea behind early web search. Imagine a person clicking links at random, and now and then jumping to a random page. How often do they land on each page? That's the score. It is close in spirit to Katz.
 - **Bonacich power** [@bonacich1987power] adds a twist with a tuning number. With a positive setting, being tied to central people raises your score, as in eigenvector centrality. With a negative setting, being tied to *weak* people raises it. That sounds odd, until you think about bargaining: someone who has many options and whose partners have few has the upper hand. The same structure can mean prestige in one setting and power in another, which is a good reminder to think about what your tie means.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# TODO(code, R): compute eigenvector centrality for everyone in the friendship network.
+```
+
+## Python
+
+```python
+# TODO(code, Python): compute eigenvector centrality for everyone in the friendship network.
+```
+
+## Rust
+
+```rust
+use knappnet::metrics::eigenvector::{compute_eigenvector_centrality, EigenvectorOptions};
+
+let eigen = compute_eigenvector_centrality(&g, EigenvectorOptions::default())?;
+for (i, name) in names.iter().enumerate() {
+    println!("{name:<5} {:.3}", eigen.values[i]);
+}
+```
+
+:::
+
+::: {.code-output}
+```text
+Ana   0.732
+Ben   0.732
+Cleo  0.594
+Dev   1.000
+Eli   0.594
+Fay   0.827
+Gus   0.827
+Hana  0.407
+Ivo   0.100
+Jo    0.023
+```
+:::
+
+Dev is at the top, scaled to 1.000, because Dev is tied to many people who are themselves well connected. Hana drops to 0.407: she knows only three people, and one of them is Ivo. Compare that with her betweenness.
 
 ## A cheat sheet
 
@@ -100,7 +290,45 @@ For degree, the friendship network comes out at 0.33: Dev stands above the other
 
 Here's a good example of why we write down our choices. The default setting in the engine used by this book counts self-loops as possible, and it divides by a maximum that allows for them. For the friendship network, which has no self-loops, that gives 0.267. Switch loops off and you get Freeman's classic 0.333. Same network, same measure, two correct answers under two conventions. Both are in the code below, and neither is wrong. What would be wrong is to compare one tool's number with another's without checking. Each function documents its convention, and the differences between well-known tools are recorded rather than hidden.
 
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# TODO(code, R): compute degree centralization twice: once with the default convention and once with self-loops left out of the maximum.
+```
+
+## Python
+
+```python
+# TODO(code, Python): compute degree centralization twice: once with the default convention and once with self-loops left out of the maximum.
+```
+
+## Rust
+
+```rust
+use knappnet::metrics::topography::{compute_centralization, CentralizationOptions};
+
+let default = compute_centralization(&g, CentralizationOptions::default())?;
+let freeman = compute_centralization(&g, CentralizationOptions { loops: false, ..Default::default() })?;
+println!("default convention   {default:.3}");
+println!("loops left out       {freeman:.3}");
+```
+
+:::
+
+::: {.code-output}
+```text
+default convention   0.267
+loops left out       0.333
+```
+:::
+
+The same network gets two answers, and neither is a mistake. The second is the number you get from Freeman's original formula, and it is the one this chapter quotes.
+
 ## Reading centrality honestly
+
+Put the four sets of results side by side, as the first figure of this chapter does, and you can see the point. Dev leads on degree and eigenvector. Fay and Gus tie on closeness. Hana's betweenness of 14 towers over everyone else's (the next highest is 8.3), and Ivo is near the top on betweenness while low on the rest. A person can be peripheral by one measure and pivotal by another.
 
 Centrality numbers are easy to compute and easy to over-read. A few habits keep you honest.
 
@@ -113,82 +341,6 @@ Centrality numbers are easy to compute and easy to over-read. A few habits keep 
 **Compare like with like.** Raw scores depend on network size. Degree 6 means something different in a network of ten than in a network of ten thousand. Normalize when you compare, and say how.
 
 **Beware of key-player logic with hidden networks.** In work on covert and illicit groups, analysts often ask which few people, if removed, would most disrupt the group. Borgatti's key player problem [@borgatti2006identifying] is one way to frame it, and Everton's *Disrupting Dark Networks* [@everton2012disrupting] shows how centrality and related ideas are put to work on such networks, including their limits. Cunningham, Everton and Murphy [@cunningham2016understanding] cover the broader question of what you can responsibly conclude from incomplete, intentionally hidden data. The same care applies here as everywhere in this chapter, only more so: the people in those networks may be harmed by a wrong answer.
-
-## In code
-
-The Rust below builds the friendship network, computes all four centralities and the degree centralization, and prints them as a table. The R and Python tabs follow the same steps.
-
-::: {.panel-tabset group="language"}
-
-## R
-
-```r
-# TODO(code, R): 1) build the friendship network from the edge list (undirected);
-# 2) compute degree, closeness (normalized), betweenness and eigenvector centrality;
-# 3) print them side by side and confirm Dev, Fay and Gus, and Hana lead different columns;
-# 4) compute degree centralization, with and without counting self-loops.
-```
-
-## Python
-
-```python
-# TODO(code, Python): 1) build the friendship network from the edge list (undirected);
-# 2) compute degree, closeness (normalized), betweenness and eigenvector centrality;
-# 3) print them side by side and confirm Dev, Fay and Gus, and Hana lead different columns;
-# 4) compute degree centralization, with and without counting self-loops.
-```
-
-## Rust
-
-```rust
-use knappnet::metrics::closeness::{compute_closeness, ClosenessOptions};
-use knappnet::metrics::eigenvector::{compute_eigenvector_centrality, EigenvectorOptions};
-use knappnet::metrics::topography::{compute_centralization, CentralizationOptions};
-use knappnet::{compute_betweenness, compute_degree, BetweennessOptions, DegreeMode, Graph};
-
-fn main() -> Result<(), knappnet::Error> {
-    let names = ["Ana", "Ben", "Cleo", "Dev", "Eli", "Fay", "Gus", "Hana", "Ivo", "Jo"];
-    // Eighteen friendships, written as pairs of positions.
-    let from = [0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 4, 5, 5, 6, 7, 8];
-    let to = [1, 2, 3, 5, 3, 4, 6, 3, 5, 4, 5, 6, 6, 6, 7, 7, 8, 9];
-    let g = Graph::from_edges(names.len(), &from, &to, None, false)?;
-
-    let degree = compute_degree(&g, DegreeMode::All, true);
-    let close = compute_closeness(&g, ClosenessOptions { normalized: true, ..Default::default() })?;
-    let between = compute_betweenness(&g, BetweennessOptions::default())?;
-    let eigen = compute_eigenvector_centrality(&g, EigenvectorOptions::default())?;
-
-    println!("{:<5} {:>6} {:>9} {:>12} {:>12}", "", "degree", "closeness", "betweenness", "eigenvector");
-    for (i, name) in names.iter().enumerate() {
-        println!("{:<5} {:>6} {:>9.3} {:>12.1} {:>12.3}", name, degree[i], close[i], between[i], eigen.values[i]);
-    }
-    let spread = compute_centralization(&g, CentralizationOptions { loops: false, ..Default::default() })?;
-    println!("\ndegree centralization {spread:.3}");
-    Ok(())
-}
-```
-
-:::
-
-::: {.code-output}
-```text
-      degree closeness  betweenness  eigenvector
-Ana        4     0.529          0.8        0.732
-Ben        4     0.529          0.8        0.732
-Cleo       3     0.500          0.0        0.594
-Dev        6     0.600          3.7        1.000
-Eli        3     0.500          0.0        0.594
-Fay        5     0.643          8.3        0.827
-Gus        5     0.643          8.3        0.827
-Hana       3     0.600         14.0        0.407
-Ivo        2     0.429          8.0        0.100
-Jo         1     0.310          0.0        0.023
-
-degree centralization 0.333
-```
-:::
-
-Read the table down each column and see who's on top. Dev leads degree and eigenvector. Fay and Gus tie on closeness. Hana's betweenness of 14 is well above anyone else's (the next highest is 8.3). Then look at Jo and Ivo: low on three of the four, and Ivo near the top on betweenness. A person can be peripheral by one measure and pivotal by another.
 
 ## Exercises
 
