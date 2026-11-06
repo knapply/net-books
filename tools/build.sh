@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Render one book. Usage: tools/build.sh BOOK [html|pdf|epub|all]
-# Output lands in _output/BOOK/ (git-ignored).
+# Output lands in books/BOOK/_book/ (git-ignored).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
