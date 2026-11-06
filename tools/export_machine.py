@@ -28,7 +28,7 @@ SITE = "https://knapply.github.io/net-books"
 REPO = "https://github.com/knapply/net-books"
 LICENSE = {"name": "CC BY-NC-ND 4.0",
            "url": "https://creativecommons.org/licenses/by-nc-nd/4.0/"}
-LANGUAGES = ["R", "Python"]
+LANGUAGES = ["R", "Python", "Rust"]
 
 
 def plain(md: str) -> str:

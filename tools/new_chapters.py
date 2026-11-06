@@ -77,10 +77,27 @@ def main(book_dir: str) -> int:
         "encoding": {"@type": "MediaObject", "encodingFormat": "application/json",
                      "contentUrl": site + "machine/book.json"},
     }, indent=2)
+    an = outline.get("analytics", {})
+    scripts = []
+    if an.get("goatcounter"):
+        scripts.append(f'<script data-goatcounter="https://{an["goatcounter"]}.goatcounter.com/count" '
+                       'async src="//gc.zgo.at/count.js"></script>')
+    if an.get("plausible"):
+        scripts.append(f'<script defer data-domain="{an["plausible"]}" '
+                       'src="https://plausible.io/js/script.js"></script>')
+    if an.get("umami_id") and an.get("umami_src"):
+        scripts.append(f'<script defer src="{an["umami_src"]}" data-website-id="{an["umami_id"]}"></script>')
+    tabs_js = ('<script>document.addEventListener("DOMContentLoaded",function(){'
+               'document.querySelectorAll(".panel-tabset .nav-link").forEach(function(a){'
+               'var t=a.textContent.trim().toLowerCase();'
+               'if(["r","python","rust"].indexOf(t)>-1){a.setAttribute("data-lang",t);}});});</script>')
     head = "\n".join("          " + line for line in (
         f'<link rel="alternate" type="application/json" href="{site}machine/book.json">\n'
         f'<link rel="alternate" type="text/markdown" href="{site}machine/book.md">\n'
-        f'<script type="application/ld+json">\n{jsonld}\n</script>').splitlines())
+        f'<script type="application/ld+json">\n{jsonld}\n</script>\n'
+        + tabs_js + "".join("\n" + x for x in scripts)).splitlines())
+    privacy = (" &middot; Visit counts are collected in aggregate, without cookies."
+               if scripts else "")
     byline = "\n".join("          " + line for line in (
         "<style>\n"
         ".sidebar-title::after { content: \"by " + meta["author"] + "\"; display: block; "
@@ -119,7 +136,7 @@ book:
   author: "{meta['author']}"
   page-footer:
     left: "{meta['title']} by {meta['author']}"
-    right: "&copy; 2026 {meta['author']} &middot; [CC BY-NC-ND 4.0](https://creativecommons.org/licenses/by-nc-nd/4.0/)"
+    right: "&copy; 2026 {meta['author']} &middot; [CC BY-NC-ND 4.0](https://creativecommons.org/licenses/by-nc-nd/4.0/){privacy}"
   site-url: {site}
   repo-url: https://github.com/knapply/net-books
   repo-branch: main

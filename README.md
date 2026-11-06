@@ -1,12 +1,25 @@
 # net-books
 
+[![site](https://github.com/knapply/net-books/actions/workflows/pages.yml/badge.svg)](https://github.com/knapply/net-books/actions/workflows/pages.yml)
+[![license](https://img.shields.io/badge/license-CC%20BY--NC--ND%204.0-lightgrey)](LICENSE.md)
+[![stars](https://img.shields.io/github/stars/knapply/net-books?style=flat)](https://github.com/knapply/net-books/stargazers)
+[![forks](https://img.shields.io/github/forks/knapply/net-books?style=flat)](https://github.com/knapply/net-books/forks)
+[![watchers](https://img.shields.io/github/watchers/knapply/net-books?style=flat)](https://github.com/knapply/net-books/watchers)
+[![issues](https://img.shields.io/github/issues/knapply/net-books)](https://github.com/knapply/net-books/issues)
+[![last commit](https://img.shields.io/github/last-commit/knapply/net-books)](https://github.com/knapply/net-books/commits/main)
+[![commit activity](https://img.shields.io/github/commit-activity/m/knapply/net-books)](https://github.com/knapply/net-books/graphs/commit-activity)
+[![repo size](https://img.shields.io/github/repo-size/knapply/net-books)](https://github.com/knapply/net-books)
+[![page views](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fknapply%2Fnet-books%2Fstats%2Fbadge-views.json)](https://github.com/knapply/net-books/graphs/traffic)
+[![visitors](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fknapply%2Fnet-books%2Fstats%2Fbadge-visitors.json)](https://github.com/knapply/net-books/graphs/traffic)
+[![clones](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fknapply%2Fnet-books%2Fstats%2Fbadge-clones.json)](https://github.com/knapply/net-books/graphs/traffic)
+
 Open books on network analysis. One repository, one book per folder under
 `books/`, shared build tooling and print settings under `shared/`. The website
 is built from this repository and published with GitHub Pages.
 
 | Book | Folder | Status |
 | --- | --- | --- |
-| Social Network Analysis (R, Python) | `books/sna/` | skeleton |
+| Social Network Analysis (R, Python, Rust) | `books/sna/` | skeleton |
 
 Author: Brendan Knapp. License: CC BY-NC-ND 4.0 (see `LICENSE.md`).
 
@@ -17,16 +30,16 @@ Author: Brendan Knapp. License: CC BY-NC-ND 4.0 (see `LICENSE.md`).
 - Plain-text sources (`.qmd`: Markdown plus code chunks), one file per chapter,
   in the style of R for Data Science and bookdown books: short chapters, a
   prerequisites box, runnable examples, exercises, a summary.
-- Every code example has two tabs, R and Python (JavaScript and other languages
+- Every code example has three tabs, R, Python and Rust (JavaScript and other languages
   come later). In the HTML book the
   reader picks a language once and every example follows. In print each example
   shows the versions one after another (see `shared/tex/`).
 - One source, three outputs: HTML (website), PDF (print, via LaTeX) and EPUB.
   `docs/PUBLISHING.md` covers trim sizes, soft and hard cover, and what a
   printer asks for.
-- Code is placeholder only until the library interface is final; each
-  placeholder says which measure it will call. No example is written against an
-  API that does not exist yet.
+- Rust examples run against the engine and are compiled before they go in. R and
+  Python tabs stay placeholders until their packages are ready; each placeholder
+  says what it will do. No example is written against an API that does not exist.
 - Later: a GUI edition. Once the graphical interface exists, each example gains
   a fourth way to follow along (the same steps by pointing and clicking), either
   as a fourth tab or as a separate edition built from the same chapters. Keep

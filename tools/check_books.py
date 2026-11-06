@@ -5,7 +5,7 @@ For each book with an outline.toml it checks that
 - every chapter and appendix in the outline has a file,
 - every _quarto.yml chapter path exists,
 - every chapter has a prerequisites box, exercises, a summary,
-- every code tabset has R and Python tabs, in that order,
+- every code tabset has R, Python and Rust tabs, in that order,
 - section anchors (#sec-...) are unique across the book,
 - every @key citation exists in shared/bib/references.bib.
 
@@ -17,7 +17,7 @@ import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-TABS = ["R", "Python"]
+TABS = ["R", "Python", "Rust"]
 problems: list[str] = []
 
 

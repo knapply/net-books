@@ -2,52 +2,157 @@
 
 ::: {.callout-note appearance="simple"}
 ## Prerequisites
-Networks as data.
+@sec-networks-as-data. You don't need to know any of the three languages well. If you can read a few lines of code and guess what they do, you're fine.
 :::
 
-## Introduction
+## What we'll do
 
-Install knappnet, load data in each language, and read a result together with how it was computed.
+In @sec-networks-as-data we wrote a small advice network down on paper: five coworkers and seven "I go to this person for advice" ties. In this chapter we make the computer hold that same network, ask it a couple of simple questions, and check its answers against what we worked out by hand.
 
-TODO(prose, see docs/VOICE.md): motivating question, the idea in plain words, what the reader can
-do after this chapter.
+That last part matters more than it sounds. The most valuable habit in network analysis is not knowing a lot of commands. It's *checking a result you can verify before you trust one you can't*. A five-person network is small enough that you can do everything by hand, so it's the perfect place to build that habit.
 
-## Loading and inspecting a network
+## Three languages, one idea
 
-TODO(prose): concept, definition, a small worked example by hand.
+Every example in this book appears in R, Python and Rust. They aren't three different ways of doing network analysis. They're three doors into the same room: the same engine does the counting, so the numbers match whichever door you walk through. Pick the language you're most comfortable with, click its tab, and your choice carries through the rest of the website. (In the printed book the three versions appear one after another.)
 
-Every code example uses this three-tab block. The tab text is placeholder until
-the library interface is final; the comment names the measure it will call.
+::: {.callout-tip appearance="simple"}
+## A note on what runs today
+The Rust code in this chapter runs against the engine as it stands, and the numbers shown were checked by hand against the tables in @sec-networks-as-data. The R and Python tabs describe the same steps and will be filled in with working code once their packages are ready. The steps, and the answers, are the same in all three.
+:::
+
+## Step 1: tell the computer who is in the network
+
+Our five coworkers are Ana, Ben, Chloe, Dev and Eli. Computers like numbers more than names, so the engine numbers the people from zero: Ana is 0, Ben is 1, Chloe is 2, Dev is 3 and Eli is 4. We keep the names in a list on the side, so we can turn numbers back into people when we print.
+
+The ties come as two parallel lists, one for who the tie starts with and one for who it ends with. Each position in the lists is one tie. Here is the advice network, tie by tie.
+
+| Tie number | From | To |
+| --- | --- | --- |
+| 0 | Ana (0) | Ben (1) |
+| 1 | Ana (0) | Chloe (2) |
+| 2 | Ben (1) | Chloe (2) |
+| 3 | Chloe (2) | Ana (0) |
+| 4 | Dev (3) | Ana (0) |
+| 5 | Dev (3) | Chloe (2) |
+| 6 | Eli (4) | Chloe (2) |
+
+This is the edge list format from @sec-networks-as-data, split into its two columns. We also tell the computer that the ties have a direction (Ana going to Ben is not the same as Ben going to Ana), and that we have no tie strengths, only present or absent.
+
+## Step 2: ask a question you can check
+
+The simplest question about a person is how many ties they have. Because ours are directed, there are two versions: how many people each person goes to (*out-degree*) and how many people come to them (*in-degree*). We counted these by hand in @sec-networks-as-data. The computer should agree.
+
+By hand, from the table above:
+
+| | Ana | Ben | Chloe | Dev | Eli |
+| --- | --- | --- | --- | --- | --- |
+| Goes to (out) | 2 | 1 | 1 | 2 | 1 |
+| Comes to them (in) | 2 | 1 | 4 | 0 | 0 |
+
+Chloe is the one everybody turns to: four of the other four people come to her. Dev and Eli are the opposite: they ask, but nobody asks them. We'll hold off on what that *means* for a few chapters, because it depends on what "advice" is doing in this workplace. For now, the job is only to get the counts right.
+
+## Step 3: a second question, and a first taste of "position"
+
+Degree counts a person's own ties. A different question looks at the ties *between other people*: who sits on the routes that connect everyone else? A person who lies on many of the shortest routes between pairs of other people is, in a precise sense, in between. That count is called **betweenness**, and @sec-centrality gives it the careful treatment it deserves.
+
+Try it by hand on this network. Follow the arrows only. Who has to go through Ana to reach Ben? Dev (Dev goes to Ana, then Ana goes to Ben), Chloe, and Eli (Eli goes to Chloe, Chloe goes to Ana, Ana goes to Ben). That's three pairs. Now who has to go through Chloe? Eli to Ana, Eli to Ben, and Ben to Ana (Ben goes to Chloe, then Chloe goes to Ana). Also three. Ana and Chloe each lie on three shortest routes between other people. Ben, Dev and Eli lie on none.
+
+Notice what this does and doesn't say. Chloe has the most people coming to her, but Ana is exactly as "in between" as Chloe. Being popular and being in the middle are different things, and a good chunk of the book is about learning to tell them apart. The brokerage route we just traced is the idea behind Freeman's classic treatment of betweenness [@freeman1977set] and the fast algorithm most software uses to compute it [@brandes2001faster].
+
+## Step 4: draw it
+
+You met layouts in @sec-visualization. A layout assigns each person a place on the page, and a stress layout tries to make distance on the page match distance in the network. With five people the result is simple, but the same call works for five hundred. Because layouts start from a random guess, we give the computer a *seed*, a number that fixes the guess, so you and I get the same picture.
+
+## In code
 
 ::: {.panel-tabset group="language"}
 
 ## R
 
 ```r
-# TODO(code, R): load a bundled dataset and inspect its provenance
+# TODO(code, R): 1) build the advice network from the two columns above, as directed;
+# 2) print each person's out-degree and in-degree and compare with the table;
+# 3) compute betweenness and confirm Ana and Chloe each score 3;
+# 4) compute a stress layout with a fixed seed and print the coordinates.
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): load a bundled dataset and inspect its provenance
+# TODO(code, Python): 1) build the advice network from the two columns above, as directed;
+# 2) print each person's out-degree and in-degree and compare with the table;
+# 3) compute betweenness and confirm Ana and Chloe each score 3;
+# 4) compute a stress layout with a fixed seed and print the coordinates.
 ```
 
+## Rust
+
+```rust
+use knappnet::layout::{layout_stress_majorization, StressOptions};
+use knappnet::{compute_betweenness, compute_degree, BetweennessOptions, DegreeMode, Graph};
+
+fn main() -> Result<(), knappnet::Error> {
+    // People are numbered from zero; the names stay in a list on the side.
+    let names = ["Ana", "Ben", "Chloe", "Dev", "Eli"];
+
+    // One position in each list is one tie: from[i] goes to to[i].
+    let from = [0, 0, 1, 2, 3, 3, 4];
+    let to = [1, 2, 2, 0, 0, 2, 2];
+
+    // No weights, and the ties are directed.
+    let g = Graph::from_edges(names.len(), &from, &to, None, true)?;
+
+    // Step 2: out-degree and in-degree (the `true` counts self-loops; we have none).
+    let out = compute_degree(&g, DegreeMode::Out, true);
+    let inn = compute_degree(&g, DegreeMode::In, true);
+    for (i, name) in names.iter().enumerate() {
+        println!("{name:<6} goes to {}  comes to them {}", out[i], inn[i]);
+    }
+
+    // Step 3: betweenness, with the default options.
+    let between = compute_betweenness(&g, BetweennessOptions::default())?;
+    for (i, name) in names.iter().enumerate() {
+        println!("{name:<6} betweenness {}", between[i]);
+    }
+
+    // Step 4: a stress layout; the seed fixes the starting guess.
+    let layout = layout_stress_majorization(&g, &StressOptions { seed: 1, ..Default::default() })?;
+    for (i, name) in names.iter().enumerate() {
+        println!("{name:<6} x {:7.3}  y {:7.3}", layout.x[i], layout.y[i]);
+    }
+    Ok(())
+}
+```
 
 :::
 
+Run the Rust version and you should see the same counts as the hand-built table: Chloe with four people coming to her, Dev and Eli with none, and Ana and Chloe each at three on betweenness. If a number differs from the table, stop and find out why before going further. Usually it's a typo in one of the two lists, and finding it is good practice.
+
+## Reading a result, not just printing it
+
+A number on its own is easy to misread, so get into the habit of asking four questions every time the computer hands you one.
+
+1. **What was it computed on?** Which network, directed or not, weighted or not?
+2. **What choices did the function make for you?** Does it count self-loops? Does it divide by a maximum so the answer is between zero and one? Each function documents how it treats self-loops, parallel ties, weights and normalization, and where well-known tools disagree on a convention, that difference is recorded rather than hidden.
+3. **Could I check it by hand?** On a small network, always do. On a large one, check a small piece.
+4. **What would change my mind?** If the answer is "nothing", you're not analyzing, you're decorating.
+
+Notice how little of that is about code. It's the "Doubt" box from the habit in @sec-introduction, and it's why the first example in a book about networks is a network small enough to hold in your head.
+
 ## Exercises
 
-1. TODO(exercise): a by-hand exercise on a tiny network.
-2. TODO(exercise): a coding exercise on a dataset from the appendix.
-3. TODO(exercise): an interpretation exercise.
+1. **By hand.** Add one tie to the advice network: Eli now also goes to Ben. Update the two lists. Which counts in the table change, and which don't? Does Ana's betweenness change? (Work it out before you run anything.)
+2. **By hand.** Add a tie from Ben to Dev. Is anyone's in-degree still zero? Who now lies on shortest routes that they didn't before?
+3. **Coding.** Rebuild the network, but this time treat the ties as undirected. What does "degree" now mean, and how do the numbers relate to the in- and out-degrees above?
+4. **Coding.** Compute the layout with two different seeds. Which things change between the two pictures, and which stay the same? Why does that matter when you share a figure?
+5. **Interpretation.** A colleague says, "Chloe is clearly the most important person in this team because she has the highest in-degree." Using what you computed for Ana, write a short, kind reply that adds what the claim leaves out.
 
 ## Summary
 
 ::: {.callout-tip appearance="simple"}
-TODO(summary): three to five sentences, then the one-line takeaway.
+To analyze a network on a computer you give it the number of people, two parallel lists saying who each tie starts and ends with, and whether the ties are directed. From that, one call returns degree (a person's own ties) and another returns betweenness (how often a person lies on routes between others), and a stress layout turns the network into a picture. Always check a small result by hand before trusting a large one, and ask four questions of every number: what it was computed on, what choices were made for you, whether you could check it, and what would change your mind.
 :::
 
 ## Further reading
 
-TODO(refs): cite with `@key` from `shared/bib/references.bib`.
+To get comfortable loading and inspecting data in R, Phil Murphy's tutorials are a friendly place to start: getting started with R and igraph [@murphyrpubs523135], loading an adjacency matrix [@murphyrpubs965721] and importing an edge list [@murphyrpubs534143]. For where betweenness comes from, see @freeman1977set, and for the algorithm that makes it fast on large networks, @brandes2001faster. For the layout idea, see @gansner2005graph and the discussion in @sec-visualization.

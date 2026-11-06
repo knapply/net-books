@@ -1,0 +1,41 @@
+name: traffic
+
+# Saves GitHub's 14-day traffic numbers to the `stats` branch every day, and
+# writes the badge files the README reads. Needs a repository secret named
+# TRAFFIC_TOKEN: a fine-grained personal access token for this repository with
+# "Administration: read" (the traffic API needs push-level access).
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check out the stats branch (create it the first time)
+        run: |
+          git fetch origin stats || true
+          if git rev-parse --verify origin/stats >/dev/null 2>&1; then
+            git worktree add stats origin/stats
+          else
+            git worktree add --detach stats
+            git -C stats checkout --orphan stats
+            git -C stats rm -rf . >/dev/null 2>&1 || true
+          fi
+      - name: Collect
+        env:
+          GH_TOKEN: ${{ secrets.TRAFFIC_TOKEN }}
+        run: python3 tools/collect_traffic.py "$GITHUB_REPOSITORY" stats
+      - name: Save
+        run: |
+          cd stats
+          git add -A
+          if ! git diff --cached --quiet; then
+            git -c user.name=knapply -c user.email=knapply@users.noreply.github.com commit -m "Update traffic"
+            git push origin HEAD:stats
+          fi
