@@ -1,14 +1,14 @@
-# knappnet books
+# net-books
 
-Source for the books that go with knappnet. One repository, one book per folder
-under `books/`, shared build tooling and print settings under `shared/`.
+Open books on network analysis. One repository, one book per folder under
+`books/`, shared build tooling and print settings under `shared/`. The website
+is built from this repository and published with GitHub Pages.
 
 | Book | Folder | Status |
 | --- | --- | --- |
 | Social Network Analysis (R, Python, JavaScript) | `books/sna/` | skeleton |
-| Cyber networks | `books/cyber/` | outline only |
 
-Author: Brendan Knapp.
+Author: Brendan Knapp. License: CC BY-NC-ND 4.0 (see `LICENSE.md`).
 
 ## Design
 
@@ -21,15 +21,19 @@ Author: Brendan Knapp.
 - One source, three outputs: HTML (website), PDF (print, via LaTeX) and EPUB.
   `docs/PUBLISHING.md` covers trim sizes, soft and hard cover, and what a
   printer asks for.
-- Code is placeholder only until the knappnet measure registry lands; each
+- Code is placeholder only until the library interface is final; each
   placeholder says which measure it will call. No example is written against an
   API that does not exist yet.
+- Later: a GUI edition. Once the graphical interface exists, each example gains
+  a fourth way to follow along (the same steps by pointing and clicking), either
+  as a fourth tab or as a separate edition built from the same chapters. Keep
+  prose tool-neutral so both work.
 
 ## Layout
 
 ```
 books/<book>/
-  _quarto.yml        book config; extends shared/quarto-common.yml
+  _quarto.yml        book config, generated; extends shared/quarto-common.yml
   outline.toml       parts, chapters, one-line purpose of each
   index.qmd          preface
   chapters/*.qmd     generated from outline.toml, then written by hand
@@ -44,8 +48,10 @@ shared/
   templates/         chapter template with the three-language tabset
 tools/
   new_chapters.py    stamp chapter files from a book's outline.toml
-  check_books.py     structure checks (tabs present, ids unique, links resolve)
+  check_books.py     structure checks (tabs present, ids unique, citations resolve)
   build.sh           render a book to html, pdf or epub
+.github/workflows/
+  pages.yml          build the site and publish it with GitHub Pages
 docs/PUBLISHING.md   print and distribution notes
 ```
 
@@ -64,8 +70,13 @@ tools/build.sh sna pdf
 tools/build.sh sna epub
 ```
 
-Needs Quarto (which brings Pandoc), a TeX distribution with XeLaTeX or LuaLaTeX
-for PDF, R and Python for executing chunks. Chunks are not executed while they
-are placeholders (`execute: eval: false` in the shared config).
+Needs Quarto (which brings Pandoc), a TeX distribution with XeLaTeX for PDF, and
+R and Python only for executing chunks. Chunks are not executed while they are
+placeholders (`execute: eval: false` in the shared config).
 
-All rights reserved.
+## Publishing the website
+
+Every push to `main` runs `.github/workflows/pages.yml`, which renders each book
+to HTML and deploys it. One-time setting: repository Settings, Pages, Source:
+GitHub Actions. The site lands at `https://knapply.github.io/net-books/`, with
+each book under its own folder.

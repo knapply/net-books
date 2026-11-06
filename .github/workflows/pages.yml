@@ -1,0 +1,55 @@
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: quarto-dev/quarto-actions/setup@v2
+
+      - name: Check structure
+        run: python3 tools/check_books.py
+
+      - name: Render each book to HTML
+        run: |
+          mkdir -p _site
+          for dir in books/*/; do
+            book=$(basename "$dir")
+            quarto render "books/$book" --to html
+            mkdir -p "_site/$book"
+            cp -r "_output/$book/." "_site/$book/"
+          done
+          cat > _site/index.html <<'HTML'
+          <!doctype html><meta charset="utf-8"><title>net-books</title>
+          <h1>net-books</h1>
+          <ul><li><a href="sna/">Social Network Analysis</a></li></ul>
+          HTML
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

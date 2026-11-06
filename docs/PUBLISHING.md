@@ -35,7 +35,7 @@ The interior PDF is the same. The cover file differs (hardcover wraps and needs
 a larger bleed and a hinge allowance). Print-on-demand services supply a
 template for each binding by trim size and page count.
 
-## Shared with the second book
+## Shared across books
 
 Everything under `shared/` is common. A book overrides only what differs
 (title, subtitle, cover, trim size if wanted) in its own `_quarto.yml`.
