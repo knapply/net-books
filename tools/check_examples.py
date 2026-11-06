@@ -9,7 +9,7 @@ How a chapter's Rust blocks fit together:
   notebook. Each fragment may use what earlier ones defined, and may start with
   its own `use` lines. The checker wraps them all in one `main`, runs it, and
   compares each fragment's printed text with the output block that follows it.
-- A block whose first line is a `//` comment is a placeholder and is skipped.
+- A block whose first line is a `// TODO` comment is a placeholder and is skipped.
 
 Needs the engine source and a Rust toolchain; skips quietly without them.
 
@@ -43,7 +43,7 @@ def run_program(engine: str, program: str) -> subprocess.CompletedProcess:
 
 def check_chapter(engine: str, qmd: Path, update: bool) -> int:
     text = qmd.read_text()
-    pairs = [m for m in PAIR.finditer(text) if not m.group(2).lstrip().startswith("//")]
+    pairs = [m for m in PAIR.finditer(text) if not m.group(2).lstrip().startswith("// TODO")]
     if not pairs:
         return 0
     codes = [m.group(2) for m in pairs]
@@ -75,7 +75,7 @@ def check_chapter(engine: str, qmd: Path, update: bool) -> int:
         out_iter = iter(printed)
 
         def rep(m: re.Match) -> str:
-            if m.group(2).lstrip().startswith("//"):
+            if m.group(2).lstrip().startswith("// TODO"):
                 return m.group(0)
             out = next(out_iter).rstrip("\n") + "\n"
             return m.group(1) + m.group(2) + m.group(3) + "```text\n" + out + "```" + m.group(5)

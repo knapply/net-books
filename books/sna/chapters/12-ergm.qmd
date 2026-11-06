@@ -2,61 +2,319 @@
 
 ::: {.callout-note appearance="simple"}
 ## Prerequisites
-Permutation tests and null models.
+@sec-tests-and-null-models, @sec-paths-and-cohesion and @sec-subgroups. We reuse Zachary's karate club from @sec-subgroups, and the ideas of homophily and closure from @sec-foundations.
 :::
 
-## Introduction
+## From describing to modeling
 
-Specifying, fitting and checking ERGMs.
+::: {.callout-tip appearance="simple"}
+## Code lives next to the idea
+Each step of the modeling workflow comes with its code right where it is explained. The Rust blocks in this chapter run top to bottom as one script: the first builds the karate club, and later ones reuse it.
+:::
 
-TODO(prose, see docs/VOICE.md): motivating question, the idea in plain words, what the reader can
-do after this chapter.
+So far we've *described* networks: counted ties, scored people, found groups. This chapter is about *modeling* them. A model is a claim about how the network could have come about, written down precisely enough to be wrong.
 
-## From statistics to a model
+Here's the kind of question a model can answer that a summary can't. In the karate club (@sec-subgroups), people mostly befriended members of their own side. People also tend to befriend friends of friends. Both are true at once, and they overlap: two friends of the same person are probably on the same side. How much of the clustering is "just" same-side preference, and how much is extra? Counting won't separate them. A model that includes both tendencies at the same time can.
 
-TODO(prose): concept, definition, a small worked example by hand.
+The standard tool is the **exponential random graph model**, or **ERGM** (pronounced "ur-gum"). The statistician's name for the same thing is a *p-star* model, and its roots go back to Holland and Leinhardt [@holland1981exponential] and Frank and Strauss [@frank1986markov]. Modern practice is laid out in Snijders and colleagues [@snijders2006new] and in the software paper behind the R package statnet [@hunter2008ergm].
 
-Every code example uses this three-tab block. The tab text is placeholder until
-the library interface is final; the comment names the measure it will call.
+## The idea in one equation
+
+An ERGM says that the chance of seeing a particular network $x$ depends on a handful of counts taken from it:
+
+$$
+P(x) \;\propto\; \exp\Big( \theta_1\, g_1(x) + \theta_2\, g_2(x) + \dots + \theta_k\, g_k(x) \Big).
+$$
+
+Each $g_j(x)$ is a **statistic**, a count of some pattern in the network: the number of ties, the number of same-side ties, the number of triangles. Each $\theta_j$ is a **coefficient** that says how much that pattern raises or lowers a network's chance. "Proportional to" means the numbers get rescaled so all possible networks' chances add up to 1. A positive coefficient says networks with *more* of that pattern are more likely than networks with less, holding the other patterns fixed. A negative coefficient says the opposite. Zero says the pattern doesn't matter.
+
+A tiny example makes this concrete. Three people can be tied in $2^3 = 8$ ways. With only the number of ties as a statistic, each network's chance is proportional to $e^{\theta \cdot \text{ties}}$: the empty network gets weight 1, each single-tie network gets $e^{\theta}$, each two-tie network gets $e^{2\theta}$, and the triangle gets $e^{3\theta}$. A negative $\theta$ favors sparse networks. This is the random graph model from @sec-tests-and-null-models, where each tie appears independently, and it is the simplest ERGM. Everything else is adding more statistics.
+
+## Choosing statistics
+
+The art is in picking statistics that match your theory. @fig-ergm-terms shows the usual building blocks.
+
+- **Edges** count the ties. Its coefficient sets overall density, like an intercept in a regression.
+- **Same-attribute ties** (called *nodematch* in statnet) count ties between people who share an attribute, such as a side, a department or a gender. A positive coefficient is *homophily*, the "birds of a feather" pattern [@mcpherson2001birds].
+- **Stars** count a person with several ties. They capture how unevenly ties are spread across people: whether a few popular people hold many ties.
+- **Triangles** and **shared partners** capture closure, the tendency of friends of friends to be friends (@sec-foundations). A raw triangle count turns out to behave badly in practice, as we'll see, so modelers use a smoother version.
+
+The smoother version is **geometrically weighted edgewise shared partners**, or **GWESP**, introduced by Snijders and colleagues [@snijders2006new] and developed by Hunter and Handcock [@hunter2006inference]. For each tie, count how many *other* people the two ends have in common. The first shared partner counts a lot, the second a bit less, the third less still, so a tie embedded in one triangle counts nearly as much as one embedded in five. A **decay** setting controls how fast the returns shrink. We'll use 0.5.
+
+![Common ERGM statistics. Each panel shows the pattern that is counted. Shared partners are the people two tied nodes both know.](../figures/ergm-terms.svg){#fig-ergm-terms fig-alt="Six small drawings of network patterns. Edges: two nodes joined by a line. Same side: two nodes of the same shape joined by a line, and two of different shapes not joined. Two-star: one node joined to two others. Triangle: three nodes all joined. Shared partners: two tied nodes with three common neighbors, with a note that each extra shared partner counts less. Degree spread: a hub with many ties beside nodes with few."}
+
+## Step 1: the data
 
 ::: {.panel-tabset group="language"}
 
 ## R
 
 ```r
-# TODO(code, R): specify and fit an ERGM
+# TODO(code, R): build Zachary's karate club (34 members, 78 friendships) and record the side each member took when the club split.
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): specify and fit an ERGM
+# TODO(code, Python): build Zachary's karate club (34 members, 78 friendships) and record the side each member took when the club split.
 ```
 
 ## Rust
 
 ```rust
-// TODO(code, Rust): specify and fit an ERGM
+use knappnet::ergm::{fit_mcmle, fit_mple, simulate, McmleOptions, Model, MpleOptions, SimulateOptions, Term, ToggleGraph};
+use knappnet::Graph;
+
+// Zachary's karate club: 34 members, 78 friendships. Positions 0 to 33 are the members.
+let from = [
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3,
+    4, 4, 5, 5, 5, 6, 8, 8, 8, 9, 13, 14, 14, 15, 15, 18, 18, 19, 20, 20, 22, 22, 23, 23, 23, 23, 23, 24, 24,
+    24, 25, 26, 26, 27, 28, 28, 29, 29, 30, 30, 31, 31, 32,
+];
+let to = [
+    1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 17, 19, 21, 31, 2, 3, 7, 13, 17, 19, 21, 30, 3, 7, 8, 9, 13, 27, 28,
+    32, 7, 12, 13, 6, 10, 6, 10, 16, 16, 30, 32, 33, 33, 33, 32, 33, 32, 33, 32, 33, 33, 32, 33, 32, 33, 25, 27,
+    29, 32, 33, 25, 27, 31, 31, 29, 33, 33, 31, 33, 32, 33, 32, 33, 32, 33, 33,
+];
+// The side each member took (0 = Mr. Hi, 1 = the officer). Attributes are numbers.
+let side: [f64; 34] = [
+    0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 1., 0., 0., 1., 0., 1., 0., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1.,
+];
+let club = Graph::from_edges(34, &from, &to, None, false)?;
+// ERGM code works on a network it can edit, one tie at a time.
+let observed = ToggleGraph::from_graph(&club)?;
+println!("{} people, {} ties, {} possible pairs", observed.node_count(), observed.edge_count(), observed.dyad_count());
+println!("{} on Mr. Hi's side, {} on the officer's", side.iter().filter(|&&s| s == 0.).count(), side.iter().filter(|&&s| s == 1.).count());
 ```
 
 :::
 
 ::: {.code-output}
-TODO(output): the printed result of the code above, once it runs.
+```text
+34 people, 78 ties, 561 possible pairs
+17 on Mr. Hi's side, 17 on the officer's
+```
 :::
+## Step 2: a model where every tie is its own coin flip
+
+Start with the simplest model that includes homophily: edges, and same-side ties. Neither statistic mentions how ties relate to *each other*, so under this model each pair of people is an independent coin flip, with one chance for same-side pairs and another for cross-side pairs. That makes the model something you can fit with ordinary **logistic regression** on the 561 pairs. This is called **maximum pseudo-likelihood**, or MPLE [@strauss1990pseudolikelihood; @wasserman1996logit], and for a model like this one it is the exact answer, not an approximation.
+
+You can even do it by hand, which is worth doing once. Of the 561 pairs, 272 are on the same side and 289 are on opposite sides. Among same-side pairs, 67 are tied. Among opposite-side pairs, only 11 are. So:
+
+| | Pairs | Ties | Share tied | Log-odds of a tie |
+| --- | --- | --- | --- | --- |
+| Opposite sides | 289 | 11 | 0.038 | $\ln(11/278) = -3.230$ |
+| Same side | 272 | 67 | 0.246 | $\ln(67/205) = -1.118$ |
+
+The edges coefficient is the log-odds for opposite-side pairs, $-3.230$. The same-side coefficient is the *difference*, $-1.118 - (-3.230) = 2.111$. Let's see whether the computer agrees.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# TODO(code, R): fit the model with edges and same-side ties by maximum pseudo-likelihood and turn the coefficients back into the chance of a tie.
+```
+
+## Python
+
+```python
+# TODO(code, Python): fit the model with edges and same-side ties by maximum pseudo-likelihood and turn the coefficients back into the chance of a tie.
+```
+
+## Rust
+
+```rust
+// Term::Edges counts ties; Term::NodeMatch(0) counts ties between people with equal values of attribute 0.
+let plain = Model::new(vec![Term::Edges, Term::NodeMatch(0)], vec![side.to_vec()], 34, false)?;
+let fit_plain = fit_mple(&plain, &observed, &MpleOptions::default())?;
+for (label, k) in [("edges", 0), ("same side", 1)] {
+    println!("{label:<10} {:>7.3}  (standard error {:.3})", fit_plain.coef[k], fit_plain.std_err[k]);
+}
+// The logistic function turns log-odds back into a probability.
+let chance = |log_odds: f64| 1.0 / (1.0 + (-log_odds).exp());
+println!("chance of a tie, opposite sides  {:.3}", chance(fit_plain.coef[0]));
+println!("chance of a tie, same side       {:.3}", chance(fit_plain.coef[0] + fit_plain.coef[1]));
+```
+
+:::
+
+::: {.code-output}
+```text
+edges       -3.230  (standard error 0.307)
+same side    2.111  (standard error 0.338)
+chance of a tie, opposite sides  0.038
+chance of a tie, same side       0.246
+```
+:::
+
+Both numbers match the table: -3.230 and 2.111, and the chances of a tie, 0.038 and 0.246, are the shares of pairs tied in each row. The standard errors say how much the estimates could wobble if we could rerun the club.
+The model reproduces the table. The coefficient for same-side ties is large and positive: being on the same side raises the odds of a tie by a factor of $e^{2.111} \approx 8.3$.
+
+But this model has a gap, and the next step finds it.
+
+## Step 3: letting ties depend on each other
+
+If friends of friends tend to be friends, then whether Ana and Cleo are tied depends on whether both are tied to Ben. A model that includes GWESP builds that dependence in: the chance of a tie now depends on *the rest of the network*. The pairs are no longer independent coin flips, and the trick that gave us exact answers by logistic regression stops working. The pseudo-likelihood still gives estimates, but its standard errors can't be trusted for dependent models [@hunter2008ergm].
+
+The reliable approach is **Monte Carlo maximum likelihood**, or MCMLE. It works by simulation. Start with a guess for the coefficients. Simulate lots of networks from the model with those coefficients. Compare the average statistics of the simulated networks with the statistics of the real one. If the simulated networks have too few triangles, raise the coefficient for triangles, and try again. When the simulated averages match the observed counts, you've found the estimate [@hunter2006inference]. It is a clever idea, and it is slower, and the answers carry a little randomness, so we fix the seed.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# TODO(code, R): add a shared-partner term and fit by Monte Carlo maximum likelihood.
+```
+
+## Python
+
+```python
+# TODO(code, Python): add a shared-partner term and fit by Monte Carlo maximum likelihood.
+```
+
+## Rust
+
+```rust
+let model = Model::new(
+    vec![Term::Edges, Term::NodeMatch(0), Term::Gwesp(0.5)], // 0.5 is the decay
+    vec![side.to_vec()],
+    34,
+    false,
+)?;
+println!("observed statistics   {:.2?}", model.compute_statistics(&observed)?);
+
+let fit = fit_mcmle(&model, &observed, &McmleOptions::default())?;
+for (label, k) in [("edges", 0), ("same side", 1), ("shared partners", 2)] {
+    println!("{label:<16} {:>7.3}  (standard error {:.3})", fit.coef[k], fit.std_err[k]);
+}
+println!("converged {} after {} rounds", fit.converged, fit.iterations);
+```
+
+:::
+
+::: {.code-output}
+```text
+observed statistics   [78.00, 67.00, 82.93]
+edges             -3.924  (standard error 0.322)
+same side          1.535  (standard error 0.284)
+shared partners    0.697  (standard error 0.174)
+converged true after 3 rounds
+```
+:::
+
+The observed shared-partner statistic is 82.93, and the fitted model's simulated networks average about that, which is what "converged" means here. Notice the standard errors: the same-side coefficient is still clearly positive, and the shared-partner coefficient is positive and several times its standard error.
+Read the coefficients as **conditional log-odds**: the log-odds of a tie, given everything else in the network. Same-side ties still matter, but the coefficient has shrunk from 2.11 to about 1.54. That's the point of the exercise. Part of what the simple model attributed to "same side" was really closure: people on the same side share friends, and shared friends produce more ties. The shared-partner coefficient, about 0.70, is clearly positive. Holding the side and the overall density fixed, a tie is more likely when the two people already have friends in common.
+
+Don't overread the number: the effect isn't "0.7 per friend in common," because the shared-partner statistic discounts each additional partner. It is a statement about the shape of closure in the whole network, and its sign and rough size are what you report.
+
+## Step 4: checking the model
+
+A fitted model is a claim, so test it against the data. The standard check is **goodness of fit**: simulate many networks from the fitted model and see whether they look like the real one on features the model *wasn't fit to*. If the real network sits in the middle of the simulated ones, the model captures the pattern. If it sits far out, the model is missing something [@hunter2008goodness].
+
+We'll check three features we didn't include: the number of triangles, and the number of two-stars and three-stars (people with two or three friends, counted every way). We'll do it twice, once for the simple model and once for the shared-partner model. A trick keeps the code short: build one model that lists the extra statistics, and give those extra statistics a coefficient of zero so they only get *counted*, never *used*.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# TODO(code, R): simulate 4,000 networks from each fitted model and compare their average triangles, two-stars and three-stars with the real karate club.
+```
+
+## Python
+
+```python
+# TODO(code, Python): simulate 4,000 networks from each fitted model and compare their average triangles, two-stars and three-stars with the real karate club.
+```
+
+## Rust
+
+```rust
+// One model that lists everything we want to count. The first three terms are the fitted ones.
+let monitor = Model::new(
+    vec![Term::Edges, Term::NodeMatch(0), Term::Gwesp(0.5), Term::Triangle, Term::KStar(2), Term::KStar(3)],
+    vec![side.to_vec()],
+    34,
+    false,
+)?;
+let actual = monitor.compute_statistics(&observed)?;
+let options = SimulateOptions { samples: 2000, chains: 2, seed: 1, ..Default::default() };
+
+// Coefficients for the extra statistics are zero, so they are counted but not used.
+let simple_theta = [fit_plain.coef[0], fit_plain.coef[1], 0.0, 0.0, 0.0, 0.0];
+let closure_theta = [fit.coef[0], fit.coef[1], fit.coef[2], 0.0, 0.0, 0.0];
+let average = |theta: &[f64]| -> Result<Vec<f64>, knappnet::Error> {
+    let draws = simulate(&monitor, theta, &observed, &options)?;
+    let rows = draws.stats.len() / draws.terms;
+    Ok((0..draws.terms).map(|t| (0..rows).map(|r| draws.stats[r * draws.terms + t]).sum::<f64>() / rows as f64).collect())
+};
+let simple = average(&simple_theta)?;
+let closure = average(&closure_theta)?;
+println!("{:<10} {:>8} {:>14} {:>14}", "", "real", "edges + side", "+ shared partners");
+for (label, k) in [("ties", 0), ("triangles", 3), ("two-stars", 4), ("three-stars", 5)] {
+    println!("{label:<10} {:>8.1} {:>14.1} {:>14.1}", actual[k], simple[k], closure[k]);
+}
+```
+
+:::
+
+::: {.code-output}
+```text
+               real   edges + side + shared partners
+ties           78.0           77.9           78.0
+triangles      45.0           21.8           42.1
+two-stars     528.0          340.7          389.3
+three-stars   1764.0          472.6          668.8
+```
+:::
+
+The simple model, with edges and sides only, produces fewer than half the real triangles (about 22 against 45). Adding shared partners nearly fixes triangles (about 42), as it should, since that is what the term is for. Now look at the stars. Both models fall short, and the three-stars are far off even in the better model: about 669 against 1,764. The karate club has two hubs, Mr. Hi and the officer, with 16 and 17 friends each, and a model with no term for how unevenly ties are spread can't make hubs. The natural next move is to add a degree term, refit and check again. Modeling is a loop, and each check suggests the next model.
+
+@fig-ergm-gof shows the same comparison as percentages of the real counts.
+
+![How well each model reproduces features of the karate club it was not fit to. Each dot is the average over simulated networks as a percent of the real count, so 100 means a perfect match.](../figures/ergm-gof.svg){#fig-ergm-gof fig-alt="A dot chart with three rows: triangles, two-stars and three-stars. For triangles, the edges-and-side model is at 48 percent and the model with shared partners at 94 percent. For two-stars, the dots are at 65 and 74 percent. For three-stars, they are at 27 and 38 percent. A vertical line marks 100 percent."}
+
+## Reading ERGMs honestly
+
+**Coefficients are conditional.** Each coefficient is the log-odds of a tie *given the rest of the network and the other statistics in the model*. It isn't a probability, and it doesn't mean each person independently chose to be friends with the same side. Exponentiate a coefficient to get an odds multiplier (for same-side ties, $e^{1.54} \approx 4.6$), and say "holding the other terms fixed."
+
+**A model is a statement about ties, not about motives.** A positive same-side coefficient fits "people prefer their own side." It also fits "the club was already splitting into camps that met in different places." The model describes a pattern. Reasons come from what you know about the setting.
+
+**Check before you believe.** A model can converge, produce tidy coefficients, and still describe your network badly. Goodness of fit, as in Step 4, is part of the analysis, not an optional extra.
+
+**Degeneracy.** Some statistic combinations, especially raw triangle counts together with stars, can produce models that put nearly all their probability on almost-empty or almost-complete networks, so simulations look nothing like the data and fitting fails [@handcock2003assessing]. The smoother shared-partner and degree terms were designed to avoid this [@snijders2006new; @hunter2006inference]. If a fit won't converge, suspect the specification before suspecting the software.
+
+**Simulation means randomness.** MCMLE and the checks use random draws. Fix the seed, say how many draws you used, and don't read meaning into small differences between runs.
+
+**One network is one observation.** The standard errors describe uncertainty about the model's coefficients given this network. They don't say that the karate club is typical of anything. Generalizing beyond a single group takes more data, or a stated argument for why it should.
+
+## A cheat sheet
+
+| Piece | What it does | Watch out for |
+| --- | --- | --- |
+| Edges | Sets overall density | Always include it |
+| Same-attribute ties | Measures homophily on a category | Needs the attribute for everyone |
+| Stars, degree terms | Capture hubs and uneven popularity | Raw star counts can destabilize a model |
+| Shared partners (GWESP) | Captures closure, with diminishing returns | Decay setting changes the fit |
+| MPLE | Exact for dyad-independent models, fast | Standard errors unreliable when ties depend on each other |
+| MCMLE | Handles dependence; uses simulation | Random, slower, may fail to converge |
+| Goodness of fit | Compares simulated and real networks on unfit features | Pick features that matter to your question |
 
 ## Exercises
 
-1. TODO(exercise): a by-hand exercise on a tiny network.
-2. TODO(exercise): a coding exercise on a dataset from the appendix.
-3. TODO(exercise): an interpretation exercise.
+1. **By hand.** A network of four people has the statistic "number of ties" and coefficient $\theta = -1$. Using the weights $e^{\theta \cdot \text{ties}}$, find the probability that a particular pair is tied. (Hint: with only an edges term, ties are independent, so you can look at one pair.)
+2. **By hand.** In the karate club, 67 of the 272 same-side pairs are tied. If same-side status had no effect, how many of the 272 would you expect, given 78 ties among 561 pairs? How far off is the observed 67?
+3. **Design.** You have friendship data from a school class and each student's gender, grade and sport. Which statistics would you include, and which patterns would you check with goodness of fit?
+4. **Coding.** Refit the shared-partner model with a decay of 0.25 and of 1.0. How much do the coefficients move? Which features do the simulations get right?
+5. **Interpretation.** A paper reports "the same-gender coefficient is 1.2 (p < 0.01), so teenagers prefer friends of the same gender." Write a short, kind reply about what the model does and does not show.
 
 ## Summary
 
 ::: {.callout-tip appearance="simple"}
-TODO(summary): three to five sentences, then the one-line takeaway.
+An ERGM gives each possible network a chance that depends on a few counts of patterns in it, such as ties, same-side ties and shared partners, each with a coefficient. A model with only independent-tie statistics is a logistic regression on pairs and can be fit exactly, as we did by hand for the karate club. Statistics that let ties depend on each other, like shared partners, need Monte Carlo maximum likelihood. In the karate club, same-side ties raise the odds of a tie by a factor of about 8 in the simple model and about 4.6 once closure is included, and shared partners add a clear positive effect. A fitted model must be checked by simulation: both models here miss the hubs, which tells us what to add next. Coefficients are conditional, describe patterns and not motives, and depend on the statistics you chose.
 :::
 
 ## Further reading
 
-TODO(refs): cite with `@key` from `shared/bib/references.bib`.
+For the origins, see @holland1981exponential and @frank1986markov, and for the logistic-regression approach, @strauss1990pseudolikelihood and @wasserman1996logit. For modern specifications, see @snijders2006new and @hunter2006inference, for degeneracy, @handcock2003assessing, and for software and goodness of fit, @hunter2008ergm and @hunter2008goodness. For homophily, see @mcpherson2001birds. To practice in R, Phil Murphy's class notes on ERGMs [@murphyrpubs341041; @murphyrpubs449967] are good companions.

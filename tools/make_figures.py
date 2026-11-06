@@ -10,6 +10,7 @@ caption, alt text (a real description, not a restatement of the caption) and, fo
 network figures, the data drawn, so the pictures are also available as data.
 """
 import json
+import math
 import sys
 from itertools import combinations
 from pathlib import Path
@@ -1545,6 +1546,94 @@ def qap_null():
     return c, meta
 
 
+# ---------------------------------------------------------------- chapter 12
+def ergm_terms():
+    c = Canvas(900, 440, "Common ERGM statistics",
+               "Six panels, each showing one pattern that an exponential random graph model can count.")
+
+    def dot(x, y, shape="circle", fill="#cfe5f3", stroke=BLUE):
+        c.node(x, y, "", r=12, fill=fill, stroke=stroke, shape=shape, sw=2)
+
+    def tie(a, b, **kw):
+        c.edge(a, b, ra=12, rb=12, width=kw.pop("width", 2.4), color=kw.pop("color", INK), **kw)
+
+    panels = [("Edges", "every tie counts one"), ("Same side", "ties between alike people"),
+              ("Two-star", "one person, two ties"), ("Triangle", "three mutual ties"),
+              ("Shared partners", "friends in common, with diminishing returns"), ("Hub", "one person with many ties")]
+    for k, (title, note) in enumerate(panels):
+        x0, y0 = (k % 3) * 300, (k // 3) * 220
+        cx = x0 + 150
+        c.caption(cx, y0 + 28, title)
+        c.text(cx, y0 + 205, note, size=12.5, fill=MUTED)
+        if k == 0:
+            a, b = (cx - 45, y0 + 100), (cx + 45, y0 + 100)
+            tie(a, b, color=BLUE); dot(*a); dot(*b)
+        elif k == 1:
+            a, b, d = (cx - 80, y0 + 90), (cx - 20, y0 + 90), (cx + 50, y0 + 90)
+            e = (cx + 110, y0 + 90)
+            tie(a, b, color=BLUE); dot(*a); dot(*b)
+            tie(d, e, color="#9ca3af", dash="5 4"); dot(*d); dot(*e, shape="square", fill=ORANGE + "33", stroke=ORANGE)
+            c.text((a[0] + b[0]) / 2, y0 + 135, "counts", size=12, fill=BLUE)
+            c.text((d[0] + e[0]) / 2, y0 + 135, "does not", size=12, fill=MUTED)
+        elif k == 2:
+            m, a, b = (cx, y0 + 80), (cx - 55, y0 + 135), (cx + 55, y0 + 135)
+            tie(m, a, color=BLUE); tie(m, b, color=BLUE); dot(*m, fill=ORANGE + "33", stroke=ORANGE); dot(*a); dot(*b)
+        elif k == 3:
+            a, b, d = (cx, y0 + 70), (cx - 55, y0 + 145), (cx + 55, y0 + 145)
+            tie(a, b, color=BLUE); tie(b, d, color=BLUE); tie(d, a, color=BLUE); dot(*a); dot(*b); dot(*d)
+        elif k == 4:
+            a, b = (cx - 55, y0 + 100), (cx + 55, y0 + 100)
+            mids = [(cx, y0 + 55), (cx, y0 + 100), (cx, y0 + 145)]
+            for m in mids:
+                tie(a, m, color="#9ca3af", width=1.6); tie(m, b, color="#9ca3af", width=1.6)
+            tie(a, b, color=BLUE, curve=0)
+            for m in mids:
+                dot(*m)
+            dot(*a, fill=ORANGE + "33", stroke=ORANGE); dot(*b, fill=ORANGE + "33", stroke=ORANGE)
+        else:
+            h = (cx, y0 + 100)
+            for ang in range(0, 360, 60):
+                x = cx + 62 * math.cos(math.radians(ang))
+                y = y0 + 100 + 62 * math.sin(math.radians(ang))
+                tie(h, (x, y), color=BLUE, width=1.8); dot(x, y)
+            dot(*h, fill=ORANGE + "33", stroke=ORANGE)
+    meta = dict(chapter=12,
+                caption="Common ERGM statistics. Each panel shows the pattern that is counted. Shared partners are the people two tied nodes both know.",
+                alt="Six small drawings of network patterns. Edges: two nodes joined by a line. Same side: two circles joined by a line, which counts, and a circle and a square joined by a dashed line, which does not. Two-star: one node joined to two others. Triangle: three nodes all joined. Shared partners: two tied nodes, drawn in orange, with three common neighbors between them, and a note that each extra shared partner counts less. Hub: one node joined to six others.",
+                data={"terms": [p_[0] for p_ in panels]})
+    return c, meta
+
+
+GOF_ROWS = [("Triangles", 45.0, 21.8, 42.1), ("Two-stars", 528.0, 340.7, 389.3), ("Three-stars", 1764.0, 472.6, 668.8)]
+
+
+def ergm_gof():
+    c = Canvas(900, 330, "Does the model reproduce the karate club?",
+               "A dot chart of simulated averages as a percent of the real counts for triangles, two-stars and three-stars, under two models.")
+    x0, w = 170, 640
+    scale = lambda pct: x0 + w * pct / 120  # noqa: E731
+    for pct in (0, 25, 50, 75, 100):
+        c.add(f'<line x1="{scale(pct)}" y1="70" x2="{scale(pct)}" y2="250" stroke="{"#9ca3af" if pct == 100 else "#e5e7eb"}" stroke-width="{2 if pct == 100 else 1}"/>')
+        c.text(scale(pct), 272, f"{pct}%", size=12, fill=MUTED)
+    c.text(scale(100), 60, "real network", size=12.5, weight="700")
+    for k, (name, real, simple, closure) in enumerate(GOF_ROWS):
+        y = 105 + k * 60
+        c.text(x0 - 14, y + 5, name, size=14, anchor="end")
+        for val, col, shape, dy in ((simple, ORANGE, "square", -9), (closure, BLUE, "circle", 9)):
+            pct = 100 * val / real
+            c.node(scale(pct), y + dy, "", r=8, fill=col + "55", stroke=col, shape=shape, sw=2)
+            c.text(scale(pct) + 16, y + dy + 4, f"{pct:.0f}%", size=12, anchor="start", fill=col)
+    c.node(x0 + 20, 305, "", r=7, fill=ORANGE + "55", stroke=ORANGE, shape="square")
+    c.text(x0 + 36, 309, "edges + same side", size=12.5, anchor="start")
+    c.node(x0 + 230, 305, "", r=7, fill=BLUE + "55", stroke=BLUE)
+    c.text(x0 + 246, 309, "edges + same side + shared partners", size=12.5, anchor="start")
+    meta = dict(chapter=12,
+                caption="How well each model reproduces features of the karate club it was not fit to. Each dot is the average over simulated networks as a percent of the real count, so 100 means a perfect match.",
+                alt="A dot chart with three rows: triangles, two-stars and three-stars. For triangles, the edges-and-side model is at 48 percent and the model with shared partners at 94 percent. For two-stars, the dots are at 65 and 74 percent. For three-stars, they are at 27 and 38 percent. A vertical line marks 100 percent.",
+                data={"rows": [{"statistic": r[0], "real": r[1], "edges_side": r[2], "plus_shared_partners": r[3]} for r in GOF_ROWS]})
+    return c, meta
+
+
 FIGURES = {
     "two-teams": two_teams, "habit": habit, "dyad-triad": dyad_triad,
     "balance-triads": balance_triads, "two-camps": two_camps, "weak-ties": weak_ties,
@@ -1561,6 +1650,7 @@ FIGURES = {
     "blockmodel-matrix": blockmodel_matrix, "core-periphery": core_periphery,
     "ego-networks": ego_networks, "holes-idea": holes_idea, "effective-size-bars": effective_size_bars,
     "brokerage-roles": brokerage_roles, "ei-index": ei_index, "qap-null": qap_null,
+    "ergm-terms": ergm_terms, "ergm-gof": ergm_gof,
     "karate-communities": karate_communities, "modularity-bars": modularity_bars,
     "resolution-sweep": resolution_sweep, "group-ladder": group_ladder,
 }
