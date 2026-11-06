@@ -50,6 +50,7 @@ shared/
   templates/         chapter template with the three-language tabset
 tools/
   new_chapters.py    stamp chapter files from a book's outline.toml
+  export_machine.py  plain-text and JSON export of every book (published with the site)
   check_books.py     structure checks (tabs present, ids unique, citations resolve)
   build.sh           render a book to html, pdf or epub
 .github/workflows/
@@ -57,6 +58,18 @@ tools/
 docs/PUBLISHING.md   print and distribution notes
 docs/VOICE.md        how the prose should sound (read before writing)
 ```
+
+## Readable by people and programs
+
+- Sources are plain Markdown, one file per chapter, readable on GitHub as is.
+- Structure lives in data, not in prose: `outline.toml` is the single source of
+  truth for parts, chapters, purposes and prerequisites.
+- Every deployed book also publishes, under `/<book>/machine/`: `book.json`
+  (outline, ids, sections, status, links), `book.md` (the whole book as plain
+  Markdown) and `chapters/*.md`. `/index.json` lists the books. Built by
+  `tools/export_machine.py`.
+- Each page carries schema.org `Book` metadata and links to those files; pages
+  have source and issue links, search, and a sitemap.
 
 ## Add a chapter
 
