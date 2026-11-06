@@ -12,6 +12,8 @@ Author: Brendan Knapp. License: CC BY-NC-ND 4.0 (see `LICENSE.md`).
 
 ## Design
 
+- Voice: fun, empathetic, plain-spoken, built to make technical ideas
+  accessible. See `docs/VOICE.md`.
 - Plain-text sources (`.qmd`: Markdown plus code chunks), one file per chapter,
   in the style of R for Data Science and bookdown books: short chapters, a
   prerequisites box, runnable examples, exercises, a summary.
@@ -53,6 +55,7 @@ tools/
 .github/workflows/
   pages.yml          build the site and publish it with GitHub Pages
 docs/PUBLISHING.md   print and distribution notes
+docs/VOICE.md        how the prose should sound (read before writing)
 ```
 
 ## Add a chapter
