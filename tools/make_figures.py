@@ -1476,6 +1476,75 @@ def ei_index():
     return c, meta
 
 
+# ---------------------------------------------------------------- chapter 11
+def _pearson(x, y):
+    n = len(x)
+    mx, my = sum(x) / n, sum(y) / n
+    sxy = sum((a - mx) * (b - my) for a, b in zip(x, y))
+    sxx = sum((a - mx) ** 2 for a in x)
+    syy = sum((b - my) ** 2 for b in y)
+    return sxy / (sxx * syy) ** 0.5
+
+
+def qap_null():
+    import math
+    import random
+    n = len(KITE_NAMES)
+    adj = [[0] * n for _ in range(n)]
+    for a, b in KITE_EDGES:
+        adj[a][b] = adj[b][a] = 1
+    floor = [0] * 5 + [1] * 5
+    pairs = [(i, j) for i in range(n) for j in range(i + 1, n)]
+    x = [adj[i][j] for i, j in pairs]
+    obs = _pearson(x, [1 if floor[i] == floor[j] else 0 for i, j in pairs])
+    rng = random.Random(1)
+    draws = []
+    for _ in range(10000):
+        perm = list(range(n))
+        rng.shuffle(perm)
+        draws.append(_pearson(x, [1 if floor[perm[i]] == floor[perm[j]] else 0 for i, j in pairs]))
+    # The correlation takes only a few values (it depends on how many friend pairs land on
+    # the same floor), so draw one bar per possible value.
+    vals = sorted({round(d, 6) for d in draws})
+    gap = min(b2 - a2 for a2, b2 in zip(vals, vals[1:]))
+    counts = {v: 0 for v in vals}
+    for d in draws:
+        counts[round(d, 6)] += 1
+    lo, span = -0.55, 1.1
+    c = Canvas(900, 440, "What no relationship looks like",
+               "A bar chart of the correlations between friendship and sharing a floor after relabeling the people 10,000 times, with the observed correlation marked.")
+    x0, y0, w, h = 90, 60, 720, 270
+    top = max(counts.values()) * 1.12
+    for v, cnt in counts.items():
+        bx = x0 + (v - gap / 2 - lo) / span * w
+        bh = h * cnt / top
+        right = v >= obs - 1e-6
+        col = ORANGE if right else BLUE
+        c.rect(bx + 1, y0 + h - bh, gap / span * w - 2, bh, fill=col + "66", stroke=col, sw=1.2)
+    sd = 1 / math.sqrt(44)
+    pts = []
+    for t in range(0, 221):
+        xv = lo + t * span / 220
+        yv = len(draws) * gap * math.exp(-xv * xv / (2 * sd * sd)) / (sd * math.sqrt(2 * math.pi))
+        pts.append(f"{x0 + (xv - lo) / span * w:.1f},{y0 + h - h * yv / top:.1f}")
+    c.add(f'<polyline points="{" ".join(pts)}" fill="none" stroke="{MUTED}" stroke-width="2" stroke-dasharray="6 4"/>')
+    ox = x0 + (obs - lo) / span * w
+    c.add(f'<line x1="{ox:.1f}" y1="{y0 - 6}" x2="{ox:.1f}" y2="{y0 + h}" stroke="{INK}" stroke-width="2.5"/>')
+    c.text(ox + 8, y0 + 8, f"observed {obs:.3f}", size=13, anchor="start", weight="700")
+    c.add(f'<line x1="{x0}" y1="{y0 + h}" x2="{x0 + w}" y2="{y0 + h}" stroke="{INK}" stroke-width="1.5"/>')
+    for v in (-0.5, -0.25, 0, 0.25, 0.5):
+        vx = x0 + (v - lo) / span * w
+        c.text(vx, y0 + h + 20, f"{v:g}", size=12)
+    c.text(x0 + w / 2, y0 + h + 44, "correlation after relabeling the people", size=13, fill=MUTED)
+    c.text(x0, 412, "Orange bars: relabelings at least as high as the observed value. Dashed curve: the spread an ordinary test assumes.", size=12.5, fill=MUTED, anchor="start")
+    share = sum(1 for d in draws if d >= obs - 1e-9) / len(draws)
+    meta = dict(chapter=11,
+                caption="The QAP reference distribution: the correlation between friendship and sharing a floor after relabeling the people 10,000 times, with the observed value marked. Relabeled correlations center near zero, and the observed value sits in the right tail.",
+                alt="A bar chart of 10,000 relabeled correlations, which take only a handful of distinct values, centered near zero and spread from about minus 0.3 to plus 0.4. A vertical black line marks the observed correlation, 0.365, in the right tail, where the bars are drawn in orange. A dashed gray curve shows the normal spread an ordinary test would assume.",
+                data={"observed": round(obs, 3), "share_at_least_observed": round(share, 4), "values": [[v, counts[v]] for v in vals]})
+    return c, meta
+
+
 FIGURES = {
     "two-teams": two_teams, "habit": habit, "dyad-triad": dyad_triad,
     "balance-triads": balance_triads, "two-camps": two_camps, "weak-ties": weak_ties,
@@ -1491,7 +1560,7 @@ FIGURES = {
     "office-network": office_network, "equivalence-kinds": equivalence_kinds,
     "blockmodel-matrix": blockmodel_matrix, "core-periphery": core_periphery,
     "ego-networks": ego_networks, "holes-idea": holes_idea, "effective-size-bars": effective_size_bars,
-    "brokerage-roles": brokerage_roles, "ei-index": ei_index,
+    "brokerage-roles": brokerage_roles, "ei-index": ei_index, "qap-null": qap_null,
     "karate-communities": karate_communities, "modularity-bars": modularity_bars,
     "resolution-sweep": resolution_sweep, "group-ladder": group_ladder,
 }

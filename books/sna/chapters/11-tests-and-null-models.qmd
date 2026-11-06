@@ -2,61 +2,416 @@
 
 ::: {.callout-note appearance="simple"}
 ## Prerequisites
-Describing networks.
+@sec-networks-as-data, @sec-paths-and-cohesion and @sec-ego-networks. We reuse the ten-person friendship network and the idea of an E-I split into two groups.
 :::
 
-## Introduction
+## How surprised should we be?
 
-Why ordinary tests fail on network data; QAP, conditional uniform draws, configuration models.
+::: {.callout-tip appearance="simple"}
+## Code lives next to the idea
+Each test comes with its code right where it is explained. The Rust blocks in this chapter run top to bottom as one script: the first builds the data, and later ones reuse it.
+:::
 
-TODO(prose, see docs/VOICE.md): motivating question, the idea in plain words, what the reader can
-do after this chapter.
+You compute a number and it looks interesting. In the friendship network from @sec-centrality, the first five people (Ana through Eli) and the other five (Fay through Jo) mostly befriend their own side: 12 of the 18 ties stay inside a floor. Is that a real pattern, or the kind of thing that happens by luck in a small network?
+
+That's what a statistical test is for. It asks how often a number this large would turn up if nothing but chance were at work. Everything depends on what you mean by "chance," and that's where network data fight back.
 
 ## Why independence fails
 
-TODO(prose): concept, definition, a small worked example by hand.
+Most of the tests you've met, such as a correlation test or a regression, rest on one assumption: the observations are *independent*, like separate coin flips. They tell you how much a correlation could wobble from luck alone if each row of data had no connection to any other.
 
-Every code example uses this three-tab block. The tab text is placeholder until
-the library interface is final; the comment names the measure it will call.
+Network data break that assumption by construction. Ten people make 45 pairs. But the pair Ana-Ben and the pair Ana-Cleo both involve Ana. If Ana is sociable, she has many ties, and all of those ties are affected at once. If Ana is on the other floor from most people, all of *her* pairs differ from the pattern at once. The 45 pairs are not 45 independent coin flips. They are 45 pieces of evidence about ten people, and the evidence is bundled.
+
+The practical effect is that an ordinary test counts the evidence as though it were larger than it is, so it is **overconfident**: it reports small p-values for patterns that chance in the network could produce fairly often. The fix is not to give up on testing. It's to choose a better definition of chance, one that keeps the bundling intact.
+
+Two families of answer do that, and they're the two halves of this chapter.
+
+- **Permutation tests on relationships** (QAP). Keep each network exactly as it is, but scramble *who is who* in one of them, and see how large the association gets. This tests whether two networks, or a network and an attribute pattern, are related.
+- **Null models for a single network.** Draw many random networks that share some features with yours, such as the number of ties or each person's degree, and see how often they produce a value like the one you saw. This tests whether a feature of the network, such as clustering, is more than those shared features alone would produce.
+
+## QAP: scrambling who is who
+
+The **quadratic assignment procedure**, or QAP, was introduced by Hubert and Schultz [@hubert1976quadratic] and brought into network analysis by Krackhardt [@krackhardt1987qap]. The idea fits in a sentence: to see how unusual the relationship between two matrices is, keep both matrices as they are, but *relabel the people* in one of them, and recompute. Relabeling means shuffling the rows and the columns *together*. If person 3 becomes person 7, then row 3 and column 3 both move to position 7. Every pair involving that person moves with them, so the bundling of each person's ties is preserved. All that changes is which person is lined up with which.
+
+Do that thousands of times and you get the distribution of the association you would see if the two matrices had no relationship, but each kept its own internal structure. Then ask where your observed value falls.
+
+Our two matrices are the friendship ties and a "same floor" matrix: a 1 for each pair of people on the same floor, and a 0 otherwise. The question is whether friends tend to be on the same floor. First the data.
 
 ::: {.panel-tabset group="language"}
 
 ## R
 
 ```r
-# TODO(code, R): run a QAP correlation test
+# TODO(code, R): build the friendship matrix and the same-floor matrix as 10 by 10 tables of 0s and 1s, and count the pairs.
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): run a QAP correlation test
+# TODO(code, Python): build the friendship matrix and the same-floor matrix as 10 by 10 tables of 0s and 1s, and count the pairs.
 ```
 
 ## Rust
 
 ```rust
-// TODO(code, Rust): run a QAP correlation test
+use knappnet::matrix::Dense;
+
+// The ten-person friendship network, as pairs of positions.
+let names = ["Ana", "Ben", "Cleo", "Dev", "Eli", "Fay", "Gus", "Hana", "Ivo", "Jo"];
+let from = [0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 4, 5, 5, 6, 7, 8];
+let to = [1, 2, 3, 5, 3, 4, 6, 3, 5, 4, 5, 6, 6, 6, 7, 7, 8, 9];
+// Floor of each person: the first five on floor 0, the rest on floor 1.
+let floor = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1];
+
+let n = names.len();
+let mut friends = Dense::zeros(n, n);
+for (&a, &b) in from.iter().zip(&to) {
+    friends.set(a, b, 1.0);
+    friends.set(b, a, 1.0); // friendship goes both ways
+}
+let mut same_floor = Dense::zeros(n, n);
+for i in 0..n {
+    for j in 0..n {
+        if i != j && floor[i] == floor[j] {
+            same_floor.set(i, j, 1.0);
+        }
+    }
+}
+let total = |m: &Dense| (0..n).map(|i| (0..n).map(|j| m.get(i, j)).sum::<f64>()).sum::<f64>() / 2.0;
+println!("{} pairs of people", n * (n - 1) / 2);
+println!("{} friend pairs, {} same-floor pairs", total(&friends), total(&same_floor));
 ```
 
 :::
 
 ::: {.code-output}
-TODO(output): the printed result of the code above, once it runs.
+```text
+45 pairs of people
+18 friend pairs, 20 same-floor pairs
+```
 :::
+
+Of the 45 pairs, 18 are friends and 20 are on the same floor (ten on each floor). We're asking whether the 18 friend pairs lean toward the 20 same-floor pairs.
+### The test
+
+The statistic is the ordinary Pearson correlation between the two matrices, read as two lists of 45 numbers, one entry per pair. The correlation of two 0-1 lists is a standard measure of association, and tells you how much knowing a pair is on the same floor tells you about whether they are friends. QAP then compares it with the correlations from many relabelings.
+
+Because the network is undirected, we tell the test to read each pair once (graph mode), not twice.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# TODO(code, R): test the correlation between friendship and sharing a floor with QAP, using 10,000 random relabelings and a fixed seed.
+```
+
+## Python
+
+```python
+# TODO(code, Python): test the correlation between friendship and sharing a floor with QAP, using 10,000 random relabelings and a fixed seed.
+```
+
+## Rust
+
+```rust
+use knappnet::qap::{compute_qap_cor, Permutations, QapCorOptions, QapMode};
+
+let options = QapCorOptions {
+    mode: QapMode::Graph, // undirected: use each pair once
+    permutations: Permutations::Random { reps: 10_000, seed: 1 },
+    keep_draws: true,     // keep each relabeling's correlation so we can look at them
+    ..Default::default()
+};
+let test = compute_qap_cor(&friends, &same_floor, options)?;
+println!("pairs used            {}", test.dyads);
+println!("observed correlation  {:.3}", test.statistic);
+println!("share of relabelings at least that high  {:.4}", test.tail.compute_p_ge());
+```
+
+:::
+
+::: {.code-output}
+```text
+pairs used            45
+observed correlation  0.365
+share of relabelings at least that high  0.0218
+```
+:::
+
+The observed correlation is 0.365, positive but modest. About 2% of the 10,000 relabelings (0.0218) are as high or higher, so by the usual conventions this is worth taking seriously, though it isn't overwhelming with only 45 pairs.
+Read the last line as the p-value. If the floors had nothing to do with friendship, a relabeling would produce a correlation this high only about that share of the time. With 10,000 draws and no correction, the share is simply the fraction of draws at least as large as what we saw. A small share means friendship and floor line up more than the bundled structure alone explains. Notice that it is a *probability under a stated kind of chance*. It says nothing yet about why friends share floors: working near each other, choosing each other, or being hired through each other would all give the same picture. We'll come back to that.
+
+### Seeing the reference distribution
+
+The relabelings are worth looking at, not just summarizing. They show you what "no relationship" looks like for *this* pair of networks. A useful comparison is with what an ordinary correlation test would assume. That test treats the 45 pairs as independent, which makes the typical wobble of a correlation about $1/\sqrt{N - 1}$ for $N$ pairs.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# TODO(code, R): compare the spread of the QAP reference distribution with the spread an ordinary test would assume.
+```
+
+## Python
+
+```python
+# TODO(code, Python): compare the spread of the QAP reference distribution with the spread an ordinary test would assume.
+```
+
+## Rust
+
+```rust
+let draws = &test.distribution;
+let mean = draws.iter().sum::<f64>() / draws.len() as f64;
+let sd = (draws.iter().map(|r| (r - mean).powi(2)).sum::<f64>() / (draws.len() - 1) as f64).sqrt();
+let naive = 1.0 / ((test.dyads - 1) as f64).sqrt();
+println!("average relabeled correlation  {mean:+.3}");
+println!("spread (sd) with QAP           {sd:.3}");
+println!("spread an ordinary test assumes {naive:.3}");
+```
+
+:::
+
+::: {.code-output}
+```text
+average relabeled correlation  -0.001
+spread (sd) with QAP           0.146
+spread an ordinary test assumes 0.151
+```
+:::
+
+The relabeled correlations are centered on zero, as they should be for unrelated patterns. Their spread, 0.146, is very close to the 0.151 an ordinary test assumes, so the *width* doesn't give the problem away here. The *shape* does. An ordinary test would turn 0.365 into a t statistic of 2.57 on 43 degrees of freedom and report a one-sided p-value of about 0.007 (0.014 two-sided), about a third of the QAP share of 0.022. With other matrices the two answers can differ by more or by less, which is exactly why you don't want to guess.
+The picture to hold in mind is @fig-qap-null: a chart of the relabeled correlations, with the observed value marked.
+
+![The QAP reference distribution: the correlation between friendship and sharing a floor after relabeling the people 10,000 times, with the observed value marked. Relabeled correlations center near zero, and the observed value sits in the right tail. The bars are lumpy because with ten people only a few correlations are possible.](../figures/qap-null.svg){#fig-qap-null fig-alt="A bar chart of 10,000 relabeled correlations, which take only a handful of distinct values, centered near zero and spread from about minus 0.3 to plus 0.4. A vertical black line marks the observed correlation, 0.365, in the right tail, where the bars are drawn in orange. A dashed gray curve shows the normal spread an ordinary test would assume."}
+
+## More than one predictor: MRQAP
+
+Often one pattern isn't enough. Maybe friends share floors, *and* friends share a book club, and you want to know whether each matters once the other is accounted for. **Multiple regression QAP**, or MRQAP, extends the idea to a regression with several predictor matrices [@krackhardt1988predicting]. The coefficients are ordinary regression coefficients, so they have the usual meaning. What changes is how the p-values are calculated: by permutation, using relabelings, so the bundling is respected.
+
+The default method for the permutation is called double semi-partialling [@dekker2007sensitivity]. In a regression with several correlated predictors, a simple relabeling of the outcome can give misleading p-values, so this method relabels what's left of each predictor once the others have been removed. You don't need to remember the details to use it, but it's the reason the default is safe when predictors overlap.
+
+Our second predictor is an invented one: a book club that people in even positions (Ana, Cleo, Eli, Gus, Ivo) belong to, and people in odd positions (Ben, Dev, Fay, Hana, Jo) don't. It's a stand-in for any other attribute you might want to control for.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# TODO(code, R): fit a regression of friendship on same floor and same book club, with permutation p-values from 5,000 relabelings.
+```
+
+## Python
+
+```python
+# TODO(code, Python): fit a regression of friendship on same floor and same book club, with permutation p-values from 5,000 relabelings.
+```
+
+## Rust
+
+```rust
+use knappnet::qap::{fit_mrqap, MrqapOptions};
+
+// Same book club: both in even positions or both in odd positions.
+let mut same_club = Dense::zeros(n, n);
+for i in 0..n {
+    for j in 0..n {
+        if i != j && i % 2 == j % 2 {
+            same_club.set(i, j, 1.0);
+        }
+    }
+}
+let fit = fit_mrqap(
+    &friends,
+    &[same_floor.clone(), same_club],
+    MrqapOptions {
+        mode: QapMode::Graph,
+        permutations: Permutations::Random { reps: 5_000, seed: 1 },
+        ..Default::default()
+    },
+)?;
+println!("{:<12} {:>11} {:>7} {:>8}", "", "coefficient", "t", "p (two-sided)");
+for (k, label) in ["intercept", "same floor", "same club"].iter().enumerate() {
+    println!("{:<12} {:>11.3} {:>7.2} {:>8.4}", label, fit.coefficients[k], fit.t[k], fit.tails[k].compute_p_abs());
+}
+println!("R-squared {:.3} on {} pairs", fit.r_squared, fit.dyads);
+```
+
+:::
+
+::: {.code-output}
+```text
+             coefficient       t p (two-sided)
+intercept          0.357    3.17   0.0114
+same floor         0.341    2.49   0.0062
+same club         -0.243   -1.77   0.0816
+R-squared 0.194 on 45 pairs
+```
+:::
+
+Read the coefficients as you would in any regression. The outcome is 0 or 1, so a coefficient is a difference in the share of pairs that are friends. Holding the book club fixed, pairs on the same floor are about 0.34 more likely to be friends, with a permutation p-value of 0.006. The book club coefficient is negative, -0.24, and its p-value of 0.08 is not small. That attribute is invented (even versus odd position), so its sign says nothing about the world and only shows how it happens to line up with the floors and the ties. R-squared is 0.194: the two predictors together account for about a fifth of the variation in who is tied to whom. Because the permutations are random, the p-values move a little with the seed. With 5,000 draws, don't read anything into the third decimal place.
+## Null models for one network
+
+QAP asks whether two patterns are related. A different question is whether a single network has a *feature* more than you'd expect. In the friendship network, transitivity was 0.579 (@sec-paths-and-cohesion). Is that high?
+
+You can't say without a comparison. High compared to *what*? The answer is a **null model**: a recipe for drawing random networks that share some features with yours and are random in every other way. Draw many, compute the feature on each, and see where yours falls. The choice of recipe is the choice of what you hold fixed, and it changes the answer.
+
+The simplest recipe holds fixed only the number of people and the number of ties, and places the ties at random. This is the classic random graph model of Erdős and Rényi [@erdos1959random] (a close cousin, where each tie appears independently with the same probability, is due to Gilbert [@gilbert1959random]). Testing against it is sometimes called a **conditional uniform graph** test, because the draws are uniform among all networks with the stated size and number of ties. Phil Murphy's tutorial walks through the statnet version [@murphyrpubs536741].
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# TODO(code, R): draw 2,000 random networks with the same number of people and ties as the friendship network, compute each one's transitivity, and see where the observed 0.579 falls.
+```
+
+## Python
+
+```python
+# TODO(code, Python): draw 2,000 random networks with the same number of people and ties as the friendship network, compute each one's transitivity, and see where the observed 0.579 falls.
+```
+
+## Rust
+
+```rust
+use knappnet::generate::sample_gnm;
+use knappnet::metrics::descriptive::{compute_transitivity, ClusteringOptions};
+use knappnet::Graph;
+
+// The engine reads positions as signed whole numbers, so convert our lists first.
+let observed_graph = Graph::from_edges(n, &from.map(|x| x as i64), &to.map(|x| x as i64), None, false)?;
+let observed = compute_transitivity(&observed_graph, ClusteringOptions::default());
+
+// Turn one random draw (lists of positions) into a network we can measure.
+let to_graph = |d: &knappnet::generate::EdgeList| {
+    let f: Vec<i64> = d.from.iter().map(|&x| x as i64).collect();
+    let u: Vec<i64> = d.to.iter().map(|&x| x as i64).collect();
+    Graph::from_edges(n, &f, &u, None, false)
+};
+
+// 2,000 random networks: 10 people, 18 ties, undirected, no loops.
+let draws = sample_gnm(n, 18, false, false, 2_000, 1, 0)?;
+let mut scores = Vec::new();
+for d in &draws {
+    let g = to_graph(d)?;
+    let t = compute_transitivity(&g, ClusteringOptions::default());
+    if !t.is_nan() {
+        scores.push(t);
+    }
+}
+let mean = scores.iter().sum::<f64>() / scores.len() as f64;
+let at_least = scores.iter().filter(|&&t| t >= observed - 1e-12).count();
+println!("observed transitivity        {observed:.3}");
+println!("random networks, average     {mean:.3}");
+println!("random networks at least as clustered  {:.4}", at_least as f64 / scores.len() as f64);
+```
+
+:::
+
+::: {.code-output}
+```text
+observed transitivity        0.579
+random networks, average     0.372
+random networks at least as clustered  0.0045
+```
+:::
+
+Random networks with the same size and number of ties average a transitivity of 0.372, and well under one percent of them (0.0045) are as clustered as the friendship network's 0.579. Against this yardstick, our friends are unusually clustered. The share comes from 2,000 random draws, so another seed might give 0.008 instead. Read it as "around half a percent to one percent."
+That null model is easy to beat, and the reason is instructive. Real networks have people with very different numbers of ties, and a few sociable people are enough to create triangles. A model that gives everyone about the same degree has no way to produce that, so real networks can look "more clustered than random" for that reason alone. A fairer comparison keeps each person's degree fixed too. That is the **configuration model**, which draws random networks in which everyone has exactly the degree they have in your data [@molloy1995critical; @newman2001random]. A related approach starts from your own network and repeatedly swaps pairs of ties, which also keeps every degree [@maslov2002specificity].
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# TODO(code, R): draw 2,000 random simple networks in which every person keeps their number of friends, compute each one's transitivity, and compare with the observed 0.579.
+```
+
+## Python
+
+```python
+# TODO(code, Python): draw 2,000 random simple networks in which every person keeps their number of friends, compute each one's transitivity, and compare with the observed 0.579.
+```
+
+## Rust
+
+```rust
+use knappnet::generate::{sample_configuration, Degrees};
+use knappnet::metrics::degree::compute_degree;
+use knappnet::DegreeMode;
+
+// Everyone's number of friends, as whole numbers.
+let degrees: Vec<u64> = compute_degree(&observed_graph, DegreeMode::All, true)
+    .iter()
+    .map(|&d| d as u64)
+    .collect();
+// `true` keeps only simple networks (no loops, no repeated ties); 100,000 is how many tries each draw gets.
+let draws = sample_configuration(&Degrees::Undirected(degrees), true, 100_000, 2_000, 1, 0)?;
+let mut scores = Vec::new();
+for d in &draws {
+    let g = to_graph(d)?;
+    let t = compute_transitivity(&g, ClusteringOptions::default());
+    if !t.is_nan() {
+        scores.push(t);
+    }
+}
+let mean = scores.iter().sum::<f64>() / scores.len() as f64;
+let at_least = scores.iter().filter(|&&t| t >= observed - 1e-12).count();
+println!("random networks with the same degrees, average  {mean:.3}");
+println!("at least as clustered as observed               {:.4}", at_least as f64 / scores.len() as f64);
+```
+
+:::
+
+::: {.code-output}
+```text
+random networks with the same degrees, average  0.392
+at least as clustered as observed               0.0080
+```
+:::
+
+Holding every degree fixed raises the average only slightly, to 0.392, and about 0.8% of the draws (0.0080) reach 0.579. The conclusion survives the tougher comparison, which is more convincing than passing the easy one. As before, these shares come from random draws, so treat them as "about one percent," not as exact.
+
+## A cheat sheet
+
+| Tool | Question | What it holds fixed | Watch out for |
+| --- | --- | --- | --- |
+| QAP correlation | Are two networks (or a network and an attribute pattern) related? | Each matrix's own structure | A relationship is not a cause |
+| MRQAP | Is each predictor related to the ties once the others are accounted for? | The same, with several predictors | Overlapping predictors; the default method handles this |
+| Random graph with the same number of ties | Is a feature more than size and density alone would give? | Number of people and ties | An easy standard to beat |
+| Configuration model | Is a feature more than each person's degree would give? | Everyone's number of ties | Rejection sampling can fail on awkward degree sequences |
+
+## Reading tests honestly
+
+**A p-value answers one narrow question.** It says how often chance, *as you defined it*, would produce a result this large. Change the definition of chance and the answer changes. Always say what was held fixed.
+
+**Small networks give lumpy answers.** With ten people, a QAP reference distribution takes only a few distinct values, as @fig-qap-null shows. That is a fact about small data, not a bug. In a network this size you can even list every relabeling exactly, as the exhaustive option does.
+
+**A significant result is not an explanation.** Friends share floors. Maybe people on one floor meet more often, maybe friends pick desks near each other, maybe the company hires through friends. The test can't tell these apart. For explanations that unfold over time, you need data over time (@sec-dynamics).
+
+**Don't hunt.** Test many things and some will pass. Decide what you will test before you look, and say how many things you tried.
+
+**Random draws vary.** Fix the seed, report how many draws you used, and don't read meaning into the last digit. When the stakes are high, run again with more draws.
+
+**Pick the null that matches the question.** If your claim is "more clustering than a network with these degrees," use the configuration model. If your claim is "more than a random network of this size," the simpler one is the honest comparison. Reporting the easy one when you meant the hard one is a quiet way of overselling.
 
 ## Exercises
 
-1. TODO(exercise): a by-hand exercise on a tiny network.
-2. TODO(exercise): a coding exercise on a dataset from the appendix.
-3. TODO(exercise): an interpretation exercise.
+1. **By hand.** Two friendship matrices on four people are the same up to relabeling. What does QAP say about their correlation when you try every relabeling? Why does it make sense that a matrix and its relabeled copy can correlate perfectly even though the people are different?
+2. **By hand.** In the output above, 21.8 of every 1,000 relabelings reached the observed correlation. If you had asked for 1,000 relabelings instead of 10,000, roughly how much would the share wobble from run to run? (A rough answer is fine: think about how many relabelings landed in the tail.)
+3. **Design.** You have a network of who advises whom in a hospital and a table of each person's profession. Which would you test with QAP, and which with a null model? What would you hold fixed in each?
+4. **Coding.** Change the seed in the QAP block and rerun it. How much does the p-value move? Then try the exhaustive option (every relabeling, only possible up to ten people) and compare.
+5. **Interpretation.** A report says "the network is significantly clustered (p < 0.05)." Write the questions you'd ask the author before believing it.
 
 ## Summary
 
 ::: {.callout-tip appearance="simple"}
-TODO(summary): three to five sentences, then the one-line takeaway.
+Ordinary tests treat each pair of people as an independent observation, which network data can't be, because pairs that share a person are bundled together. QAP keeps the bundling by relabeling people in one matrix and recomputing the correlation, and MRQAP does the same with several predictors. Null models do the job for a single network by drawing random networks that share some features with yours: the same size and number of ties, or the same degrees as well. The friendship network leans toward same-floor friendships (correlation 0.365, a QAP share of 0.022) and is more clustered than random networks with the same size or the same degrees. All of these p-values depend on what chance means, so say what you held fixed.
 :::
 
 ## Further reading
 
-TODO(refs): cite with `@key` from `shared/bib/references.bib`.
+For the origin of QAP, see @hubert1976quadratic and @hubert1987assignment, and for its use with network data, @krackhardt1987qap and @krackhardt1988predicting. For why the double semi-partialling default is safe with overlapping predictors, see @dekker2007sensitivity. For random graph models, see @erdos1959random and @gilbert1959random, and for the configuration model, @molloy1995critical and @newman2001random. For degree-preserving rewiring, see @maslov2002specificity. For a textbook treatment of testing with network data, see @hanneman2005introduction. To practice in R, Phil Murphy's tutorials on hypothesis testing [@murphyrpubs338798], QAP [@murphyrpubs539996; @murphyrpubs679837] and conditional uniform graphs [@murphyrpubs536741] are good companions.
