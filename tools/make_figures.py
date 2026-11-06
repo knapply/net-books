@@ -1152,6 +1152,330 @@ def group_ladder():
     return c, meta
 
 
+# ---------------------------------------------------------------- chapter 9
+OFFICE_NAMES = ["Ada", "Ben", "Cy", "Dee", "Eve", "Flo", "Gus", "Hal", "Ivy", "Jay"]
+OFFICE_FROM = [0, 1, 2, 2, 3, 3, 4, 4, 5, 6, 7, 8, 9]
+OFFICE_TO = [1, 0, 0, 1, 0, 1, 0, 1, 2, 2, 3, 4, 4]
+OFFICE_POSITION = [0, 0, 1, 1, 1, 2, 2, 2, 2, 2]
+POS_STYLE = [(PURPLE, "diamond", "Leaders"), (ORANGE, "square", "Managers"), (BLUE, "circle", "Staff")]
+OFFICE_XY = [(380, 62), (520, 62), (250, 190), (450, 190), (650, 190),
+             (190, 322), (310, 322), (450, 322), (610, 322), (710, 322)]
+
+
+def office_network():
+    c = Canvas(900, 400, "An office where advice flows upward",
+               "Ten people in an office, drawn in three rows: two leaders, three managers and five staff, with arrows from the person asking to the person asked.")
+    for (col, shape, label), y in zip(POS_STYLE, (62, 190, 322)):
+        c.text(24, y + 5, label, size=14, anchor="start", weight="700", fill=col)
+    for a, b in zip(OFFICE_FROM, OFFICE_TO):
+        mutual = OFFICE_POSITION[a] == 0 and OFFICE_POSITION[b] == 0
+        c.edge(OFFICE_XY[a], OFFICE_XY[b], ra=20, rb=20, directed=True, width=1.8, color="#7b8494",
+               curve=10 if mutual else 0)
+    for i, (x, y) in enumerate(OFFICE_XY):
+        col, shape, _ = POS_STYLE[OFFICE_POSITION[i]]
+        c.node(x, y, OFFICE_NAMES[i][:2], r=19, fill="#ffffff", stroke=col, shape=shape, sw=2.6, size=12)
+    c.text(450, 385, "An arrow means: goes to this person for advice.", size=13, fill=MUTED)
+    meta = dict(chapter=9,
+                caption="An office advice network. Shape and color mark the position: leaders (diamonds), managers (squares) and staff (circles). Nobody in the bottom row asks anybody else in the bottom row, and yet they have a lot in common.",
+                alt="Ten people in three rows. Two leaders at the top, Ada and Ben, point at each other. Three managers in the middle each point at both leaders. Five staff at the bottom each point at one manager: Flo and Gus at Cy, Hal at Dee, and Ivy and Jay at Eve.",
+                data={"names": OFFICE_NAMES, "from": OFFICE_FROM, "to": OFFICE_TO, "position": OFFICE_POSITION})
+    return c, meta
+
+
+def equivalence_kinds():
+    c = Canvas(900, 360, "Two ways of being alike",
+               "Two small panels. On the left, two staff members tied to the same manager are structurally equivalent. On the right, two staff members tied to different managers are only regularly equivalent.")
+    for k, (title, pair) in enumerate([("Structurally equivalent", ("Flo", "Gus")), ("Regularly equivalent", ("Flo", "Hal"))]):
+        x0 = 20 + k * 450
+        c.caption(x0 + 215, 28, title)
+        top = (x0 + 215, 78)
+        mgr = {"Cy": (x0 + 130, 170), "Dee": (x0 + 300, 170)}
+        stf = {"Flo": (x0 + 75, 270), "Gus": (x0 + 185, 270), "Hal": (x0 + 300, 270)}
+        c.node(*top, "Ada", r=20, fill="#fff", stroke=PURPLE, shape="diamond", sw=2.4, size=11)
+        for nm, p in mgr.items():
+            c.edge(p, top, ra=19, rb=22, directed=True, width=1.8, color="#7b8494")
+        for nm, p in stf.items():
+            tgt = mgr["Cy"] if nm in ("Flo", "Gus") else mgr["Dee"]
+            c.edge(p, tgt, ra=19, rb=19, directed=True, width=1.8, color="#7b8494")
+        for nm, p in mgr.items():
+            c.node(*p, nm[:2], r=19, fill="#fff", stroke=ORANGE, shape="square", sw=2.4, size=12)
+        for nm, p in stf.items():
+            hit = nm in pair
+            c.node(*p, nm[:2], r=19, fill="#cfe5f3" if hit else "#fff", stroke=BLUE, sw=3 if hit else 2, size=12)
+        note = ["Same ties to the same people:", "both go to Cy and nobody else."] if k == 0 else \
+            ["Different people, same kind of tie:", "each goes to one manager."]
+        c.lines(x0 + 215, 322, note, size=12.5, fill=MUTED, anchor="middle")
+    meta = dict(chapter=9,
+                caption="Structural equivalence asks for the same ties to the same people. Regular equivalence asks only for the same kinds of ties to people who are themselves alike. Flo and Gus are both; Flo and Hal are only the second.",
+                alt="Two small drawings. In each, Ada at the top receives from two managers, Cy and Dee, and three staff members each point at a manager. On the left, Flo and Gus are highlighted and both point at Cy. On the right, Flo and Hal are highlighted: Flo points at Cy and Hal points at Dee.",
+                data={"left": ["Flo", "Gus"], "right": ["Flo", "Hal"]})
+    return c, meta
+
+
+def blockmodel_matrix():
+    n = 10
+    arcs = set(zip(OFFICE_FROM, OFFICE_TO))
+    c = Canvas(900, 500, "The advice network as a matrix, and its blockmodel",
+               "On the left, the ten by ten table of who goes to whom, with people grouped by position. On the right, the three by three table of block densities and the image matrix that results.")
+    cell, x0, y0 = 30, 90, 70
+    c.caption(x0 + n * cell / 2, 28, "Who goes to whom")
+    for j in range(n):
+        c.text(x0 + j * cell + cell / 2, y0 - 8, OFFICE_NAMES[j][:2], size=11)
+        c.text(x0 - 8, y0 + j * cell + cell / 2 + 4, OFFICE_NAMES[j], size=11, anchor="end")
+    for i in range(n):
+        for j in range(n):
+            tie = (i, j) in arcs
+            c.rect(x0 + j * cell, y0 + i * cell, cell, cell, fill=BLUE if tie else ("#f3f4f6" if i == j else "#ffffff"),
+                   stroke="#e5e7eb", sw=0.8)
+    for b in (2, 5):
+        c.add(f'<line x1="{x0 + b * cell}" y1="{y0 - 4}" x2="{x0 + b * cell}" y2="{y0 + n * cell + 4}" stroke="{INK}" stroke-width="2"/>')
+        c.add(f'<line x1="{x0 - 4}" y1="{y0 + b * cell}" x2="{x0 + n * cell + 4}" y2="{y0 + b * cell}" stroke="{INK}" stroke-width="2"/>')
+    c.text(x0 + n * cell / 2, y0 + n * cell + 32, "rows: who asks    columns: who is asked", size=12, fill=MUTED)
+    # densities and image
+    labels = ["Leaders", "Managers", "Staff"]
+    sizes = [2, 3, 5]
+    dens = []
+    for r in range(3):
+        row = []
+        for s in range(3):
+            tot = sum(1 for (a, b) in arcs if OFFICE_POSITION[a] == r and OFFICE_POSITION[b] == s)
+            pairs = sizes[r] * sizes[s] - (sizes[r] if r == s else 0)
+            row.append(tot / pairs)
+        dens.append(row)
+    overall = len(arcs) / (n * (n - 1))
+    for panel, (title, ytop) in enumerate([("Block densities", 70), ("Image: 1 where density is at least %.3f" % overall, 290)]):
+        bx = 560
+        c.text(bx + 90, ytop - 38, title, size=14, weight="700")
+        for j, lb in enumerate(labels):
+            c.text(bx + j * 60 + 30, ytop - 8, lb, size=11)
+            c.text(bx - 8, ytop + j * 52 + 31, lb, size=11, anchor="end")
+        for r in range(3):
+            for s in range(3):
+                d = dens[r][s]
+                one = d >= overall
+                if panel == 0:
+                    shade = "#cfe5f3" if d > 0 else "#ffffff"
+                    txt = f"{d:.2f}"
+                else:
+                    shade = BLUE if one else "#ffffff"
+                    txt = "1" if one else "0"
+                c.rect(bx + s * 60, ytop + r * 52, 60, 52, fill=shade, stroke="#9ca3af", sw=1)
+                c.text(bx + s * 60 + 30, ytop + r * 52 + 31, txt, size=15, weight="600",
+                       fill=PAPER if (panel == 1 and one) else INK)
+    c.text(660, 482, "Advice flows up: staff to managers, managers to leaders.", size=13, fill=MUTED)
+    meta = dict(chapter=9,
+                caption="A blockmodel squeezes the matrix of who goes to whom into one number per pair of positions (the density of that block) and then into a 1 or a 0 (the image). Here three positions and three ones tell the whole story.",
+                alt="On the left, a ten by ten grid with blue cells where a person asks another for advice, separated by heavy lines into leaders, managers and staff. Blue cells fill the leaders' own block and the managers-to-leaders block, and a scatter in the staff-to-managers block. On the right, a three by three table of block densities with values 1.00 for leaders to leaders and managers to leaders, 0.33 for staff to managers and 0 elsewhere, and below it the image matrix with ones in those three places.",
+                data={"positions": labels, "density": [[round(x, 3) for x in r] for r in dens], "cutoff": round(overall, 3)})
+    return c, meta
+
+
+CP_CORE = [0, 1, 3, 5, 6]
+
+
+def core_periphery():
+    n = len(KITE_NAMES)
+    pos = fit(stress_layout(n, KITE_EDGES, seed=3), 20, 40, 470, 250)
+    c = Canvas(900, 400, "A core and a periphery",
+               "Left: the friendship network with five core members drawn as blue circles and five periphery members as orange squares. Right: the ideal pattern the fit compares against.")
+    for a, b in KITE_EDGES:
+        c.edge(pos[a], pos[b], ra=14, rb=14, width=1.6, color="#9ca3af")
+    for i, p in enumerate(pos):
+        core = i in CP_CORE
+        col, shape = (BLUE, "circle") if core else (ORANGE, "square")
+        c.node(*p, KITE_NAMES[i][:2], r=14, fill=col + "33", stroke=col, shape=shape, sw=2.2, size=10.5)
+    order = CP_CORE + [i for i in range(n) if i not in CP_CORE]
+    cell, x0, y0 = 22, 600, 60
+    c.caption(x0 + n * cell / 2, 30, "The ideal pattern")
+    for a in range(n):
+        for b in range(n):
+            ca, cb = a < 5, b < 5
+            if a == b:
+                fillc = "#f3f4f6"
+            elif ca and cb:
+                fillc = BLUE
+            elif not ca and not cb:
+                fillc = "#ffffff"
+            else:
+                fillc = "#e5e7eb"
+            c.rect(x0 + b * cell, y0 + a * cell, cell, cell, fill=fillc, stroke="#e5e7eb", sw=0.8)
+    c.add(f'<line x1="{x0 + 5 * cell}" y1="{y0 - 4}" x2="{x0 + 5 * cell}" y2="{y0 + n * cell + 4}" stroke="{INK}" stroke-width="2"/>')
+    c.add(f'<line x1="{x0 - 4}" y1="{y0 + 5 * cell}" x2="{x0 + n * cell + 4}" y2="{y0 + 5 * cell}" stroke="{INK}" stroke-width="2"/>')
+    c.node(x0 + 6, y0 + n * cell + 34, "", r=7, fill=BLUE, stroke=BLUE)
+    c.text(x0 + 20, y0 + n * cell + 38, "core to core: expect a tie", size=12, anchor="start")
+    c.node(x0 + 6, y0 + n * cell + 58, "", r=7, fill="#ffffff", stroke="#9ca3af")
+    c.text(x0 + 20, y0 + n * cell + 62, "periphery to periphery: expect none", size=12, anchor="start")
+    c.node(x0 + 6, y0 + n * cell + 82, "", r=7, fill="#e5e7eb", stroke="#9ca3af")
+    c.text(x0 + 20, y0 + n * cell + 86, "core to periphery: not scored", size=12, anchor="start")
+    meta = dict(chapter=9,
+                caption="The discrete core-periphery model. Split people into a core and a periphery and compare the network with an ideal pattern: the core is tied to itself, the periphery is not, and core-to-periphery pairs are left out. The best split is the one whose pattern fits the real ties best.",
+                alt="On the left, the ten-person friendship network with five people drawn as blue circles in the dense middle and five drawn as orange squares around the edge. On the right, a ten by ten grid ordered core first: the upper-left five by five block is blue, the lower-right block is white, and the two off-diagonal blocks are gray.",
+                data={"core": [KITE_NAMES[i] for i in CP_CORE]})
+    return c, meta
+
+
+# ---------------------------------------------------------------- chapter 10
+def _nbrs(edges, n):
+    nb = [set() for _ in range(n)]
+    for a, b in edges:
+        nb[a].add(b)
+        nb[b].add(a)
+    return nb
+
+
+def _burt(edges, n):
+    nb = _nbrs(edges, n)
+    eff, con = [], []
+    for i in range(n):
+        p = lambda a, b: (1 / len(nb[a])) if b in nb[a] else 0.0  # noqa: E731
+        es = sum(1 - sum(p(i, q) * (1.0 if q in nb[j] else 0.0) for q in nb[i] if q != j) for j in nb[i])
+        cs = sum((p(i, j) + sum(p(i, q) * p(q, j) for q in nb[i] if q != j)) ** 2 for j in nb[i])
+        eff.append(es)
+        con.append(cs)
+    return eff, con
+
+
+def ego_networks():
+    c = Canvas(900, 400, "Two people, two ego networks",
+               "The ego networks of Dev and Hana in the friendship network: each person at the center, their contacts around them, and the ties among those contacts.")
+    cases = [("Dev", 3, ["Ana", "Cleo", "Fay", "Gus", "Eli", "Ben"], "6 contacts, 8 ties among them", "density 0.53: a tight circle"),
+             ("Hana", 7, ["Fay", "Gus", "Ivo"], "3 contacts, 1 tie among them", "density 0.33: two separate pieces")]
+    data = {}
+    for k, (ego, ei, alters, line1, line2) in enumerate(cases):
+        cx, cy = 230 + k * 440, 185
+        ids = [KITE_NAMES.index(a) for a in alters]
+        pts = dict(zip(ids, ring(cx, cy, 120 if k == 0 else 105, len(ids), start=-90 if k == 0 else -150)))
+        c.caption(cx, 28, ego + "'s ego network")
+        for a, b in KITE_EDGES:
+            if a in ids and b in ids:
+                c.edge(pts[a], pts[b], ra=19, rb=19, width=2.4, color=BLUE)
+        for a in ids:
+            c.edge((cx, cy), pts[a], ra=22, rb=19, width=1.4, color="#b6bcc6")
+        for a in ids:
+            c.node(*pts[a], KITE_NAMES[a][:3], r=19, fill="#cfe5f3", stroke=BLUE, sw=2, size=11.5)
+        c.node(cx, cy, ego[:3], r=22, fill=ORANGE + "33", stroke=ORANGE, shape="square", sw=2.6, size=12.5)
+        c.text(cx, 340, line1, size=13.5, weight="600")
+        c.text(cx, 360, line2, size=13, fill=MUTED)
+        data[ego] = alters
+    meta = dict(chapter=10,
+                caption="An ego network is a person, their contacts, and the ties among those contacts. Dev's contacts mostly know each other. Hana's mostly do not, so Hana links people who would otherwise be apart.",
+                alt="Two drawings. On the left, Dev, an orange square in the middle, with six contacts in a hexagon around them, joined in a ring by blue ties with two extra blue ties across the ring. On the right, Hana, an orange square, with three contacts: Fay and Gus are joined to each other by a blue tie, and Ivo is not tied to either.",
+                data=data)
+    return c, meta
+
+
+def holes_idea():
+    c = Canvas(900, 360, "Redundant contacts and structural holes",
+               "Two ego networks with three contacts each. On the left the contacts all know each other. On the right none do.")
+    for k, (title, ties, es) in enumerate([("Contacts who all know each other", [(0, 1), (1, 2), (2, 0)], 1),
+                                           ("Contacts who do not know each other", [], 3)]):
+        cx, cy = 230 + k * 440, 175
+        pts = ring(cx, cy, 100, 3, start=-90)
+        c.caption(cx, 28, title)
+        for a, b in ties:
+            c.edge(pts[a], pts[b], ra=17, rb=17, width=2.4, color=BLUE)
+        for p_ in pts:
+            c.edge((cx, cy), p_, ra=21, rb=17, width=1.4, color="#b6bcc6")
+        for p_ in pts:
+            c.node(*p_, "", r=17, fill="#cfe5f3", stroke=BLUE, sw=2)
+        c.node(cx, cy, "ego", r=21, fill=ORANGE + "33", stroke=ORANGE, shape="square", sw=2.6, size=11)
+        c.text(cx, 312, f"effective size {es}", size=14, weight="700")
+        c.text(cx, 333, "one contact's worth of news" if es == 1 else "three separate worlds, three contacts' worth", size=12.5, fill=MUTED)
+    meta = dict(chapter=10,
+                caption="Effective size counts a person's contacts, minus the redundancy among them. Three contacts who all know each other add up to one contact's worth of access. Three who do not add up to three.",
+                alt="Two drawings of a person at the center with three contacts around them. On the left the three contacts are joined to one another by blue ties, a triangle, and the effective size is 1. On the right the three contacts have no ties among themselves and the effective size is 3.",
+                data={"redundant": 1, "open": 3})
+    return c, meta
+
+
+def effective_size_bars():
+    n = len(KITE_NAMES)
+    eff, con = _burt(KITE_EDGES, n)
+    c = Canvas(900, 455, "Who spans structural holes in the friendship network",
+               "Two bar charts for the ten people: effective size on the left and constraint on the right, with Hana highlighted.")
+    for panel, (title, vals, top, fmt) in enumerate([("Effective size (higher: more non-redundant contacts)", eff, 3.6, "{:.2f}"),
+                                                     ("Constraint (lower: more freedom)", con, 1.1, "{:.2f}")]):
+        x0 = 100 + panel * 440
+        c.text(x0 + 140, 30, title, size=13.5, weight="700")
+        for i in range(n):
+            y = 60 + i * 34
+            w = 250 * vals[i] / top
+            hana = KITE_NAMES[i] == "Hana"
+            col = ORANGE if hana else BLUE
+            c.text(x0 - 8, y + 16, KITE_NAMES[i], size=12.5, anchor="end", weight="700" if hana else "400")
+            c.rect(x0, y + 3, w, 22, fill=col + "55", stroke=col, sw=1.6)
+            c.text(x0 + w + 8, y + 19, fmt.format(vals[i]), size=12.5, anchor="start")
+    c.text(450, 437, "Jo has one contact, so effective size is 1 and constraint is 1, the most any person can have.", size=12.5, fill=MUTED)
+    meta = dict(chapter=10,
+                caption="Effective size and constraint for the friendship network. Dev has the largest effective size, but Hana has the lowest constraint: she is the only person whose contacts live in different parts of the network.",
+                alt="Two horizontal bar charts with the same ten names. Effective size: Dev 3.33, Fay and Gus 3.00, Hana 2.33, Ana and Ben 2.00, Ivo 2.00, Cleo, Eli and Jo 1.00. Constraint: Hana is lowest at 0.43, then Fay and Gus at 0.45, Dev 0.47, Ivo 0.50, Ana and Ben 0.54, Cleo and Eli 0.66, Jo 1.00. Hana's bars are highlighted in orange.",
+                data={"names": KITE_NAMES, "effective_size": [round(x, 3) for x in eff], "constraint": [round(x, 3) for x in con]})
+    return c, meta
+
+
+def brokerage_roles():
+    c = Canvas(900, 280, "The five brokerage roles",
+               "Five small drawings of a person in the middle of a chain of two arrows, with shape and color showing the groups of the three people.")
+    A_, B_, C_ = ((BLUE, "circle"), (ORANGE, "square"), (PURPLE, "diamond"))
+    roles = [("coordinator", "links two members of the same group", (A_, A_, A_)),
+             ("itinerant", "an outsider linking two members of one group", (A_, B_, A_)),
+             ("representative", "passes ties from own group outward", (A_, A_, B_)),
+             ("gatekeeper", "controls entry into own group", (A_, B_, B_)),
+             ("liaison", "links three different groups", (A_, B_, C_))]
+    for k, (name, gloss, (gi, gj, gk)) in enumerate(roles):
+        x0 = 20 + k * 175
+        pts = [(x0 + 25, 120), (x0 + 87, 120), (x0 + 149, 120)]
+        c.edge(pts[0], pts[1], ra=17, rb=17, directed=True, width=2.2, color="#7b8494")
+        c.edge(pts[1], pts[2], ra=17, rb=17, directed=True, width=2.2, color="#7b8494")
+        for (col, shape), p_, lab in zip((gi, gj, gk), pts, "ijk"):
+            c.node(*p_, lab, r=14, fill="#ffffff", stroke=col, shape=shape, sw=3 if lab == "j" else 2, size=12)
+        c.text(x0 + 87, 60, name, size=14, weight="700")
+        words = gloss.split()
+        half = len(words) // 2 + (len(words) % 2)
+        c.text(x0 + 87, 180, " ".join(words[:half]), size=11.5, fill=MUTED)
+        c.text(x0 + 87, 196, " ".join(words[half:]), size=11.5, fill=MUTED)
+    c.text(450, 255, "In every drawing j brokers: i goes to j, j goes to k, and i does not go to k directly.", size=13, fill=MUTED)
+    meta = dict(chapter=10,
+                caption="Gould and Fernandez's five brokerage roles. The same chain of two arrows, i to j to k, is a different role depending on which groups the three people belong to. Person j is the broker.",
+                alt="Five panels, each showing three people i, j and k in a row joined by two arrows. Coordinator: all three are blue circles. Itinerant: i and k are blue circles and j is an orange square. Representative: i and j are blue circles and k is an orange square. Gatekeeper: i is a blue circle, j and k are orange squares. Liaison: i is a blue circle, j an orange square and k a purple diamond.",
+                data={"roles": [r[0] for r in roles]})
+    return c, meta
+
+
+EI_GROUP = [0] * 5 + [1] * 5
+
+
+def ei_index():
+    n = len(KITE_NAMES)
+    nb = _nbrs(KITE_EDGES, n)
+    c = Canvas(900, 430, "Inside ties and outside ties",
+               "For each person in the friendship network, a bar split into ties to their own group and ties to the other group, with their E-I index at the right.")
+    c.text(120, 30, "Each person's ties", size=13.5, weight="700", anchor="start")
+    c.node(600, 26, "", r=7, fill=BLUE + "55", stroke=BLUE)
+    c.text(614, 31, "same group (I)", size=12, anchor="start")
+    c.node(730, 26, "", r=7, fill=ORANGE + "55", stroke=ORANGE)
+    c.text(744, 31, "other group (E)", size=12, anchor="start")
+    for i in range(n):
+        y = 56 + i * 34
+        ext = sum(1 for j in nb[i] if EI_GROUP[j] != EI_GROUP[i])
+        inn = len(nb[i]) - ext
+        c.node(30, y + 14, "", r=8, fill="#e5e7eb", stroke=INK, shape="circle" if EI_GROUP[i] == 0 else "square", sw=1.8)
+        c.text(50, y + 19, KITE_NAMES[i], size=12.5, anchor="start")
+        x = 130
+        for cnt, col in ((inn, BLUE), (ext, ORANGE)):
+            for _ in range(cnt):
+                c.rect(x, y + 3, 44, 22, fill=col + "55", stroke=col, sw=1.6)
+                x += 46
+        ei = (ext - inn) / (ext + inn)
+        c.text(640, y + 19, f"E-I {ei:+.2f}", size=12.5, anchor="start", weight="600", fill=ORANGE if ei > 0 else INK)
+    c.text(450, 412, "Circles are the first five people, squares the other five. Each block is one tie.", size=12.5, fill=MUTED)
+    meta = dict(chapter=10,
+                caption="The E-I index for each person is (external ties minus internal ties) divided by all their ties. It runs from -1 (all ties inside the group) to +1 (all ties outside it). Here the groups are the first five people and the other five.",
+                alt="Ten horizontal bars, one per person, each made of blocks: blue blocks for ties to their own group and orange blocks for ties to the other group. Fay and Gus have three orange blocks and two blue, giving E-I of plus 0.20. Hana, Ivo and Jo have only blue blocks, giving minus 1.00. Ana and Ben have one orange block and three blue, giving minus 0.50.",
+                data={"names": KITE_NAMES, "group": EI_GROUP})
+    return c, meta
+
+
 FIGURES = {
     "two-teams": two_teams, "habit": habit, "dyad-triad": dyad_triad,
     "balance-triads": balance_triads, "two-camps": two_camps, "weak-ties": weak_ties,
@@ -1164,6 +1488,10 @@ FIGURES = {
     "walks-paths": walks_paths, "distance-matrix": distance_matrix, "density-dice": density_dice,
     "clustering-idea": clustering_idea, "components": components_fig, "cores": cores_fig,
     "triad-types": triad_types,
+    "office-network": office_network, "equivalence-kinds": equivalence_kinds,
+    "blockmodel-matrix": blockmodel_matrix, "core-periphery": core_periphery,
+    "ego-networks": ego_networks, "holes-idea": holes_idea, "effective-size-bars": effective_size_bars,
+    "brokerage-roles": brokerage_roles, "ei-index": ei_index,
     "karate-communities": karate_communities, "modularity-bars": modularity_bars,
     "resolution-sweep": resolution_sweep, "group-ladder": group_ladder,
 }
