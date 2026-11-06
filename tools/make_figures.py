@@ -1634,6 +1634,99 @@ def ergm_gof():
     return c, meta
 
 
+LATENT_XY = [(3.64, -0.52), (2.17, -2.49), (0.56, -0.52), (3.12, -1.05), (6.03, 2.38), (8.35, 0.88), (8.35, 0.88), (3.14, -0.92), (-1.7, -1.0), (-1.93, -4.84), (6.03, 2.38), (3.52, 5.07), (6.02, -2.08), (1.35, -0.74), (-5.5, -0.3), (-5.18, -4.7), (10.32, 0.7), (3.04, -5.46), (-5.02, -2.45), (0.69, -3.99), (-8.27, -0.18), (5.43, -4.44), (-7.76, -2.82), (-4.33, 2.85), (-1.78, 5.63), (-2.13, 5.79), (-7.68, 3.52), (-3.06, 2.96), (-0.14, 2.19), (-6.17, 2.6), (-2.19, -1.52), (-0.74, 3.08), (-4.41, -0.58), (-3.78, -0.31)]
+HUB_BLOCK = [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0]
+
+
+def latent_map():
+    c = Canvas(900, 560, "Where the model puts each member of the karate club",
+               "A two-dimensional map of the 34 members, with ties drawn as light lines and the two sides marked by shape and color.")
+    sx = 40
+    px = lambda x: 450 + sx * (x - 1.0)  # noqa: E731
+    py = lambda y: 290 - sx * (y - 0.2)  # noqa: E731
+    for a, b in KARATE_EDGES:
+        c.add(f'<line x1="{px(LATENT_XY[a][0]):.1f}" y1="{py(LATENT_XY[a][1]):.1f}" x2="{px(LATENT_XY[b][0]):.1f}" y2="{py(LATENT_XY[b][1]):.1f}" stroke="#cbd5e1" stroke-width="1.2"/>')
+    for i, (x, y) in enumerate(LATENT_XY):
+        col, shape = (BLUE, "circle") if KARATE_SIDES[i] == 0 else (ORANGE, "square")
+        c.node(px(x), py(y), "", r=9, fill=col + "55", stroke=col, shape=shape, sw=2)
+    for i, name, dx, dy in ((0, "Mr. Hi", 16, -14), (33, "the officer", -16, 30)):
+        x, y = LATENT_XY[i]
+        c.text(px(x) + dx, py(y) + dy, name, size=13, weight="700", anchor="start" if dx > 0 else "end")
+    c.node(300, 532, "", r=7, fill=BLUE + "55", stroke=BLUE)
+    c.text(316, 536, "Mr. Hi's side", size=12.5, anchor="start")
+    c.node(470, 532, "", r=7, fill=ORANGE + "55", stroke=ORANGE, shape="square")
+    c.text(486, 536, "the officer's side", size=12.5, anchor="start")
+    c.text(450, 24, "Closer means more likely to be friends", size=13, fill=MUTED)
+    meta = dict(chapter=13,
+                caption="A two-dimensional latent space fitted to the karate club. Nearby members are more likely to be friends. Members 4 and 10, and 5 and 6, land on exactly the same spot, so each pair shows as one marker. The axes have no meaning, and the map could be rotated or flipped.",
+                alt="A scatter of 34 markers joined by light grey lines for the 78 friendships. Blue circles for Mr. Hi's side sit mostly in the right and upper right, with Mr. Hi near the middle. Orange squares for the officer's side sit mostly on the left, with the officer toward the left center. A few members of each side are mixed in near the center.",
+                data={"positions": [{"member": i, "x": p[0], "y": p[1], "side": KARATE_SIDES[i]} for i, p in enumerate(LATENT_XY)]})
+    return c, meta
+
+
+def sbm_matrix():
+    n = 34
+    arcs = set()
+    for a, b in KARATE_EDGES:
+        arcs.add((a, b)); arcs.add((b, a))
+    hubs = [i for i in range(n) if HUB_BLOCK[i] == 0]
+    rest = [i for i in range(n) if HUB_BLOCK[i] == 1]
+    order_model = hubs + rest
+    order_sides = [i for i in range(n) if KARATE_SIDES[i] == 0] + [i for i in range(n) if KARATE_SIDES[i] == 1]
+    c = Canvas(900, 520, "The same network, ordered by the club's sides and by the model's blocks",
+               "Two adjacency matrices of the karate club, one with members grouped by the side they took and one grouped by the blocks the model found.")
+    cell = 11.5
+    for panel, (title, order, cuts, x0) in enumerate([
+            ("Ordered by the club's sides", order_sides, [17], 40),
+            ("Ordered by the model's blocks", order_model, [5], 480)]):
+        y0 = 70
+        c.text(x0 + n * cell / 2, 38, title, size=14, weight="700")
+        for r, i in enumerate(order):
+            for k, j in enumerate(order):
+                tie = (i, j) in arcs
+                c.rect(x0 + k * cell, y0 + r * cell, cell, cell, fill=BLUE if tie else "#ffffff", stroke="#eef0f3", sw=0.5)
+        c.rect(x0, y0, n * cell, n * cell, fill="none", stroke="#9ca3af", sw=1)
+        for b in cuts:
+            c.add(f'<line x1="{x0 + b * cell}" y1="{y0}" x2="{x0 + b * cell}" y2="{y0 + n * cell}" stroke="{INK}" stroke-width="2"/>')
+            c.add(f'<line x1="{x0}" y1="{y0 + b * cell}" x2="{x0 + n * cell}" y2="{y0 + b * cell}" stroke="{INK}" stroke-width="2"/>')
+    c.text(235, 500, "Two even camps, with ties inside each", size=12.5, fill=MUTED)
+    c.text(675, 500, "Five busy members, then everyone else", size=12.5, fill=MUTED)
+    meta = dict(chapter=13,
+                caption="The karate club's adjacency matrix, with members ordered two ways. Each blue cell is a friendship. Left: grouped by the side each member took, which gives two blocks of similar density. Right: grouped by the five most connected members (0, 1, 2, 32 and 33) and everyone else, the grouping the block model prefers.",
+                alt="Two 34 by 34 grids of cells, blue where two members are friends. The left grid is split into two equal halves by heavy lines, with blue cells concentrated in the two diagonal blocks and few in the off-diagonal blocks. The right grid is split after the first five rows and columns. Its small top-left block and its top and left strips are dense, and the large lower-right block is sparse.",
+                data={"order_sides": order_sides, "order_model": order_model})
+    return c, meta
+
+
+DL_ROWS = [("One group", 231.125, 3.526, 0.0), ("The club's two sides", 204.344, 28.594, 8.058), ("Hubs and the rest (found)", 187.712, 19.559, 8.058)]
+
+
+def dl_bars():
+    c = Canvas(900, 310, "What each grouping costs to describe",
+               "A stacked bar for each of three groupings of the karate club showing the description length split into the network given the groups, the groups themselves, and the block-to-block ties.")
+    x0, scale = 270, 2.1
+    parts = [("network given the groups", BLUE), ("the groups", ORANGE), ("block-to-block ties", PURPLE)]
+    for k, row in enumerate(DL_ROWS):
+        y = 85 + k * 58
+        c.text(x0 - 14, y + 5, row[0], size=14, anchor="end")
+        x = x0
+        for v, (_, col) in zip(row[1:], parts):
+            w = v * scale
+            if w > 0:
+                c.rect(x, y - 16, w, 32, fill=col + "55", stroke=col, sw=1.5)
+            x += w
+        c.text(x + 10, y + 5, f"{sum(row[1:]):.1f}", size=14, weight="700", anchor="start")
+    for k, (name, col) in enumerate(parts):
+        c.rect(x0 + k * 215, 262, 16, 16, fill=col + "55", stroke=col, sw=1.5)
+        c.text(x0 + k * 215 + 24, 275, name, size=12.5, anchor="start")
+    c.text(x0, 50, "total description length in nats; shorter is better", size=12.5, anchor="start", fill=MUTED)
+    meta = dict(chapter=13,
+                caption="The description length of three groupings of the karate club, split into its parts. Splitting into the club's two sides makes the network cheaper to describe but costs more to describe the groups and their ties, so the total gets worse. The hubs-and-the-rest grouping wins.",
+                alt="Three horizontal stacked bars. One group: 231.1 for the network given the groups, 3.5 for the groups, total 234.7. The club's two sides: 204.3, 28.6 and 8.1, total 241.0. Hubs and the rest: 187.7, 19.6 and 8.1, total 215.3.",
+                data={"rows": [{"grouping": r[0], "adjacency": r[1], "partition": r[2], "edges": r[3], "total": round(sum(r[1:]), 3)} for r in DL_ROWS]})
+    return c, meta
+
+
 FIGURES = {
     "two-teams": two_teams, "habit": habit, "dyad-triad": dyad_triad,
     "balance-triads": balance_triads, "two-camps": two_camps, "weak-ties": weak_ties,
@@ -1651,6 +1744,7 @@ FIGURES = {
     "ego-networks": ego_networks, "holes-idea": holes_idea, "effective-size-bars": effective_size_bars,
     "brokerage-roles": brokerage_roles, "ei-index": ei_index, "qap-null": qap_null,
     "ergm-terms": ergm_terms, "ergm-gof": ergm_gof,
+    "latent-map": latent_map, "sbm-matrix": sbm_matrix, "dl-bars": dl_bars,
     "karate-communities": karate_communities, "modularity-bars": modularity_bars,
     "resolution-sweep": resolution_sweep, "group-ladder": group_ladder,
 }
