@@ -50,7 +50,10 @@ def strip_description(text: str) -> str:
         if re.match(r"(Directed|Undirected) network: ", line):
             skipping = True
             continue
-        if skipping and (line.startswith("  ") or not line.strip()):
+        if skipping and not line.strip():
+            skipping = False  # a blank line ends the description; the next lines are real output
+            continue
+        if skipping and line.startswith("  "):
             continue
         skipping = False
         out.append(line)
