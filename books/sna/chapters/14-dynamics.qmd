@@ -52,9 +52,7 @@ g <- net_temporal(contacts, nodes = data.frame(id = people), directed = FALSE)
 
 # For every person, how many others can a message reach if it only moves forward in time?
 reach <- net_temporal_reach(g)
-for (i in seq_along(people)) {
-  cat(sprintf("%-5s can reach %d of the 5 others\n", people[i], reach[i]))
-}
+writeLines(sprintf("%-5s can reach %d of the 5 others", people, reach))
 ```
 
 ## Python
@@ -128,14 +126,13 @@ Reaching someone isn't the same as reaching them quickly. The **earliest arrival
 ```r
 # The earliest moment a message from Ana, and from Dev, can arrive at everyone else.
 arrival <- net_temporal_distances(g, from = c("Ana", "Dev"))
-for (who in c("Ana", "Dev")) {
-  cat(sprintf("from %s:", who))
-  for (name in setdiff(people, who)) {
-    t <- arrival[who, name]
-    cat(if (is.finite(t)) sprintf("  %s at t=%g", name, t) else sprintf("  %s never", name))
-  }
-  cat("\n")
+describe_arrivals <- function(who) {
+  others <- setdiff(people, who)
+  t <- arrival[who, others]
+  when <- ifelse(is.finite(t), sprintf("%s at t=%g", others, t), paste(others, "never"))
+  paste0("from ", who, ":  ", paste(when, collapse = "  "))
 }
+writeLines(vapply(c("Ana", "Dev"), describe_arrivals, character(1)))
 ```
 
 ## Python
@@ -349,12 +346,11 @@ ministep_probabilities <- function(x, actor, beta) {
 
 # Cy (position 3) gets a chance to change. What are Cy's options, and how likely is each?
 chances <- ministep_probabilities(start, 3, beta)
-for (j in seq_along(chances)) {
-  what <- if (j == 3) "change nothing"
-          else if (start[3, j] == 1) paste("drop the tie to", office_names[j])
-          else paste("start asking", office_names[j])
-  cat(sprintf("%-22s %.3f\n", what, chances[j]))
-}
+what <- ifelse(
+  seq_along(chances) == 3, "change nothing",
+  ifelse(start[3, ] == 1, paste("drop the tie to", office_names), paste("start asking", office_names))
+)
+writeLines(sprintf("%-22s %.3f", what, chances))
 cat(sprintf("total %.3f\n", sum(chances)))
 ```
 
@@ -465,23 +461,32 @@ cat(sprintf("start: %d ties, %d mutual pairs\n", sum(start), sum(start * t(start
 # averages below differ from Rust's in the last digit or two.
 # CHECK: stop
 set.seed(1)
-simulate_period <- function(x0, beta, rate = 3) {
-  x <- x0
-  time <- rexp(1, 10 * rate)
-  while (time < 1) {
-    actor <- sample.int(10, 1)
-    j <- sample.int(10, 1, prob = ministep_probabilities(x, actor, beta))
-    if (j != actor) x[actor, j] <- 1 - x[actor, j]
-    time <- time + rexp(1, 10 * rate)
+# Each change opportunity arrives after an exponential wait; the recursion stops once the period is over.
+run_until_one <- function(x, beta, rate, time) {
+  if (time >= 1) {
+    return(x)
   }
+  actor <- sample.int(10, 1)
+  j <- sample.int(10, 1, prob = ministep_probabilities(x, actor, beta))
+  if (j != actor) x[actor, j] <- 1 - x[actor, j]
+  run_until_one(x, beta, rate, time + rexp(1, 10 * rate))
+}
+
+simulate_period <- function(x0, beta, rate = 3) {
+  x <- run_until_one(x0, beta, rate, rexp(1, 10 * rate))
   c(sum(x), sum(x * t(x)) / 2, sum(x != x0))
 }
 
-for (reciprocity in c(0, 1.5)) {
-  sims <- replicate(2000, simulate_period(start, c(-2, reciprocity)))
-  avg <- rowMeans(sims)
-  cat(sprintf("reciprocity %g: %.2f ties, %.2f mutual pairs, %.2f ties changed\n", reciprocity, avg[1], avg[2], avg[3]))
-}
+reciprocities <- c(0, 1.5)
+averages <- vapply(
+  reciprocities,
+  \(r) rowMeans(replicate(2000, simulate_period(start, c(-2, r)))),
+  numeric(3)
+)
+writeLines(sprintf(
+  "reciprocity %g: %.2f ties, %.2f mutual pairs, %.2f ties changed",
+  reciprocities, averages[1, ], averages[2, ], averages[3, ]
+))
 ```
 
 ## Python
@@ -588,30 +593,29 @@ receiver <- c(
 # for every ordered pair in the risk set. relevent::rem.dyad() fits this model too; here the
 # partial likelihood is a few lines, so we write it out.
 pairs <- which(row(diag(8)) != col(diag(8)), arr.ind = TRUE)
-past <- matrix(0, 8, 8)
-design <- array(0, c(80, nrow(pairs), 2))
-chosen <- integer(80)
-for (k in 1:80) {
-  design[k, , 1] <- past[pairs]
-  design[k, , 2] <- past[pairs[, 2:1]]
-  chosen[k] <- which(pairs[, 1] == sender[k] & pairs[, 2] == receiver[k])
-  past[sender[k], receiver[k]] <- past[sender[k], receiver[k]] + 1
+n_events <- length(sender)
+
+# Matrix of message counts before event k: entry (s, r) counts earlier messages s -> r.
+past_before <- function(k) {
+  earlier <- seq_len(k - 1)
+  matrix(tabulate(sender[earlier] + 8 * (receiver[earlier] - 1), nbins = 64), 8, 8)
 }
+inertia <- t(vapply(seq_len(n_events), \(k) past_before(k)[pairs], numeric(nrow(pairs))))
+reply <- t(vapply(seq_len(n_events), \(k) past_before(k)[pairs[, 2:1]], numeric(nrow(pairs))))
+chosen <- match(paste(sender, receiver), paste(pairs[, 1], pairs[, 2]))
 
 loglik <- function(b) {
-  score <- design[, , 1] * b[1] + design[, , 2] * b[2]
+  score <- inertia * b[1] + reply * b[2]
   top <- apply(score, 1, max)
-  sum(score[cbind(1:80, chosen)] - top - log(rowSums(exp(score - top))))
+  sum(score[cbind(seq_len(n_events), chosen)] - top - log(rowSums(exp(score - top))))
 }
 
 model_fit <- optim(c(0, 0), function(b) -loglik(b), method = "BFGS", hessian = TRUE,
                    control = list(reltol = 1e-12))
 se <- sqrt(diag(solve(model_fit$hessian)))
 labels <- c("repeating a pair", "replying to a pair")
-for (k in 1:2) {
-  coef <- model_fit$par[k]
-  cat(sprintf("%-20s coefficient %+.3f (se %.3f), rate multiplier %.2f\n", labels[k], coef, se[k], exp(coef)))
-}
+coefs <- model_fit$par
+writeLines(sprintf("%-20s coefficient %+.3f (se %.3f), rate multiplier %.2f", labels, coefs, se, exp(coefs)))
 cat(sprintf("log-likelihood %.1f, against %.1f with no effects\n", -model_fit$value, loglik(c(0, 0))))
 ```
 
