@@ -42,13 +42,34 @@ Three summaries come straight out of that table, and you'll see them in almost e
 ## R
 
 ```r
-# TODO(code, R): build the friendship network from the two lists, then compute its mean distance and diameter.
+library(knappnet)
+
+# The ten-person friendship network from the last chapter, people numbered from zero.
+# One position in each list is one tie.
+from <- c(0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 4, 5, 5, 6, 7, 8)
+to   <- c(1, 2, 3, 5, 3, 4, 6, 3, 5, 4, 5, 6, 6, 6, 7, 7, 8, 9)
+edges <- data.frame(source = from, target = to)
+friends <- net_frame(edges, nodes = data.frame(id = 0:9), directed = FALSE)
+
+cat(sprintf("mean distance  %.3f\n", net_mean_distance(friends)))
+cat(sprintf("diameter       %d\n", as.integer(net_diameter(friends))))
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): build the friendship network from the two lists, then compute its mean distance and diameter.
+import networkx as nx
+
+# The ten-person friendship network from the last chapter, people numbered from zero.
+# One position in each list is one tie.
+src = [0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 4, 5, 5, 6, 7, 8]
+dst = [1, 2, 3, 5, 3, 4, 6, 3, 5, 4, 5, 6, 6, 6, 7, 7, 8, 9]
+friends = nx.Graph()
+friends.add_nodes_from(range(10))
+friends.add_edges_from(zip(src, dst))
+
+print(f"mean distance  {nx.average_shortest_path_length(friends):.3f}")
+print(f"diameter       {nx.diameter(friends)}")
 ```
 
 ## Rust
@@ -113,13 +134,25 @@ Components matter for a practical reason: many measures break, or quietly change
 ## R
 
 ```r
-# TODO(code, R): add Kai and Lou, who only know each other, then count the weak components and their sizes.
+# Two more people, Kai (10) and Lou (11), who only know each other.
+everyone <- net_frame(
+  data.frame(source = c(from, 10), target = c(to, 11)),
+  nodes = data.frame(id = 0:11), directed = FALSE
+)
+parts <- net_components(everyone, mode = "weak")
+sizes <- sort(parts$csize, decreasing = TRUE)
+cat(sprintf("components  %d with sizes [%s]\n", parts$no, paste(sizes, collapse = ", ")))
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): add Kai and Lou, who only know each other, then count the weak components and their sizes.
+# Two more people, Kai (10) and Lou (11), who only know each other.
+everyone = nx.Graph()
+everyone.add_nodes_from(range(12))
+everyone.add_edges_from(zip(src + [10], dst + [11]))
+sizes = sorted((len(c) for c in nx.connected_components(everyone)), reverse=True)
+print(f"components  {len(sizes)} with sizes {sizes}")
 ```
 
 ## Rust
@@ -178,13 +211,13 @@ Density is the first thing people reach for and the first thing people over-read
 ## R
 
 ```r
-# TODO(code, R): compute the density of the friendship network.
+cat(sprintf("density  %.3f\n", net_density(friends)))
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): compute the density of the friendship network.
+print(f"density  {nx.density(friends):.3f}")
 ```
 
 ## Rust
@@ -217,13 +250,22 @@ Two more whole-network measures look at the smallest structures inside the netwo
 ## R
 
 ```r
-# TODO(code, R): build the directed advice network from the Getting started chapter and compute its reciprocity.
+# The directed advice network from "Getting started": five people, seven ties.
+advice <- net_frame(
+  data.frame(source = c(0, 0, 1, 2, 3, 3, 4), target = c(1, 2, 2, 0, 0, 2, 2)),
+  nodes = data.frame(id = 0:4), directed = TRUE
+)
+cat(sprintf("reciprocity  %.3f\n", net_reciprocity(advice)))
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): build the directed advice network from the Getting started chapter and compute its reciprocity.
+# The directed advice network from "Getting started": five people, seven ties.
+advice = nx.DiGraph()
+advice.add_nodes_from(range(5))
+advice.add_edges_from(zip([0, 0, 1, 2, 3, 3, 4], [1, 2, 2, 0, 0, 2, 2]))
+print(f"reciprocity  {nx.reciprocity(advice):.3f}")
 ```
 
 ## Rust
@@ -267,13 +309,13 @@ Two of the seven ties are returned (Ana and Chloe, both ways), which is 2 out of
 ## R
 
 ```r
-# TODO(code, R): compute the transitivity of the friendship network.
+cat(sprintf("transitivity  %.3f\n", net_transitivity(friends)))
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): compute the transitivity of the friendship network.
+print(f"transitivity  {nx.transitivity(friends):.3f}")
 ```
 
 ## Rust
@@ -317,13 +359,21 @@ Many theories of hierarchy predict that a network will contain many transitive t
 ## R
 
 ```r
-# TODO(code, R): compute the triad census of the directed advice network and print the count for every one of the 16 types.
+# One count per triad type, in the order of the figure.
+census <- net_triad_census(advice)
+for (name in names(census)) {
+  cat(sprintf("%-5s %d\n", name, as.integer(census[[name]])))
+}
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): compute the triad census of the directed advice network and print the count for every one of the 16 types.
+# One count per triad type, in the order of the figure.
+census = nx.triadic_census(advice)
+for name in ["003", "012", "102", "021D", "021U", "021C", "111D", "111U",
+             "030T", "030C", "201", "120D", "120U", "120C", "210", "300"]:
+    print(f"{name:<5} {census[name]}")
 ```
 
 ## Rust
@@ -380,13 +430,15 @@ In the friendship network, seven people form the 3-core, Hana has core number 2,
 ## R
 
 ```r
-# TODO(code, R): compute the core number of everyone in the friendship network.
+core <- net_coreness(friends)
+cat(sprintf("coreness  [%s]\n", paste(core, collapse = ", ")))
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): compute the core number of everyone in the friendship network.
+core = nx.core_number(friends)
+print("coreness ", [core[i] for i in range(10)])
 ```
 
 ## Rust

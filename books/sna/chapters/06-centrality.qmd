@@ -53,13 +53,36 @@ Counting ties treats a close friend and a nodding acquaintance as the same. If y
 ## R
 
 ```r
-# TODO(code, R): build the ten-person friendship network and print each person's degree.
+library(knappnet)
+
+# People are rows of the node table; one row of the edge table is one tie.
+names <- c("Ana", "Ben", "Cleo", "Dev", "Eli", "Fay", "Gus", "Hana", "Ivo", "Jo")
+edges <- data.frame(
+  source = names[c(1, 1, 1, 1, 2, 2, 2, 3, 3, 4, 4, 4, 5, 6, 6, 7, 8, 9)],
+  target = names[c(2, 3, 4, 6, 4, 5, 7, 4, 6, 5, 6, 7, 7, 7, 8, 8, 9, 10)]
+)
+g <- net_frame(edges, nodes = data.frame(id = names), directed = FALSE)
+
+degree <- net_degree(g)
+for (i in seq_along(names)) {
+  cat(sprintf("%-5s %d\n", names[i], degree[i]))
+}
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): build the ten-person friendship network and print each person's degree.
+import networkx as nx
+
+names = ["Ana", "Ben", "Cleo", "Dev", "Eli", "Fay", "Gus", "Hana", "Ivo", "Jo"]
+ties = [(0, 1), (0, 2), (0, 3), (0, 5), (1, 3), (1, 4), (1, 6), (2, 3), (2, 5),
+        (3, 4), (3, 5), (3, 6), (4, 6), (5, 6), (5, 7), (6, 7), (7, 8), (8, 9)]
+g = nx.Graph()
+g.add_nodes_from(names)
+g.add_edges_from((names[a], names[b]) for a, b in ties)
+
+for name in names:
+    print(f"{name:<5} {g.degree(name)}")
 ```
 
 ## Rust
@@ -135,13 +158,19 @@ There's a catch. If the network has pieces that aren't connected, the distance t
 ## R
 
 ```r
-# TODO(code, R): compute normalized closeness for everyone in the friendship network.
+close <- net_closeness(g, normalized = TRUE)
+for (i in seq_along(names)) {
+  cat(sprintf("%-5s %.3f\n", names[i], close[i]))
+}
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): compute normalized closeness for everyone in the friendship network.
+# On a connected network this is (n - 1) divided by the sum of distances.
+close = nx.closeness_centrality(g)
+for name in names:
+    print(f"{name:<5} {close[name]:.3f}")
 ```
 
 ## Rust
@@ -216,13 +245,19 @@ Two practical notes. First, the straightforward way to compute betweenness is sl
 ## R
 
 ```r
-# TODO(code, R): compute betweenness for everyone in the friendship network.
+between <- net_betweenness(g)
+for (i in seq_along(names)) {
+  cat(sprintf("%-5s %.1f\n", names[i], between[i]))
+}
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): compute betweenness for everyone in the friendship network.
+# normalized=False gives the plain count of routes, each pair counted once.
+between = nx.betweenness_centrality(g, normalized=False)
+for name in names:
+    print(f"{name:<5} {between[name]:.1f}")
 ```
 
 ## Rust
@@ -296,13 +331,22 @@ Several close relatives are worth knowing by name.
 ## R
 
 ```r
-# TODO(code, R): compute eigenvector centrality for everyone in the friendship network.
+# Scaled so the largest score is 1 (the default).
+eigen <- net_eigen(g)
+for (i in seq_along(names)) {
+  cat(sprintf("%-5s %.3f\n", names[i], eigen[i]))
+}
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): compute eigenvector centrality for everyone in the friendship network.
+# NetworkX scales the scores to unit length; divide by the largest to put the
+# top score at 1.
+eigen = nx.eigenvector_centrality_numpy(g)
+top = max(eigen.values())
+for name in names:
+    print(f"{name:<5} {eigen[name] / top:.3f}")
 ```
 
 ## Rust
@@ -387,13 +431,50 @@ The data are small: 15 families and 20 marriages. A tie between two families mea
 ## R
 
 ```r
-# TODO(code, R): build the Florentine marriage network and compare each family's number of marriages, closeness and betweenness.
+# Florentine families around 1430: a tie means two families were joined by marriage.
+rows <- read.csv("data/florentine/edges.csv")
+florence <- net_frame(rows, directed = FALSE)
+families <- florence$nodes$id
+
+degree <- net_degree(florence)
+close <- net_closeness(florence, normalized = TRUE)
+between <- net_betweenness(florence)
+
+# The four families with the most routes running through them.
+top <- order(-between)[1:4]
+cat(sprintf("%d families, %d marriages\n", length(families), nrow(rows)))
+cat(sprintf("%-11s %6s %9s %12s\n", "family", "ties", "closeness", "betweenness"))
+for (i in top) {
+  cat(sprintf("%-11s %6d %9.3f %12.1f\n", families[i], degree[i], close[i], between[i]))
+}
+routes <- (length(families) - 1) * (length(families) - 2) / 2
+cat(sprintf("pairs of other families: %d; the top family sits on %.0f%% of their shortest routes\n",
+            routes, 100 * between[top[1]] / routes))
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): build the Florentine marriage network and compare each family's number of marriages, closeness and betweenness.
+import csv
+
+# Florentine families around 1430: a tie means two families were joined by marriage.
+with open("data/florentine/edges.csv") as f:
+    rows = [tuple(r) for r in list(csv.reader(f))[1:]]
+florence = nx.Graph(rows)
+
+degree = dict(florence.degree())
+close = nx.closeness_centrality(florence)
+between = nx.betweenness_centrality(florence, normalized=False)
+
+# The four families with the most routes running through them.
+top = sorted(florence.nodes, key=lambda v: -between[v])[:4]
+n = florence.number_of_nodes()
+print(f"{n} families, {len(rows)} marriages")
+print(f"{'family':<11} {'ties':>6} {'closeness':>9} {'betweenness':>12}")
+for v in top:
+    print(f"{v:<11} {degree[v]:>6} {close[v]:>9.3f} {between[v]:>12.1f}")
+routes = (n - 1) * (n - 2) // 2
+print(f"pairs of other families: {routes}; the top family sits on {100 * between[top[0]] / routes:.0f}% of their shortest routes")
 ```
 
 ## Rust
@@ -475,13 +556,61 @@ The same 21 managers carry three different networks (@fig-krackhardt-layers). Th
 ## R
 
 ```r
-# TODO(code, R): load the three relations among Krackhardt's managers and find the managers named most often in each.
+# Krackhardt's 21 managers: three relations among the same people, numbered 1 to 21.
+kr <- read.csv("data/krackhardt/edges.csv")
+managers <- data.frame(id = as.character(1:21))
+build <- function(relation) {
+  e <- kr[kr$relation == relation, ]
+  net_frame(data.frame(source = as.character(e$from), target = as.character(e$to)),
+            nodes = managers, directed = TRUE)
+}
+advice <- build("advice")
+friendship <- build("friendship")
+reports_to <- build("reports_to")
+cat(sprintf("advice ties %d, friendship ties %d, reporting ties %d\n",
+            nrow(advice$edges), nrow(friendship$edges), nrow(reports_to$edges)))
+
+# Prestige: how many people name each manager. The top three for each relation.
+labels <- c("sought out for advice", "named as a friend", "has direct reports")
+graphs <- list(advice, friendship, reports_to)
+for (k in 1:3) {
+  received <- net_degree(graphs[[k]], mode = "in")
+  top <- order(-received)[1:3]
+  cat(sprintf("%-22s %s\n", labels[k],
+              paste(sprintf("manager %d (%d)", top, received[top]), collapse = ", ")))
+}
+advice_in <- net_degree(advice, mode = "in")
+rank <- sum(advice_in > advice_in[7]) + 1
+cat(sprintf("the CEO, manager 7, is sought out by %d people, rank %d of 21\n", advice_in[7], rank))
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): load the three relations among Krackhardt's managers and find the managers named most often in each.
+# Krackhardt's 21 managers: three relations among the same people, numbered 1 to 21.
+with open("data/krackhardt/edges.csv") as f:
+    kr = list(csv.DictReader(f))
+
+def build(relation):
+    g = nx.DiGraph()
+    g.add_nodes_from(range(1, 22))
+    g.add_edges_from((int(r["from"]), int(r["to"])) for r in kr if r["relation"] == relation)
+    return g
+
+advice = build("advice")
+friendship = build("friendship")
+reports_to = build("reports_to")
+print(f"advice ties {advice.number_of_edges()}, friendship ties {friendship.number_of_edges()}, "
+      f"reporting ties {reports_to.number_of_edges()}")
+
+# Prestige: how many people name each manager. The top three for each relation.
+for label, graph in [("sought out for advice", advice), ("named as a friend", friendship),
+                     ("has direct reports", reports_to)]:
+    top = sorted(graph.nodes, key=lambda v: (-graph.in_degree(v), v))[:3]
+    print(f"{label:<22} " + ", ".join(f"manager {v} ({graph.in_degree(v)})" for v in top))
+advice_in = dict(advice.in_degree())
+rank = sum(d > advice_in[7] for d in advice_in.values()) + 1
+print(f"the CEO, manager 7, is sought out by {advice_in[7]} people, rank {rank} of 21")
 ```
 
 ## Rust
@@ -554,13 +683,22 @@ Here's a good example of why we write down our choices. The default setting in t
 ## R
 
 ```r
-# TODO(code, R): compute degree centralization twice: once with the default convention and once with self-loops left out of the maximum.
+default <- net_centralization(g, "degree")
+freeman <- net_centralization(g, "degree", loops = FALSE)
+cat(sprintf("default convention   %.3f\n", default))
+cat(sprintf("loops left out       %.3f\n", freeman))
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): compute degree centralization twice: once with the default convention and once with self-loops left out of the maximum.
+# NetworkX has no centralization index, so compute it from the definition:
+# the summed gap to the top score, divided by the largest sum possible.
+n = g.number_of_nodes()
+degrees = [d for _, d in g.degree()]
+gap = sum(max(degrees) - d for d in degrees)
+print(f"default convention   {gap / (n * (n - 1)):.3f}")  # maximum allows for self-loops
+print(f"loops left out       {gap / ((n - 1) * (n - 2)):.3f}")  # Freeman's maximum (a star)
 ```
 
 ## Rust
