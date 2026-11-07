@@ -53,12 +53,11 @@ friends <- net_frame(edges, nodes = data.frame(id = names), directed = FALSE)
 
 # Alters are the people within one step of ego, the default.
 ego <- net_ego_summary(friends)
-cat(sprintf("%-5s %8s %5s %8s %7s %11s\n", "", "contacts", "ties", "density", "pieces", "betweenness"))
-for (i in seq_along(names)) {
-  cat(sprintf("%-5s %8d %5d %8.3f %7d %11.3f\n", names[i], as.integer(ego$size[i]),
-              as.integer(ego$ties[i]), ego$density[i], as.integer(ego$components[i]),
-              ego$ego_betweenness[i]))
-}
+header <- sprintf("%-5s %8s %5s %8s %7s %11s", "", "contacts", "ties", "density", "pieces", "betweenness")
+rows <- sprintf("%-5s %8d %5d %8.3f %7d %11.3f", names, as.integer(ego$size),
+                as.integer(ego$ties), ego$density, as.integer(ego$components),
+                ego$ego_betweenness)
+writeLines(c(header, rows))
 ```
 
 ## Python
@@ -164,10 +163,8 @@ Check it on the triangle: $n = 3$ and $t = 3$, so the effective size is $3 - 6/3
 ```r
 size <- net_effective_size(friends)
 efficiency <- net_efficiency(friends)
-cat(sprintf("%-5s %14s %10s\n", "", "effective size", "efficiency"))
-for (i in seq_along(names)) {
-  cat(sprintf("%-5s %14.3f %10.3f\n", names[i], size[i], efficiency[i]))
-}
+writeLines(c(sprintf("%-5s %14s %10s", "", "effective size", "efficiency"),
+             sprintf("%-5s %14.3f %10.3f", names, size, efficiency)))
 ```
 
 ## Python
@@ -227,9 +224,7 @@ In words: for each contact, add the direct share to the shares routed through yo
 
 ```r
 constraint <- net_constraint(friends)
-for (i in seq_along(names)) {
-  cat(sprintf("%-5s %.3f\n", names[i], constraint[i]))
-}
+writeLines(sprintf("%-5s %.3f", names, constraint))
 ```
 
 ## Python
@@ -307,11 +302,10 @@ work <- net_frame(work_edges, nodes = data.frame(id = team_names), directed = TR
 
 counts <- net_brokerage(work, groups = team)
 roles <- c("coordinator", "itinerant", "representative", "gatekeeper", "liaison", "total")
-cat(sprintf("%-4s %s\n", "", paste(sprintf("%5.5s", roles), collapse = " ")))
-for (i in seq_along(team_names)) {
-  cat(sprintf("%-4s %s\n", team_names[i],
-              paste(sprintf("%5d", as.integer(unlist(counts[i, roles]))), collapse = " ")))
-}
+role_matrix <- as.matrix(counts[roles])
+role_cells <- apply(role_matrix, 1, \(r) paste(sprintf("%5d", as.integer(r)), collapse = " "))
+writeLines(c(sprintf("%-4s %s", "", paste(sprintf("%5.5s", roles), collapse = " ")),
+             sprintf("%-4s %s", team_names, role_cells)))
 ```
 
 ## Python
@@ -429,14 +423,11 @@ For the friendship network, call the first five people (Ana through Eli) one gro
 ```r
 # Group 0 is the first five people, group 1 the other five.
 group <- c(0, 0, 0, 0, 0, 1, 1, 1, 1, 1)
-cat(sprintf("whole network  %+.3f\n", net_ei_index(friends, group, scope = "global")))
 by_group <- net_ei_index(friends, group, scope = "group")
-cat(sprintf("group 0        %+.3f\n", by_group[1]))
-cat(sprintf("group 1        %+.3f\n", by_group[2]))
 by_person <- net_ei_index(friends, group, scope = "node")
-for (i in seq_along(names)) {
-  cat(sprintf("%-5s          %+.3f\n", names[i], by_person[i]))
-}
+writeLines(c(sprintf("whole network  %+.3f", net_ei_index(friends, group, scope = "global")),
+             sprintf("group %d        %+.3f", seq_along(by_group) - 1L, by_group),
+             sprintf("%-5s          %+.3f", names, by_person)))
 ```
 
 ## Python

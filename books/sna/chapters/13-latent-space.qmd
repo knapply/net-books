@@ -150,12 +150,14 @@ fit_map <- function(dim) {
     dist <- sqrt(rowSums(diff^2) + 1e-12)
     resid <- tied - 1 / (1 + exp(dist - par[length(par)]))
     step <- -resid / dist * diff
-    grad <- matrix(0, 34, dim)
-    for (a in seq_len(nrow(pairs))) {
-      grad[pairs[a, 1], ] <- grad[pairs[a, 1], ] + step[a, ]
-      grad[pairs[a, 2], ] <- grad[pairs[a, 2], ] - step[a, ]
+    # Each pair pushes its first member along `step` and its second member the opposite way.
+    total_by <- function(rows) {
+      sums <- rowsum(step, rows)
+      out <- matrix(0, 34, dim)
+      out[as.integer(rownames(sums)), ] <- sums
+      out
     }
-    -c(grad, sum(resid))
+    -c(total_by(pairs[, 1]) - total_by(pairs[, 2]), sum(resid))
   }
   res <- optim(c(start, 0), negloglik, gradient, method = "BFGS",
                control = list(maxit = 5000, reltol = 1e-14))
@@ -344,10 +346,9 @@ Why two dimensions? Mostly because we can draw two. More dimensions always fit a
 
 ```r
 # CHECK: stop
-for (dim in 1:3) {
-  m <- fit_map(dim)
-  cat(sprintf("%d dimension(s): log-likelihood %8.2f, alpha %6.2f\n", dim, m$loglik, m$alpha))
-}
+fits <- lapply(1:3, fit_map)
+writeLines(sprintf("%d dimension(s): log-likelihood %8.2f, alpha %6.2f", 1:3,
+                   vapply(fits, \(m) m$loglik, numeric(1)), vapply(fits, \(m) m$alpha, numeric(1))))
 ```
 
 ## Python
@@ -424,18 +425,15 @@ description_length <- function(blocks, degree_corrected = FALSE) {
   between <- t(member) %*% A %*% member   # ties between groups, counted twice inside a group
   size <- colSums(member)
   stubs <- colSums(member * degree)
-  network <- 0
-  for (r in 1:k) {
-    for (s in r:k) {
-      count <- if (r == s) between[r, s] / 2 else between[r, s]
-      network <- network - ln_fact(count)
-      if (r == s) network <- network - count * log(2)
-    }
-  }
+  # One count per pair of groups (r <= s); a group's own ties were counted twice.
+  counts <- between
+  diag(counts) <- diag(between) / 2
+  counts <- counts[upper.tri(counts, diag = TRUE)]
+  network <- -sum(ln_fact(counts)) - sum(diag(between) / 2) * log(2)
   groups <- log(n) + ln_fact(n) - sum(ln_fact(size)) + ln_fact(n - 1) - ln_fact(k - 1) - ln_fact(n - k)
   if (degree_corrected) {
     network <- network + sum(ln_fact(stubs)) - sum(ln_fact(degree))
-    popularity <- sum(mapply(ln_multiset, size, stubs))
+    popularity <- sum(unlist(Map(ln_multiset, size, stubs)))
   } else {
     network <- network + sum(stubs * log(size))
     popularity <- 0
@@ -447,34 +445,19 @@ description_length <- function(blocks, degree_corrected = FALSE) {
 
 fit_blocks <- function(degree_corrected, restarts = 5, max_groups = 6) {
   # Greedy search: move one member at a time to the group that shortens the description most.
-  best <- NULL
-  best_len <- Inf
-  for (k in 1:max_groups) {
-    for (restart in 1:restarts) {
-      blocks <- sample((0:33) %% k)
-      current <- description_length(blocks, degree_corrected)[["total"]]
-      improved <- TRUE
-      while (improved) {
-        improved <- FALSE
-        for (v in sample(34)) {
-          for (g in 0:(k - 1)) {
-            trial <- blocks
-            trial[v] <- g
-            trial_len <- description_length(trial, degree_corrected)[["total"]]
-            if (trial_len < current - 1e-9) {
-              blocks <- trial
-              current <- trial_len
-              improved <- TRUE
-            }
-          }
-        }
-      }
-      if (current < best_len - 1e-9) {
-        best <- blocks
-        best_len <- current
-      }
-    }
+  length_of <- function(blocks) description_length(blocks, degree_corrected)[["total"]]
+  best_group <- function(blocks, v, k) {
+    lengths <- vapply(seq_len(k) - 1, \(g) length_of(replace(blocks, v, g)), numeric(1))
+    if (min(lengths) < length_of(blocks) - 1e-9) which.min(lengths) - 1 else blocks[v]
   }
+  sweep_once <- function(blocks, k) Reduce(\(b, v) replace(b, v, best_group(b, v, k)), sample(34), blocks)
+  settle <- function(blocks, k) {
+    moved <- sweep_once(blocks, k)
+    if (identical(moved, blocks)) blocks else settle(moved, k)
+  }
+  starts <- expand.grid(restart = seq_len(restarts), k = seq_len(max_groups))
+  candidates <- lapply(starts$k, \(k) settle(sample((0:33) %% k), k))
+  best <- candidates[[which.min(vapply(candidates, length_of, numeric(1)))]]
   # Name the groups in order of their first member.
   match(best, unique(best)) - 1
 }
@@ -482,10 +465,9 @@ fit_blocks <- function(degree_corrected, restarts = 5, max_groups = 6) {
 set.seed(1)
 found <- fit_blocks(FALSE)
 cat(sprintf("%d groups found\n", max(found) + 1))
-for (g in 0:max(found)) {
-  members <- which(found == g) - 1
-  cat(sprintf("group %d (%d members): [%s]\n", g, length(members), paste(members, collapse = ", ")))
-}
+groups <- split(seq_along(found) - 1, found)
+writeLines(sprintf("group %s (%d members): [%s]", names(groups), lengths(groups),
+                   vapply(groups, paste, character(1), collapse = ", ")))
 ```
 
 ## Python
@@ -597,10 +579,9 @@ On the left, the sides do divide the network: dense blocks along the diagonal an
 cat(sprintf("%-26s %8s %8s %8s %8s\n", "", "network", "groups", "ties", "total"))
 groupings <- list("one group" = rep(0, 34), "the club's two sides" = side,
                   "hubs and the rest (found)" = found)
-for (label in names(groupings)) {
-  d <- description_length(groupings[[label]])
-  cat(sprintf("%-26s %8.1f %8.1f %8.1f %8.1f\n", label, d[["network"]], d[["groups"]], d[["ties"]], d[["total"]]))
-}
+scores <- vapply(groupings, description_length, numeric(5))
+writeLines(sprintf("%-26s %8.1f %8.1f %8.1f %8.1f", names(groupings),
+                   scores["network", ], scores["groups", ], scores["ties", ], scores["total", ]))
 ```
 
 ## Python
@@ -654,13 +635,10 @@ Is the hubs-and-the-rest grouping a solid winner or a close call? One way to ask
 ```r
 # What would it cost to move one member into the other group? Positive means the description gets longer.
 base <- description_length(found)[["total"]]
-for (member in c(0, 2, 5, 9)) {
-  target <- 1 - found[member + 1]
-  moved <- found
-  moved[member + 1] <- target
-  cost <- description_length(moved)[["total"]] - base
-  cat(sprintf("move member %2d to group %d: %+.2f\n", member, target, cost))
-}
+movers <- c(0, 2, 5, 9)
+target <- 1 - found[movers + 1]
+cost <- vapply(seq_along(movers), \(i) description_length(replace(found, movers[i] + 1, target[i]))[["total"]] - base, numeric(1))
+writeLines(sprintf("move member %2d to group %d: %+.2f", movers, target, cost))
 ```
 
 ## Python
