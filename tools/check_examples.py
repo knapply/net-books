@@ -38,6 +38,7 @@ def run_program(engine: str, program: str) -> subprocess.CompletedProcess:
             f'[package]\nname = "ex"\nversion = "0.0.0"\nedition = "2021"\n'
             f'[dependencies]\nknappnet = {{ path = "{engine}" }}\n')
         (Path(tmp) / "src" / "main.rs").write_text(program)
+        (Path(tmp) / "data").symlink_to(ROOT / "books" / "sna" / "data")
         return subprocess.run(["cargo", "run", "-q", "--offline"], cwd=tmp, capture_output=True, text=True)
 
 
@@ -95,7 +96,7 @@ def main() -> int:
         return 0
     update = "--update" in sys.argv
     only = [a for a in sys.argv[1:] if not a.startswith("--")]
-    chapters = sorted((ROOT / "books").glob("*/chapters/*.qmd"))
+    chapters = sorted(list((ROOT / "books").glob("*/chapters/*.qmd")) + list((ROOT / "books").glob("*/appendices/*.qmd")))
     if only:
         chapters = [q for q in chapters if any(o in q.name for o in only)]
     return 1 if sum(check_chapter(engine, q, update) for q in chapters) else 0

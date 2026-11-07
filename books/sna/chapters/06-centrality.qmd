@@ -16,7 +16,7 @@ Put ten people in a group and ask who the most important one is. You'll get an a
 
 Network analysis turns each of those meanings into a number. The numbers are called **centrality** measures, and the first thing to learn about them is that there isn't one. There's a family, and the members disagree on purpose.
 
-@fig-four-centralities shows the point. It's one network of ten friends. This ten-person structure is modeled on the "kite" network that David Krackhardt used in his work on power in organizations [@krackhardt1990assessing]. In each panel, node size shows a different measure, and the largest node is highlighted.
+@fig-four-centralities shows the point. It's one network of ten friends. This ten-person structure is **Krackhardt's kite**, a small network that has been used since David Krackhardt's paper on power in organizations [@krackhardt1990assessing] to show how differently the measures can behave. We've renamed the people Ana to Jo; the original uses other names, but the ties are the same. If you take a course on network analysis, you will meet the kite again. In each panel, node size shows a different measure, and the largest node is highlighted.
 
 ![One network, four rankings. Each measure answers a different question, so each picks a different person as most central.](../figures/four-centralities.svg){#fig-four-centralities fig-alt="Four copies of the same ten-node network. In the degree and eigenvector panels the node Dev, near the middle of the left cluster, is the largest. In the closeness panel two nodes, Fay and Gus, are largest and equal. In the betweenness panel Hana, on the narrow link leading out to two more people, is largest."}
 
@@ -100,6 +100,15 @@ Jo    1
 
 Dev has six friends, the most. Jo has one, and Ivo two. This is what you would get by counting the lines at each name in the picture.
 
+### How to read degree
+
+Degree is a *count*, so it's easy to read, and it's worth being specific about what the count does and doesn't say.
+
+- **A high degree** means a person has many direct contacts. They hear more, can reach more people in one step, and are exposed to more of whatever flows (news, advice, infections). Dev, at 6, is tied to six of the other nine people.
+- **A low degree** means few direct contacts. That is not the same as being unimportant: Jo has a single friend, Ivo, and yet the one path out to the rest of the network runs through them both.
+- **To compare across networks**, divide by the largest degree possible, which is $n - 1$ (everyone else). Dev's *normalized* degree is $6 / 9 = 0.67$. A degree of 6 in a network of ten is a very different thing from a degree of 6 in a network of ten thousand.
+- **What degree can't see:** who the contacts are. Six friends who all know each other, and six friends who each lead to a different part of the network, have the same degree.
+
 ## Closeness: independence
 
 Closeness asks how near a person is to everyone else. Take the length of the shortest route from the person to each other person (we'll define these routes properly in @sec-paths-and-cohesion), add the lengths up, and flip it so that a smaller total gives a larger score. A common way to write this, for a network of $n$ people, is
@@ -157,6 +166,26 @@ Jo    0.310
 
 Fay and Gus are the closest to everyone, at 0.643. Hana, the bridge, is close to the whole network at 0.600 even though she has only three friends, and Jo, at the far end of the chain, is farthest at 0.310.
 
+### Closeness by hand: Jo
+
+Here's the whole calculation for Jo, so that no number in the table is a mystery. Count the steps from Jo to each of the other nine people along the shortest route.
+
+| From Jo to... | Route | Steps |
+| --- | --- | --- |
+| Ivo | straight there | 1 |
+| Hana | through Ivo | 2 |
+| Fay, Gus | through Ivo and Hana | 3 each |
+| Ana, Ben, Cleo, Dev, Eli | one step further, through Fay or Gus | 4 each |
+
+The steps add up to $1 + 2 + 3 + 3 + (5 \times 4) = 29$. With $n - 1 = 9$ other people, closeness is $9 / 29 = 0.310$, matching the table. Now do the same for Fay: she's one step from Ana, Cleo, Dev, Gus and Hana, two from Ben, Eli and Ivo, and three from Jo, so her total is $5 + 6 + 3 = 14$ and her closeness is $9 / 14 = 0.643$.
+
+### How to read closeness
+
+- **A high score** means a person can reach everyone in few steps, on average. Information that starts with them arrives quickly, and they don't need to rely on any one go-between. A score of 1 would mean one step from everyone.
+- **A low score** means a person is on the edge: it takes many steps to reach the rest. Jo is not "unconnected", just far out.
+- **Closeness is an average**, so it's smoothed over everyone. It can hide the fact that a person is very close to a few people and far from many.
+- **In big, well-mixed networks** the scores bunch together (everyone is a few steps from everyone), and small differences are not worth much. Closeness is most informative in small or stretched-out networks.
+
 ## Betweenness: control of routes
 
 Betweenness asks something different. For every pair of *other* people, how often does the shortest route between them pass through this person? If a person lies on many such routes, a lot of what flows through the network passes through them, and they can slow it down, speed it up or reshape it. This is Freeman's "control" [@freeman1977set].
@@ -212,6 +241,30 @@ Jo    0.0
 :::
 
 Hana scores 14, because every shortest route between the dense group and the three people past her runs through her. Ivo scores 8, and Jo, at the very end, scores 0.
+
+### Betweenness by hand
+
+The idea is easiest to see on the smallest interesting network: five people in a line, Ann, Bo, Cy, Di and Ed, with each person tied to the next. Take every pair of people and ask who stands in the middle of their shortest route.
+
+| Pair | Who is in between |
+| --- | --- |
+| Ann and Cy | Bo |
+| Ann and Di | Bo, Cy |
+| Ann and Ed | Bo, Cy, Di |
+| Bo and Di | Cy |
+| Bo and Ed | Cy, Di |
+| Cy and Ed | Di |
+
+(Neighbors, like Ann and Bo, have nobody between them.) Count the appearances: Bo is in between 3 times, Cy 4 times, Di 3 times, and Ann and Ed never. Those counts are the betweenness scores: 0, 3, 4, 3, 0. The person in the middle of the line, who has only two friends, scores highest, because the rest of the network can only get across through them.
+
+When two routes are equally short, they share the credit. If a ring had two equally short ways around, each person on the way would get half a point for that pair. That's where fractions like Ana's 0.8 come from.
+
+### How to read betweenness
+
+- **A high score** means a person sits on many of the shortest routes between other people. If something has to pass between two parts of the network, it passes through them. They *could* control, delay, filter or help it along. Hana, at 14, is the clearest case in the kite.
+- **A score of 0** means a person never sits between two others, usually because their contacts are already tied to each other, or because they are at the edge of the network.
+- **It is very uneven.** A handful of people tend to get high scores and everyone else near zero, so don't expect a smooth ranking.
+- **It assumes shortest routes.** If things in your network spread along all routes, or along random ones, betweenness is answering a slightly different question than the one you care about.
 
 ## Eigenvector centrality and its relatives: it matters who you know
 
@@ -269,6 +322,26 @@ Jo    0.023
 
 Dev is at the top, scaled to 1.000, because Dev is tied to many people who are themselves well connected. Hana drops to 0.407: she knows only three people, and one of them is Ivo. Compare that with her betweenness.
 
+### Eigenvector centrality by hand
+
+Four people: Ann, Bo and Cy are all friends with each other, and Di is friends only with Cy. Here is the circle made concrete. Start everyone at a score of 1. Then repeat two steps: give each person a new score equal to the *sum of their friends' scores*, then rescale so the highest score is 1.
+
+| | Ann | Bo | Cy | Di |
+| --- | --- | --- | --- | --- |
+| Start | 1 | 1 | 1 | 1 |
+| Round 1 | 0.67 | 0.67 | 1.00 | 0.33 |
+| Round 2 | 1.00 | 1.00 | 1.00 | 0.60 |
+| Where it settles | 0.85 | 0.85 | 1.00 | 0.46 |
+
+After round 1, each score is just the person's degree (Cy has 3 friends, Di has 1). In round 2, scores include who the friends are: Ann is friends with Bo and Cy, who both scored well, so Ann catches up with Cy. The scores keep adjusting a little each round and settle where Cy is on top, Ann and Bo a bit behind, and Di well behind. A computer does this in a blink for thousands of people. The settled numbers are what "eigenvector centrality" is.
+
+### How to read eigenvector centrality
+
+- **A high score** means a person is tied to many people who are themselves tied to many people. It rewards being in the thick of a well-connected neighborhood.
+- **A low score** doesn't mean few friends. It means friends who don't themselves have many. Ivo has two friends and a score of 0.100, because those friends are Hana and Jo.
+- **It is a relative measure.** Scores are rescaled so the top person is 1, and what matters is the ordering and the ratios.
+- **It concentrates.** In a network with one dense core and a long tail, nearly all the score piles up in the core. If you want to find well-placed people *outside* the biggest cluster, this measure won't help.
+
 ## A cheat sheet
 
 | Measure | Question it answers | What it assumes | Watch out for |
@@ -277,6 +350,154 @@ Dev is at the top, scaled to 1.000, because Dev is tied to many people who are t
 | Closeness | Who can reach everyone fastest? | Things travel along shortest routes | Disconnected networks; use harmonic |
 | Betweenness | Who sits on the routes between others? | Things travel along shortest routes, one route at a time | Ignores routes that aren't shortest |
 | Eigenvector and relatives | Who is tied to well-connected people? | Influence comes through contacts | Scores can concentrate on one dense area |
+
+## Classic data in action
+
+Everything so far used one small invented-looking network. Let's use two famous real ones, to see these measures earn their keep.
+
+### The Medici and the marriages of Florence
+
+In the early 1400s, Florence was run by a handful of wealthy families, and the Medici became the most powerful of them. Why them? They were not the richest, and not the most numerous. John Padgett and Christopher Ansell [@padgett1993robust] looked at the network of *marriages* among the leading families around 1430 and argued that the Medici's strength came from where they sat in it: they were the family that connected the others.
+
+The data are small: 15 families and 20 marriages. A tie between two families means a marriage joined them.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# TODO(code, R): build the Florentine marriage network and compare each family's number of marriages, closeness and betweenness.
+```
+
+## Python
+
+```python
+# TODO(code, Python): build the Florentine marriage network and compare each family's number of marriages, closeness and betweenness.
+```
+
+## Rust
+
+```rust
+// Florentine families around 1430: a tie means two families were joined by marriage.
+let text = std::fs::read_to_string("data/florentine/edges.csv")?;
+let rows: Vec<(&str, &str)> = text.lines().skip(1).map(|line| line.split_once(',').unwrap()).collect();
+let mut families: Vec<&str> = Vec::new();
+for &(a, b) in &rows {
+    for family in [a, b] {
+        if !families.contains(&family) { families.push(family); }
+    }
+}
+let position = |family: &str| families.iter().position(|f| *f == family).unwrap() as i64;
+let marry_from: Vec<i64> = rows.iter().map(|row| position(row.0)).collect();
+let marry_to: Vec<i64> = rows.iter().map(|row| position(row.1)).collect();
+let florence = Graph::from_edges(families.len(), &marry_from, &marry_to, None, false)?;
+
+let degree = compute_degree(&florence, DegreeMode::All, true);
+let close = compute_closeness(&florence, ClosenessOptions { normalized: true, ..Default::default() })?;
+let between = compute_betweenness(&florence, BetweennessOptions::default())?;
+
+// The four families with the most routes running through them.
+let mut order: Vec<usize> = (0..families.len()).collect();
+order.sort_by(|&a, &b| between[b].partial_cmp(&between[a]).unwrap());
+println!("{} families, {} marriages", families.len(), rows.len());
+println!("{:<11} {:>6} {:>9} {:>12}", "family", "ties", "closeness", "betweenness");
+for &i in &order[..4] {
+    println!("{:<11} {:>6} {:>9.3} {:>12.1}", families[i], degree[i], close[i], between[i]);
+}
+let routes = (families.len() - 1) * (families.len() - 2) / 2;
+println!("pairs of other families: {routes}; the top family sits on {:.0}% of their shortest routes", 100.0 * between[order[0]] / routes as f64);
+```
+
+:::
+
+::: {.code-output}
+```text
+15 families, 20 marriages
+family        ties closeness  betweenness
+Medici           6     0.560         47.5
+Guadagni         4     0.467         23.2
+Albizzi          3     0.483         19.3
+Salviati         2     0.389         13.0
+pairs of other families: 91; the top family sits on 52% of their shortest routes
+```
+:::
+
+The Medici have the most marriages (6, against 4 for the next families, Guadagni and Strozzi), the highest closeness (0.560), and an enormous betweenness: 47.5, more than twice the next family. Read the last line of the output slowly. Of the 91 pairs of *other* families, the Medici sit on the shortest route between more than half. If you wanted to get a message, a deal or a marriage proposal between two randomly chosen other families, you would most often go through them.
+
+That is Padgett and Ansell's point in one number. The Medici are well connected, but what set them apart is being the *bridge*: the families around them mostly did not marry each other directly, and the Medici did marry into both sides. Degree shows a lead; betweenness shows a different kind of lead, the kind that comes from being the one who joins separate groups. Four of the families, Acciaiuoli, Ginori, Lamberteschi and Pazzi, have a single marriage each, and their position is the opposite: everything they do goes through one partner.
+
+Two cautions. This is one relation (marriage) at one moment, and Padgett and Ansell's own argument draws on several relations and a lot of history. And a high betweenness describes a *position*; it doesn't prove the position caused the family's rise, though it is a good reason to take that story seriously.
+
+### Who do Krackhardt's managers turn to?
+
+David Krackhardt asked the 21 managers of a small manufacturing firm a few simple questions: who do you go to for advice, and who is your friend? He also had the company's chart of who reports to whom [@krackhardt1987cognitive]. That gives three networks on the same 21 people, one of the best-known teaching datasets in the field, and a good test of the difference between *activity* and *prestige*. In each network a tie points from the person who asks to the person who is asked.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# TODO(code, R): load the three relations among Krackhardt's managers and find the managers named most often in each.
+```
+
+## Python
+
+```python
+# TODO(code, Python): load the three relations among Krackhardt's managers and find the managers named most often in each.
+```
+
+## Rust
+
+```rust
+// Krackhardt's 21 managers: three relations among the same people. Managers are numbered 1 to 21; positions are 0 to 20.
+let text = std::fs::read_to_string("data/krackhardt/edges.csv")?;
+let build = |relation: &str| -> Result<Graph, knappnet::Error> {
+    let mut who = Vec::new();
+    let mut whom = Vec::new();
+    for line in text.lines().skip(1) {
+        let parts: Vec<&str> = line.split(',').collect();
+        if parts[2] == relation {
+            who.push(parts[0].parse::<i64>().unwrap() - 1);
+            whom.push(parts[1].parse::<i64>().unwrap() - 1);
+        }
+    }
+    Graph::from_edges(21, &who, &whom, None, true)
+};
+let advice = build("advice")?;
+let friendship = build("friendship")?;
+let reports_to = build("reports_to")?;
+println!("advice ties {}, friendship ties {}, reporting ties {}", advice.edge_count(), friendship.edge_count(), reports_to.edge_count());
+
+// Prestige: how many people name each manager. The top three for each relation.
+for (label, graph) in [("sought out for advice", &advice), ("named as a friend", &friendship), ("has direct reports", &reports_to)] {
+    let received = compute_degree(graph, DegreeMode::In, true);
+    let mut order: Vec<usize> = (0..21).collect();
+    order.sort_by(|&a, &b| received[b].partial_cmp(&received[a]).unwrap().then(a.cmp(&b)));
+    let top: Vec<String> = order[..3].iter().map(|&i| format!("manager {} ({})", i + 1, received[i])).collect();
+    println!("{label:<22} {}", top.join(", "));
+}
+let advice_in = compute_degree(&advice, DegreeMode::In, true);
+let rank = advice_in.iter().filter(|&&d| d > advice_in[6]).count() + 1;
+println!("the CEO, manager 7, is sought out by {} people, rank {} of 21", advice_in[6], rank);
+```
+
+:::
+
+::: {.code-output}
+```text
+advice ties 190, friendship ties 102, reporting ties 20
+sought out for advice  manager 2 (18), manager 18 (15), manager 21 (15)
+named as a friend      manager 2 (10), manager 1 (8), manager 12 (8)
+has direct reports     manager 14 (7), manager 7 (4), manager 21 (4)
+the CEO, manager 7, is sought out by 13 people, rank 4 of 21
+```
+:::
+
+Look first at the advice relation. Manager 2 is sought out by 18 of the 20 other managers, an extraordinary level of prestige, and the same manager is also the one named most often as a friend (10 people). The next two, managers 18 and 21, are sought out by 15 each. All of these are vice presidents: manager 2 is a vice president with 20 years at the firm, according to the node table that comes with the data.
+
+Now compare with the company chart. Manager 14 has the most direct reports (7). The CEO, manager 7, has four. And in the advice network, the CEO is sought out by 13 people, tied with manager 1 for fourth place. So the person at the top of the organization chart is respected, but isn't where most of the firm goes for advice. The formal structure and the informal one overlap without being the same, which is exactly the observation that made this dataset famous.
+
+Notice also what we did *not* do: we only counted people who named each manager (in-degree). We didn't ask who each manager chooses to ask, which is the out-degree, the activity side of the same network. Exercise 6 asks you to do that. The advice network used here is each manager's *own* report of whom they go to; Krackhardt's study also collected what managers believed about *other people's* ties, a subtler structure that this book doesn't use [@krackhardt1987cognitive].
 
 ## From people to networks: centralization
 
@@ -348,7 +569,9 @@ Centrality numbers are easy to compute and easy to over-read. A few habits keep 
 2. **By hand.** Draw a star of five people and a path of five people. Compute degree and betweenness for each person in both. Which network is more centralized, and under which measure?
 3. **Design.** You're studying how rumors spread through a school staff. Which of degree, closeness, betweenness or eigenvector would you choose, and what would you assume about how rumors move? What would change if the thing spreading were a formal announcement instead?
 4. **Coding.** Compute all four measures for the advice network from @sec-getting-started, treating it as directed. For degree, compute both in and out. Who leads on each? Does anyone lead on more than one?
-5. **Interpretation.** A consultant tells a manager, "Hana is the most important person in this team because she has the highest betweenness." Write two sentences that explain what the number does say, and two that explain what it doesn't.
+5. **Coding.** For the Florentine families, find who has the highest *eigenvector* centrality. Is it the Medici? Which other family comes second, and how does that ranking compare with the betweenness ranking?
+6. **Coding.** For Krackhardt's managers, compute *out*-degree (who asks the most people for advice) in the advice network. Who is most active as an asker? Is the most active asker also the most sought out?
+7. **Interpretation.** A consultant tells a manager, "Hana is the most important person in this team because she has the highest betweenness." Write two sentences that explain what the number does say, and two that explain what it doesn't.
 
 ## Summary
 
@@ -358,4 +581,4 @@ Centrality is a family of measures, each answering a different question about po
 
 ## Further reading
 
-For the three intuitions behind the classic measures, start with @freeman1978centrality, and for betweenness in particular, @freeman1977set. For the psychology of position in communication patterns, see @leavitt1951communication. For the argument that a centrality measure should match the process you care about, see @borgatti2005centrality, and for how sturdy scores are to imperfect data, @borgatti2006robustness. For the eigenvector family, see @bonacich1972factoring, @bonacich1987power, @katz1953new and @brin1998anatomy, and for weighted ties, @opsahl2010node. For the fast betweenness algorithm, see @brandes2001faster. For centrality in covert and illicit networks, see @everton2012disrupting and @cunningham2016understanding, together with @borgatti2006identifying. To practice in R, Phil Murphy's tutorials on centrality in statnet [@murphyrpubs546652], on local measures in igraph [@murphyrpubs313180] and on global measures [@murphyrpubs308024] walk through these measures step by step, and his igraph centrality page [@murphyrpubsigraphCentrality] is a handy reference.
+For the three intuitions behind the classic measures, start with @freeman1978centrality, and for betweenness in particular, @freeman1977set. For the psychology of position in communication patterns, see @leavitt1951communication. For the argument that a centrality measure should match the process you care about, see @borgatti2005centrality, and for how sturdy scores are to imperfect data, @borgatti2006robustness. For the eigenvector family, see @bonacich1972factoring, @bonacich1987power, @katz1953new and @brin1998anatomy, and for weighted ties, @opsahl2010node. For the fast betweenness algorithm, see @brandes2001faster. For the Florentine families, see @padgett1993robust, and for Krackhardt's managers, @krackhardt1987cognitive. For centrality in covert and illicit networks, see @everton2012disrupting and @cunningham2016understanding, together with @borgatti2006identifying. To practice in R, Phil Murphy's tutorials on centrality in statnet [@murphyrpubs546652], on local measures in igraph [@murphyrpubs313180] and on global measures [@murphyrpubs308024] walk through these measures step by step, and his igraph centrality page [@murphyrpubsigraphCentrality] is a handy reference.
