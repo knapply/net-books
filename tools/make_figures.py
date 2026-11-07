@@ -1917,6 +1917,13 @@ FIGURES = {
 }
 
 
+try:
+    from fig_classic import FIGURES as _CLASSIC
+    FIGURES.update(_CLASSIC)
+except ImportError:
+    pass
+
+
 def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     registry = []
