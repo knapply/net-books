@@ -129,23 +129,48 @@ Fitting means finding the positions and the baseline $\alpha$ that make the obse
 ## R
 
 ```r
-# latentnet is the standard R package for latent space models. It reads a network object,
-# which we build from the 0/1 adjacency matrix.
-library(latentnet)
-
+# latentnet::ergmm() fits this model too. We write the likelihood out instead, so every
+# piece is visible: classical scaling of the path distances, then a quasi-Newton climb.
 A <- matrix(0, 34, 34)
 A[cbind(edges$source, edges$target)] <- 1
 A <- A + t(A)
-karate <- network::network(A, directed = FALSE)
+pairs <- which(upper.tri(A), arr.ind = TRUE)
+tied <- A[pairs]
 
-# The likelihood has many hills, and latentnet's search climbs a different one than Rust's
-# does, so the numbers below differ in the first decimals. R and Python also differ.
+fit_map <- function(dim) {
+  start <- cmdscale(net_distances(club), k = dim)
+  negloglik <- function(par) {
+    z <- matrix(par[-length(par)], 34, dim)
+    eta <- par[length(par)] - sqrt(rowSums((z[pairs[, 1], , drop = FALSE] - z[pairs[, 2], , drop = FALSE])^2) + 1e-12)
+    -sum(tied * eta - pmax(eta, 0) - log1p(exp(-abs(eta))))
+  }
+  gradient <- function(par) {
+    z <- matrix(par[-length(par)], 34, dim)
+    diff <- z[pairs[, 1], , drop = FALSE] - z[pairs[, 2], , drop = FALSE]
+    dist <- sqrt(rowSums(diff^2) + 1e-12)
+    resid <- tied - 1 / (1 + exp(dist - par[length(par)]))
+    step <- -resid / dist * diff
+    grad <- matrix(0, 34, dim)
+    for (a in seq_len(nrow(pairs))) {
+      grad[pairs[a, 1], ] <- grad[pairs[a, 1], ] + step[a, ]
+      grad[pairs[a, 2], ] <- grad[pairs[a, 2], ] - step[a, ]
+    }
+    -c(grad, sum(resid))
+  }
+  res <- optim(c(start, 0), negloglik, gradient, method = "BFGS",
+               control = list(maxit = 5000, reltol = 1e-14))
+  list(positions = matrix(res$par[-length(res$par)], 34, dim), alpha = res$par[length(res$par)],
+       loglik = -res$value, steps = res$counts[["gradient"]], converged = res$convergence == 0)
+}
+
+# The likelihood has many hills, and R's search climbs a different one than Rust's
+# does, so the numbers below differ in the first decimals. Python differs too.
 # CHECK: stop
-set.seed(1)
-map <- ergmm(karate ~ euclidean(d = 2), tofit = "mle")
-positions <- map$mle$Z
-cat(sprintf("baseline log-odds (alpha): %.3f\n", map$mle$beta))
-cat(sprintf("log-likelihood: %.2f\n", map$mle$lpY))
+fit <- fit_map(2)
+positions <- fit$positions
+cat(sprintf("baseline log-odds (alpha): %.3f\n", fit$alpha))
+cat(sprintf("log-likelihood: %.2f\n", fit$loglik))
+cat(sprintf("search steps: %d, converged: %s\n", fit$steps, tolower(fit$converged)))
 cat(sprintf("Mr. Hi at (%.2f, %.2f), the officer at (%.2f, %.2f)\n",
             positions[1, 1], positions[1, 2], positions[34, 1], positions[34, 2]))
 ```
@@ -237,7 +262,7 @@ A map is a picture. To use it, turn it back into numbers: how likely is each pai
 # Distances come from the map, so they differ a little from Rust's.
 # CHECK: stop
 # Turn the map into tie probabilities: log-odds = alpha - distance.
-alpha <- map$mle$beta[1]
+alpha <- fit$alpha
 distance <- as.matrix(dist(positions))
 upper <- upper.tri(distance)
 p <- 1 / (1 + exp(distance[upper] - alpha))
@@ -320,8 +345,8 @@ Why two dimensions? Mostly because we can draw two. More dimensions always fit a
 ```r
 # CHECK: stop
 for (dim in 1:3) {
-  m <- ergmm(karate ~ euclidean(d = dim), tofit = "mle")
-  cat(sprintf("%d dimension(s): log-likelihood %8.2f, alpha %6.2f\n", dim, m$mle$lpY, m$mle$beta[1]))
+  m <- fit_map(dim)
+  cat(sprintf("%d dimension(s): log-likelihood %8.2f, alpha %6.2f\n", dim, m$loglik, m$alpha))
 }
 ```
 
