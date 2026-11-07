@@ -31,13 +31,33 @@ I drew the picture in rows because I already knew the answer, which is cheating 
 ## R
 
 ```r
-# TODO(code, R): build the office advice network from the two lists, as directed, and print how many people and ties it has.
+library(knappnet)
+
+# People are numbered from zero in Rust; here we use their names directly.
+names <- c("Ada", "Ben", "Cy", "Dee", "Eve", "Flo", "Gus", "Hal", "Ivy", "Jay")
+# One position in each list is one tie: from[i] goes to to[i] for advice.
+from <- c(0, 1, 2, 2, 3, 3, 4, 4, 5, 6, 7, 8, 9)
+to <- c(1, 0, 0, 1, 0, 1, 0, 1, 2, 2, 3, 4, 4)
+edges <- data.frame(source = names[from + 1], target = names[to + 1])
+office <- net_frame(edges, nodes = data.frame(id = names), directed = TRUE)
+cat(sprintf("%d people, %d ties\n", length(names), nrow(edges)))
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): build the office advice network from the two lists, as directed, and print how many people and ties it has.
+import networkx as nx
+import numpy as np
+
+# People are numbered from zero in Rust; here the ties are written as pairs of numbers
+# and the names stay in a list on the side.
+names = ["Ada", "Ben", "Cy", "Dee", "Eve", "Flo", "Gus", "Hal", "Ivy", "Jay"]
+src = [0, 1, 2, 2, 3, 3, 4, 4, 5, 6, 7, 8, 9]
+dst = [1, 0, 0, 1, 0, 1, 0, 1, 2, 2, 3, 4, 4]
+office = nx.DiGraph()
+office.add_nodes_from(range(len(names)))
+office.add_edges_from(zip(src, dst))
+print(f"{office.number_of_nodes()} people, {office.number_of_edges()} ties")
 ```
 
 ## Rust
@@ -90,13 +110,29 @@ where $a_{ik}$ is 1 if $i$ has a tie to $k$ and 0 if not. In words: go through e
 ## R
 
 ```r
-# TODO(code, R): compute the structural equivalence distances for the office network and print a few pairs.
+# net_struct_equiv() compares tie profiles by Euclidean distance by default.
+dist <- net_struct_equiv(office)
+pairs <- list(c(5, 6), c(8, 9), c(0, 1), c(5, 7), c(2, 3), c(2, 4))
+for (p in pairs) {
+  cat(sprintf("%-4s and %-4s %.3f\n", names[p[1] + 1], names[p[2] + 1], dist[p[1] + 1, p[2] + 1]))
+}
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): compute the structural equivalence distances for the office network and print a few pairs.
+# The adjacency matrix: a[i, k] is 1 when person i goes to person k.
+a = nx.to_numpy_array(office, nodelist=range(len(names)))
+
+def distance(i, j):
+    # Skip i and j themselves, so their ties to each other are not held against them.
+    keep = [k for k in range(len(names)) if k not in (i, j)]
+    out_diff = a[i, keep] - a[j, keep]
+    in_diff = a[keep, i] - a[keep, j]
+    return np.sqrt((out_diff ** 2).sum() + (in_diff ** 2).sum())
+
+for x, y in [(5, 6), (8, 9), (0, 1), (5, 7), (2, 3), (2, 4)]:
+    print(f"{names[x]:<4} and {names[y]:<4} {distance(x, y):.3f}")
 ```
 
 ## Rust
@@ -144,13 +180,37 @@ An algorithm for finding the regular equivalence classes is CATREGE [@borgatti19
 ## R
 
 ```r
-# TODO(code, R): find the regular equivalence classes of the office network.
+# net_regular_equiv() numbers the classes from 1; the book counts from 0.
+classes <- net_regular_equiv(office)
+for (k in sort(unique(classes))) {
+  members <- sprintf('"%s"', names[classes == k])
+  cat(sprintf("class %d  [%s]\n", k - 1, paste(members, collapse = ", ")))
+}
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): find the regular equivalence classes of the office network.
+# NetworkX has no regular equivalence, so here is the splitting rule in a few lines.
+# Start with everyone in one class. Describe each person by their own class and the
+# classes of the people they go to and who go to them. Split on that, and repeat.
+n = len(names)
+out_nbrs = [set(office.successors(i)) for i in range(n)]
+in_nbrs = [set(office.predecessors(i)) for i in range(n)]
+cls = [0] * n
+while True:
+    seen = {}
+    new = [seen.setdefault((cls[i],
+                            frozenset(cls[j] for j in out_nbrs[i]),
+                            frozenset(cls[j] for j in in_nbrs[i])), len(seen))
+           for i in range(n)]
+    if len(seen) == len(set(cls)):
+        break
+    cls = new
+
+for k in range(max(cls) + 1):
+    members = ", ".join(f'"{names[i]}"' for i in range(n) if cls[i] == k)
+    print(f"class {k}  [{members}]")
 ```
 
 ## Rust
@@ -196,13 +256,53 @@ Once you have positions, you can do something lovely: shrink the network. A **bl
 ## R
 
 ```r
-# TODO(code, R): build the blockmodel for the three positions (leaders, managers, staff) and print the block densities, the image and the fit.
+# Position of each person: 0 = leaders, 1 = managers, 2 = staff.
+positions <- c(0, 0, 1, 1, 1, 2, 2, 2, 2, 2)
+model <- net_blockmodel(office, membership = positions)
+show <- function(label, m) {
+  cat(label, " (rows ask, columns are asked)\n", sep = "")
+  for (r in seq_len(nrow(m))) {
+    cat("  ", paste(sprintf("%.2f", m[r, ]), collapse = "  "), "\n", sep = "")
+  }
+}
+cat(sprintf("whole-network density %.3f\n", model$overall_density))
+show("block densities", model$density)
+show("image", model$image)
+cat(sprintf("share of tie variation explained %.3f\n", model$r_squared))
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): build the blockmodel for the three positions (leaders, managers, staff) and print the block densities, the image and the fit.
+# Position of each person: 0 = leaders, 1 = managers, 2 = staff.
+positions = np.array([0, 0, 1, 1, 1, 2, 2, 2, 2, 2])
+k = positions.max() + 1
+density = np.zeros((k, k))
+for r in range(k):
+    for c in range(k):
+        rows, cols = np.where(positions == r)[0], np.where(positions == c)[0]
+        ties = a[np.ix_(rows, cols)].sum()
+        # Within a block, a person cannot tie to themselves.
+        pairs = len(rows) * len(cols) - (len(rows) if r == c else 0)
+        density[r, c] = ties / pairs
+n = len(names)
+overall = a.sum() / (n * (n - 1))
+image = (density >= overall).astype(float)
+
+# Share of variation in the ties explained by the block densities (squared correlation).
+off = ~np.eye(n, dtype=bool)
+fitted = density[positions[:, None], positions[None, :]]
+r_squared = np.corrcoef(a[off], fitted[off])[0, 1] ** 2
+
+def show(label, m):
+    print(f"{label} (rows ask, columns are asked)")
+    for row in m:
+        print("  " + "  ".join(f"{v:.2f}" for v in row))
+
+print(f"whole-network density {overall:.3f}")
+show("block densities", density)
+show("image", image)
+print(f"share of tie variation explained {r_squared:.3f}")
 ```
 
 ## Rust
@@ -261,13 +361,52 @@ Trying every split is out of reach for big networks (there are over a thousand f
 ## R
 
 ```r
-# TODO(code, R): fit the discrete core-periphery model to the friendship network from the centrality chapter and print the core and the fit.
+# The friendship network from the centrality chapter.
+friend_names <- c("Ana", "Ben", "Cleo", "Dev", "Eli", "Fay", "Gus", "Hana", "Ivo", "Jo")
+ffrom <- c(0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 4, 5, 5, 6, 7, 8)
+fto <- c(1, 2, 3, 5, 3, 4, 6, 3, 5, 4, 5, 6, 6, 6, 7, 7, 8, 9)
+friend_edges <- data.frame(source = friend_names[ffrom + 1], target = friend_names[fto + 1])
+friends <- net_frame(friend_edges, nodes = data.frame(id = friend_names), directed = FALSE)
+
+fitted <- net_core_periphery(friends, method = "discrete", seed = 1)
+core <- sprintf('"%s"', friend_names[fitted$core])
+cat(sprintf("core  [%s]\n", paste(core, collapse = ", ")))
+cat(sprintf("correlation with the ideal pattern  %.3f\n", fitted$correlation))
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): fit the discrete core-periphery model to the friendship network from the centrality chapter and print the core and the fit.
+# The friendship network from the centrality chapter.
+friend_names = ["Ana", "Ben", "Cleo", "Dev", "Eli", "Fay", "Gus", "Hana", "Ivo", "Jo"]
+ffrom = [0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 4, 5, 5, 6, 7, 8]
+fto = [1, 2, 3, 5, 3, 4, 6, 3, 5, 4, 5, 6, 6, 6, 7, 7, 8, 9]
+friends = nx.Graph()
+friends.add_nodes_from(range(len(friend_names)))
+friends.add_edges_from(zip(ffrom, fto))
+
+# NetworkX has no core-periphery model. With ten people there are only 1,022 splits,
+# so try them all and keep the one whose ideal pattern correlates best with the ties.
+# Core-to-periphery pairs are left out of the comparison.
+m = len(friend_names)
+adj = nx.to_numpy_array(friends, nodelist=range(m))
+iu, ju = np.triu_indices(m, 1)
+best_r, best_core = -2, None
+for mask in range(1, 2 ** m - 1):
+    core = np.array([(mask >> i) & 1 for i in range(m)], dtype=bool)
+    both = core[iu] & core[ju]
+    neither = ~core[iu] & ~core[ju]
+    use = both | neither
+    ideal, observed = both[use].astype(float), adj[iu, ju][use]
+    if ideal.std() == 0 or observed.std() == 0:
+        continue
+    r = np.corrcoef(ideal, observed)[0, 1]
+    if r > best_r + 1e-12:
+        best_r, best_core = r, core
+
+members = ", ".join(f'"{friend_names[i]}"' for i in range(m) if best_core[i])
+print(f"core  [{members}]")
+print(f"correlation with the ideal pattern  {best_r:.3f}")
 ```
 
 ## Rust

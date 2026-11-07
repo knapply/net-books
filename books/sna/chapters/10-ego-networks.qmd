@@ -41,13 +41,50 @@ Ego networks are also how most surveys see networks. You can't usually interview
 ## R
 
 ```r
-# TODO(code, R): build the friendship network from the two lists, then compute each person's ego network summary: contacts, ties among them, density, separate pieces and ego betweenness.
+library(knappnet)
+
+# The ten-person friendship network. People are numbered from zero in Rust; here the
+# ties are written as numbers and turned into names.
+names <- c("Ana", "Ben", "Cleo", "Dev", "Eli", "Fay", "Gus", "Hana", "Ivo", "Jo")
+from <- c(0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 4, 5, 5, 6, 7, 8)
+to <- c(1, 2, 3, 5, 3, 4, 6, 3, 5, 4, 5, 6, 6, 6, 7, 7, 8, 9)
+edges <- data.frame(source = names[from + 1], target = names[to + 1])
+friends <- net_frame(edges, nodes = data.frame(id = names), directed = FALSE)
+
+# Alters are the people within one step of ego, the default.
+ego <- net_ego_summary(friends)
+cat(sprintf("%-5s %8s %5s %8s %7s %11s\n", "", "contacts", "ties", "density", "pieces", "betweenness"))
+for (i in seq_along(names)) {
+  cat(sprintf("%-5s %8d %5d %8.3f %7d %11.3f\n", names[i], as.integer(ego$size[i]),
+              as.integer(ego$ties[i]), ego$density[i], as.integer(ego$components[i]),
+              ego$ego_betweenness[i]))
+}
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): build the friendship network from the two lists, then compute each person's ego network summary: contacts, ties among them, density, separate pieces and ego betweenness.
+import networkx as nx
+
+# The ten-person friendship network, people numbered from zero as in Rust.
+names = ["Ana", "Ben", "Cleo", "Dev", "Eli", "Fay", "Gus", "Hana", "Ivo", "Jo"]
+src = [0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 4, 5, 5, 6, 7, 8]
+dst = [1, 2, 3, 5, 3, 4, 6, 3, 5, 4, 5, 6, 6, 6, 7, 7, 8, 9]
+friends = nx.Graph()
+friends.add_nodes_from(range(len(names)))
+friends.add_edges_from(zip(src, dst))
+
+print(f"{'':<5} {'contacts':>8} {'ties':>5} {'density':>8} {'pieces':>7} {'betweenness':>11}")
+for i, name in enumerate(names):
+    ego = nx.ego_graph(friends, i)          # ego, its alters, and the ties among them
+    alters = friends.subgraph(n for n in ego if n != i)
+    size, ties = alters.number_of_nodes(), alters.number_of_edges()
+    density = ties / (size * (size - 1) / 2) if size > 1 else float("nan")
+    density_text = "NaN" if size < 2 else f"{density:.3f}"
+    pieces = nx.number_connected_components(alters)
+    # Ego betweenness is ordinary betweenness inside the ego network.
+    ego_between = nx.betweenness_centrality(ego, normalized=False)[i]
+    print(f"{name:<5} {size:>8} {ties:>5} {density_text:>8} {pieces:>7} {ego_between:>11.3f}")
 ```
 
 ## Rust
@@ -125,13 +162,21 @@ Check it on the triangle: $n = 3$ and $t = 3$, so the effective size is $3 - 6/3
 ## R
 
 ```r
-# TODO(code, R): compute effective size and efficiency for everyone in the friendship network.
+size <- net_effective_size(friends)
+efficiency <- net_efficiency(friends)
+cat(sprintf("%-5s %14s %10s\n", "", "effective size", "efficiency"))
+for (i in seq_along(names)) {
+  cat(sprintf("%-5s %14.3f %10.3f\n", names[i], size[i], efficiency[i]))
+}
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): compute effective size and efficiency for everyone in the friendship network.
+size = nx.effective_size(friends)
+print(f"{'':<5} {'effective size':>14} {'efficiency':>10}")
+for i, name in enumerate(names):
+    print(f"{name:<5} {size[i]:>14.3f} {size[i] / friends.degree(i):>10.3f}")
 ```
 
 ## Rust
@@ -181,13 +226,18 @@ In words: for each contact, add the direct share to the shares routed through yo
 ## R
 
 ```r
-# TODO(code, R): compute Burt's constraint for everyone in the friendship network.
+constraint <- net_constraint(friends)
+for (i in seq_along(names)) {
+  cat(sprintf("%-5s %.3f\n", names[i], constraint[i]))
+}
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): compute Burt's constraint for everyone in the friendship network.
+constraint = nx.constraint(friends)
+for i, name in enumerate(names):
+    print(f"{name:<5} {constraint[i]:.3f}")
 ```
 
 ## Rust
@@ -246,13 +296,64 @@ Here is a small example: nine people in three teams, Design, Build and Sales, an
 ## R
 
 ```r
-# TODO(code, R): build a directed network of who passes work to whom among three teams of three, and count each person's brokerage roles.
+# Design: Ada, Ben, Cy.  Build: Dee, Eve, Flo.  Sales: Gus, Hal, Ivy.
+team_names <- c("Ada", "Ben", "Cy", "Dee", "Eve", "Flo", "Gus", "Hal", "Ivy")
+team <- c(0, 0, 0, 1, 1, 1, 2, 2, 2)
+# An arrow means: passes work to.
+wfrom <- c(0, 1, 2, 3, 4, 5, 3, 3, 6, 7)
+wto <- c(1, 2, 3, 4, 5, 6, 0, 6, 7, 8)
+work_edges <- data.frame(source = team_names[wfrom + 1], target = team_names[wto + 1])
+work <- net_frame(work_edges, nodes = data.frame(id = team_names), directed = TRUE)
+
+counts <- net_brokerage(work, groups = team)
+roles <- c("coordinator", "itinerant", "representative", "gatekeeper", "liaison", "total")
+cat(sprintf("%-4s %s\n", "", paste(sprintf("%5.5s", roles), collapse = " ")))
+for (i in seq_along(team_names)) {
+  cat(sprintf("%-4s %s\n", team_names[i],
+              paste(sprintf("%5d", as.integer(unlist(counts[i, roles]))), collapse = " ")))
+}
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): build a directed network of who passes work to whom among three teams of three, and count each person's brokerage roles.
+# Design: Ada, Ben, Cy.  Build: Dee, Eve, Flo.  Sales: Gus, Hal, Ivy.
+team_names = ["Ada", "Ben", "Cy", "Dee", "Eve", "Flo", "Gus", "Hal", "Ivy"]
+team = [0, 0, 0, 1, 1, 1, 2, 2, 2]
+# An arrow means: passes work to.
+wsrc = [0, 1, 2, 3, 4, 5, 3, 3, 6, 7]
+wdst = [1, 2, 3, 4, 5, 6, 0, 6, 7, 8]
+work = nx.DiGraph()
+work.add_nodes_from(range(len(team_names)))
+work.add_edges_from(zip(wsrc, wdst))
+
+# NetworkX has no brokerage roles. Person j brokers (i, k) when i -> j -> k and
+# i does not go to k directly; the groups of the three people give the role.
+roles = ["coordinator", "itinerant", "representative", "gatekeeper", "liaison"]
+counts = {j: dict.fromkeys(roles, 0) for j in work}
+for j in work:
+    for i in work.predecessors(j):
+        for k in work.successors(j):
+            if i == k or work.has_edge(i, k):
+                continue
+            gi, gj, gk = team[i], team[j], team[k]
+            if gi == gj == gk:
+                role = "coordinator"
+            elif gi == gk:
+                role = "itinerant"
+            elif gi == gj:
+                role = "representative"
+            elif gj == gk:
+                role = "gatekeeper"
+            else:
+                role = "liaison"
+            counts[j][role] += 1
+
+heads = " ".join(f"{r[:5]:>5}" for r in roles + ["total"])
+print(f"{'':<4} {heads}")
+for j, name in enumerate(team_names):
+    row = [counts[j][r] for r in roles]
+    print(f"{name:<4} " + " ".join(f"{v:>5}" for v in row + [sum(row)]))
 ```
 
 ## Rust
@@ -326,13 +427,41 @@ For the friendship network, call the first five people (Ana through Eli) one gro
 ## R
 
 ```r
-# TODO(code, R): compute the E-I index for the friendship network as a whole, for each of the two groups, and for each person.
+# Group 0 is the first five people, group 1 the other five.
+group <- c(0, 0, 0, 0, 0, 1, 1, 1, 1, 1)
+cat(sprintf("whole network  %+.3f\n", net_ei_index(friends, group, scope = "global")))
+by_group <- net_ei_index(friends, group, scope = "group")
+cat(sprintf("group 0        %+.3f\n", by_group[1]))
+cat(sprintf("group 1        %+.3f\n", by_group[2]))
+by_person <- net_ei_index(friends, group, scope = "node")
+for (i in seq_along(names)) {
+  cat(sprintf("%-5s          %+.3f\n", names[i], by_person[i]))
+}
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): compute the E-I index for the friendship network as a whole, for each of the two groups, and for each person.
+# Group 0 is the first five people, group 1 the other five.
+group = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
+
+def ei(external, internal):
+    return (external - internal) / (external + internal)
+
+# Whole network: each tie counts once, as external or internal.
+ext = sum(group[u] != group[v] for u, v in friends.edges)
+print(f"whole network  {ei(ext, friends.number_of_edges() - ext):+.3f}")
+
+# A group: ties with one end in the group, split by where the other end is.
+for g in (0, 1):
+    inside = sum(group[u] == group[v] == g for u, v in friends.edges)
+    outside = sum(group[u] != group[v] and g in (group[u], group[v]) for u, v in friends.edges)
+    print(f"group {g}        {ei(outside, inside):+.3f}")
+
+# A person: their own ties, split the same way.
+for i, name in enumerate(names):
+    outside = sum(group[j] != group[i] for j in friends[i])
+    print(f"{name:<5}          {ei(outside, friends.degree(i) - outside):+.3f}")
 ```
 
 ## Rust

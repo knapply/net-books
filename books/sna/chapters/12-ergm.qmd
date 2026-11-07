@@ -50,13 +50,53 @@ The smoother version is **geometrically weighted edgewise shared partners**, or 
 ## R
 
 ```r
-# TODO(code, R): build Zachary's karate club (34 members, 78 friendships) and record the side each member took when the club split.
+library(network)
+
+# Zachary's karate club: 34 members, 78 friendships. R counts from 1, so we add 1
+# to the positions 0 to 33 that the Rust tab uses.
+from <- c(
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3,
+    4, 4, 5, 5, 5, 6, 8, 8, 8, 9, 13, 14, 14, 15, 15, 18, 18, 19, 20, 20, 22, 22, 23, 23, 23, 23, 23, 24, 24,
+    24, 25, 26, 26, 27, 28, 28, 29, 29, 30, 30, 31, 31, 32
+) + 1
+to <- c(
+    1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 17, 19, 21, 31, 2, 3, 7, 13, 17, 19, 21, 30, 3, 7, 8, 9, 13, 27, 28,
+    32, 7, 12, 13, 6, 10, 6, 10, 16, 16, 30, 32, 33, 33, 33, 32, 33, 32, 33, 32, 33, 33, 32, 33, 32, 33, 25, 27,
+    29, 32, 33, 25, 27, 31, 31, 29, 33, 33, 31, 33, 32, 33, 32, 33, 32, 33, 33
+) + 1
+# The side each member took (0 = Mr. Hi, 1 = the officer).
+side <- c(0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)
+club <- network(cbind(from, to), directed = FALSE, matrix.type = "edgelist")
+set.vertex.attribute(club, "side", side)
+cat(sprintf("%d people, %d ties, %d possible pairs\n",
+            network.size(club), network.edgecount(club), network.dyadcount(club)))
+cat(sprintf("%d on Mr. Hi's side, %d on the officer's\n", sum(side == 0), sum(side == 1)))
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): build Zachary's karate club (34 members, 78 friendships) and record the side each member took when the club split.
+import numpy as np
+
+# Zachary's karate club: 34 members, 78 friendships. Positions 0 to 33 are the members.
+src = [
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3,
+    4, 4, 5, 5, 5, 6, 8, 8, 8, 9, 13, 14, 14, 15, 15, 18, 18, 19, 20, 20, 22, 22, 23, 23, 23, 23, 23, 24, 24,
+    24, 25, 26, 26, 27, 28, 28, 29, 29, 30, 30, 31, 31, 32
+]
+dst = [
+    1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 17, 19, 21, 31, 2, 3, 7, 13, 17, 19, 21, 30, 3, 7, 8, 9, 13, 27, 28,
+    32, 7, 12, 13, 6, 10, 6, 10, 16, 16, 30, 32, 33, 33, 33, 32, 33, 32, 33, 32, 33, 33, 32, 33, 32, 33, 25, 27,
+    29, 32, 33, 25, 27, 31, 31, 29, 33, 33, 31, 33, 32, 33, 32, 33, 32, 33, 33
+]
+# The side each member took (0 = Mr. Hi, 1 = the officer).
+side = np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
+n = 34
+adj = np.zeros((n, n))
+adj[src, dst] = 1
+adj[dst, src] = 1
+print(f"{n} people, {int(adj.sum() / 2)} ties, {n * (n - 1) // 2} possible pairs")
+print(f"{(side == 0).sum()} on Mr. Hi's side, {(side == 1).sum()} on the officer's")
 ```
 
 ## Rust
@@ -122,13 +162,39 @@ The edges coefficient is the log-odds for opposite-side pairs, $-3.230$. The sam
 ## R
 
 ```r
-# TODO(code, R): fit the model with edges and same-side ties by maximum pseudo-likelihood and turn the coefficients back into the chance of a tie.
+library(ergm) # the standard R package for ERGMs (statnet)
+
+fit_plain <- ergm(club ~ edges + nodematch("side"), estimate = "MPLE")
+est <- summary(fit_plain)$coefficients
+labels <- c("edges", "same side")
+for (k in 1:2) {
+  cat(sprintf("%-10s %7.3f  (standard error %.3f)\n", labels[k], est[k, "Estimate"], est[k, "Std. Error"]))
+}
+# The logistic function turns log-odds back into a probability.
+cat(sprintf("chance of a tie, opposite sides  %.3f\n", plogis(est[1, "Estimate"])))
+cat(sprintf("chance of a tie, same side       %.3f\n", plogis(est[1, "Estimate"] + est[2, "Estimate"])))
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): fit the model with edges and same-side ties by maximum pseudo-likelihood and turn the coefficients back into the chance of a tie.
+# No mainstream Python package fits ERGMs, but this model is a logistic regression on the pairs.
+upper = np.triu_indices(n, 1)
+y = adj[upper]
+same = (side[upper[0]] == side[upper[1]]).astype(float)
+X = np.column_stack([np.ones(len(y)), same])
+coef = np.zeros(2)
+for _ in range(50):  # Newton's method
+    p = 1 / (1 + np.exp(-X @ coef))
+    info = X.T @ (X * (p * (1 - p))[:, None])
+    coef = coef + np.linalg.solve(info, X.T @ (y - p))
+p = 1 / (1 + np.exp(-X @ coef))
+std_err = np.sqrt(np.diag(np.linalg.inv(X.T @ (X * (p * (1 - p))[:, None]))))
+for label, c, se in zip(["edges", "same side"], coef, std_err):
+    print(f"{label:<10} {c:>7.3f}  (standard error {se:.3f})")
+chance = lambda log_odds: 1 / (1 + np.exp(-log_odds))
+print(f"chance of a tie, opposite sides  {chance(coef[0]):.3f}")
+print(f"chance of a tie, same side       {chance(coef[0] + coef[1]):.3f}")
 ```
 
 ## Rust
@@ -173,13 +239,25 @@ The reliable approach is **Monte Carlo maximum likelihood**, or MCMLE. It works 
 ## R
 
 ```r
-# TODO(code, R): add a shared-partner term and fit by Monte Carlo maximum likelihood.
+obs <- summary(club ~ edges + nodematch("side") + gwesp(0.5, fixed = TRUE)) # 0.5 is the decay
+cat(sprintf("observed statistics   [%s]\n", paste(sprintf("%.2f", obs), collapse = ", ")))
+
+# ergm runs its own Monte Carlo chains, so the estimates differ from Rust's in the last digits.
+# CHECK: stop
+fit <- ergm(club ~ edges + nodematch("side") + gwesp(0.5, fixed = TRUE),
+            control = control.ergm(seed = 1))
+est <- summary(fit)$coefficients
+labels <- c("edges", "same side", "shared partners")
+for (k in 1:3) {
+  cat(sprintf("%-16s %7.3f  (standard error %.3f)\n", labels[k], est[k, "Estimate"], est[k, "Std. Error"]))
+}
+cat(sprintf("converged %s after %d rounds\n", tolower(as.character(!isTRUE(fit$failure))), fit$iterations))
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): add a shared-partner term and fit by Monte Carlo maximum likelihood.
+# TODO(code, Python): no Python package fits ERGMs with a shared-partner term (Monte Carlo maximum likelihood needs a tie-toggling sampler with GWESP change statistics, well over 40 lines). Use the R or Rust tab; the knappnet Python backend does not wrap the ERGM fitter.
 ```
 
 ## Rust
@@ -228,13 +306,30 @@ We'll check three features we didn't include: the number of triangles, and the n
 ## R
 
 ```r
-# TODO(code, R): simulate 4,000 networks from each fitted model and compare their average triangles, two-stars and three-stars with the real karate club.
+# Count triangles and stars in 4,000 networks from each model (the first draws are discarded).
+monitor <- ~ triangle + kstar(2) + kstar(3)
+averages <- function(model) {
+  draws <- simulate(model, nsim = 4000, monitor = monitor, output = "stats",
+                    control = control.simulate.ergm(MCMC.burnin = 16384, MCMC.interval = 1024),
+                    seed = 1)
+  colMeans(draws)[c("edges", "triangle", "kstar2", "kstar3")]
+}
+actual <- summary(club ~ edges + triangle + kstar(2) + kstar(3))
+simple <- averages(fit_plain)
+closure <- averages(fit)
+# The simulations are random draws that differ from Rust's, so the averages differ a little.
+# CHECK: stop
+cat(sprintf("%-10s %8s %14s %14s\n", "", "real", "edges + side", "+ shared partners"))
+labels <- c("ties", "triangles", "two-stars", "three-stars")
+for (k in 1:4) {
+  cat(sprintf("%-10s %8.1f %14.1f %14.1f\n", labels[k], actual[k], simple[k], closure[k]))
+}
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): simulate 4,000 networks from each fitted model and compare their average triangles, two-stars and three-stars with the real karate club.
+# TODO(code, Python): needs an ERGM simulator (a Metropolis tie-toggling sampler from the fitted models, with GWESP change statistics), well over 40 lines, and no Python package provides one. Use the R or Rust tab.
 ```
 
 ## Rust

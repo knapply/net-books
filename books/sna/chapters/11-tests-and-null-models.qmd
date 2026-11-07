@@ -42,13 +42,43 @@ Our two matrices are the friendship ties and a "same floor" matrix: a 1 for each
 ## R
 
 ```r
-# TODO(code, R): build the friendship matrix and the same-floor matrix as 10 by 10 tables of 0s and 1s, and count the pairs.
+# The ten-person friendship network, as pairs of positions (R counts from 1).
+names <- c("Ana", "Ben", "Cleo", "Dev", "Eli", "Fay", "Gus", "Hana", "Ivo", "Jo")
+from <- c(0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 4, 5, 5, 6, 7, 8) + 1
+to <- c(1, 2, 3, 5, 3, 4, 6, 3, 5, 4, 5, 6, 6, 6, 7, 7, 8, 9) + 1
+# Floor of each person: the first five on floor 0, the rest on floor 1.
+floor_id <- c(0, 0, 0, 0, 0, 1, 1, 1, 1, 1)
+
+n <- length(names)
+friends <- matrix(0, n, n)
+friends[cbind(from, to)] <- 1
+friends <- pmax(friends, t(friends)) # friendship goes both ways
+same_floor <- outer(floor_id, floor_id, "==") * 1
+diag(same_floor) <- 0
+cat(sprintf("%d pairs of people\n", n * (n - 1) / 2))
+cat(sprintf("%d friend pairs, %d same-floor pairs\n", sum(friends) / 2, sum(same_floor) / 2))
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): build the friendship matrix and the same-floor matrix as 10 by 10 tables of 0s and 1s, and count the pairs.
+import numpy as np
+
+# The ten-person friendship network, as pairs of positions.
+names = ["Ana", "Ben", "Cleo", "Dev", "Eli", "Fay", "Gus", "Hana", "Ivo", "Jo"]
+src = [0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 4, 5, 5, 6, 7, 8]
+dst = [1, 2, 3, 5, 3, 4, 6, 3, 5, 4, 5, 6, 6, 6, 7, 7, 8, 9]
+# Floor of each person: the first five on floor 0, the rest on floor 1.
+floor = np.array([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
+
+n = len(names)
+friends = np.zeros((n, n))
+friends[src, dst] = 1
+friends[dst, src] = 1  # friendship goes both ways
+same_floor = (floor[:, None] == floor[None, :]).astype(float)
+np.fill_diagonal(same_floor, 0)
+print(f"{n * (n - 1) // 2} pairs of people")
+print(f"{friends.sum() / 2:g} friend pairs, {same_floor.sum() / 2:g} same-floor pairs")
 ```
 
 ## Rust
@@ -103,13 +133,35 @@ Because the network is undirected, we tell the test to read each pair once (grap
 ## R
 
 ```r
-# TODO(code, R): test the correlation between friendship and sharing a floor with QAP, using 10,000 random relabelings and a fixed seed.
+library(knappnet)
+
+# graph mode: undirected, so each pair is used once. Same Philox draws as Rust.
+test <- net_qap_cor(friends, same_floor, reps = 10000, seed = 1, mode = "graph")
+cat(sprintf("pairs used            %d\n", test$dyads))
+cat(sprintf("observed correlation  %.3f\n", test$statistic))
+cat(sprintf("share of relabelings at least that high  %.4f\n", test$p.value[["Pr(>=r)"]]))
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): test the correlation between friendship and sharing a floor with QAP, using 10,000 random relabelings and a fixed seed.
+# QAP by hand: relabel the people in one matrix, recompute the correlation.
+low = np.tril_indices(n, -1)  # each pair once (graph mode)
+
+def pair_cor(a, b):
+    return np.corrcoef(a[low], b[low])[0, 1]
+
+rng = np.random.default_rng(1)
+observed = pair_cor(friends, same_floor)
+draws = np.empty(10_000)
+for r in range(len(draws)):
+    p = rng.permutation(n)  # rows and columns move together
+    draws[r] = pair_cor(friends, same_floor[np.ix_(p, p)])
+print(f"pairs used            {len(low[0])}")
+print(f"observed correlation  {observed:.3f}")
+# Python draws different random relabelings than Rust, so the share differs a little.
+# CHECK: stop
+print(f"share of relabelings at least that high  {np.mean(draws >= observed - 1e-10):.4f}")
 ```
 
 ## Rust
@@ -151,13 +203,22 @@ The relabelings are worth looking at, not just summarizing. They show you what "
 ## R
 
 ```r
-# TODO(code, R): compare the spread of the QAP reference distribution with the spread an ordinary test would assume.
+draws <- test$dist
+naive <- 1 / sqrt(test$dyads - 1)
+cat(sprintf("average relabeled correlation  %+.3f\n", mean(draws)))
+cat(sprintf("spread (sd) with QAP           %.3f\n", sd(draws)))
+cat(sprintf("spread an ordinary test assumes %.3f\n", naive))
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): compare the spread of the QAP reference distribution with the spread an ordinary test would assume.
+naive = 1 / np.sqrt(len(low[0]) - 1)
+# The relabelings differ from Rust's, so these digits can differ in the last place.
+# CHECK: stop
+print(f"average relabeled correlation  {draws.mean():+.3f}")
+print(f"spread (sd) with QAP           {draws.std(ddof=1):.3f}")
+print(f"spread an ordinary test assumes {naive:.3f}")
 ```
 
 ## Rust
@@ -200,13 +261,62 @@ Our second predictor is an invented one: a book club that people in even positio
 ## R
 
 ```r
-# TODO(code, R): fit a regression of friendship on same floor and same book club, with permutation p-values from 5,000 relabelings.
+# Same book club: both in even positions or both in odd positions.
+same_club <- outer(seq_len(n) %% 2, seq_len(n) %% 2, "==") * 1
+diag(same_club) <- 0
+fit <- net_mrqap(friends, list(floor = same_floor, club = same_club),
+                 reps = 5000, seed = 1, mode = "graph")
+cat(sprintf("%-12s %11s %7s %8s\n", "", "coefficient", "t", "p (two-sided)"))
+labels <- c("intercept", "same floor", "same club")
+for (k in 1:3) {
+  cat(sprintf("%-12s %11.3f %7.2f %8.4f\n", labels[k], fit$coefficients[k], fit$t[k],
+              fit$p.value[k, "Pr(>=|b|)"]))
+}
+cat(sprintf("R-squared %.3f on %d pairs\n", fit$r.squared, fit$dyads))
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): fit a regression of friendship on same floor and same book club, with permutation p-values from 5,000 relabelings.
+# Same book club: both in even positions or both in odd positions.
+same_club = (np.arange(n)[:, None] % 2 == np.arange(n)[None, :] % 2).astype(float)
+np.fill_diagonal(same_club, 0)
+
+def ols(y, X):
+    beta = np.linalg.lstsq(X, y, rcond=None)[0]
+    resid = y - X @ beta
+    se = np.sqrt(np.diag(np.linalg.inv(X.T @ X)) * (resid @ resid) / (len(y) - X.shape[1]))
+    return beta, beta / se, resid
+
+def relabel(v, p):  # dyad list -> symmetric matrix -> relabel people -> dyad list
+    m = np.zeros((n, n))
+    m[low] = v
+    m = m + m.T
+    return m[np.ix_(p, p)][low]
+
+y = friends[low]
+X = np.column_stack([np.ones(len(y)), same_floor[low], same_club[low]])
+beta, t_obs, resid = ols(y, X)
+r2 = 1 - (resid @ resid) / ((y - y.mean()) @ (y - y.mean()))
+
+# Double semi-partialling: relabel what is left of each column after the others are removed.
+reps = 5000
+p_abs = np.zeros(X.shape[1])
+for k in range(X.shape[1]):
+    others = np.delete(X, k, axis=1)
+    rest = X[:, k] - others @ np.linalg.lstsq(others, X[:, k], rcond=None)[0]
+    hits = 0
+    for _ in range(reps):
+        Xp = X.copy()
+        Xp[:, k] = relabel(rest, rng.permutation(n))
+        hits += abs(ols(y, Xp)[1][k]) >= abs(t_obs[k]) - 1e-10
+    p_abs[k] = hits / reps
+# Different random relabelings than Rust, so the p-values differ in the last digits.
+# CHECK: stop
+print(f"{'':<12} {'coefficient':>11} {'t':>7} {'p (two-sided)':>8}")
+for k, label in enumerate(["intercept", "same floor", "same club"]):
+    print(f"{label:<12} {beta[k]:>11.3f} {t_obs[k]:>7.2f} {p_abs[k]:>8.4f}")
+print(f"R-squared {r2:.3f} on {len(y)} pairs")
 ```
 
 ## Rust
@@ -265,13 +375,36 @@ The simplest recipe holds fixed only the number of people and the number of ties
 ## R
 
 ```r
-# TODO(code, R): draw 2,000 random networks with the same number of people and ties as the friendship network, compute each one's transitivity, and see where the observed 0.579 falls.
+g <- net_frame(data.frame(source = names[from], target = names[to]),
+               nodes = data.frame(id = names), directed = FALSE)
+observed <- as.numeric(net_transitivity(g))
+
+# 2,000 random networks: 10 people, 18 ties, undirected, no loops.
+draws <- net_random_gnm(n, 18, reps = 2000, seed = 1)
+scores <- vapply(draws, function(d) as.numeric(net_transitivity(d)), numeric(1))
+scores <- scores[!is.na(scores)]
+cat(sprintf("observed transitivity        %.3f\n", observed))
+cat(sprintf("random networks, average     %.3f\n", mean(scores)))
+cat(sprintf("random networks at least as clustered  %.4f\n", mean(scores >= observed - 1e-12)))
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): draw 2,000 random networks with the same number of people and ties as the friendship network, compute each one's transitivity, and see where the observed 0.579 falls.
+import networkx as nx
+
+g = nx.Graph()
+g.add_nodes_from(range(n))
+g.add_edges_from(zip(src, dst))
+observed = nx.transitivity(g)
+print(f"observed transitivity        {observed:.3f}")
+
+# 2,000 random networks: 10 people, 18 ties, undirected, no loops.
+# NetworkX draws different networks than Rust, so the digits below differ a little.
+# CHECK: stop
+scores = [nx.transitivity(nx.gnm_random_graph(n, 18, seed=s)) for s in range(2000)]
+print(f"random networks, average     {np.mean(scores):.3f}")
+print(f"random networks at least as clustered  {np.mean(np.array(scores) >= observed - 1e-12):.4f}")
 ```
 
 ## Rust
@@ -327,13 +460,33 @@ That null model is easy to beat, and the reason is instructive. Real networks ha
 ## R
 
 ```r
-# TODO(code, R): draw 2,000 random simple networks in which every person keeps their number of friends, compute each one's transitivity, and compare with the observed 0.579.
+degrees <- as.numeric(net_degree(g))
+# simple = TRUE keeps only simple networks; 100,000 is how many tries each draw gets.
+draws <- net_random_config(degrees, simple = TRUE, max_tries = 100000, reps = 2000, seed = 1)
+scores <- vapply(draws, function(d) as.numeric(net_transitivity(d)), numeric(1))
+scores <- scores[!is.na(scores)]
+cat(sprintf("random networks with the same degrees, average  %.3f\n", mean(scores)))
+cat(sprintf("at least as clustered as observed               %.4f\n", mean(scores >= observed - 1e-12)))
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): draw 2,000 random simple networks in which every person keeps their number of friends, compute each one's transitivity, and compare with the observed 0.579.
+degrees = [d for _, d in g.degree()]
+
+def simple_configuration(degrees, rng):
+    # Match the stubs at random and start over until there are no loops or repeated ties.
+    while True:
+        m = nx.configuration_model(degrees, seed=int(rng.integers(2**31)))
+        h = nx.Graph(m)
+        if nx.number_of_selfloops(h) == 0 and h.number_of_edges() == m.number_of_edges():
+            return h
+
+# Again different random draws than Rust, so the digits differ a little.
+# CHECK: stop
+scores = [nx.transitivity(simple_configuration(degrees, rng)) for _ in range(2000)]
+print(f"random networks with the same degrees, average  {np.mean(scores):.3f}")
+print(f"at least as clustered as observed               {np.mean(np.array(scores) >= observed - 1e-12):.4f}")
 ```
 
 ## Rust
