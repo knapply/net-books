@@ -70,19 +70,74 @@ You met layouts in @sec-visualization. A layout assigns each person a place on t
 ## R
 
 ```r
-# TODO(code, R): 1) build the advice network from the two columns above, as directed;
-# 2) print each person's out-degree and in-degree and compare with the table;
-# 3) compute betweenness and confirm Ana and Chloe each score 3;
-# 4) compute a stress layout with a fixed seed and print the coordinates.
+library(knappnet)
+
+# A network is two tables. Here only the edge table is needed; the people
+# are taken from it, in order of first appearance.
+names <- c("Ana", "Ben", "Chloe", "Dev", "Eli")
+edges <- data.frame(
+  source = c("Ana", "Ana", "Ben", "Chloe", "Dev", "Dev", "Eli"),
+  target = c("Ben", "Chloe", "Chloe", "Ana", "Ana", "Chloe", "Chloe")
+)
+nodes <- data.frame(id = names)
+
+# Directed, because advice goes from the person who asks to the person asked.
+# (Printing g shows a short card describing the network, like Rust's describe().)
+g <- net_frame(edges, nodes = nodes, directed = TRUE)
+
+# Step 2: out-degree and in-degree.
+out <- net_degree(g, mode = "out")
+inn <- net_degree(g, mode = "in")
+for (i in seq_along(names)) {
+  cat(sprintf("%-6s goes to %d  comes to them %d\n", names[i], out[i], inn[i]))
+}
+
+# Step 3: betweenness, as a plain count of routes.
+between <- net_betweenness(g)
+for (i in seq_along(names)) {
+  cat(sprintf("%-6s betweenness %g\n", names[i], between[i]))
+}
+
+# Step 4: a stress layout; the seed fixes the starting guess.
+layout <- net_layout(g, method = "stress", seed = 1)
+for (i in seq_along(names)) {
+  cat(sprintf("%-6s x %7.3f  y %7.3f\n", names[i], layout[i, 1], layout[i, 2]))
+}
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): 1) build the advice network from the two columns above, as directed;
-# 2) print each person's out-degree and in-degree and compare with the table;
-# 3) compute betweenness and confirm Ana and Chloe each score 3;
-# 4) compute a stress layout with a fixed seed and print the coordinates.
+import networkx as nx
+
+# People are numbered from zero in Rust; here we use their names directly.
+names = ["Ana", "Ben", "Chloe", "Dev", "Eli"]
+ties = [("Ana", "Ben"), ("Ana", "Chloe"), ("Ben", "Chloe"), ("Chloe", "Ana"),
+        ("Dev", "Ana"), ("Dev", "Chloe"), ("Eli", "Chloe")]
+
+# Directed, because advice goes from the person who asks to the person asked.
+# (NetworkX has no one-call description like Rust's describe(), so we ask for
+# the pieces we need.)
+g = nx.DiGraph()
+g.add_nodes_from(names)
+g.add_edges_from(ties)
+
+# Step 2: out-degree and in-degree.
+for name in names:
+    print(f"{name:<6} goes to {g.out_degree(name)}  comes to them {g.in_degree(name)}")
+
+# Step 3: betweenness. normalized=False gives the plain count of routes.
+between = nx.betweenness_centrality(g, normalized=False)
+for name in names:
+    print(f"{name:<6} betweenness {between[name]:g}")
+
+# Step 4: a layout. NetworkX has no stress layout, so Kamada-Kawai (a close
+# relative) places the people, and the exact coordinates differ from Rust's.
+# CHECK: stop
+layout = nx.kamada_kawai_layout(g.to_undirected())
+for name in names:
+    x, y = layout[name]
+    print(f"{name:<6} x {x:7.3f}  y {y:7.3f}")
 ```
 
 ## Rust
