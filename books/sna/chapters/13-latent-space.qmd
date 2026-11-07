@@ -48,13 +48,33 @@ Ana and Ben are probably friends. Ben and Cleo are a toss-up leaning no, and Ana
 ## R
 
 ```r
-# TODO(code, R): build Zachary's karate club (34 members, 78 friendships) and record the side each member took.
+library(knappnet)
+
+# Positions 1 to 34 are the members (the files number them from 1).
+edges <- read.csv("data/karate/edges.csv")
+nodes <- read.csv("data/karate/nodes.csv")
+club <- net_frame(edges[, c("source", "target")], nodes = nodes, directed = FALSE)
+# The side each member took when the club split (0 = Mr. Hi, 1 = the officer).
+side <- as.integer(nodes$faction != "Mr. Hi")
+cat(sprintf("%d members, %d friendships\n", nrow(club$nodes), nrow(club$edges)))
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): build Zachary's karate club (34 members, 78 friendships) and record the side each member took.
+import numpy as np
+import pandas as pd
+import networkx as nx
+
+# Positions 0 to 33 are the members; the files number them from 1.
+edges = pd.read_csv("data/karate/edges.csv")
+nodes = pd.read_csv("data/karate/nodes.csv")
+club = nx.Graph()
+club.add_nodes_from(range(34))
+club.add_edges_from(zip(edges["source"] - 1, edges["target"] - 1))
+# The side each member took when the club split (0 = Mr. Hi, 1 = the officer).
+side = (nodes["faction"] != "Mr. Hi").astype(int).to_numpy()
+print(club.number_of_nodes(), "members,", club.number_of_edges(), "friendships")
 ```
 
 ## Rust
@@ -109,13 +129,69 @@ Fitting means finding the positions and the baseline $\alpha$ that make the obse
 ## R
 
 ```r
-# TODO(code, R): fit a two-dimensional latent space model to the karate club.
+# latentnet is the standard R package for latent space models. It reads a network object,
+# which we build from the 0/1 adjacency matrix.
+library(latentnet)
+
+A <- matrix(0, 34, 34)
+A[cbind(edges$source, edges$target)] <- 1
+A <- A + t(A)
+karate <- network::network(A, directed = FALSE)
+
+# The likelihood has many hills, and latentnet's search climbs a different one than Rust's
+# does, so the numbers below differ in the first decimals. R and Python also differ.
+# CHECK: stop
+set.seed(1)
+map <- ergmm(karate ~ euclidean(d = 2), tofit = "mle")
+positions <- map$mle$Z
+cat(sprintf("baseline log-odds (alpha): %.3f\n", map$mle$beta))
+cat(sprintf("log-likelihood: %.2f\n", map$mle$lpY))
+cat(sprintf("Mr. Hi at (%.2f, %.2f), the officer at (%.2f, %.2f)\n",
+            positions[1, 1], positions[1, 2], positions[34, 1], positions[34, 2]))
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): fit a two-dimensional latent space model to the karate club.
+from scipy.optimize import minimize
+from scipy.sparse.csgraph import shortest_path
+
+A = nx.to_numpy_array(club, nodelist=range(34))
+pair_i, pair_j = np.triu_indices(34, 1)
+tied = A[pair_i, pair_j]
+
+def fit_map(dim):
+    # Start from classical scaling of the path distances, then climb the likelihood.
+    D = shortest_path(A, unweighted=True)
+    J = np.eye(34) - 1 / 34
+    w, v = np.linalg.eigh(-0.5 * J @ D**2 @ J)
+    start = v[:, ::-1][:, :dim] * np.sqrt(w[::-1][:dim])
+
+    def negloglik(par):
+        z, alpha = par[:-1].reshape(34, dim), par[-1]
+        diff = z[pair_i] - z[pair_j]
+        dist = np.sqrt((diff**2).sum(axis=1) + 1e-12)
+        eta = alpha - dist
+        resid = tied - 1 / (1 + np.exp(-eta))
+        grad = np.zeros((34, dim))
+        step = (-resid / dist)[:, None] * diff
+        np.add.at(grad, pair_i, step)
+        np.add.at(grad, pair_j, -step)
+        loglik = (tied * eta - np.logaddexp(0, eta)).sum()
+        return -loglik, -np.append(grad.ravel(), resid.sum())
+
+    res = minimize(negloglik, np.append(start.ravel(), 0.0), jac=True, method="L-BFGS-B",
+                   options={"maxiter": 5000, "ftol": 1e-14})
+    return res.x[:-1].reshape(34, dim), res.x[-1], -res.fun, res
+
+# The likelihood has many hills, and scipy's search climbs a different one than Rust's
+# does, so the numbers below differ in the first decimals. R and Python also differ.
+# CHECK: stop
+positions, alpha, loglik, res = fit_map(2)
+print(f"baseline log-odds (alpha): {alpha:.3f}")
+print(f"log-likelihood: {loglik:.2f}")
+print(f"search steps: {res.nit}, converged: {str(res.success).lower()}")
+print(f"Mr. Hi at ({positions[0, 0]:.2f}, {positions[0, 1]:.2f}), the officer at ({positions[33, 0]:.2f}, {positions[33, 1]:.2f})")
 ```
 
 ## Rust
@@ -141,6 +217,8 @@ Mr. Hi at (3.64, -0.52), the officer at (-3.78, -0.31)
 ```
 :::
 
+The R and Python tabs fit the same model with their own optimizers, which climb a different hill of the likelihood than the Rust search does, so their digits differ from the ones shown here.
+
 The log-likelihood of $-122.33$ is a score for how well this map explains the 78 ties and 483 non-ties: closer to zero is better. The baseline of 3.06 says two members standing on top of each other would have a chance of a tie of about 96 percent. @fig-latent-map draws the map.
 
 ![The karate club in a fitted two-dimensional latent space. The axes mean nothing: the map could be rotated or flipped and fit exactly as well. Only distances count.](../figures/latent-map.svg){#fig-latent-map fig-alt="A scatter of 34 markers joined by light grey lines for the 78 friendships. Blue circles for Mr. Hi's side sit mostly on the right, with Mr. Hi near the middle. Orange squares for the officer's side sit mostly on the left, around the officer. A few blue circles sit near the center, between the two groups."}
@@ -156,13 +234,34 @@ A map is a picture. To use it, turn it back into numbers: how likely is each pai
 ## R
 
 ```r
-# TODO(code, R): turn the fitted map into tie probabilities and compare distances within and between sides.
+# Distances come from the map, so they differ a little from Rust's.
+# CHECK: stop
+# Turn the map into tie probabilities: log-odds = alpha - distance.
+alpha <- map$mle$beta[1]
+distance <- as.matrix(dist(positions))
+upper <- upper.tri(distance)
+p <- 1 / (1 + exp(distance[upper] - alpha))
+tied <- A[upper] == 1
+same_side <- outer(side, side, "==")[upper]
+cat(sprintf("expected ties %.1f (observed %d)\n", sum(p), sum(tied)))
+cat(sprintf("average chance of a tie: %.3f for pairs that are tied, %.3f for pairs that are not\n",
+            mean(p[tied]), mean(p[!tied])))
+cat(sprintf("average distance: %.2f within a side, %.2f between sides\n",
+            mean(distance[upper][same_side]), mean(distance[upper][!same_side])))
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): turn the fitted map into tie probabilities and compare distances within and between sides.
+# Distances come from the map, so they differ a little from Rust's.
+# CHECK: stop
+# Turn the map into tie probabilities: log-odds = alpha - distance.
+dist = np.linalg.norm(positions[pair_i] - positions[pair_j], axis=1)
+p = 1 / (1 + np.exp(dist - alpha))
+same_side = side[pair_i] == side[pair_j]
+print(f"expected ties {p.sum():.1f} (observed {int(tied.sum())})")
+print(f"average chance of a tie: {p[tied == 1].mean():.3f} for pairs that are tied, {p[tied == 0].mean():.3f} for pairs that are not")
+print(f"average distance: {dist[same_side].mean():.2f} within a side, {dist[~same_side].mean():.2f} between sides")
 ```
 
 ## Rust
@@ -201,6 +300,8 @@ average distance: 5.27 within a side, 9.47 between sides
 ```
 :::
 
+Because the R and Python maps differ a little from the Rust map, the averages they print differ in the first decimals too.
+
 Three things to see. First, the model's expected number of ties is 78.0, exactly the observed number. That is not luck: the likelihood is maximized, among other things, over $\alpha$, and at the maximum the expected number of ties must equal the observed one, the same property an intercept gives an ordinary logistic regression. Second, pairs that are tied get an average chance of about 0.50 and pairs that aren't get about 0.08, so the map separates ties from non-ties, though far from perfectly, as it should for friendships that no map can fully predict. Third, members of the same side are on average 5.3 apart and members of different sides 9.5, so the map found the split on its own.
 
 ::: {.callout-warning appearance="simple"}
@@ -217,13 +318,20 @@ Why two dimensions? Mostly because we can draw two. More dimensions always fit a
 ## R
 
 ```r
-# TODO(code, R): fit latent space models with one, two and three dimensions and compare their log-likelihoods.
+# CHECK: stop
+for (dim in 1:3) {
+  m <- ergmm(karate ~ euclidean(d = dim), tofit = "mle")
+  cat(sprintf("%d dimension(s): log-likelihood %8.2f, alpha %6.2f\n", dim, m$mle$lpY, m$mle$beta[1]))
+}
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): fit latent space models with one, two and three dimensions and compare their log-likelihoods.
+# CHECK: stop
+for dim in (1, 2, 3):
+    _, a, ll, _ = fit_map(dim)
+    print(f"{dim} dimension(s): log-likelihood {ll:8.2f}, alpha {a:6.2f}")
 ```
 
 ## Rust
@@ -244,6 +352,8 @@ for dim in 1..=3 {
 3 dimension(s): log-likelihood   -83.66, alpha  13.75
 ```
 :::
+
+Again, the R and Python optimizers end at different hills, so their log-likelihoods and baselines differ from these, most of all in three dimensions, where the search runs off along the ridge described below.
 
 Going from one dimension to two raises the log-likelihood from $-160$ to $-122$, a big gain for 34 more numbers. Three dimensions look better still, at $-84$, but look at $\alpha$: it jumped to nearly 14. That is a warning sign. With enough room, the model can place members so that ties and non-ties separate almost perfectly, and then the likelihood has no peak: it keeps rising as the positions spread out and $\alpha$ grows. In a longer search it climbed past $-59$ with $\alpha$ near 100. A fit like that is memorizing the network, and a map that memorizes tells you nothing. With only 34 people, two dimensions is as far as the data will carry us. In larger networks you would compare models by how well they predict ties left out of the fit.
 
@@ -272,13 +382,154 @@ This builds in a fair penalty for complexity. A grouping must pay for itself, an
 ## R
 
 ```r
-# TODO(code, R): fit a stochastic block model to the karate club and list the members of each group.
+# Peixoto's description length has no R package that works from a plain network, so we write
+# it out: the cost in nats of the network given the groups, of the groups, and of the ties between them.
+m_ties <- sum(A) / 2
+degree <- rowSums(A)
+ln_fact <- function(k) lgamma(k + 1)
+ln_multiset <- function(bins, items) {
+  if (items == 0) 0 else ln_fact(bins + items - 1) - ln_fact(items) - ln_fact(bins - 1)
+}
+
+description_length <- function(blocks, degree_corrected = FALSE) {
+  labels <- sort(unique(blocks))
+  n <- length(blocks)
+  k <- length(labels)
+  member <- outer(blocks, labels, "==") * 1
+  between <- t(member) %*% A %*% member   # ties between groups, counted twice inside a group
+  size <- colSums(member)
+  stubs <- colSums(member * degree)
+  network <- 0
+  for (r in 1:k) {
+    for (s in r:k) {
+      count <- if (r == s) between[r, s] / 2 else between[r, s]
+      network <- network - ln_fact(count)
+      if (r == s) network <- network - count * log(2)
+    }
+  }
+  groups <- log(n) + ln_fact(n) - sum(ln_fact(size)) + ln_fact(n - 1) - ln_fact(k - 1) - ln_fact(n - k)
+  if (degree_corrected) {
+    network <- network + sum(ln_fact(stubs)) - sum(ln_fact(degree))
+    popularity <- sum(mapply(ln_multiset, size, stubs))
+  } else {
+    network <- network + sum(stubs * log(size))
+    popularity <- 0
+  }
+  ties <- ln_multiset(k * (k + 1) / 2, m_ties)
+  c(network = network, groups = groups, ties = ties, popularity = popularity,
+    total = network + groups + ties + popularity)
+}
+
+fit_blocks <- function(degree_corrected, restarts = 5, max_groups = 6) {
+  # Greedy search: move one member at a time to the group that shortens the description most.
+  best <- NULL
+  best_len <- Inf
+  for (k in 1:max_groups) {
+    for (restart in 1:restarts) {
+      blocks <- sample((0:33) %% k)
+      current <- description_length(blocks, degree_corrected)[["total"]]
+      improved <- TRUE
+      while (improved) {
+        improved <- FALSE
+        for (v in sample(34)) {
+          for (g in 0:(k - 1)) {
+            trial <- blocks
+            trial[v] <- g
+            trial_len <- description_length(trial, degree_corrected)[["total"]]
+            if (trial_len < current - 1e-9) {
+              blocks <- trial
+              current <- trial_len
+              improved <- TRUE
+            }
+          }
+        }
+      }
+      if (current < best_len - 1e-9) {
+        best <- blocks
+        best_len <- current
+      }
+    }
+  }
+  # Name the groups in order of their first member.
+  match(best, unique(best)) - 1
+}
+
+set.seed(1)
+found <- fit_blocks(FALSE)
+cat(sprintf("%d groups found\n", max(found) + 1))
+for (g in 0:max(found)) {
+  members <- which(found == g) - 1
+  cat(sprintf("group %d (%d members): [%s]\n", g, length(members), paste(members, collapse = ", ")))
+}
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): fit a stochastic block model to the karate club and list the members of each group.
+from math import lgamma, log
+
+m = club.number_of_edges()
+degree = A.sum(axis=1)
+
+def ln_fact(k):
+    return lgamma(k + 1)
+
+def ln_multiset(bins, items):
+    return ln_fact(bins + items - 1) - ln_fact(items) - ln_fact(bins - 1) if items else 0.0
+
+def description_length(blocks, degree_corrected=False):
+    """Peixoto's description length in nats: network, groups, ties, member popularities, total."""
+    blocks = np.asarray(blocks)
+    labels = np.unique(blocks)
+    n, k = len(blocks), len(labels)
+    member = (blocks[:, None] == labels[None, :]).astype(float)
+    between = member.T @ A @ member          # ties between groups, counted twice inside a group
+    size, stubs = member.sum(axis=0), member.T @ degree
+    network = 0.0
+    for r in range(k):
+        for s in range(r, k):
+            count = int(between[r, s] / 2 if r == s else between[r, s])
+            network -= ln_fact(count) + (count * log(2) if r == s else 0.0)
+    groups = log(n) + ln_fact(n) - sum(ln_fact(int(x)) for x in size)
+    groups += ln_fact(n - 1) - ln_fact(k - 1) - ln_fact(n - k)
+    if degree_corrected:
+        network += sum(ln_fact(int(x)) for x in stubs) - sum(ln_fact(int(x)) for x in degree)
+        popularity = sum(ln_multiset(int(x), int(t)) for x, t in zip(size, stubs))
+    else:
+        network += sum(t * log(x) for x, t in zip(size, stubs))
+        popularity = 0.0
+    ties = ln_multiset(k * (k + 1) // 2, m)
+    return network, groups, ties, popularity, network + groups + ties + popularity
+
+def fit_blocks(degree_corrected, restarts=5, seed=1, max_groups=6):
+    # Greedy search: move one member at a time to the group that shortens the description most.
+    rng = np.random.default_rng(seed)
+    best, best_len = None, np.inf
+    for k in range(1, max_groups + 1):
+        for _ in range(restarts):
+            blocks = rng.permutation(np.arange(34) % k)
+            length = description_length(blocks, degree_corrected)[-1]
+            improved = True
+            while improved:
+                improved = False
+                for v in rng.permutation(34):
+                    for g in range(k):
+                        trial = blocks.copy()
+                        trial[v] = g
+                        trial_len = description_length(trial, degree_corrected)[-1]
+                        if trial_len < length - 1e-9:
+                            blocks, length, improved = trial, trial_len, True
+            if length < best_len - 1e-9:
+                best, best_len = blocks, length
+    # Name the groups in order of their first member.
+    _, first, inverse = np.unique(best, return_index=True, return_inverse=True)
+    return np.argsort(np.argsort(first))[inverse]
+
+found = fit_blocks(False)
+print(f"{found.max() + 1} groups found")
+for g in range(found.max() + 1):
+    members = [int(i) for i in np.flatnonzero(found == g)]
+    print(f"group {g} ({len(members)} members): {members}")
 ```
 
 ## Rust
@@ -317,13 +568,25 @@ On the left, the sides do divide the network: dense blocks along the diagonal an
 ## R
 
 ```r
-# TODO(code, R): compute the description length of three groupings of the karate club.
+# Score three groupings with the same yardstick. Shorter is better.
+cat(sprintf("%-26s %8s %8s %8s %8s\n", "", "network", "groups", "ties", "total"))
+groupings <- list("one group" = rep(0, 34), "the club's two sides" = side,
+                  "hubs and the rest (found)" = found)
+for (label in names(groupings)) {
+  d <- description_length(groupings[[label]])
+  cat(sprintf("%-26s %8.1f %8.1f %8.1f %8.1f\n", label, d[["network"]], d[["groups"]], d[["ties"]], d[["total"]]))
+}
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): compute the description length of three groupings of the karate club.
+# Score three groupings with the same yardstick. Shorter is better.
+print(f"{'':<26} {'network':>8} {'groups':>8} {'ties':>8} {'total':>8}")
+for label, blocks in [("one group", np.zeros(34, dtype=int)), ("the club's two sides", side),
+                      ("hubs and the rest (found)", found)]:
+    network, groups, ties, _, total = description_length(blocks)
+    print(f"{label:<26} {network:8.1f} {groups:8.1f} {ties:8.1f} {total:8.1f}")
 ```
 
 ## Rust
@@ -364,13 +627,28 @@ Is the hubs-and-the-rest grouping a solid winner or a close call? One way to ask
 ## R
 
 ```r
-# TODO(code, R): compute the change in description length from moving single members to the other group.
+# What would it cost to move one member into the other group? Positive means the description gets longer.
+base <- description_length(found)[["total"]]
+for (member in c(0, 2, 5, 9)) {
+  target <- 1 - found[member + 1]
+  moved <- found
+  moved[member + 1] <- target
+  cost <- description_length(moved)[["total"]] - base
+  cat(sprintf("move member %2d to group %d: %+.2f\n", member, target, cost))
+}
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): compute the change in description length from moving single members to the other group.
+# What would it cost to move one member into the other group? Positive means the description gets longer.
+base = description_length(found)[-1]
+for member in [0, 2, 5, 9]:
+    target = 1 - found[member]
+    moved = found.copy()
+    moved[member] = target
+    cost = description_length(moved)[-1] - base
+    print(f"move member {member:>2} to group {target}: {cost:+.2f}")
 ```
 
 ## Rust
@@ -406,13 +684,23 @@ The hubs group exists because some members have many more friends than others. B
 ## R
 
 ```r
-# TODO(code, R): fit a degree-corrected block model and compare its description length with the plain one.
+# Degree-corrected blocks let each member have their own popularity, so hubs no longer need a group of their own.
+corrected <- fit_blocks(TRUE)
+d <- description_length(corrected, TRUE)
+cat(sprintf("%d group found, description length %.1f\n", max(corrected) + 1, d[["total"]]))
+cat(sprintf("(network %.1f, groups %.1f, member popularities %.1f)\n", d[["network"]], d[["groups"]], d[["popularity"]]))
+cat(sprintf("hubs-and-the-rest, degree-corrected: %.1f\n", description_length(found, TRUE)[["total"]]))
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): fit a degree-corrected block model and compare its description length with the plain one.
+# Degree-corrected blocks let each member have their own popularity, so hubs no longer need a group of their own.
+corrected = fit_blocks(True)
+network, groups, _, popularity, total = description_length(corrected, True)
+print(f"{corrected.max() + 1} group found, description length {total:.1f}")
+print(f"(network {network:.1f}, groups {groups:.1f}, member popularities {popularity:.1f})")
+print(f"hubs-and-the-rest, degree-corrected: {description_length(found, True)[-1]:.1f}")
 ```
 
 ## Rust

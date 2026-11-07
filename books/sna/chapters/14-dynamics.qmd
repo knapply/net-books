@@ -39,13 +39,48 @@ Dev's story is different. Dev tells Cleo at time 2, who tells Ben at 3, who tell
 ## R
 
 ```r
-# TODO(code, R): build a temporal network of six contacts and count, for each person, how many others they can reach.
+library(knappnet)
+
+people <- c("Ana", "Ben", "Cleo", "Dev", "Eli", "Fay")
+contacts <- data.frame(
+  source = people[c(1, 3, 2, 4, 1, 5)],
+  target = people[c(2, 4, 3, 5, 2, 6)],
+  time = c(1, 2, 3, 4, 5, 6)
+)
+# Contacts are undirected instants: who met whom, and when.
+g <- net_temporal(contacts, nodes = data.frame(id = people), directed = FALSE)
+
+# For every person, how many others can a message reach if it only moves forward in time?
+reach <- net_temporal_reach(g)
+for (i in seq_along(people)) {
+  cat(sprintf("%-5s can reach %d of the 5 others\n", people[i], reach[i]))
+}
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): build a temporal network of six contacts and count, for each person, how many others they can reach.
+import numpy as np
+
+names = ["Ana", "Ben", "Cleo", "Dev", "Eli", "Fay"]
+person_a = [0, 2, 1, 3, 0, 4]
+person_b = [1, 3, 2, 4, 1, 5]
+when = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+# NetworkX has no time-respecting paths, so we walk the contacts in time order:
+# a contact passes the message on if one of its two people already has it.
+contacts = sorted(zip(when, person_a, person_b))
+
+def earliest_arrival(root):
+    arrive = {root: -np.inf}
+    for t, a, b in contacts:
+        for u, v in ((a, b), (b, a)):
+            if u in arrive and arrive[u] <= t and t < arrive.get(v, np.inf):
+                arrive[v] = t
+    return arrive
+
+for k, name in enumerate(names):
+    count = len(earliest_arrival(k)) - 1
+    print(f"{name:<5} can reach {count} of the 5 others")
 ```
 
 ## Rust
@@ -91,13 +126,28 @@ Reaching someone isn't the same as reaching them quickly. The **earliest arrival
 ## R
 
 ```r
-# TODO(code, R): find the earliest arrival time from Ana and from Dev to every other person.
+# The earliest moment a message from Ana, and from Dev, can arrive at everyone else.
+arrival <- net_temporal_distances(g, from = c("Ana", "Dev"))
+for (who in c("Ana", "Dev")) {
+  cat(sprintf("from %s:", who))
+  for (name in setdiff(people, who)) {
+    t <- arrival[who, name]
+    cat(if (is.finite(t)) sprintf("  %s at t=%g", name, t) else sprintf("  %s never", name))
+  }
+  cat("\n")
+}
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): find the earliest arrival time from Ana and from Dev to every other person.
+for who, root in [("Ana", 0), ("Dev", 3)]:
+    arrive = earliest_arrival(root)
+    line = f"from {who}:"
+    for k, name in enumerate(names):
+        if k != root:
+            line += f"  {name} at t={arrive[k]:g}" if k in arrive else f"  {name} never"
+    print(line)
 ```
 
 ## Rust
@@ -143,13 +193,62 @@ where $\mu$ is the mean gap and $\sigma$ its standard deviation. If events come 
 ## R
 
 ```r
-# TODO(code, R): compute burstiness and memory for a sequence of message times.
+# Eighty messages among eight coworkers, invented for this chapter. Times are in hours.
+times <- c(
+  0.3, 0.8, 3.3, 4.8, 6.8, 25.4, 28.4, 33.4, 35.2, 36.8,
+  37.0, 38.0, 43.6, 44.5, 46.3, 46.6, 48.2, 49.0, 49.3, 50.1,
+  50.4, 50.7, 52.4, 52.7, 53.3, 55.0, 56.0, 56.9, 57.8, 58.6,
+  58.8, 63.3, 64.5, 64.6, 65.6, 77.9, 78.0, 85.1, 98.6, 99.4,
+  99.7, 102.9, 105.4, 106.1, 107.1, 107.2, 108.0, 128.2, 128.6, 128.8,
+  129.2, 130.8, 134.5, 135.2, 148.1, 149.0, 149.3, 176.8, 182.2, 182.4,
+  182.6, 182.8, 183.1, 183.6, 184.6, 185.9, 193.0, 195.1, 196.2, 202.8,
+  203.2, 204.4, 204.7, 205.8, 206.1, 208.4, 208.5, 214.4, 215.2, 217.3
+)
+gaps <- diff(times)
+
+# Burstiness B and memory M of one sequence of gaps. The standard deviation divides by n,
+# as in Goh and Barabasi.
+burstiness_memory <- function(gaps) {
+  n <- length(gaps)
+  sd_n <- function(v) sqrt(mean((v - mean(v))^2))
+  c(B = (sd_n(gaps) - mean(gaps)) / (sd_n(gaps) + mean(gaps)),
+    M = cor(gaps[-n], gaps[-1]))
+}
+
+bm <- burstiness_memory(gaps)
+cat(sprintf("%d gaps, shortest %.1f hours, longest %.1f hours\n", length(gaps), min(gaps), max(gaps)))
+cat(sprintf("burstiness B = %.2f, memory M = %.2f\n", bm[["B"]], bm[["M"]]))
+
+# Compare with a metronome: the same number of events, perfectly evenly spaced.
+b_regular <- (0 - 2.75) / (0 + 2.75)
+cat(sprintf("evenly spaced: B = %.2f\n", b_regular))
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): compute burstiness and memory for a sequence of message times.
+times = np.array([
+    0.3, 0.8, 3.3, 4.8, 6.8, 25.4, 28.4, 33.4, 35.2, 36.8,
+    37.0, 38.0, 43.6, 44.5, 46.3, 46.6, 48.2, 49.0, 49.3, 50.1,
+    50.4, 50.7, 52.4, 52.7, 53.3, 55.0, 56.0, 56.9, 57.8, 58.6,
+    58.8, 63.3, 64.5, 64.6, 65.6, 77.9, 78.0, 85.1, 98.6, 99.4,
+    99.7, 102.9, 105.4, 106.1, 107.1, 107.2, 108.0, 128.2, 128.6, 128.8,
+    129.2, 130.8, 134.5, 135.2, 148.1, 149.0, 149.3, 176.8, 182.2, 182.4,
+    182.6, 182.8, 183.1, 183.6, 184.6, 185.9, 193.0, 195.1, 196.2, 202.8,
+    203.2, 204.4, 204.7, 205.8, 206.1, 208.4, 208.5, 214.4, 215.2, 217.3,
+])
+gaps = np.diff(times)
+
+def burstiness_memory(gaps):
+    b = (gaps.std() - gaps.mean()) / (gaps.std() + gaps.mean())
+    m = np.corrcoef(gaps[:-1], gaps[1:])[0, 1] if gaps[:-1].std() > 0 else np.nan
+    return b, m
+
+burstiness, memory = burstiness_memory(gaps)
+print(f"{len(gaps)} gaps, shortest {gaps.min():.1f} hours, longest {gaps.max():.1f} hours")
+print(f"burstiness B = {burstiness:.2f}, memory M = {memory:.2f}")
+b_regular, _ = burstiness_memory(np.full(79, 2.75))
+print(f"evenly spaced: B = {b_regular:.2f}")
 ```
 
 ## Rust
@@ -231,13 +330,64 @@ The weights add to $1 + 14.778 + 1.213 + 0.677 = 17.668$. So the chance Cy drops
 ## R
 
 ```r
-# TODO(code, R): compute the probability of each option for one actor's change opportunity in the office network.
+office_names <- c("Ada", "Ben", "Cy", "Dee", "Eve", "Flo", "Gus", "Hal", "Ivy", "Jay")
+asks <- c(0, 1, 2, 2, 3, 3, 4, 4, 5, 6, 7, 8, 9) + 1
+is_asked <- c(1, 0, 0, 1, 0, 1, 0, 1, 2, 2, 3, 4, 4) + 1
+start <- matrix(0, 10, 10)
+start[cbind(asks, is_asked)] <- 1
+
+# Two effects: outdegree (a cost for every tie an actor keeps) and reciprocity (a bonus for mutual ties).
+# RSiena estimates these models but has no call for a single change opportunity, so we work it out:
+# the gain of toggling the tie from the actor to j is the change in outdegree and in reciprocity.
+beta <- c(-2, 1.5)
+ministep_probabilities <- function(x, actor, beta) {
+  gain <- ifelse(x[actor, ] == 1, -1, 1) * (beta[1] + beta[2] * x[, actor])
+  gain[actor] <- 0
+  weight <- exp(gain)
+  weight / sum(weight)
+}
+
+# Cy (position 3) gets a chance to change. What are Cy's options, and how likely is each?
+chances <- ministep_probabilities(start, 3, beta)
+for (j in seq_along(chances)) {
+  what <- if (j == 3) "change nothing"
+          else if (start[3, j] == 1) paste("drop the tie to", office_names[j])
+          else paste("start asking", office_names[j])
+  cat(sprintf("%-22s %.3f\n", what, chances[j]))
+}
+cat(sprintf("total %.3f\n", sum(chances)))
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): compute the probability of each option for one actor's change opportunity in the office network.
+office_names = ["Ada", "Ben", "Cy", "Dee", "Eve", "Flo", "Gus", "Hal", "Ivy", "Jay"]
+asks = [0, 1, 2, 2, 3, 3, 4, 4, 5, 6, 7, 8, 9]
+is_asked = [1, 0, 0, 1, 0, 1, 0, 1, 2, 2, 3, 4, 4]
+start = np.zeros((10, 10), dtype=int)
+start[asks, is_asked] = 1
+
+# Two effects: outdegree (a cost for every tie kept) and reciprocity (a bonus for mutual ties).
+beta = np.array([-2.0, 1.5])
+
+def ministep_probabilities(x, actor, beta):
+    # Gain of toggling the tie from actor to j: the change in outdegree and in reciprocity.
+    sign = np.where(x[actor] == 1, -1.0, 1.0)
+    gain = sign * (beta[0] + beta[1] * x[:, actor])
+    gain[actor] = 0.0
+    weight = np.exp(gain)
+    return weight / weight.sum()
+
+chances = ministep_probabilities(start, 2, beta)
+for j, chance in enumerate(chances):
+    if j == 2:
+        what = "change nothing"
+    elif start[2, j] == 1:
+        what = f"drop the tie to {office_names[j]}"
+    else:
+        what = f"start asking {office_names[j]}"
+    print(f"{what:<22} {chance:.3f}")
+print(f"total {chances.sum():.3f}")
 ```
 
 ## Rust
@@ -309,13 +459,57 @@ The real power of the SAOM story is that it can be *run*. Start from the observe
 ## R
 
 ```r
-# TODO(code, R): simulate the office network forward one period with and without a reciprocity effect.
+cat(sprintf("start: %d ties, %d mutual pairs\n", sum(start), sum(start * t(start)) / 2))
+
+# The simulation draws random numbers, and R and Python draw different ones, so the
+# averages below differ from Rust's in the last digit or two.
+# CHECK: stop
+set.seed(1)
+simulate_period <- function(x0, beta, rate = 3) {
+  x <- x0
+  time <- rexp(1, 10 * rate)
+  while (time < 1) {
+    actor <- sample.int(10, 1)
+    j <- sample.int(10, 1, prob = ministep_probabilities(x, actor, beta))
+    if (j != actor) x[actor, j] <- 1 - x[actor, j]
+    time <- time + rexp(1, 10 * rate)
+  }
+  c(sum(x), sum(x * t(x)) / 2, sum(x != x0))
+}
+
+for (reciprocity in c(0, 1.5)) {
+  sims <- replicate(2000, simulate_period(start, c(-2, reciprocity)))
+  avg <- rowMeans(sims)
+  cat(sprintf("reciprocity %g: %.2f ties, %.2f mutual pairs, %.2f ties changed\n", reciprocity, avg[1], avg[2], avg[3]))
+}
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): simulate the office network forward one period with and without a reciprocity effect.
+print(f"start: {start.sum()} ties, {(start * start.T).sum() // 2} mutual pairs")
+
+# The simulation draws random numbers, and R and Python draw different ones, so the
+# averages below differ from Rust's in the last digit or two.
+# CHECK: stop
+rng = np.random.default_rng(1)
+
+def simulate_period(x0, beta, rate=3.0):
+    x, time = x0.copy(), 0.0
+    while True:
+        time += rng.exponential(1 / (10 * rate))
+        if time >= 1:
+            break
+        actor = rng.integers(10)
+        j = rng.choice(10, p=ministep_probabilities(x, actor, beta))
+        if j != actor:
+            x[actor, j] = 1 - x[actor, j]
+    return x.sum(), (x * x.T).sum() / 2, (x != x0).sum()
+
+for reciprocity in [0.0, 1.5]:
+    sims = np.array([simulate_period(start, np.array([-2.0, reciprocity])) for _ in range(2000)])
+    ties, mutual, changed = sims.mean(axis=0)
+    print(f"reciprocity {reciprocity:g}: {ties:.2f} ties, {mutual:.2f} mutual pairs, {changed:.2f} ties changed")
 ```
 
 ## Rust
@@ -343,6 +537,8 @@ reciprocity 0: 5.78 ties, 0.18 mutual pairs, 13.94 ties changed
 reciprocity 1.5: 7.33 ties, 1.17 mutual pairs, 14.11 ties changed
 ```
 :::
+
+The R and Python tabs draw different random numbers than Rust does, so their averages differ from these in the last digit or two.
 
 Both settings lose many ties, because the outdegree cost is high. But look at what survives. With no reciprocity bonus, only 0.18 mutual pairs remain on average (the network started with 1). With the bonus, 1.17 remain, and more ties survive overall (7.3 against 5.8). Reciprocity doesn't create ties here, it keeps the returned ones. @fig-saom-sim shows both settings.
 
@@ -375,13 +571,94 @@ We use our eighty messages. They weren't recorded from real people: we generated
 ## R
 
 ```r
-# TODO(code, R): fit a relational event model with inertia and reciprocity to an event stream.
+sender <- c(
+  6, 2, 5, 7, 4, 4, 6, 5, 3, 4, 6, 0, 5, 6, 2, 3, 1, 5, 7, 2,
+  3, 7, 4, 3, 5, 0, 1, 7, 1, 0, 7, 5, 7, 5, 6, 2, 5, 1, 6, 5,
+  2, 1, 1, 6, 4, 2, 4, 5, 5, 7, 6, 3, 0, 2, 0, 6, 6, 2, 7, 3,
+  3, 4, 7, 7, 1, 6, 1, 6, 4, 1, 0, 7, 0, 1, 7, 4, 3, 3, 4, 3
+) + 1
+receiver <- c(
+  4, 7, 4, 0, 7, 5, 1, 6, 6, 6, 3, 4, 2, 1, 5, 7, 6, 3, 5, 3,
+  5, 2, 2, 2, 3, 3, 3, 1, 5, 3, 3, 4, 4, 2, 7, 7, 6, 6, 5, 3,
+  0, 7, 6, 2, 6, 6, 7, 2, 1, 6, 4, 1, 4, 4, 7, 1, 1, 4, 3, 0,
+  5, 0, 6, 0, 2, 7, 6, 2, 5, 3, 4, 2, 1, 4, 4, 2, 7, 1, 0, 0
+) + 1
+
+# Before each message, count the past messages s -> r (inertia) and r -> s (reciprocity)
+# for every ordered pair in the risk set. relevent::rem.dyad() fits this model too; here the
+# partial likelihood is a few lines, so we write it out.
+pairs <- which(row(diag(8)) != col(diag(8)), arr.ind = TRUE)
+past <- matrix(0, 8, 8)
+design <- array(0, c(80, nrow(pairs), 2))
+chosen <- integer(80)
+for (k in 1:80) {
+  design[k, , 1] <- past[pairs]
+  design[k, , 2] <- past[pairs[, 2:1]]
+  chosen[k] <- which(pairs[, 1] == sender[k] & pairs[, 2] == receiver[k])
+  past[sender[k], receiver[k]] <- past[sender[k], receiver[k]] + 1
+}
+
+loglik <- function(b) {
+  score <- design[, , 1] * b[1] + design[, , 2] * b[2]
+  top <- apply(score, 1, max)
+  sum(score[cbind(1:80, chosen)] - top - log(rowSums(exp(score - top))))
+}
+
+model_fit <- optim(c(0, 0), function(b) -loglik(b), method = "BFGS", hessian = TRUE,
+                   control = list(reltol = 1e-12))
+se <- sqrt(diag(solve(model_fit$hessian)))
+labels <- c("repeating a pair", "replying to a pair")
+for (k in 1:2) {
+  coef <- model_fit$par[k]
+  cat(sprintf("%-20s coefficient %+.3f (se %.3f), rate multiplier %.2f\n", labels[k], coef, se[k], exp(coef)))
+}
+cat(sprintf("log-likelihood %.1f, against %.1f with no effects\n", -model_fit$value, loglik(c(0, 0))))
 ```
 
 ## Python
 
 ```python
-# TODO(code, Python): fit a relational event model with inertia and reciprocity to an event stream.
+from scipy.optimize import minimize
+
+sender = np.array([
+    6, 2, 5, 7, 4, 4, 6, 5, 3, 4, 6, 0, 5, 6, 2, 3, 1, 5, 7, 2,
+    3, 7, 4, 3, 5, 0, 1, 7, 1, 0, 7, 5, 7, 5, 6, 2, 5, 1, 6, 5,
+    2, 1, 1, 6, 4, 2, 4, 5, 5, 7, 6, 3, 0, 2, 0, 6, 6, 2, 7, 3,
+    3, 4, 7, 7, 1, 6, 1, 6, 4, 1, 0, 7, 0, 1, 7, 4, 3, 3, 4, 3,
+])
+receiver = np.array([
+    4, 7, 4, 0, 7, 5, 1, 6, 6, 6, 3, 4, 2, 1, 5, 7, 6, 3, 5, 3,
+    5, 2, 2, 2, 3, 3, 3, 1, 5, 3, 3, 4, 4, 2, 7, 7, 6, 6, 5, 3,
+    0, 7, 6, 2, 6, 6, 7, 2, 1, 6, 4, 1, 4, 4, 7, 1, 1, 4, 3, 0,
+    5, 0, 6, 0, 2, 7, 6, 2, 5, 3, 4, 2, 1, 4, 4, 2, 7, 1, 0, 0,
+])
+
+# Before each message, count the past messages s -> r (inertia) and r -> s (reciprocity)
+# for every ordered pair in the risk set. No package does this for us, so it is a few lines.
+pairs = [(s, r) for s in range(8) for r in range(8) if s != r]
+past = np.zeros((8, 8))
+design, chosen = [], []
+for s, r in zip(sender, receiver):
+    design.append([[past[i, j], past[j, i]] for i, j in pairs])
+    chosen.append(pairs.index((s, r)))
+    past[s, r] += 1
+design, chosen = np.array(design), np.array(chosen)
+
+def loglik(b):
+    score = design @ b
+    return (score[np.arange(80), chosen] - np.logaddexp.reduce(score, axis=1)).sum()
+
+fit = minimize(lambda b: -loglik(b), np.zeros(2), method="BFGS", options={"gtol": 1e-10})
+# Standard errors from the observed information: the spread of the statistics under the fitted
+# choice probabilities, summed over the events.
+score = design @ fit.x
+prob = np.exp(score - np.logaddexp.reduce(score, axis=1, keepdims=True))
+mean = (prob[:, :, None] * design).sum(axis=1)
+info = np.einsum("kp,kpa,kpb->ab", prob, design, design) - mean.T @ mean
+se = np.sqrt(np.diag(np.linalg.inv(info)))
+for label, coef, err in zip(["repeating a pair", "replying to a pair"], fit.x, se):
+    print(f"{label:<20} coefficient {coef:+.3f} (se {err:.3f}), rate multiplier {np.exp(coef):.2f}")
+print(f"log-likelihood {-fit.fun:.1f}, against {loglik(np.zeros(2)):.1f} with no effects")
 ```
 
 ## Rust
