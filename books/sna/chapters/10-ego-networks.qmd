@@ -60,6 +60,30 @@ rows <- sprintf("%-5s %8d %5d %8.3f %7d %11.3f", names, as.integer(ego$size),
 writeLines(c(header, rows))
 ```
 
+::: {.code-output}
+```text
+Undirected network: 10 nodes, 18 ties
+  Density           0.400
+  Degree            1 to 6, mean 3.60
+  Connected pieces  1
+  Isolated nodes    0
+  Loops, repeats    none
+  Busiest           Dev (6), Fay (5), Gus (5)
+
+      contacts  ties  density  pieces betweenness
+Ana          4     4    0.667       1       1.000
+Ben          4     4    0.667       1       1.000
+Cleo         3     3    1.000       1       0.000
+Dev          6     8    0.533       1       3.667
+Eli          3     3    1.000       1       0.000
+Fay          5     5    0.500       1       3.500
+Gus          5     5    0.500       1       3.500
+Hana         3     1    0.333       2       2.000
+Ivo          2     0    0.000       2       1.000
+Jo           1     0      NaN       1       0.000
+```
+:::
+
 ## Python
 
 ```python
@@ -86,6 +110,22 @@ for i, name in enumerate(names):
     print(f"{name:<5} {size:>8} {ties:>5} {density_text:>8} {pieces:>7} {ego_between:>11.3f}")
 ```
 
+::: {.code-output}
+```text
+      contacts  ties  density  pieces betweenness
+Ana          4     4    0.667       1       1.000
+Ben          4     4    0.667       1       1.000
+Cleo         3     3    1.000       1       0.000
+Dev          6     8    0.533       1       3.667
+Eli          3     3    1.000       1       0.000
+Fay          5     5    0.500       1       3.500
+Gus          5     5    0.500       1       3.500
+Hana         3     1    0.333       2       2.000
+Ivo          2     0    0.000       2       1.000
+Jo           1     0      NaN       1       0.000
+```
+:::
+
 ## Rust
 
 ```rust
@@ -109,8 +149,6 @@ for (i, name) in names.iter().enumerate() {
 }
 ```
 
-:::
-
 ::: {.code-output}
 ```text
 Undirected network: 10 nodes, 18 ties
@@ -133,6 +171,8 @@ Hana         3     1    0.333       2       2.000
 Ivo          2     0    0.000       2       1.000
 Jo           1     0      NaN       1       0.000
 ```
+:::
+
 :::
 
 Read it against the picture. Dev has six contacts and eight ties among them, density 0.533. Hana has three contacts and one tie, density 0.333, and two pieces: Fay and Gus together, and Ivo alone. Cleo and Eli have density 1.000, because their three friends all know each other, which is the family-dinner-table pattern. And Jo has a single contact, so there are no pairs of alters and the density is undefined (NaN, for "not a number").
@@ -167,6 +207,22 @@ writeLines(c(sprintf("%-5s %14s %10s", "", "effective size", "efficiency"),
              sprintf("%-5s %14.3f %10.3f", names, size, efficiency)))
 ```
 
+::: {.code-output}
+```text
+      effective size efficiency
+Ana            2.000      0.500
+Ben            2.000      0.500
+Cleo           1.000      0.333
+Dev            3.333      0.556
+Eli            1.000      0.333
+Fay            3.000      0.600
+Gus            3.000      0.600
+Hana           2.333      0.778
+Ivo            2.000      1.000
+Jo             1.000      1.000
+```
+:::
+
 ## Python
 
 ```python
@@ -175,21 +231,6 @@ print(f"{'':<5} {'effective size':>14} {'efficiency':>10}")
 for i, name in enumerate(names):
     print(f"{name:<5} {size[i]:>14.3f} {size[i] / friends.degree(i):>10.3f}")
 ```
-
-## Rust
-
-```rust
-use knappnet::metrics::brokerage::{compute_effective_size, compute_efficiency, StructuralHoleOptions};
-
-let size = compute_effective_size(&friends, StructuralHoleOptions::default())?;
-let efficiency = compute_efficiency(&friends, StructuralHoleOptions::default())?;
-println!("{:<5} {:>14} {:>10}", "", "effective size", "efficiency");
-for (i, name) in names.iter().enumerate() {
-    println!("{:<5} {:>14.3} {:>10.3}", name, size[i], efficiency[i]);
-}
-```
-
-:::
 
 ::: {.code-output}
 ```text
@@ -205,6 +246,37 @@ Hana           2.333      0.778
 Ivo            2.000      1.000
 Jo             1.000      1.000
 ```
+:::
+
+## Rust
+
+```rust
+use knappnet::metrics::brokerage::{compute_effective_size, compute_efficiency, StructuralHoleOptions};
+
+let size = compute_effective_size(&friends, StructuralHoleOptions::default())?;
+let efficiency = compute_efficiency(&friends, StructuralHoleOptions::default())?;
+println!("{:<5} {:>14} {:>10}", "", "effective size", "efficiency");
+for (i, name) in names.iter().enumerate() {
+    println!("{:<5} {:>14.3} {:>10.3}", name, size[i], efficiency[i]);
+}
+```
+
+::: {.code-output}
+```text
+      effective size efficiency
+Ana            2.000      0.500
+Ben            2.000      0.500
+Cleo           1.000      0.333
+Dev            3.333      0.556
+Eli            1.000      0.333
+Fay            3.000      0.600
+Gus            3.000      0.600
+Hana           2.333      0.778
+Ivo            2.000      1.000
+Jo             1.000      1.000
+```
+:::
+
 :::
 
 Dev has the largest effective size, 3.333 contacts' worth out of six. Hana's 2.333 is out of three, so her efficiency of 0.778 is among the highest: nearly everyone she knows brings something new. Cleo and Eli sit at 1.000, one contact's worth, because their three friends are all the same circle. Jo's single contact is, trivially, entirely non-redundant.
@@ -227,6 +299,21 @@ constraint <- net_constraint(friends)
 writeLines(sprintf("%-5s %.3f", names, constraint))
 ```
 
+::: {.code-output}
+```text
+Ana   0.541
+Ben   0.541
+Cleo  0.664
+Dev   0.470
+Eli   0.664
+Fay   0.445
+Gus   0.445
+Hana  0.431
+Ivo   0.500
+Jo    1.000
+```
+:::
+
 ## Python
 
 ```python
@@ -234,19 +321,6 @@ constraint = nx.constraint(friends)
 for i, name in enumerate(names):
     print(f"{name:<5} {constraint[i]:.3f}")
 ```
-
-## Rust
-
-```rust
-use knappnet::metrics::brokerage::compute_constraint;
-
-let constraint = compute_constraint(&friends, StructuralHoleOptions::default())?;
-for (i, name) in names.iter().enumerate() {
-    println!("{name:<5} {:.3}", constraint[i]);
-}
-```
-
-:::
 
 ::: {.code-output}
 ```text
@@ -261,6 +335,34 @@ Hana  0.431
 Ivo   0.500
 Jo    1.000
 ```
+:::
+
+## Rust
+
+```rust
+use knappnet::metrics::brokerage::compute_constraint;
+
+let constraint = compute_constraint(&friends, StructuralHoleOptions::default())?;
+for (i, name) in names.iter().enumerate() {
+    println!("{name:<5} {:.3}", constraint[i]);
+}
+```
+
+::: {.code-output}
+```text
+Ana   0.541
+Ben   0.541
+Cleo  0.664
+Dev   0.470
+Eli   0.664
+Fay   0.445
+Gus   0.445
+Hana  0.431
+Ivo   0.500
+Jo    1.000
+```
+:::
+
 :::
 
 Hana has the lowest constraint in the network, 0.431, lower than Dev's 0.470 even though Dev has twice as many friends. That is the point of the measure. Dev's friends form a tightly woven circle, so most of what Dev hears comes through people who also hear it from each other. Hana's three contacts live in different parts of the network, so none of them can speak for her whole world. Jo, with a single contact, has the maximum possible constraint of 1.000.
@@ -308,6 +410,31 @@ writeLines(c(sprintf("%-4s %s", "", paste(sprintf("%5.5s", roles), collapse = " 
              sprintf("%-4s %s", team_names, role_cells)))
 ```
 
+::: {.code-output}
+```text
+Directed network: 9 nodes, 10 ties (arcs)
+  Density           0.139
+  Out-degree        0 to 3, mean 1.11
+  In-degree         1 to 2, mean 1.11
+  Reciprocity       0.00 of ties are returned
+  Connected pieces  1 weak, 6 strong
+  Isolated nodes    0
+  Loops, repeats    none
+  Busiest           Dee (4), Gus (3), Ada (2)
+
+     coord itine repre gatek liais total
+Ada      0     0     0     1     0     1
+Ben      1     0     0     0     0     1
+Cy       0     0     1     0     0     1
+Dee      0     1     0     1     1     3
+Eve      1     0     0     0     0     1
+Flo      0     0     1     0     0     1
+Gus      0     0     0     2     0     2
+Hal      1     0     0     0     0     1
+Ivy      0     0     0     0     0     0
+```
+:::
+
 ## Python
 
 ```python
@@ -350,6 +477,21 @@ for j, name in enumerate(team_names):
     print(f"{name:<4} " + " ".join(f"{v:>5}" for v in row + [sum(row)]))
 ```
 
+::: {.code-output}
+```text
+     coord itine repre gatek liais total
+Ada      0     0     0     1     0     1
+Ben      1     0     0     0     0     1
+Cy       0     0     1     0     0     1
+Dee      0     1     0     1     1     3
+Eve      1     0     0     0     0     1
+Flo      0     0     1     0     0     1
+Gus      0     0     0     2     0     2
+Hal      1     0     0     0     0     1
+Ivy      0     0     0     0     0     0
+```
+:::
+
 ## Rust
 
 ```rust
@@ -371,8 +513,6 @@ for (i, name) in team_names.iter().enumerate() {
     println!("{:<4} {}", name, row.join(" "));
 }
 ```
-
-:::
 
 ::: {.code-output}
 ```text
@@ -397,6 +537,8 @@ Gus      0     0     0     2     0     2
 Hal      1     0     0     0     0     1
 Ivy      0     0     0     0     0     0
 ```
+:::
+
 :::
 
 Dee brokers three pairs, one in each of three roles. Cy passes work to Dee, who passes it on to Ada (Dee is an itinerant, an outsider linking two Design people), to Eve (a gatekeeper, controlling entry into Build) and to Gus (a liaison, linking Design to Sales). Gus is a gatekeeper twice over for Sales. Ada is a gatekeeper too, because Dee passes work to Ada, who passes it on to Ben. Cy and Flo are representatives, sending their own team's work outward. Ben, Eve and Hal are coordinators inside their own teams, and Ivy, at the end of the chain, brokers nothing. The column headings are cut to five letters to fit: coord, itine, repre, gatek and liais, then the total.
@@ -430,6 +572,24 @@ writeLines(c(sprintf("whole network  %+.3f", net_ei_index(friends, group, scope 
              sprintf("%-5s          %+.3f", names, by_person)))
 ```
 
+::: {.code-output}
+```text
+whole network  -0.333
+group 0        -0.077
+group 1        +0.091
+Ana            -0.500
+Ben            -0.500
+Cleo           -0.333
+Dev            -0.333
+Eli            -0.333
+Fay            +0.200
+Gus            +0.200
+Hana           -1.000
+Ivo            -1.000
+Jo             -1.000
+```
+:::
+
 ## Python
 
 ```python
@@ -455,6 +615,24 @@ for i, name in enumerate(names):
     print(f"{name:<5}          {ei(outside, friends.degree(i) - outside):+.3f}")
 ```
 
+::: {.code-output}
+```text
+whole network  -0.333
+group 0        -0.077
+group 1        +0.091
+Ana            -0.500
+Ben            -0.500
+Cleo           -0.333
+Dev            -0.333
+Eli            -0.333
+Fay            +0.200
+Gus            +0.200
+Hana           -1.000
+Ivo            -1.000
+Jo             -1.000
+```
+:::
+
 ## Rust
 
 ```rust
@@ -474,8 +652,6 @@ for (i, name) in names.iter().enumerate() {
 }
 ```
 
-:::
-
 ::: {.code-output}
 ```text
 whole network  -0.333
@@ -492,6 +668,8 @@ Hana           -1.000
 Ivo            -1.000
 Jo             -1.000
 ```
+:::
+
 :::
 
 The whole network scores -0.333: 12 of the 18 ties stay inside a group and 6 cross, which is (6 - 12) / 18. The two groups differ, though. Group 0 has a little more inside than outside (-0.077), and group 1 has a little more outside (+0.091), because Fay and Gus tie across more than they tie within. Hana, Ivo and Jo have every tie inside their own group, so they score -1.000, and this is the place to remember what the index doesn't say: the three of them are at the far end of a chain, not isolated from the other group by choice.

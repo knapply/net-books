@@ -55,6 +55,21 @@ cat(sprintf("largest clique   %d people\n", net_clique_number(g)))
 cat(sprintf("maximal cliques  %d (of 3 or more people)\n", length(cliques)))
 ```
 
+::: {.code-output}
+```text
+Undirected network: 34 nodes, 78 ties
+  Density           0.139
+  Degree            1 to 17, mean 4.59
+  Connected pieces  1
+  Isolated nodes    0
+  Loops, repeats    none
+  Busiest           node 33 (17), node 0 (16), node 32 (12)
+
+largest clique   5 people
+maximal cliques  25 (of 3 or more people)
+```
+:::
+
 ## Python
 
 ```python
@@ -80,6 +95,13 @@ cliques = [c for c in nx.find_cliques(g) if len(c) >= 3]
 print(f"largest clique   {max(map(len, nx.find_cliques(g)))} people")
 print(f"maximal cliques  {len(cliques)} (of 3 or more people)")
 ```
+
+::: {.code-output}
+```text
+largest clique   5 people
+maximal cliques  25 (of 3 or more people)
+```
+:::
 
 ## Rust
 
@@ -108,8 +130,6 @@ println!("largest clique   {} people", compute_clique_number(&g, 0));
 println!("maximal cliques  {} (of 3 or more people)", cliques.len());
 ```
 
-:::
-
 ::: {.code-output}
 ```text
 Undirected network: 34 nodes, 78 ties
@@ -123,6 +143,8 @@ Undirected network: 34 nodes, 78 ties
 largest clique   5 people
 maximal cliques  25 (of 3 or more people)
 ```
+:::
+
 :::
 
 The biggest clique has five members, and there are 25 maximal cliques of three or more people. Cliques exist, but they overlap heavily, and a 34-person club is clearly more than 25 separate little circles.
@@ -164,6 +186,12 @@ sides <- c(
 cat(sprintf("modularity of the real split  %.3f\n", net_modularity(g, sides)))
 ```
 
+::: {.code-output}
+```text
+modularity of the real split  0.358
+```
+:::
+
 ## Python
 
 ```python
@@ -175,6 +203,12 @@ def as_groups(labels):
     return [{i for i, l in enumerate(labels) if l == k} for k in sorted(set(labels))]
 print(f"modularity of the real split  {nx.community.modularity(g, as_groups(sides)):.3f}")
 ```
+
+::: {.code-output}
+```text
+modularity of the real split  0.358
+```
+:::
 
 ## Rust
 
@@ -190,12 +224,12 @@ let split_q = compute_modularity(&g, &sides, 1.0, false)?;
 println!("modularity of the real split  {split_q:.3}");
 ```
 
-:::
-
 ::: {.code-output}
 ```text
 modularity of the real split  0.358
 ```
+:::
+
 :::
 
 A note on reproducibility. Some copies of the karate club data you'll find online carry tie weights, which Zachary also recorded. On those, the modularity of the real split comes out near 0.39 and not 0.358, because the weighted and unweighted versions are different data. The numbers here are for the unweighted version, as stated in the code. Whenever you reproduce a result from someone else's data, check which version you have.
@@ -226,6 +260,13 @@ cat(sprintf("communities  %d, modularity %.3f\n", length(unique(found)), attr(fo
 cat(sprintf("scored again  %.3f\n", net_modularity(g, found)))
 ```
 
+::: {.code-output}
+```text
+communities  4, modularity 0.419
+scored again  0.419
+```
+:::
+
 ## Python
 
 ```python
@@ -236,6 +277,13 @@ print(f"communities  {len(found)}, modularity {nx.community.modularity(g, found)
 # Check it: score the same partition with the modularity function from before.
 print(f"scored again  {nx.community.modularity(g, found):.3f}")
 ```
+
+::: {.code-output}
+```text
+communities  4, modularity 0.419
+scored again  0.419
+```
+:::
 
 ## Rust
 
@@ -252,13 +300,13 @@ let labels: Vec<i64> = found.membership.iter().map(|&m| m as i64).collect();
 println!("scored again  {:.3}", compute_modularity(&g, &labels, 1.0, false)?);
 ```
 
-:::
-
 ::: {.code-output}
 ```text
 communities  4, modularity 0.419
 scored again  0.419
 ```
+:::
+
 :::
 
 Louvain finds four communities with modularity 0.419, higher than the 0.358 of the real two-way split. Scoring the partition again with the separate function gives the same number, which is a good habit: one measure computed two ways.
@@ -288,7 +336,6 @@ At a low setting, Louvain finds two communities, which line up closely with the 
 ## R
 
 ```r
-# CHECK: stop
 # R and Python draw different random numbers, so only some rows can agree.
 resolutions <- c(0.5, 1, 1.5, 2, 3)
 fits <- lapply(resolutions, \(r) net_louvain(g, resolution = r, seed = 1))
@@ -297,15 +344,34 @@ modularities <- vapply(fits, \(f) net_modularity(g, f), numeric(1))
 writeLines(sprintf("resolution %g: %2d groups, modularity %.3f", resolutions, n_groups, modularities))
 ```
 
+::: {.code-output}
+```text
+resolution 0.5:  2 groups, modularity 0.372
+resolution 1:  4 groups, modularity 0.419
+resolution 1.5:  5 groups, modularity 0.381
+resolution 2:  8 groups, modularity 0.325
+resolution 3: 12 groups, modularity 0.226
+```
+:::
+
 ## Python
 
 ```python
-# CHECK: stop
 # R and Python draw different random numbers, so only some rows can agree.
 for r in [0.5, 1, 1.5, 2, 3]:
     f = nx.community.louvain_communities(g, resolution=r, seed=1)
     print(f"resolution {r:g}: {len(f):>2} groups, modularity {nx.community.modularity(g, f):.3f}")
 ```
+
+::: {.code-output}
+```text
+resolution 0.5:  2 groups, modularity 0.372
+resolution 1:  4 groups, modularity 0.419
+resolution 1.5:  5 groups, modularity 0.406
+resolution 2:  7 groups, modularity 0.369
+resolution 3: 11 groups, modularity 0.234
+```
+:::
 
 ## Rust
 
@@ -318,8 +384,6 @@ for r in [0.5, 1.0, 1.5, 2.0, 3.0] {
 }
 ```
 
-:::
-
 ::: {.code-output}
 ```text
 resolution 0.5:  2 groups, modularity 0.372
@@ -328,6 +392,8 @@ resolution 1.5:  5 groups, modularity 0.381
 resolution 2:  8 groups, modularity 0.325
 resolution 3: 12 groups, modularity 0.226
 ```
+:::
+
 :::
 
 Turning the dial up gives more and smaller groups: two at 0.5, four at the standard setting of 1, twelve at 3. Scored on the same standard yardstick, the middle setting wins, but note that the winner depends on the yardstick.
@@ -346,6 +412,12 @@ How do you tell whether two ways of dividing a network agree? Several scores exi
 labels <- net_louvain(g, resolution = 1, seed = 1)
 cat(sprintf("adjusted Rand  %.3f\n", net_compare_partitions(labels, sides, method = "adjusted_rand")))
 ```
+
+::: {.code-output}
+```text
+adjusted Rand  0.392
+```
+:::
 
 ## Python
 
@@ -369,6 +441,12 @@ ari = (index - expected) / ((rows + cols) / 2 - expected)
 print(f"adjusted Rand  {ari:.3f}")
 ```
 
+::: {.code-output}
+```text
+adjusted Rand  0.392
+```
+:::
+
 ## Rust
 
 ```rust
@@ -378,12 +456,12 @@ let ari = compare_partitions(&labels, &sides, CompareMethod::AdjustedRand)?;
 println!("adjusted Rand  {ari:.3}");
 ```
 
-:::
-
 ::: {.code-output}
 ```text
 adjusted Rand  0.392
 ```
+:::
+
 :::
 
 The adjusted Rand index is 1 for identical partitions and about 0 for agreement no better than chance. At 0.392 the communities agree with the real split a fair amount, which fits the picture: they nest inside the two sides, apart from a few members who sit between.

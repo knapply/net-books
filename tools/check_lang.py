@@ -1,149 +1,161 @@
 #!/usr/bin/env python3
-"""Run the R or Python tab of every example and compare what it prints with the
-output block shown after the tabset (the same block the Rust tab is checked against).
+"""Run the R or Python tab of every example and keep its output block honest.
 
-The tabs of one chapter form one script, like cells in a notebook: later tabs may
-use what earlier ones defined. Tabs whose first line is a `# TODO` comment are
-skipped. Data files are read from `data/<name>/...`, relative to the working
-directory (the checker links books/sna/data there).
-
-Two allowances, both for output that cannot match by design:
-- The network description that Rust prints (`Undirected network: ...` and its
-  indented lines) is removed from the expected text; R and Python tabs do not
-  reproduce it.
-- A line `# CHECK: stop` in a tab ends the comparison there: the code still runs, but
-  output printed after that line is not compared. Use it only for layouts and for
-  results that depend on random draws, which differ between languages; say so in a
-  comment (and in the prose).
+Every tab owns the output it printed (the `.code-output` block right after its code),
+so R and Python show what R and Python really print; they do not have to match
+Rust or each other character for character. The tabs of one chapter form one
+script, like cells in a notebook. Tabs whose first line is a `# TODO` comment
+are skipped. Data files are read from `data/<name>/...`.
 
 Usage:
-  python3 tools/check_lang.py --lang python [--diff] [chapter-name-part ...]
-  python3 tools/check_lang.py --lang r      [--diff] [chapter-name-part ...]
+  python3 tools/check_lang.py --lang python|r [--diff] [--agree] [chapter-part ...]
+        check that each stored output equals what the tab prints now
+  python3 tools/check_lang.py --lang python --write [chapter-part ...]
+        run the tabs and store what they print in the output blocks
+  python3 tools/check_lang.py --lang r --emit FILE [chapter-part ...]
+        run the tabs and save what they print as JSON (for runs elsewhere)
+  python3 tools/check_lang.py --lang r --apply FILE [chapter-part ...]
+        store a saved run in the output blocks
+  --agree  also list numbers a tab prints that Rust does not print (advisory only;
+           different libraries may print different things)
 
-Needs python3 with networkx, numpy (and whatever a chapter imports), or Rscript
-with the packages a chapter loads (on btower: knappnet installed from r/).
-Exit status is 1 if any example fails to run or prints something different.
+Exit status is 1 if a tab fails to run or a stored output is stale.
 """
 import difflib
+import json
 import re
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from tabs import set_output, tabs_of, tabsets  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent
-TABSET = re.compile(r'::: \{\.panel-tabset group="language"\}\n(.*?)\n:::\n\n::: \{\.code-output\}\n(.*?)\n:::', re.S)
-TAB = re.compile(r"^## (R|Python|Rust)\n\n```(?:r|python|rust)\n(.*?)```", re.S | re.M)
 MARK = "@@FRAGMENT "
 LANG = {"python": ("Python", ["python3", "-I"], "script.py", 'print("%s%d")'),
         "r": ("R", ["Rscript", "--vanilla"], "script.R", 'cat("%s%d\\n")')}
+NUMBER = re.compile(r"-?\d+(?:\.\d+)?")
 
 
-def todo(code: str) -> bool:
+def todo(code):
     first = code.lstrip().split("\n", 1)[0]
-    return first.startswith("# TODO") or first.startswith("// TODO")
+    return first.startswith(("# TODO", "// TODO"))
 
 
-def strip_description(text: str) -> str:
-    out, skipping = [], False
-    for line in text.splitlines():
-        if re.match(r"(Directed|Undirected) network: ", line):
-            skipping = True
-            continue
-        if skipping and not line.strip():
-            skipping = False  # a blank line ends the description; the next lines are real output
-            continue
-        if skipping and line.startswith("  "):
-            continue
-        skipping = False
-        out.append(line)
-    return "\n".join(out)
-
-
-STOP = "@@STOP"
-
-
-def with_stop(code: str, lang: str) -> str:
-    emit = 'print("%s")' if lang == "python" else 'cat("%s\\n")'
-    out = []
-    for line in code.split("\n"):
-        if re.match(r"\s*#\s*CHECK:\s*(stop|skip)\b", line):
-            out.append(emit % STOP)
-        out.append(line)
-    return "\n".join(out)
-
-
-def norm(text: str) -> str:
+def norm(text):
     return "\n".join(line.rstrip() for line in text.strip().splitlines())
 
 
-def check_chapter(lang: str, qmd: Path, show_diff: bool) -> int:
-    tab_name, cmd, fname, marker = LANG[lang]
-    text = qmd.read_text()
-    cells = []  # (index, code, expected)
-    for i, m in enumerate(TABSET.finditer(text)):
-        tabs = {name: code for name, code in TAB.findall(m.group(1))}
-        code = tabs.get(tab_name)
-        shown = re.search(r"```text\n(.*?)```", m.group(2), re.S)
-        if code is None or todo(code) or not shown:
+def cells(lang, lines):
+    """(tabset index, code, stored output or None, rust output or None) per runnable tab."""
+    tab_name = LANG[lang][0]
+    found = []
+    for i, (s, e) in enumerate(tabsets(lines)):
+        tabs = tabs_of(lines, s, e)
+        t = tabs.get(tab_name)
+        if not t or not t["code"] or todo(t["code"][2]):
             continue
-        cells.append((i, code, strip_description(shown.group(1))))
-    if not cells:
-        print(f"skip {qmd.name} (no {tab_name} examples yet)")
-        return 0
+        rust = tabs.get("Rust")
+        found.append((i, t["code"][2], t["out"][2] if t["out"] else None,
+                      rust["out"][2] if rust and rust["out"] else None))
+    return found
+
+
+def run(lang, cs):
+    _, cmd, fname, marker = LANG[lang]
     with tempfile.TemporaryDirectory() as tmp:
         (Path(tmp) / "data").symlink_to(ROOT / "books" / "sna" / "data")
-        body = "".join((marker % (MARK, i)) + "\n" + with_stop(code, lang).rstrip("\n") + "\n" for i, code, _ in cells)
+        body = "".join((marker % (MARK, i)) + "\n" + code.rstrip("\n") + "\n" for i, code, _, _ in cs)
         (Path(tmp) / fname).write_text(body)
-        run = subprocess.run(cmd + [fname], cwd=tmp, capture_output=True, text=True)
-    if run.returncode != 0:
-        print(f"FAIL {qmd.name}: the {tab_name} examples do not run\n{run.stderr[-3000:]}")
-        got = run.stdout
-    else:
-        got = run.stdout
+        proc = subprocess.run(cmd + [fname], cwd=tmp, capture_output=True, text=True)
     parts = {}
-    for chunk in got.split(MARK)[1:]:
+    for chunk in proc.stdout.split(MARK)[1:]:
         idx, _, rest = chunk.partition("\n")
         parts[int(idx.strip())] = rest
-    failures = 0 if run.returncode == 0 else 1
-    codes = {i: c for i, c, _ in cells}
-    for i, _, expected in cells:
-        code = codes[i]
-        if i not in parts:
-            if run.returncode == 0:
-                failures += 1
-                print(f"DIFF {qmd.name}: {tab_name} example {i + 1} printed nothing")
-            continue
-        actual = parts[i]
-        if STOP in actual:
-            actual = actual.split(STOP)[0]
-            expected = "\n".join(expected.splitlines()[:len(actual.strip().splitlines())])
-        if norm(actual) != norm(expected):
-            failures += 1
-            print(f"DIFF {qmd.name}: {tab_name} example {i + 1} printed something other than its output block")
-            if show_diff:
-                d = difflib.unified_diff(norm(expected).splitlines(), norm(actual).splitlines(),
-                                         "expected (output block)", f"{tab_name} printed", lineterm="", n=1)
-                print("\n".join(list(d)[:30]))
-    if not failures:
-        print(f"ok   {qmd.name} ({len(cells)} {tab_name} example{'s' if len(cells) != 1 else ''})")
-    return 1 if failures else 0
+    return proc, parts
 
 
-def main() -> int:
+def numbers(text):
+    text = "\n".join(l for l in text.splitlines() if not l.lstrip().startswith("#"))
+    text = re.sub(r"^\s*\[\d+\]", "", text, flags=re.M)
+    return [t for t in NUMBER.findall(text)]
+
+
+def unmatched(actual, rust):
+    ref = [(float(t), len(t.split(".")[1]) if "." in t else 0) for t in numbers(rust)]
+    out = []
+    for t in numbers(actual):
+        v, d = float(t), (len(t.split(".")[1]) if "." in t else 0)
+        if not any(abs(v - r) <= 0.51 * 10 ** -min(d, rd) for r, rd in ref):
+            out.append(t)
+    return out
+
+
+def chapters(only):
+    files = sorted(list((ROOT / "books").glob("*/chapters/*.qmd")) + list((ROOT / "books").glob("*/appendices/*.qmd")))
+    return [q for q in files if not only or any(o in q.name for o in only)]
+
+
+def main():
     args = sys.argv[1:]
     if "--lang" not in args:
         print(__doc__)
         return 2
     lang = args[args.index("--lang") + 1]
-    if lang not in LANG:
-        print("--lang must be python or r")
-        return 2
-    only = [a for a in args if not a.startswith("--") and a != lang]
-    chapters = sorted(list((ROOT / "books").glob("*/chapters/*.qmd")) + list((ROOT / "books").glob("*/appendices/*.qmd")))
-    if only:
-        chapters = [q for q in chapters if any(o in q.name for o in only)]
-    return 1 if sum(check_chapter(lang, q, "--diff" in args) for q in chapters) else 0
+    tab_name = LANG[lang][0]
+    flags = {"--diff", "--agree", "--write"}
+    value_flags = {"--lang", "--emit", "--apply"}
+    values = {f: args[args.index(f) + 1] for f in value_flags if f in args}
+    only = [a for a in args if a not in flags and a not in value_flags and a not in values.values()]
+    saved = json.load(open(values["--apply"])) if "--apply" in values else {}
+    dump, bad = {}, 0
+    for qmd in chapters(only):
+        lines = qmd.read_text().split("\n")
+        cs = cells(lang, lines)
+        if not cs:
+            continue
+        if "--apply" in values:
+            actual, proc = {int(k): v for k, v in saved.get(qmd.name, {}).items()}, None
+        else:
+            proc, actual = run(lang, cs)
+            if proc.returncode != 0:
+                bad += 1
+                print(f"FAIL {qmd.name}: the {tab_name} examples do not run\n{proc.stderr[-3000:]}")
+                continue
+        dump[qmd.name] = {str(k): v for k, v in actual.items()}
+        stale = 0
+        for i, code, stored, rust in cs:
+            if i not in actual:
+                continue
+            if "--agree" in args and rust:
+                extra = unmatched(actual[i], rust)
+                if extra:
+                    print(f"note {qmd.name}: {tab_name} example {i + 1} prints numbers Rust does not: {' '.join(extra[:8])}")
+            if stored is not None and norm(stored) == norm(actual[i]):
+                continue
+            stale += 1
+            if "--write" in args or "--apply" in values:
+                continue
+            print(f"DIFF {qmd.name}: {tab_name} example {i + 1}: stored output is {'missing' if stored is None else 'stale'}")
+            if "--diff" in args and stored is not None:
+                d = difflib.unified_diff(norm(stored).splitlines(), norm(actual[i]).splitlines(),
+                                         "stored", "printed now", lineterm="", n=1)
+                print("\n".join(list(d)[:30]))
+        if stale and ("--write" in args or "--apply" in values):
+            for i, code, stored, rust in sorted(cs, reverse=True):
+                if i in actual and (stored is None or norm(stored) != norm(actual[i])):
+                    s, e = list(tabsets(lines))[i]
+                    lines = set_output(lines, tabs_of(lines, s, e)[tab_name], actual[i])
+            qmd.write_text("\n".join(lines))
+            print(f"wrote {qmd.name} ({stale} output{'s' if stale != 1 else ''})")
+        elif not stale:
+            print(f"ok   {qmd.name} ({len(cs)} {tab_name} example{'s' if len(cs) != 1 else ''})")
+        bad += 1 if stale and not ("--write" in args or "--apply" in values) else 0
+    if "--emit" in values:
+        json.dump(dump, open(values["--emit"], "w"))
+    return 1 if bad else 0
 
 
 if __name__ == "__main__":

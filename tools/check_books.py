@@ -13,6 +13,10 @@ Standard library only. Exit status 1 on any problem.
 """
 import re
 import sys
+from pathlib import Path as _P
+sys.path.insert(0, str(_P(__file__).resolve().parent))
+from tabs import tabs_of, tabsets
+import sys
 import tomllib
 from pathlib import Path
 
@@ -58,13 +62,15 @@ def check_book(book: Path, keys: set[str]) -> int:
             if anchor in anchors:
                 problems.append(f"{name}: anchor {anchor} also in {anchors[anchor].name}")
             anchors[anchor] = path
-        for tabset in re.findall(r"panel-tabset[^\n]*\n(.*?)\n:::", text, flags=re.S):
-            tabs = re.findall(r"^## (.+)$", tabset, flags=re.M)
-            if tabs != TABS:
-                problems.append(f"{name}: tabset tabs {tabs}, expected {TABS}")
-        for m in re.finditer(r"panel-tabset[^\n]*\n.*?\n:::\n", text, flags=re.S):
-            if not text[m.end():].lstrip().startswith("::: {.code-output}"):
-                problems.append(f"{name}: a code tabset has no code-output block after it")
+        lines = text.split("\n")
+        for start, end in tabsets(lines):
+            tabs = tabs_of(lines, start, end)
+            if list(tabs) != TABS:
+                problems.append(f"{name}: tabset tabs {list(tabs)}, expected {TABS}")
+            for tab, info in tabs.items():
+                code = info["code"]
+                if code and not code[2].lstrip().startswith(("# TODO", "// TODO")) and not info["out"]:
+                    problems.append(f"{name}: a {tab} example has no output block")
         for key in re.findall(r"(?<![\w`])@([A-Za-z][\w:.-]*\d\w*)", text):
             if key not in keys and not key.startswith(("sec-", "fig-", "tbl-", "eq-")):
                 problems.append(f"{name}: citation @{key} not in references.bib")

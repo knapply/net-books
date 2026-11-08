@@ -27,7 +27,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-PAIR = re.compile(r"(```rust\n)(.*?)(```\n\n:::\n\n::: \{\.code-output\}\n)(.*?)(\n:::)", re.S)
+PAIR = re.compile(r"(```rust\n)(.*?)(```\n\n::: \{\.code-output\}\n```text\n)(.*?)(```\n:::)", re.S)
 MARK = "@@FRAGMENT "
 
 
@@ -68,8 +68,7 @@ def check_chapter(engine: str, qmd: Path, update: bool) -> int:
         return 1
     failures = 0
     for i, (m, out) in enumerate(zip(pairs, printed)):
-        shown = re.search(r"```text\n(.*?)```", m.group(4), re.S)
-        if not shown or shown.group(1).strip() != out.strip():
+        if m.group(4).strip() != out.strip():
             failures += 1
             print(f"DIFF {qmd.name}: example {i + 1} printed something other than its output block")
     if update and failures:
@@ -79,7 +78,7 @@ def check_chapter(engine: str, qmd: Path, update: bool) -> int:
             if m.group(2).lstrip().startswith("// TODO"):
                 return m.group(0)
             out = next(out_iter).rstrip("\n") + "\n"
-            return m.group(1) + m.group(2) + m.group(3) + "```text\n" + out + "```" + m.group(5)
+            return m.group(1) + m.group(2) + m.group(3) + out + m.group(5)
 
         qmd.write_text(PAIR.sub(rep, text))
         print(f"updated {qmd.name}")

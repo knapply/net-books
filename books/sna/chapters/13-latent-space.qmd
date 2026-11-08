@@ -59,6 +59,20 @@ side <- as.integer(nodes$faction != "Mr. Hi")
 cat(sprintf("%d members, %d friendships\n", nrow(club$nodes), nrow(club$edges)))
 ```
 
+::: {.code-output}
+```text
+Undirected network: 34 nodes, 78 ties
+  Density           0.139
+  Degree            1 to 17, mean 4.59
+  Connected pieces  1
+  Isolated nodes    0
+  Loops, repeats    none
+  Busiest           node 33 (17), node 0 (16), node 32 (12)
+
+34 members, 78 friendships
+```
+:::
+
 ## Python
 
 ```python
@@ -76,6 +90,12 @@ club.add_edges_from(zip(edges["source"] - 1, edges["target"] - 1))
 side = (nodes["faction"] != "Mr. Hi").astype(int).to_numpy()
 print(club.number_of_nodes(), "members,", club.number_of_edges(), "friendships")
 ```
+
+::: {.code-output}
+```text
+34 members, 78 friendships
+```
+:::
 
 ## Rust
 
@@ -104,8 +124,6 @@ println!("{}", club.describe());
 println!("{} members, {} friendships", club.node_count(), club.edge_count());
 ```
 
-:::
-
 ::: {.code-output}
 ```text
 Undirected network: 34 nodes, 78 ties
@@ -118,6 +136,8 @@ Undirected network: 34 nodes, 78 ties
 
 34 members, 78 friendships
 ```
+:::
+
 :::
 
 ### Step 2: fit a map
@@ -167,7 +187,6 @@ fit_map <- function(dim) {
 
 # The likelihood has many hills, and R's search climbs a different one than Rust's
 # does, so the numbers below differ in the first decimals. Python differs too.
-# CHECK: stop
 fit <- fit_map(2)
 positions <- fit$positions
 cat(sprintf("baseline log-odds (alpha): %.3f\n", fit$alpha))
@@ -176,6 +195,15 @@ cat(sprintf("search steps: %d, converged: %s\n", fit$steps, tolower(fit$converge
 cat(sprintf("Mr. Hi at (%.2f, %.2f), the officer at (%.2f, %.2f)\n",
             positions[1, 1], positions[1, 2], positions[34, 1], positions[34, 2]))
 ```
+
+::: {.code-output}
+```text
+baseline log-odds (alpha): 3.063
+log-likelihood: -122.33
+search steps: 850, converged: true
+Mr. Hi at (3.64, -0.52), the officer at (-3.78, -0.31)
+```
+:::
 
 ## Python
 
@@ -213,13 +241,21 @@ def fit_map(dim):
 
 # The likelihood has many hills, and scipy's search climbs a different one than Rust's
 # does, so the numbers below differ in the first decimals. R and Python also differ.
-# CHECK: stop
 positions, alpha, loglik, res = fit_map(2)
 print(f"baseline log-odds (alpha): {alpha:.3f}")
 print(f"log-likelihood: {loglik:.2f}")
 print(f"search steps: {res.nit}, converged: {str(res.success).lower()}")
 print(f"Mr. Hi at ({positions[0, 0]:.2f}, {positions[0, 1]:.2f}), the officer at ({positions[33, 0]:.2f}, {positions[33, 1]:.2f})")
 ```
+
+::: {.code-output}
+```text
+baseline log-odds (alpha): 3.052
+log-likelihood: -122.40
+search steps: 2346, converged: true
+Mr. Hi at (3.63, -0.57), the officer at (-3.78, -0.27)
+```
+:::
 
 ## Rust
 
@@ -233,8 +269,6 @@ println!("Mr. Hi at ({:.2}, {:.2}), the officer at ({:.2}, {:.2})",
     map.positions[0], map.positions[1], map.positions[66], map.positions[67]);
 ```
 
-:::
-
 ::: {.code-output}
 ```text
 baseline log-odds (alpha): 3.063
@@ -242,6 +276,8 @@ log-likelihood: -122.33
 search steps: 850, converged: true
 Mr. Hi at (3.64, -0.52), the officer at (-3.78, -0.31)
 ```
+:::
+
 :::
 
 The R and Python tabs fit the same model with their own optimizers, which climb a different hill of the likelihood than the Rust search does, so their digits differ from the ones shown here.
@@ -262,7 +298,6 @@ A map is a picture. To use it, turn it back into numbers: how likely is each pai
 
 ```r
 # Distances come from the map, so they differ a little from Rust's.
-# CHECK: stop
 # Turn the map into tie probabilities: log-odds = alpha - distance.
 alpha <- fit$alpha
 distance <- as.matrix(dist(positions))
@@ -277,11 +312,18 @@ cat(sprintf("average distance: %.2f within a side, %.2f between sides\n",
             mean(distance[upper][same_side]), mean(distance[upper][!same_side])))
 ```
 
+::: {.code-output}
+```text
+expected ties 78.0 (observed 78)
+average chance of a tie: 0.502 for pairs that are tied, 0.080 for pairs that are not
+average distance: 5.27 within a side, 9.47 between sides
+```
+:::
+
 ## Python
 
 ```python
 # Distances come from the map, so they differ a little from Rust's.
-# CHECK: stop
 # Turn the map into tie probabilities: log-odds = alpha - distance.
 dist = np.linalg.norm(positions[pair_i] - positions[pair_j], axis=1)
 p = 1 / (1 + np.exp(dist - alpha))
@@ -290,6 +332,14 @@ print(f"expected ties {p.sum():.1f} (observed {int(tied.sum())})")
 print(f"average chance of a tie: {p[tied == 1].mean():.3f} for pairs that are tied, {p[tied == 0].mean():.3f} for pairs that are not")
 print(f"average distance: {dist[same_side].mean():.2f} within a side, {dist[~same_side].mean():.2f} between sides")
 ```
+
+::: {.code-output}
+```text
+expected ties 78.0 (observed 78)
+average chance of a tie: 0.502 for pairs that are tied, 0.080 for pairs that are not
+average distance: 5.24 within a side, 9.47 between sides
+```
+:::
 
 ## Rust
 
@@ -317,14 +367,14 @@ println!("average chance of a tie: {:.3} for pairs that are tied, {:.3} for pair
 println!("average distance: {:.2} within a side, {:.2} between sides", within / n_within as f64, between / n_between as f64);
 ```
 
-:::
-
 ::: {.code-output}
 ```text
 expected ties 78.0 (observed 78)
 average chance of a tie: 0.502 for pairs that are tied, 0.080 for pairs that are not
 average distance: 5.27 within a side, 9.47 between sides
 ```
+:::
+
 :::
 
 Because the R and Python maps differ a little from the Rust map, the averages they print differ in the first decimals too.
@@ -345,20 +395,34 @@ Why two dimensions? Mostly because we can draw two. More dimensions always fit a
 ## R
 
 ```r
-# CHECK: stop
 fits <- lapply(1:3, fit_map)
 writeLines(sprintf("%d dimension(s): log-likelihood %8.2f, alpha %6.2f", 1:3,
                    vapply(fits, \(m) m$loglik, numeric(1)), vapply(fits, \(m) m$alpha, numeric(1))))
 ```
 
+::: {.code-output}
+```text
+1 dimension(s): log-likelihood  -160.17, alpha   0.37
+2 dimension(s): log-likelihood  -122.33, alpha   3.06
+3 dimension(s): log-likelihood   -83.66, alpha  13.75
+```
+:::
+
 ## Python
 
 ```python
-# CHECK: stop
 for dim in (1, 2, 3):
     _, a, ll, _ = fit_map(dim)
     print(f"{dim} dimension(s): log-likelihood {ll:8.2f}, alpha {a:6.2f}")
 ```
+
+::: {.code-output}
+```text
+1 dimension(s): log-likelihood  -159.14, alpha   0.42
+2 dimension(s): log-likelihood  -122.40, alpha   3.05
+3 dimension(s): log-likelihood   -73.83, alpha  47.28
+```
+:::
 
 ## Rust
 
@@ -369,14 +433,14 @@ for dim in 1..=3 {
 }
 ```
 
-:::
-
 ::: {.code-output}
 ```text
 1 dimension(s): log-likelihood  -160.17, alpha   0.37
 2 dimension(s): log-likelihood  -122.33, alpha   3.06
 3 dimension(s): log-likelihood   -83.66, alpha  13.75
 ```
+:::
+
 :::
 
 Again, the R and Python optimizers end at different hills, so their log-likelihoods and baselines differ from these, most of all in three dimensions, where the search runs off along the ridge described below.
@@ -470,6 +534,14 @@ writeLines(sprintf("group %s (%d members): [%s]", names(groups), lengths(groups)
                    vapply(groups, paste, character(1), collapse = ", ")))
 ```
 
+::: {.code-output}
+```text
+2 groups found
+group 0 (5 members): [0, 1, 2, 32, 33]
+group 1 (29 members): [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
+```
+:::
+
 ## Python
 
 ```python
@@ -539,6 +611,14 @@ for g in range(found.max() + 1):
     print(f"group {g} ({len(members)} members): {members}")
 ```
 
+::: {.code-output}
+```text
+2 groups found
+group 0 (5 members): [0, 1, 2, 32, 33]
+group 1 (29 members): [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
+```
+:::
+
 ## Rust
 
 ```rust
@@ -552,14 +632,14 @@ for g in 0..found.groups as u32 {
 }
 ```
 
-:::
-
 ::: {.code-output}
 ```text
 2 groups found
 group 0 (5 members): [0, 1, 2, 32, 33]
 group 1 (29 members): [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
 ```
+:::
+
 :::
 
 This is a surprise, and a useful one. The model did not find the two camps. It found five members, 0, 1, 2, 32 and 33, and then everyone else. Those five are the club's busiest people, including Mr. Hi (0) and the officer (33) themselves. @fig-sbm-matrix shows what the model sees.
@@ -584,6 +664,15 @@ writeLines(sprintf("%-26s %8.1f %8.1f %8.1f %8.1f", names(groupings),
                    scores["network", ], scores["groups", ], scores["ties", ], scores["total", ]))
 ```
 
+::: {.code-output}
+```text
+                            network   groups     ties    total
+one group                     231.1      3.5      0.0    234.7
+the club's two sides          204.3     28.6      8.1    241.0
+hubs and the rest (found)     187.7     19.6      8.1    215.3
+```
+:::
+
 ## Python
 
 ```python
@@ -594,6 +683,15 @@ for label, blocks in [("one group", np.zeros(34, dtype=int)), ("the club's two s
     network, groups, ties, _, total = description_length(blocks)
     print(f"{label:<26} {network:8.1f} {groups:8.1f} {ties:8.1f} {total:8.1f}")
 ```
+
+::: {.code-output}
+```text
+                            network   groups     ties    total
+one group                     231.1      3.5      0.0    234.7
+the club's two sides          204.3     28.6      8.1    241.0
+hubs and the rest (found)     187.7     19.6      8.1    215.3
+```
+:::
 
 ## Rust
 
@@ -607,8 +705,6 @@ for (label, blocks) in [("one group", &one_group[..]), ("the club's two sides", 
 }
 ```
 
-:::
-
 ::: {.code-output}
 ```text
                             network   groups     ties    total
@@ -616,6 +712,8 @@ one group                     231.1      3.5      0.0    234.7
 the club's two sides          204.3     28.6      8.1    241.0
 hubs and the rest (found)     187.7     19.6      8.1    215.3
 ```
+:::
+
 :::
 
 @fig-dl-bars draws the same table. Look at the first column of numbers. Splitting by sides makes the network cheaper to describe given the groups (204.3, against 231.1 for no groups at all), but it costs 28.6 to say who is on which side and 8.1 to state the ties between the sides, and the total ends up *worse* than having one group (241.0 against 234.7). The hubs-and-the-rest grouping pays less for describing its groups and finds more structure to exploit, and wins by a wide margin at 215.3.
@@ -641,6 +739,15 @@ cost <- vapply(seq_along(movers), \(i) description_length(replace(found, movers[
 writeLines(sprintf("move member %2d to group %d: %+.2f", movers, target, cost))
 ```
 
+::: {.code-output}
+```text
+move member  0 to group 1: +14.80
+move member  2 to group 1: +2.44
+move member  5 to group 0: +4.08
+move member  9 to group 0: +9.77
+```
+:::
+
 ## Python
 
 ```python
@@ -654,6 +761,15 @@ for member in [0, 2, 5, 9]:
     print(f"move member {member:>2} to group {target}: {cost:+.2f}")
 ```
 
+::: {.code-output}
+```text
+move member  0 to group 1: +14.80
+move member  2 to group 1: +2.44
+move member  5 to group 0: +4.08
+move member  9 to group 0: +9.77
+```
+:::
+
 ## Rust
 
 ```rust
@@ -665,8 +781,6 @@ for member in [0, 2, 5, 9] {
 }
 ```
 
-:::
-
 ::: {.code-output}
 ```text
 move member  0 to group 1: +14.80
@@ -674,6 +788,8 @@ move member  2 to group 1: +2.44
 move member  5 to group 0: +4.08
 move member  9 to group 0: +9.77
 ```
+:::
+
 :::
 
 Under the model, a grouping whose description is $d$ nats longer is about $e^{d}$ times less probable. Moving Mr. Hi (member 0) into the big group costs 14.8 nats, which makes the grouping millions of times less probable, so he is firmly a hub. Moving member 9, who is tied only to two hubs, costs 9.8, about 17,000 times less probable. Moving member 2 costs just 2.4 nats, about 11 times less probable, the cheapest of any member we tried. Member 2 has friends among the hubs (0, 1 and 32) and outside them (7, for one), so that member sits closest to the boundary, and a different run or a bit more data could easily put member 2 in the other group. A grouping like this one is a best guess with a boundary, not a fact.
@@ -695,6 +811,14 @@ cat(sprintf("(network %.1f, groups %.1f, member popularities %.1f)\n", d[["netwo
 cat(sprintf("hubs-and-the-rest, degree-corrected: %.1f\n", description_length(found, TRUE)[["total"]]))
 ```
 
+::: {.code-output}
+```text
+1 group found, description length 227.7
+(network 139.2, groups 3.5, member popularities 85.0)
+hubs-and-the-rest, degree-corrected: 234.2
+```
+:::
+
 ## Python
 
 ```python
@@ -705,6 +829,14 @@ print(f"{corrected.max() + 1} group found, description length {total:.1f}")
 print(f"(network {network:.1f}, groups {groups:.1f}, member popularities {popularity:.1f})")
 print(f"hubs-and-the-rest, degree-corrected: {description_length(found, True)[-1]:.1f}")
 ```
+
+::: {.code-output}
+```text
+1 group found, description length 227.7
+(network 139.2, groups 3.5, member popularities 85.0)
+hubs-and-the-rest, degree-corrected: 234.2
+```
+:::
 
 ## Rust
 
@@ -718,14 +850,14 @@ let ours = compute_description_length(&club, &found.blocks, true)?;
 println!("hubs-and-the-rest, degree-corrected: {:.1}", ours.total);
 ```
 
-:::
-
 ::: {.code-output}
 ```text
 1 group found, description length 227.7
 (network 139.2, groups 3.5, member popularities 85.0)
 hubs-and-the-rest, degree-corrected: 234.2
 ```
+:::
+
 :::
 
 With popularity handled member by member, the model finds *no* groups at all: one group, and the structure is explained by who is popular. Notice what that costs, though. Writing down every member's popularity takes 85.0 nats, so the total is 227.7. That is longer than the 215.3 of the plain model's hubs-and-the-rest grouping, and the same grouping scored by the degree-corrected model comes out at 234.2. Description lengths are measured in the same units whichever model computes them, so they can be compared: for this club, the plain model's short story ("five hubs and everyone else") beats the degree-corrected model's longer one ("each member has their own popularity").

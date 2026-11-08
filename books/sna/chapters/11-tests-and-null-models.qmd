@@ -59,6 +59,13 @@ cat(sprintf("%d pairs of people\n", n * (n - 1) / 2))
 cat(sprintf("%d friend pairs, %d same-floor pairs\n", sum(friends) / 2, sum(same_floor) / 2))
 ```
 
+::: {.code-output}
+```text
+45 pairs of people
+18 friend pairs, 20 same-floor pairs
+```
+:::
+
 ## Python
 
 ```python
@@ -80,6 +87,13 @@ np.fill_diagonal(same_floor, 0)
 print(f"{n * (n - 1) // 2} pairs of people")
 print(f"{friends.sum() / 2:g} friend pairs, {same_floor.sum() / 2:g} same-floor pairs")
 ```
+
+::: {.code-output}
+```text
+45 pairs of people
+18 friend pairs, 20 same-floor pairs
+```
+:::
 
 ## Rust
 
@@ -112,13 +126,13 @@ println!("{} pairs of people", n * (n - 1) / 2);
 println!("{} friend pairs, {} same-floor pairs", total(&friends), total(&same_floor));
 ```
 
-:::
-
 ::: {.code-output}
 ```text
 45 pairs of people
 18 friend pairs, 20 same-floor pairs
 ```
+:::
+
 :::
 
 Of the 45 pairs, 18 are friends and 20 are on the same floor (ten on each floor). We're asking whether the 18 friend pairs lean toward the 20 same-floor pairs.
@@ -142,6 +156,14 @@ cat(sprintf("observed correlation  %.3f\n", test$statistic))
 cat(sprintf("share of relabelings at least that high  %.4f\n", test$p.value[["Pr(>=r)"]]))
 ```
 
+::: {.code-output}
+```text
+pairs used            45
+observed correlation  0.365
+share of relabelings at least that high  0.0218
+```
+:::
+
 ## Python
 
 ```python
@@ -160,9 +182,16 @@ for r in range(len(draws)):
 print(f"pairs used            {len(low[0])}")
 print(f"observed correlation  {observed:.3f}")
 # Python draws different random relabelings than Rust, so the share differs a little.
-# CHECK: stop
 print(f"share of relabelings at least that high  {np.mean(draws >= observed - 1e-10):.4f}")
 ```
+
+::: {.code-output}
+```text
+pairs used            45
+observed correlation  0.365
+share of relabelings at least that high  0.0233
+```
+:::
 
 ## Rust
 
@@ -181,14 +210,14 @@ println!("observed correlation  {:.3}", test.statistic);
 println!("share of relabelings at least that high  {:.4}", test.tail.compute_p_ge());
 ```
 
-:::
-
 ::: {.code-output}
 ```text
 pairs used            45
 observed correlation  0.365
 share of relabelings at least that high  0.0218
 ```
+:::
+
 :::
 
 The observed correlation is 0.365, positive but modest. About 2% of the 10,000 relabelings (0.0218) are as high or higher, so by the usual conventions this is worth taking seriously, though it isn't overwhelming with only 45 pairs. The Python tab draws its own random numbers, so the share in its last line can differ slightly from these.
@@ -210,16 +239,31 @@ cat(sprintf("spread (sd) with QAP           %.3f\n", sd(draws)))
 cat(sprintf("spread an ordinary test assumes %.3f\n", naive))
 ```
 
+::: {.code-output}
+```text
+average relabeled correlation  -0.001
+spread (sd) with QAP           0.146
+spread an ordinary test assumes 0.151
+```
+:::
+
 ## Python
 
 ```python
 naive = 1 / np.sqrt(len(low[0]) - 1)
 # The relabelings differ from Rust's, so these digits can differ in the last place.
-# CHECK: stop
 print(f"average relabeled correlation  {draws.mean():+.3f}")
 print(f"spread (sd) with QAP           {draws.std(ddof=1):.3f}")
 print(f"spread an ordinary test assumes {naive:.3f}")
 ```
+
+::: {.code-output}
+```text
+average relabeled correlation  -0.001
+spread (sd) with QAP           0.148
+spread an ordinary test assumes 0.151
+```
+:::
 
 ## Rust
 
@@ -233,14 +277,14 @@ println!("spread (sd) with QAP           {sd:.3}");
 println!("spread an ordinary test assumes {naive:.3}");
 ```
 
-:::
-
 ::: {.code-output}
 ```text
 average relabeled correlation  -0.001
 spread (sd) with QAP           0.146
 spread an ordinary test assumes 0.151
 ```
+:::
+
 :::
 
 The relabeled correlations are centered on zero, as they should be for unrelated patterns. Their spread, 0.146, is very close to the 0.151 an ordinary test assumes, so the *width* doesn't give the problem away here. The *shape* does. An ordinary test would turn 0.365 into a t statistic of 2.57 on 43 degrees of freedom and report a one-sided p-value of about 0.007 (0.014 two-sided), about a third of the QAP share of 0.022. With other matrices the two answers can differ by more or by less, which is exactly why you don't want to guess. The Python tab draws its own random numbers, so its digits can differ slightly from these.
@@ -272,6 +316,16 @@ writeLines(c(sprintf("%-12s %11s %7s %8s", "", "coefficient", "t", "p (two-sided
                      fit$p.value[, "Pr(>=|b|)"])))
 cat(sprintf("R-squared %.3f on %d pairs\n", fit$r.squared, fit$dyads))
 ```
+
+::: {.code-output}
+```text
+             coefficient       t p (two-sided)
+intercept          0.357    3.17   0.0114
+same floor         0.341    2.49   0.0062
+same club         -0.243   -1.77   0.0816
+R-squared 0.194 on 45 pairs
+```
+:::
 
 ## Python
 
@@ -310,12 +364,21 @@ for k in range(X.shape[1]):
         hits += abs(ols(y, Xp)[1][k]) >= abs(t_obs[k]) - 1e-10
     p_abs[k] = hits / reps
 # Different random relabelings than Rust, so the p-values differ in the last digits.
-# CHECK: stop
 print(f"{'':<12} {'coefficient':>11} {'t':>7} {'p (two-sided)':>8}")
 for k, label in enumerate(["intercept", "same floor", "same club"]):
     print(f"{label:<12} {beta[k]:>11.3f} {t_obs[k]:>7.2f} {p_abs[k]:>8.4f}")
 print(f"R-squared {r2:.3f} on {len(y)} pairs")
 ```
+
+::: {.code-output}
+```text
+             coefficient       t p (two-sided)
+intercept          0.357    3.17   0.0178
+same floor         0.341    2.49   0.0066
+same club         -0.243   -1.77   0.0762
+R-squared 0.194 on 45 pairs
+```
+:::
 
 ## Rust
 
@@ -347,8 +410,6 @@ for (k, label) in ["intercept", "same floor", "same club"].iter().enumerate() {
 println!("R-squared {:.3} on {} pairs", fit.r_squared, fit.dyads);
 ```
 
-:::
-
 ::: {.code-output}
 ```text
              coefficient       t p (two-sided)
@@ -357,6 +418,8 @@ same floor         0.341    2.49   0.0062
 same club         -0.243   -1.77   0.0816
 R-squared 0.194 on 45 pairs
 ```
+:::
+
 :::
 
 Read the coefficients as you would in any regression. The outcome is 0 or 1, so a coefficient is a difference in the share of pairs that are friends. Holding the book club fixed, pairs on the same floor are about 0.34 more likely to be friends, with a permutation p-value of 0.006. The book club coefficient is negative, -0.24, and its p-value of 0.08 is not small. That attribute is invented (even versus odd position), so its sign says nothing about the world and only shows how it happens to line up with the floors and the ties. R-squared is 0.194: the two predictors together account for about a fifth of the variation in who is tied to whom. Because the permutations are random, the p-values move a little with the seed. With 5,000 draws, don't read anything into the third decimal place. The Python tab draws its own random relabelings, so its p-values can differ in the last digits.
@@ -386,6 +449,14 @@ cat(sprintf("random networks, average     %.3f\n", mean(scores)))
 cat(sprintf("random networks at least as clustered  %.4f\n", mean(scores >= observed - 1e-12)))
 ```
 
+::: {.code-output}
+```text
+observed transitivity        0.579
+random networks, average     0.372
+random networks at least as clustered  0.0045
+```
+:::
+
 ## Python
 
 ```python
@@ -399,11 +470,18 @@ print(f"observed transitivity        {observed:.3f}")
 
 # 2,000 random networks: 10 people, 18 ties, undirected, no loops.
 # NetworkX draws different networks than Rust, so the digits below differ a little.
-# CHECK: stop
 scores = [nx.transitivity(nx.gnm_random_graph(n, 18, seed=s)) for s in range(2000)]
 print(f"random networks, average     {np.mean(scores):.3f}")
 print(f"random networks at least as clustered  {np.mean(np.array(scores) >= observed - 1e-12):.4f}")
 ```
+
+::: {.code-output}
+```text
+observed transitivity        0.579
+random networks, average     0.368
+random networks at least as clustered  0.0110
+```
+:::
 
 ## Rust
 
@@ -440,14 +518,14 @@ println!("random networks, average     {mean:.3}");
 println!("random networks at least as clustered  {:.4}", at_least as f64 / scores.len() as f64);
 ```
 
-:::
-
 ::: {.code-output}
 ```text
 observed transitivity        0.579
 random networks, average     0.372
 random networks at least as clustered  0.0045
 ```
+:::
+
 :::
 
 Random networks with the same size and number of ties average a transitivity of 0.372, and well under one percent of them (0.0045) are as clustered as the friendship network's 0.579. Against this yardstick, our friends are unusually clustered. The share comes from 2,000 random draws, so another seed might give 0.008 instead. Read it as "around half a percent to one percent." The Python tab draws different random networks, so its average and share can differ slightly.
@@ -467,6 +545,13 @@ cat(sprintf("random networks with the same degrees, average  %.3f\n", mean(score
 cat(sprintf("at least as clustered as observed               %.4f\n", mean(scores >= observed - 1e-12)))
 ```
 
+::: {.code-output}
+```text
+random networks with the same degrees, average  0.392
+at least as clustered as observed               0.0080
+```
+:::
+
 ## Python
 
 ```python
@@ -481,11 +566,17 @@ def simple_configuration(degrees, rng):
             return h
 
 # Again different random draws than Rust, so the digits differ a little.
-# CHECK: stop
 scores = [nx.transitivity(simple_configuration(degrees, rng)) for _ in range(2000)]
 print(f"random networks with the same degrees, average  {np.mean(scores):.3f}")
 print(f"at least as clustered as observed               {np.mean(np.array(scores) >= observed - 1e-12):.4f}")
 ```
+
+::: {.code-output}
+```text
+random networks with the same degrees, average  0.395
+at least as clustered as observed               0.0085
+```
+:::
 
 ## Rust
 
@@ -515,13 +606,13 @@ println!("random networks with the same degrees, average  {mean:.3}");
 println!("at least as clustered as observed               {:.4}", at_least as f64 / scores.len() as f64);
 ```
 
-:::
-
 ::: {.code-output}
 ```text
 random networks with the same degrees, average  0.392
 at least as clustered as observed               0.0080
 ```
+:::
+
 :::
 
 Holding every degree fixed raises the average only slightly, to 0.392, and about 0.8% of the draws (0.0080) reach 0.579. The conclusion survives the tougher comparison, which is more convincing than passing the easy one. As before, these shares come from random draws, so treat them as "about one percent," not as exact. The Python tab draws different random networks, so its numbers can differ slightly.
