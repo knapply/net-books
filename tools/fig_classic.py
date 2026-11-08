@@ -8,7 +8,7 @@ import math
 from pathlib import Path
 
 from fig_layout import distances, fit, stress_layout
-from figs import BLUE, INK, MUTED, ORANGE, PAPER, RED, Canvas
+from figs import BLUE, FAINT, INK, MUTED, ORANGE, PAPER, RED, Canvas
 
 DATA = Path(__file__).resolve().parent.parent / "books" / "sna" / "data"
 GRAY = "#9ca3af"
@@ -226,10 +226,108 @@ def eigen_rounds():
     return c, meta
 
 
+# ---------------------------------------------------------------- chapter 18
+def _config_draw(degrees, rng):
+    """One simple graph with the given degrees: match stubs at random, retry on loops or repeats."""
+    while True:
+        stubs = [i for i, d in enumerate(degrees) for _ in range(d)]
+        rng.shuffle(stubs)
+        pairs = [tuple(sorted((stubs[k], stubs[k + 1]))) for k in range(0, len(stubs), 2)]
+        if all(a != b for a, b in pairs) and len(set(pairs)) == len(pairs):
+            return pairs
+
+
+def null_medici():
+    import random
+    names, edges = florentine()
+    n = len(names)
+    med = names.index("Medici")
+    degrees = [sum(1 for e in edges if i in e) for i in range(n)]
+    obs = betweenness(n, edges)[med]
+    rng = random.Random(1)
+    draws = [betweenness(n, _config_draw(degrees, rng))[med] for _ in range(1000)]
+    width = 5
+    counts = [0] * 14
+    for d in draws:
+        counts[min(int(d // width), 13)] += 1
+    at_least = sum(1 for d in draws if d >= obs - 1e-9)
+    c = Canvas(900, 440, "Is the Medici lead more than their marriages give?",
+               "A histogram of the Medici's betweenness in 1,000 random marriage networks that keep every family's number of marriages, with the real value marked.")
+    x0, y0, w, h = 80, 60, 740, 270
+    top = max(counts) * 1.12
+    bw = w / 14
+    for k, cnt in enumerate(counts):
+        right = (k + 1) * width > obs
+        col = ORANGE if right else BLUE
+        bh = h * cnt / top
+        c.rect(x0 + k * bw + 1, y0 + h - bh, bw - 2, bh, fill=col + "66", stroke=col, sw=1.2)
+        if not (k * width <= obs < (k + 1) * width):
+            c.text(x0 + k * bw + bw / 2, y0 + h - bh - 6, str(cnt), size=11, fill=MUTED)
+    ox = x0 + obs / (14 * width) * w
+    c.add(f'<line x1="{ox:.1f}" y1="{y0 - 6}" x2="{ox:.1f}" y2="{y0 + h}" stroke="{INK}" stroke-width="2.5"/>')
+    c.text(ox - 8, y0 + 8, f"real network {obs:.1f}", size=13, anchor="end", weight="700")
+    c.add(f'<line x1="{x0}" y1="{y0 + h}" x2="{x0 + w}" y2="{y0 + h}" stroke="{INK}" stroke-width="1.5"/>')
+    for v in range(0, 71, 10):
+        c.text(x0 + v / (14 * width) * w, y0 + h + 20, str(v), size=12)
+    c.text(x0 + w / 2, y0 + h + 44, "Medici betweenness in a random network with the same degrees (bars 5 wide)", size=13, fill=MUTED)
+    c.text(x0, 412, "Orange bars: bins reaching the real value or beyond. Counts are out of 1,000 draws made for this figure.", size=12.5, fill=MUTED, anchor="start")
+    mean = sum(draws) / len(draws)
+    meta = dict(chapter=18,
+                caption="The Medici's betweenness (47.5) against 1,000 random marriage networks in which every family keeps its number of marriages. The real value sits in the upper part of the spread but not beyond it. The draws behind this picture are not the ones in the code, so counts differ slightly.",
+                alt=f"A histogram of the Medici's betweenness across 1,000 random networks, rising from near zero to a peak around 40 and falling off by about 65. A black vertical line marks the real value, 47.5. Bars from the 45 to 50 bin onward are orange. In these draws {at_least} of 1,000 reach the real value; the average is {mean:.1f}.",
+                data={"observed": round(obs, 2), "mean": round(mean, 2), "at_least_observed": at_least,
+                      "bins": [[k * width, (k + 1) * width, counts[k]] for k in range(14)]})
+    return c, meta
+
+
+def tie_drop_stability():
+    names, edges = florentine()
+    n = len(names)
+    med = names.index("Medici")
+    rows = []
+    for i, (a, b) in enumerate(edges):
+        kept = [e for j, e in enumerate(edges) if j != i]
+        bt = betweenness(n, kept)
+        other = max((v for v in range(n) if v != med), key=lambda v: bt[v])
+        rows.append((f"{names[a]} \u2013 {names[b]}", bt[med], bt[other], names[other]))
+    rows.sort(key=lambda r: r[1])
+    full = betweenness(n, edges)[med]
+    c = Canvas(900, 650, "Leaving out one marriage at a time",
+               "For each of the twenty marriages, the Medici's betweenness and the best other family's betweenness once that marriage is left out.")
+    x0, y0, w = 230, 50, 600
+    step = 23
+    sx = lambda v: x0 + v / 70 * w
+    c.add(f'<line x1="{sx(full):.1f}" y1="{y0 - 10}" x2="{sx(full):.1f}" y2="{y0 + 20 * step}" stroke="{MUTED}" stroke-width="1.6" stroke-dasharray="5 4"/>')
+    c.text(sx(full), y0 - 16, f"Medici with all ties {full:.1f}", size=12.5, fill=MUTED)
+    for k, (label, m, o, _) in enumerate(rows):
+        y = y0 + k * step + 10
+        c.text(x0 - 12, y + 4, label, size=12.5, anchor="end")
+        c.add(f'<line x1="{sx(min(m, o)):.1f}" y1="{y}" x2="{sx(max(m, o)):.1f}" y2="{y}" stroke="{FAINT}" stroke-width="3"/>')
+        c.add(f'<circle cx="{sx(o):.1f}" cy="{y}" r="6" fill="{PALE}" stroke="{BLUE}" stroke-width="2"/>')
+        c.add(f'<circle cx="{sx(m):.1f}" cy="{y}" r="6.5" fill="{ORANGE}" stroke="{ORANGE}" stroke-width="2"/>')
+    ay = y0 + 20 * step + 8
+    c.add(f'<line x1="{x0}" y1="{ay}" x2="{x0 + w}" y2="{ay}" stroke="{INK}" stroke-width="1.5"/>')
+    for v in range(0, 71, 10):
+        c.text(sx(v), ay + 18, str(v), size=12)
+    c.text(x0 + w / 2, ay + 40, "betweenness after leaving out the marriage named on the left", size=13, fill=MUTED)
+    c.add(f'<circle cx="{x0}" cy="{ay + 62}" r="6.5" fill="{ORANGE}" stroke="{ORANGE}" stroke-width="2"/>')
+    c.text(x0 + 12, ay + 66, "Medici", size=12.5, anchor="start")
+    c.add(f'<circle cx="{x0 + 90}" cy="{ay + 62}" r="6" fill="{PALE}" stroke="{BLUE}" stroke-width="2"/>')
+    c.text(x0 + 102, ay + 66, "best other family", size=12.5, anchor="start")
+    low = rows[0]
+    meta = dict(chapter=18,
+                caption="Leave out each of the twenty marriages in turn. In every case the Medici (orange) still have more betweenness than the best other family (blue), but the gap shrinks to a few points when the Albizzi\u2013Medici marriage is left out.",
+                alt=f"Twenty rows, one per marriage left out, sorted from lowest Medici betweenness at the top ({low[1]:.1f}) to highest at the bottom ({rows[-1][1]:.1f}). In every row an orange dot for the Medici lies to the right of a blue dot for the best other family. A dashed vertical line marks the Medici's value with all marriages, 47.5. The two dots are closest in the row for the Albizzi\u2013Medici marriage.",
+                data={"rows": [[r[0], round(r[1], 2), r[3], round(r[2], 2)] for r in rows]})
+    return c, meta
+
+
 FIGURES = {
     "florentine-intro": florentine_intro,
     "florentine-between": florentine_between,
     "krackhardt-layers": krackhardt_layers,
     "closeness-from-jo": closeness_from_jo,
     "eigen-rounds": eigen_rounds,
+    "null-medici": null_medici,
+    "tie-drop-stability": tie_drop_stability,
 }
