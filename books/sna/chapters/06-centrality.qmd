@@ -54,17 +54,20 @@ Counting ties treats a close friend and a nodding acquaintance as the same. If y
 
 ```r
 library(knappnet)
+library(dplyr)
+library(purrr)
 
 # People are rows of the node table; one row of the edge table is one tie.
-names <- c("Ana", "Ben", "Cleo", "Dev", "Eli", "Fay", "Gus", "Hana", "Ivo", "Jo")
-edges <- data.frame(
-  source = names[c(1, 1, 1, 1, 2, 2, 2, 3, 3, 4, 4, 4, 5, 6, 6, 7, 8, 9)],
-  target = names[c(2, 3, 4, 6, 4, 5, 7, 4, 6, 5, 6, 7, 7, 7, 8, 8, 9, 10)]
+people <- c("Ana", "Ben", "Cleo", "Dev", "Eli", "Fay", "Gus", "Hana", "Ivo", "Jo")
+friends <- tibble(
+  source = people[c(1, 1, 1, 1, 2, 2, 2, 3, 3, 4, 4, 4, 5, 6, 6, 7, 8, 9)],
+  target = people[c(2, 3, 4, 6, 4, 5, 7, 4, 6, 5, 6, 7, 7, 7, 8, 8, 9, 10)]
 )
-g <- net_frame(edges, nodes = data.frame(id = names), directed = FALSE)
+g <- net_frame(friends, nodes = tibble(id = people), directed = FALSE)
+g
 
-degree <- net_degree(g)
-writeLines(sprintf("%-5s %d", names, degree))
+# Measures go in columns next to the people they describe.
+g$nodes |> mutate(degree = net_degree(g))
 ```
 
 ::: {.code-output}
@@ -194,8 +197,7 @@ There's a catch. If the network has pieces that aren't connected, the distance t
 ## R
 
 ```r
-close <- net_closeness(g, normalized = TRUE)
-writeLines(sprintf("%-5s %.3f", names, close))
+g$nodes |> mutate(closeness = round(net_closeness(g, normalized = TRUE), 3))
 ```
 
 ::: {.code-output}
@@ -309,8 +311,7 @@ Two practical notes. First, the straightforward way to compute betweenness is sl
 ## R
 
 ```r
-between <- net_betweenness(g)
-writeLines(sprintf("%-5s %.1f", names, between))
+g$nodes |> mutate(betweenness = round(net_betweenness(g), 1))
 ```
 
 ::: {.code-output}
@@ -424,8 +425,7 @@ Several close relatives are worth knowing by name.
 
 ```r
 # Scaled so the largest score is 1 (the default).
-eigen <- net_eigen(g)
-writeLines(sprintf("%-5s %.3f", names, eigen))
+g$nodes |> mutate(eigenvector = round(net_eigen(g), 3))
 ```
 
 ::: {.code-output}
@@ -554,24 +554,20 @@ The data are small: 15 families and 20 marriages. A tie between two families mea
 # Florentine families around 1430: a tie means two families were joined by marriage.
 rows <- read.csv("data/florentine/edges.csv")
 florence <- net_frame(rows, directed = FALSE)
-families <- florence$nodes$id
+florence
 
-degree <- net_degree(florence)
-close <- net_closeness(florence, normalized = TRUE)
-between <- net_betweenness(florence)
-
-# The four families with the most routes running through them.
-top <- head(order(-between), 4)
-writeLines(c(
-  sprintf("%d families, %d marriages", length(families), nrow(rows)),
-  sprintf("%-11s %6s %9s %12s", "family", "ties", "closeness", "betweenness"),
-  sprintf("%-11s %6d %9.3f %12.1f", families[top], degree[top], close[top], between[top])
-))
-routes <- (length(families) - 1) * (length(families) - 2) / 2
-writeLines(sprintf(
-  "pairs of other families: %d; the top family sits on %.0f%% of their shortest routes",
-  routes, 100 * between[top[1]] / routes
-))
+# The four families with the most routes running through them. The last column
+# is the share of all pairs of other families whose shortest routes they sit on.
+florence$nodes |>
+  mutate(
+    ties = net_degree(florence),
+    closeness = net_closeness(florence, normalized = TRUE),
+    betweenness = net_betweenness(florence),
+    share = betweenness / choose(n() - 1, 2)
+  ) |>
+  slice_max(betweenness, n = 4) |>
+  rename(family = id) |>
+  mutate(across(where(is.numeric), \(x) round(x, 3)))
 ```
 
 ::: {.code-output}
@@ -712,30 +708,30 @@ The same 21 managers carry three different networks (@fig-krackhardt-layers). Th
 ```r
 # Krackhardt's 21 managers: three relations among the same people, numbered 1 to 21.
 kr <- read.csv("data/krackhardt/edges.csv")
-managers <- data.frame(id = as.character(1:21))
-build <- function(relation) {
-  e <- kr[kr$relation == relation, ]
-  net_frame(data.frame(source = as.character(e$from), target = as.character(e$to)),
-            nodes = managers, directed = TRUE)
-}
-relations <- c("advice", "friendship", "reports_to")
-graphs <- lapply(relations, build)
-advice <- graphs[[1]]
-n_ties <- vapply(graphs, \(h) nrow(h$edges), integer(1))
-writeLines(sprintf("advice ties %d, friendship ties %d, reporting ties %d",
-                   n_ties[1], n_ties[2], n_ties[3]))
+managers <- tibble(id = as.character(1:21))
+
+# One network per relation: advice, friendship, reports_to.
+graphs <- kr |>
+  split(~relation) |>
+  map(\(e) net_frame(tibble(source = as.character(e$from), target = as.character(e$to)),
+                     nodes = managers, directed = TRUE))
+map_int(graphs, \(h) nrow(h$edges))
 
 # Prestige: how many people name each manager. The top three for each relation.
-labels <- c("sought out for advice", "named as a friend", "has direct reports")
-top_three <- function(h) {
-  received <- net_degree(h, mode = "in")
-  top <- head(order(-received), 3)
-  paste(sprintf("manager %d (%d)", top, received[top]), collapse = ", ")
-}
-writeLines(sprintf("%-22s %s", labels, vapply(graphs, top_three, character(1))))
-advice_in <- net_degree(advice, mode = "in")
-rank <- sum(advice_in > advice_in[7]) + 1
-writeLines(sprintf("the CEO, manager 7, is sought out by %d people, rank %d of 21", advice_in[7], rank))
+prestige <- graphs |>
+  map(\(h) mutate(h$nodes, received = net_degree(h, mode = "in"))) |>
+  list_rbind(names_to = "relation") |>
+  rename(manager = id)
+
+prestige |>
+  group_by(relation) |>
+  slice_max(received, n = 3, with_ties = FALSE)
+
+# Where does the CEO, manager 7, rank for advice?
+prestige |>
+  filter(relation == "advice") |>
+  mutate(rank = min_rank(desc(received))) |>
+  filter(manager == "7")
 ```
 
 ::: {.code-output}
@@ -857,12 +853,13 @@ Here's a good example of why we write down our choices. The default setting in t
 ## R
 
 ```r
-default <- net_centralization(g, "degree")
-freeman <- net_centralization(g, "degree", loops = FALSE)
-writeLines(c(
-  sprintf("default convention   %.3f", default),
-  sprintf("loops left out       %.3f", freeman)
-))
+tibble(
+  convention = c("default", "loops left out"),
+  centralization = round(c(
+    net_centralization(g, "degree"),
+    net_centralization(g, "degree", loops = FALSE)
+  ), 3)
+)
 ```
 
 ::: {.code-output}

@@ -71,32 +71,35 @@ You met layouts in @sec-visualization. A layout assigns each person a place on t
 
 ```r
 library(knappnet)
+library(dplyr)
 
-# A network is two tables. Here only the edge table is needed; the people
-# are taken from it, in order of first appearance.
-names <- c("Ana", "Ben", "Chloe", "Dev", "Eli")
-edges <- data.frame(
+# A network is two tables. The edge table has one row per tie; the node
+# table lists the people, in order.
+edges <- tibble(
   source = c("Ana", "Ana", "Ben", "Chloe", "Dev", "Dev", "Eli"),
   target = c("Ben", "Chloe", "Chloe", "Ana", "Ana", "Chloe", "Chloe")
 )
-nodes <- data.frame(id = names)
+people <- tibble(id = c("Ana", "Ben", "Chloe", "Dev", "Eli"))
 
 # Directed, because advice goes from the person who asks to the person asked.
-# (Printing g shows a short card describing the network, like Rust's describe().)
-g <- net_frame(edges, nodes = nodes, directed = TRUE)
+g <- net_frame(edges, nodes = people, directed = TRUE)
 
-# Step 2: out-degree and in-degree.
-out <- net_degree(g, mode = "out")
-inn <- net_degree(g, mode = "in")
-writeLines(sprintf("%-6s goes to %d  comes to them %d", names, out, inn))
+# Evaluating g prints a short card describing the network.
+g
 
-# Step 3: betweenness, as a plain count of routes.
-between <- net_betweenness(g)
-writeLines(sprintf("%-6s betweenness %g", names, between))
+# Steps 2 and 3: degree in each direction, and betweenness as a plain count of routes.
+people |>
+  mutate(
+    out = net_degree(g, mode = "out"),
+    `in` = net_degree(g, mode = "in"),
+    betweenness = net_betweenness(g)
+  )
 
 # Step 4: a stress layout; the seed fixes the starting guess.
 layout <- net_layout(g, method = "stress", seed = 1)
-writeLines(sprintf("%-6s x %7.3f  y %7.3f", names, layout[, 1], layout[, 2]))
+people |>
+  mutate(x = layout[, 1], y = layout[, 2]) |>
+  mutate(across(c(x, y), \(v) round(v, 3)))
 ```
 
 ::: {.code-output}
