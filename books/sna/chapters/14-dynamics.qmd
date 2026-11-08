@@ -60,12 +60,33 @@ g$nodes |> mutate(reach = net_temporal_reach(g))
 
 ::: {.code-output}
 ```text
-Ana   can reach 2 of the 5 others
-Ben   can reach 2 of the 5 others
-Cleo  can reach 5 of the 5 others
-Dev   can reach 5 of the 5 others
-Eli   can reach 2 of the 5 others
-Fay   can reach 1 of the 5 others
+# temporal_net_frame: 6 nodes, 6 edges
+#   directed:  no        mode: one-mode (6 actors)
+#   weights:   unweighted
+#   time:      contacts (6 events, 1 to 6)
+#   space:     none
+#   clock:     numbers
+#   simple:    no loops, no parallel edges
+#   components: 1    isolates: 0    density: 0.400
+#
+# Nodes (6 x 1)   Edges (6 x 3)
+#   id              source target time
+#   <chr>           <chr>  <chr>  <int>
+# 1 Ana           1 Ana    Ben    1
+# 2 Ben           2 Cleo   Dev    2
+# 3 Cleo          3 Ben    Cleo   3
+# 4 Dev           4 Dev    Eli    4
+# 5 Eli           5 Ana    Ben    5
+# 6 Fay           6 Eli    Fay    6
+# A tibble: 6 × 2
+  id    reach
+  <chr> <dbl>
+1 Ana       2
+2 Ben       2
+3 Cleo      5
+4 Dev       5
+5 Eli       2
+6 Fay       1
 ```
 :::
 
@@ -159,8 +180,19 @@ net_temporal_distances(g, from = c("Ana", "Dev")) |>
 
 ::: {.code-output}
 ```text
-from Ana:  Ben at t=1  Cleo at t=3  Dev never  Eli never  Fay never
-from Dev:  Ana at t=5  Ben at t=3  Cleo at t=2  Eli at t=4  Fay at t=6
+# A tibble: 10 × 3
+   from  to    arrives
+   <chr> <chr>   <dbl>
+ 1 Ana   Ben         1
+ 2 Ana   Cleo        3
+ 3 Ana   Dev       Inf
+ 4 Ana   Eli       Inf
+ 5 Ana   Fay       Inf
+ 6 Dev   Ana         5
+ 7 Dev   Ben         3
+ 8 Dev   Cleo        2
+ 9 Dev   Eli         4
+10 Dev   Fay         6
 ```
 :::
 
@@ -245,7 +277,7 @@ stream_stats <- \(t) {
   net_temporal(tibble(source = "all", target = "all", time = t), directed = TRUE) |>
     net_burstiness()
 }
-tibble(gaps = length(gaps), shortest = min(gaps), longest = max(gaps)) |>
+tibble(n_gaps = length(gaps), shortest = min(gaps), longest = max(gaps)) |>
   bind_cols(stream_stats(times) |> select(burstiness, memory)) |>
   mutate(across(where(is.numeric), \(x) round(x, 2)))
 
@@ -255,9 +287,11 @@ stream_stats(2.75 * 1:80)$burstiness |> round(2)
 
 ::: {.code-output}
 ```text
-79 gaps, shortest 0.1 hours, longest 27.5 hours
-burstiness B = 0.27, memory M = -0.03
-evenly spaced: B = -1.00
+# A tibble: 1 × 5
+   gaps shortest longest burstiness memory
+  <dbl>    <dbl>   <dbl>      <dbl>  <dbl>
+1    79       79      79       0.27  -0.03
+[1] -1
 ```
 :::
 
@@ -403,36 +437,45 @@ chances <- tibble(person = office_names, chance = ministep_probabilities(start, 
       start["Cy", person] == 1 ~ "drop the tie to",
       .default = "start asking"
     ),
-    chance = round(chance, 3),
     .before = 1
   )
-chances
+chances |> mutate(chance = round(chance, 3))
 sum(chances$chance)
 ```
 
 ::: {.code-output}
 ```text
-Directed network: 10 nodes, 13 ties (arcs)
-  Density           0.144
-  Out-degree        1 to 2, mean 1.30
-  In-degree         0 to 4, mean 1.30
-  Reciprocity       0.15 of ties are returned
-  Connected pieces  1 weak, 9 strong
-  Isolated nodes    0
-  Loops, repeats    none
-  Busiest           node 0 (5), node 1 (5), node 2 (4)
-
-drop the tie to Ada    0.418
-drop the tie to Ben    0.418
-change nothing         0.057
-start asking Dee       0.008
-start asking Eve       0.008
-start asking Flo       0.034
-start asking Gus       0.034
-start asking Hal       0.008
-start asking Ivy       0.008
-start asking Jay       0.008
-total 1.000
+# net_frame: 10 nodes, 13 edges
+#   directed:  yes       mode: one-mode (10 actors)
+#   weights:   unweighted
+#   time:      static    space: none
+#   simple:    no loops, no parallel edges
+#   components: 1    isolates: 0    density: 0.144
+#
+# Nodes (10 x 1)      Edges (13 x 2)
+#   id                  source target
+#   <chr>               <chr>  <chr>
+# 1 Ada               1 Ada    Ben
+# 2 Ben               2 Ben    Ada
+# 3 Cy                3 Cy     Ada
+# 4 Dee               4 Cy     Ben
+# 5 Eve               5 Dee    Ada
+# 6 Flo               6 Dee    Ben
+#   ... 4 more rows     ... 7 more rows
+# A tibble: 10 × 3
+   move            person chance
+   <chr>           <chr>   <dbl>
+ 1 drop the tie to Ada     0.418
+ 2 drop the tie to Ben     0.418
+ 3 change nothing  Cy      0.057
+ 4 start asking    Dee     0.008
+ 5 start asking    Eve     0.008
+ 6 start asking    Flo     0.034
+ 7 start asking    Gus     0.034
+ 8 start asking    Hal     0.008
+ 9 start asking    Ivy     0.008
+10 start asking    Jay     0.008
+[1] 1.001
 ```
 :::
 
@@ -587,9 +630,15 @@ tibble(reciprocity = c(0, 1.5)) |>
 
 ::: {.code-output}
 ```text
-start: 13 ties, 1 mutual pairs
-reciprocity 0: 5.78 ties, 0.18 mutual pairs, 13.94 ties changed
-reciprocity 1.5: 7.33 ties, 1.17 mutual pairs, 14.11 ties changed
+# A tibble: 1 × 2
+   ties mutual_pairs
+  <dbl>        <dbl>
+1    13            1
+# A tibble: 2 × 4
+  reciprocity  ties mutual_pairs changed
+        <dbl> <dbl>        <dbl>   <dbl>
+1         0    5.78         0.19    13.9
+2         1.5  7.19         1.16    14.1
 ```
 :::
 
@@ -727,15 +776,20 @@ tibble(
 ) |>
   mutate(across(where(is.numeric), \(x) round(x, 3)))
 
-tibble(loglik = -model_fit$value, no_effects = loglik(c(0, 0))) |>
-  mutate(across(everything(), \(x) round(x, 1)))
+c(fitted = -model_fit$value, no_effects = loglik(c(0, 0))) |> round(1)
 ```
 
 ::: {.code-output}
 ```text
-repeating a pair     coefficient -0.754 (se 0.205), rate multiplier 0.47
-replying to a pair   coefficient +0.758 (se 0.160), rate multiplier 2.13
-log-likelihood -309.5, against -322.0 with no effects
+# A tibble: 2 × 4
+  effect             coefficient    se rate_multiplier
+  <chr>                    <dbl> <dbl>           <dbl>
+1 repeating a pair        -0.754 0.205            0.47
+2 replying to a pair       0.758 0.16             2.13
+# A tibble: 1 × 2
+  loglik no_effects
+   <dbl>      <dbl>
+1  -310.       -322
 ```
 :::
 
