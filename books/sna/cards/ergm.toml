@@ -1,0 +1,61 @@
+id = "ergm"
+title = "Exponential random graph model (ERGM)"
+kind = "model"
+chapter = "ergm"
+summary = "A statistical model for one observed network that says how likely a tie is given the rest of the network, using counts of local patterns (edges, same-group ties, triangles, shared partners)."
+answers = "Which local patterns (homophily, closure, hubs, reciprocity) are more or less common in this network than chance would give, once the other patterns in the model are accounted for?"
+
+data_requirements = [
+  "One complete network observed once, with a clear boundary (who could have had a tie).",
+  "Node attributes used in the model must be known for every node.",
+  "Networks of tens to a few thousand nodes; the fit gets slow and fragile as size grows.",
+  "Ties should be a state you could in principle observe being present or absent, not a count of events.",
+]
+
+assumptions = [
+  "The chosen statistics capture the patterns that matter. A missing pattern is absorbed into the wrong coefficient.",
+  "Ties depend on each other only through the local patterns in the model (a stated dependence structure).",
+  "The network was observed fully; missing nodes or ties are not handled by the basic model.",
+  "For fits by simulation (MCMLE) the chain has converged; the estimates are only as good as that.",
+]
+
+readings = [
+  { context = "Edges coefficient", high = "Not interpreted alone: it sets overall density given the other terms. A large negative value is normal for sparse networks.", low = "Same: a baseline, not a finding." },
+  { context = "Same-attribute (homophily) coefficient", high = "Ties between same-group nodes have higher log-odds, holding the other terms fixed. Exponentiate to get an odds multiplier.", low = "Near zero: no preference for same-group ties beyond what the other terms explain. Negative: ties across groups are favored." },
+  { context = "Shared-partner (closure) coefficient", high = "Ties are more likely to complete triangles than the other terms explain. Consistent with trust, introduction, or shared settings; the model cannot tell which.", low = "No extra closure; or the closure is already explained by group terms." },
+  { context = "Degree or star terms", high = "Hubs or uneven popularity beyond what other terms explain.", low = "Ties are more evenly spread than expected." },
+]
+
+pitfalls = [
+  "Reading coefficients as probabilities or as the effect of a node's choice. They are conditional log-odds of a tie given everything else.",
+  "Reporting a fit that converged but does not reproduce the data (check goodness of fit).",
+  "Degeneracy: raw triangle and star counts together can make a model that simulates almost-empty or almost-complete networks.",
+  "Interpreting a homophily term as preference. The same pattern arises from shared settings or from a network that was already splitting.",
+  "Treating significance as importance, or generalizing from one network to a population.",
+  "Comparing coefficients across models with different terms or across networks of different sizes.",
+]
+
+checks = [
+  "Goodness of fit: simulate many networks from the fit and compare degree, shared-partner and geodesic distributions with the observed ones. Large gaps mean the model is missing something.",
+  "Convergence diagnostics for MCMLE: trace plots and the sample statistics should center on the observed values.",
+  "Refit with a different seed and starting values; estimates should agree to within their standard errors.",
+  "Compare a dyad-independent fit (MPLE) with the dependent fit. Large changes show how much dependence matters.",
+  "Remove or add one term at a time and see which coefficients move.",
+]
+
+do_not_claim = [
+  "That a pattern is caused by individual preference or choice.",
+  "That the result holds for other networks or for the population the network was drawn from.",
+  "That a non-significant term is absent; with one small network, power is low.",
+  "That the model explains the network when goodness of fit shows it does not reproduce key features.",
+]
+
+report_template = "An ERGM with {terms} was fitted to one network of {n} {node_type} and {m} ties by {method}. Holding the other terms fixed, {term} has coefficient {estimate} (standard error {se}), meaning ties {pattern} have {multiplier} times the odds. Goodness of fit {gof_summary}; convergence {convergence_summary}. This describes patterns in this network; it does not show why the ties formed or that other networks will look the same."
+
+related = ["qap", "latent-space", "saom"]
+sources = ["handcock2003assessing", "snijders2006new", "hunter2006inference", "lusher2013exponential"]
+
+[knappnet]
+rust = "knappnet::ergm::{fit_mple, fit_mcmle, simulate}"
+r = "ergm::ergm(net ~ edges + nodematch(\"side\") + gwesp(0.5, fixed = TRUE))"
+python = "none (no mainstream Python ERGM package; use the Rust or R tabs)"

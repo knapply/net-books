@@ -114,6 +114,12 @@ def export_book(book: Path, out_root: Path) -> dict:
     for appendix in outline.get("appendix", []):
         add("appendix", f"appendices/{appendix['slug']}.qmd", appendix, None, None)
 
+    cards = [tomllib.loads(c.read_text()) for c in sorted((book / "cards").glob("*.toml"))]
+    for card in cards:
+        card["source"] = f"books/{book.name}/cards/{card['id']}.toml"
+    (out / "cards.json").write_text(json.dumps({"schema": "net-books-cards/1", "book": book.name,
+                                                "cards": cards}, indent=2, ensure_ascii=False) + "\n")
+    document_cards = [{"id": c["id"], "kind": c["kind"], "title": c["title"], "chapter": c["chapter"]} for c in cards]
     document = {
         "schema": "net-books/1",
         "id": book.name,
@@ -127,6 +133,8 @@ def export_book(book: Path, out_root: Path) -> dict:
         "code_languages": LANGUAGES,
         "parts": parts,
         "chapters": entries,
+        "cards": document_cards,
+        "cards_url": f"{SITE}/{book.name}/machine/cards.json",
     }
     (out / "book.json").write_text(json.dumps(document, indent=2, ensure_ascii=False) + "\n")
 

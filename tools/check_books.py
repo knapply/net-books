@@ -30,6 +30,45 @@ def bib_keys() -> set[str]:
     return set(re.findall(r"^@\w+\{([^,\s]+),", text, flags=re.M))
 
 
+CARD_FIELDS = {"id": str, "title": str, "kind": str, "chapter": str, "summary": str, "answers": str,
+               "data_requirements": list, "assumptions": list, "readings": list, "pitfalls": list,
+               "checks": list, "do_not_claim": list, "report_template": str, "related": list,
+               "sources": list, "knappnet": dict}
+
+
+def check_cards(book: Path, outline: dict, keys: set[str]) -> None:
+    slugs = {c["slug"] for p in outline["part"] for c in p["chapter"]}
+    ids = set()
+    for path in sorted((book / "cards").glob("*.toml")):
+        name = f"{book.name}/cards/{path.name}"
+        card = tomllib.loads(path.read_text())
+        for field, kind in CARD_FIELDS.items():
+            if field not in card:
+                problems.append(f"{name}: missing field {field}")
+            elif not isinstance(card[field], kind):
+                problems.append(f"{name}: field {field} should be {kind.__name__}")
+            elif kind is list and not card[field]:
+                problems.append(f"{name}: field {field} is empty")
+        if card.get("id") != path.stem:
+            problems.append(f"{name}: id {card.get('id')} does not match the file name")
+        if card.get("kind") not in ("measure", "model"):
+            problems.append(f"{name}: kind must be measure or model")
+        if card.get("chapter") not in slugs:
+            problems.append(f"{name}: chapter {card.get('chapter')} is not in the outline")
+        for r in card.get("readings", []):
+            if not {"context", "high", "low"} <= set(r):
+                problems.append(f"{name}: each reading needs context, high and low")
+        for key in card.get("sources", []):
+            if key not in keys:
+                problems.append(f"{name}: source {key} not in references.bib")
+        for lang in ("rust", "r", "python"):
+            if lang not in card.get("knappnet", {}):
+                problems.append(f"{name}: knappnet table needs {lang}")
+        for placeholder in re.findall(r"\{(\w+)\}", card.get("report_template", "")):
+            pass
+        ids.add(path.stem)
+
+
 def check_book(book: Path, keys: set[str]) -> int:
     outline = tomllib.loads((book / "outline.toml").read_text())
     files: list[Path] = []
@@ -41,6 +80,7 @@ def check_book(book: Path, keys: set[str]) -> int:
     for appendix in outline.get("appendix", []):
         files.append(book / "appendices" / f"{appendix['slug']}.qmd")
 
+    check_cards(book, outline, keys)
     config = (book / "_quarto.yml").read_text()
     for rel in re.findall(r"^\s+- ((?:chapters|appendices)/\S+\.qmd)", config, flags=re.M):
         if not (book / rel).exists():

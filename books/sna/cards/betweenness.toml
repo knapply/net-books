@@ -1,0 +1,59 @@
+id = "betweenness"
+title = "Betweenness centrality"
+kind = "measure"
+chapter = "centrality"
+summary = "How many of the shortest routes between other pairs of nodes pass through this node."
+answers = "Who sits on the routes that connect everyone else, so that removing or bypassing them would cut or lengthen those routes?"
+
+data_requirements = [
+  "Ties must represent something that can flow or be passed along a route (information, goods, introductions). If they are only similarity or co-membership, routes have no meaning.",
+  "The network should be one connected piece, or you should say which pairs it counts: pairs in different pieces have no route and add nothing.",
+  "Direction matters: on a directed network, routes follow arrows and each ordered pair is counted.",
+]
+
+assumptions = [
+  "Flow travels along shortest routes only. Real flows often wander, or follow the routes people actually know about.",
+  "All ties are equally easy to use unless you supply weights. Weighted betweenness treats weights as distances (larger = farther), which is the opposite of strength.",
+  "The boundary of the network is right. A node near the edge of what you collected looks peripheral and may not be.",
+  "Missing ties are rare. One missing tie can change which routes are shortest and move the score a lot.",
+]
+
+readings = [
+  { context = "Marriage or alliance network among families", high = "A family that links otherwise separate clusters; others needed it to reach each other. It may control access, but only if it chose to.", low = "A family whose links are redundant with others, or that sits at the edge." },
+  { context = "Communication or gossip network inside an organization", high = "A person through whom information between groups tends to pass. Candidate bottleneck, translator, or gatekeeper.", low = "Information about them reaches others by other routes, or they talk only inside a tight group." },
+  { context = "Supply, transport or infrastructure network", high = "A hub or bridge whose failure lengthens many routes. Think resilience and single points of failure.", low = "A node whose removal barely changes how others connect." },
+  { context = "Friendship or support network", high = "Someone who connects separate friend groups. This says nothing about being liked, trusted or influential.", low = "Someone inside one close group, or at the edge." },
+]
+
+pitfalls = [
+  "Reading high betweenness as power or influence. It describes position on routes, not what the person does with it.",
+  "Comparing raw scores across networks of different sizes. Scores grow with the number of pairs; normalize or compare ranks.",
+  "Treating tied scores as ordered. In small networks many nodes tie; do not rank them.",
+  "Ignoring that one hub can dominate. Check how scores change if the top node is removed.",
+  "Using it on very large or sparse sampled networks without noting that sampling distorts routes.",
+]
+
+checks = [
+  "Recompute after removing the highest-scoring node. If the second-ranked node changes a lot, the ranking depends on one actor.",
+  "Recompute after dropping a random 5 to 10 percent of ties several times. A stable ranking is defensible; an unstable one is not.",
+  "Compare with a null model that keeps the degree sequence (a configuration model). If your node's score is ordinary there, its position follows from how many ties it has.",
+  "Compare with degree and closeness. High betweenness with low degree means a bridge; high betweenness with high degree means a hub that is also a bridge.",
+  "Look at the node's neighbors: does it really join separate groups (low overlap between its neighbors), or sit inside one big group?",
+]
+
+do_not_claim = [
+  "That the node controls, influences or benefits from what flows through it, without evidence about behavior.",
+  "That a high-ranked node caused an outcome. Position and outcome can both follow from a third thing, such as wealth or age.",
+  "That scores from one sample hold for a larger population.",
+  "A precise ranking among nodes whose scores are close or tied.",
+]
+
+report_template = "In this {tie_meaning} network of {n} {node_type}, {node} has betweenness {value} ({share} of all shortest routes between other pairs pass through it; rank {rank} of {n}). This describes its position on shortest routes, not what it does with that position. The ranking is {stable_or_not} when {perturbation}. Betweenness is {higher_or_lower} than expected in networks with the same degrees ({null_summary})."
+
+related = ["degree", "closeness", "eigenvector", "structural-holes"]
+sources = ["brandes2001faster", "freeman1977set"]
+
+[knappnet]
+rust = "compute_betweenness(&graph, BetweennessOptions::default())"
+r = "net_betweenness(g)"
+python = "networkx.betweenness_centrality(G, normalized=False)"
