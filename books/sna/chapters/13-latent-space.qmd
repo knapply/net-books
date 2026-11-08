@@ -49,6 +49,8 @@ Ana and Ben are probably friends. Ben and Cleo are a toss-up leaning no, and Ana
 
 ```r
 library(knappnet)
+library(dplyr)
+library(purrr)
 
 # Positions 1 to 34 are the members (the files number them from 1).
 edges <- read.csv("data/karate/edges.csv")
@@ -56,7 +58,7 @@ nodes <- read.csv("data/karate/nodes.csv")
 club <- net_frame(edges[, c("source", "target")], nodes = nodes, directed = FALSE)
 # The side each member took when the club split (0 = Mr. Hi, 1 = the officer).
 side <- as.integer(nodes$faction != "Mr. Hi")
-cat(sprintf("%d members, %d friendships\n", nrow(club$nodes), nrow(club$edges)))
+club
 ```
 
 ::: {.code-output}
@@ -189,11 +191,13 @@ fit_map <- function(dim) {
 # does, so the numbers below differ in the first decimals. Python differs too.
 fit <- fit_map(2)
 positions <- fit$positions
-cat(sprintf("baseline log-odds (alpha): %.3f\n", fit$alpha))
-cat(sprintf("log-likelihood: %.2f\n", fit$loglik))
-cat(sprintf("search steps: %d, converged: %s\n", fit$steps, tolower(fit$converged)))
-cat(sprintf("Mr. Hi at (%.2f, %.2f), the officer at (%.2f, %.2f)\n",
-            positions[1, 1], positions[1, 2], positions[34, 1], positions[34, 2]))
+
+tibble(alpha = fit$alpha, loglik = fit$loglik, steps = fit$steps, converged = fit$converged) |>
+  mutate(across(where(is.numeric), \(x) round(x, 3)))
+
+# Where the two leaders ended up on the map.
+tibble(member = c("Mr. Hi", "officer"), x = positions[c(1, 34), 1], y = positions[c(1, 34), 2]) |>
+  mutate(across(where(is.numeric), \(x) round(x, 2)))
 ```
 
 ::: {.code-output}
@@ -299,17 +303,22 @@ A map is a picture. To use it, turn it back into numbers: how likely is each pai
 ```r
 # Distances come from the map, so they differ a little from Rust's.
 # Turn the map into tie probabilities: log-odds = alpha - distance.
-alpha <- fit$alpha
 distance <- as.matrix(dist(positions))
-upper <- upper.tri(distance)
-p <- 1 / (1 + exp(distance[upper] - alpha))
-tied <- A[upper] == 1
-same_side <- outer(side, side, "==")[upper]
-cat(sprintf("expected ties %.1f (observed %d)\n", sum(p), sum(tied)))
-cat(sprintf("average chance of a tie: %.3f for pairs that are tied, %.3f for pairs that are not\n",
-            mean(p[tied]), mean(p[!tied])))
-cat(sprintf("average distance: %.2f within a side, %.2f between sides\n",
-            mean(distance[upper][same_side]), mean(distance[upper][!same_side])))
+pair_table <- tibble(i = pairs[, 1], j = pairs[, 2]) |>
+  mutate(distance = distance[cbind(i, j)],
+         p = 1 / (1 + exp(distance - fit$alpha)),
+         tied = A[cbind(i, j)] == 1,
+         same_side = side[i] == side[j])
+
+pair_table |> summarise(expected_ties = sum(p), observed_ties = sum(tied))
+
+pair_table |>
+  group_by(tied) |>
+  summarise(pairs = n(), average_chance = mean(p))
+
+pair_table |>
+  group_by(same_side) |>
+  summarise(pairs = n(), average_distance = mean(distance))
 ```
 
 ::: {.code-output}
@@ -395,9 +404,12 @@ Why two dimensions? Mostly because we can draw two. More dimensions always fit a
 ## R
 
 ```r
-fits <- lapply(1:3, fit_map)
-writeLines(sprintf("%d dimension(s): log-likelihood %8.2f, alpha %6.2f", 1:3,
-                   vapply(fits, \(m) m$loglik, numeric(1)), vapply(fits, \(m) m$alpha, numeric(1))))
+tibble(dim = 1:3) |>
+  mutate(fit = map(dim, fit_map),
+         loglik = map_dbl(fit, "loglik"),
+         alpha = map_dbl(fit, "alpha")) |>
+  select(!fit) |>
+  mutate(across(where(is.numeric), \(x) round(x, 2)))
 ```
 
 ::: {.code-output}
@@ -497,7 +509,7 @@ description_length <- function(blocks, degree_corrected = FALSE) {
   groups <- log(n) + ln_fact(n) - sum(ln_fact(size)) + ln_fact(n - 1) - ln_fact(k - 1) - ln_fact(n - k)
   if (degree_corrected) {
     network <- network + sum(ln_fact(stubs)) - sum(ln_fact(degree))
-    popularity <- sum(unlist(Map(ln_multiset, size, stubs)))
+    popularity <- sum(map2_dbl(size, stubs, ln_multiset))
   } else {
     network <- network + sum(stubs * log(size))
     popularity <- 0
@@ -511,27 +523,31 @@ fit_blocks <- function(degree_corrected, restarts = 5, max_groups = 6) {
   # Greedy search: move one member at a time to the group that shortens the description most.
   length_of <- function(blocks) description_length(blocks, degree_corrected)[["total"]]
   best_group <- function(blocks, v, k) {
-    lengths <- vapply(seq_len(k) - 1, \(g) length_of(replace(blocks, v, g)), numeric(1))
+    lengths <- map_dbl(seq_len(k) - 1, \(g) length_of(replace(blocks, v, g)))
     if (min(lengths) < length_of(blocks) - 1e-9) which.min(lengths) - 1 else blocks[v]
   }
-  sweep_once <- function(blocks, k) Reduce(\(b, v) replace(b, v, best_group(b, v, k)), sample(34), blocks)
+  # Visit the members in the given order, one at a time (recursion instead of a loop).
+  sweep_once <- function(blocks, order, k) {
+    if (length(order) == 0) blocks
+    else sweep_once(replace(blocks, order[1], best_group(blocks, order[1], k)), order[-1], k)
+  }
+  # Sweep again and again until a whole sweep changes nothing.
   settle <- function(blocks, k) {
-    moved <- sweep_once(blocks, k)
+    moved <- sweep_once(blocks, sample(34), k)
     if (identical(moved, blocks)) blocks else settle(moved, k)
   }
-  starts <- expand.grid(restart = seq_len(restarts), k = seq_len(max_groups))
-  candidates <- lapply(starts$k, \(k) settle(sample((0:33) %% k), k))
-  best <- candidates[[which.min(vapply(candidates, length_of, numeric(1)))]]
+  starts <- rep(seq_len(max_groups), each = restarts)
+  candidates <- map(starts, \(k) settle(sample((0:33) %% k), k))
+  best <- candidates[[which.min(map_dbl(candidates, length_of))]]
   # Name the groups in order of their first member.
   match(best, unique(best)) - 1
 }
 
 set.seed(1)
 found <- fit_blocks(FALSE)
-cat(sprintf("%d groups found\n", max(found) + 1))
-groups <- split(seq_along(found) - 1, found)
-writeLines(sprintf("group %s (%d members): [%s]", names(groups), lengths(groups),
-                   vapply(groups, paste, character(1), collapse = ", ")))
+
+tibble(member = 0:33, group = found) |>
+  summarise(size = n(), members = paste(member, collapse = " "), .by = group)
 ```
 
 ::: {.code-output}
@@ -656,12 +672,11 @@ On the left, the sides do divide the network: dense blocks along the diagonal an
 
 ```r
 # Score three groupings with the same yardstick. Shorter is better.
-cat(sprintf("%-26s %8s %8s %8s %8s\n", "", "network", "groups", "ties", "total"))
-groupings <- list("one group" = rep(0, 34), "the club's two sides" = side,
-                  "hubs and the rest (found)" = found)
-scores <- vapply(groupings, description_length, numeric(5))
-writeLines(sprintf("%-26s %8.1f %8.1f %8.1f %8.1f", names(groupings),
-                   scores["network", ], scores["groups", ], scores["ties", ], scores["total", ]))
+list("one group" = rep(0, 34), "the club's two sides" = side, "hubs and the rest (found)" = found) |>
+  map(description_length) |>
+  bind_rows(.id = "grouping") |>
+  select(grouping, network, groups, ties, total) |>
+  mutate(across(where(is.numeric), \(x) round(x, 1)))
 ```
 
 ::: {.code-output}
@@ -733,10 +748,11 @@ Is the hubs-and-the-rest grouping a solid winner or a close call? One way to ask
 ```r
 # What would it cost to move one member into the other group? Positive means the description gets longer.
 base <- description_length(found)[["total"]]
-movers <- c(0, 2, 5, 9)
-target <- 1 - found[movers + 1]
-cost <- vapply(seq_along(movers), \(i) description_length(replace(found, movers[i] + 1, target[i]))[["total"]] - base, numeric(1))
-writeLines(sprintf("move member %2d to group %d: %+.2f", movers, target, cost))
+tibble(member = c(0, 2, 5, 9)) |>
+  mutate(to_group = 1 - found[member + 1],
+         cost = map2_dbl(member, to_group,
+                         \(m, g) description_length(replace(found, m + 1, g))[["total"]] - base),
+         cost = round(cost, 2))
 ```
 
 ::: {.code-output}
@@ -805,10 +821,14 @@ The hubs group exists because some members have many more friends than others. B
 ```r
 # Degree-corrected blocks let each member have their own popularity, so hubs no longer need a group of their own.
 corrected <- fit_blocks(TRUE)
-d <- description_length(corrected, TRUE)
-cat(sprintf("%d group found, description length %.1f\n", max(corrected) + 1, d[["total"]]))
-cat(sprintf("(network %.1f, groups %.1f, member popularities %.1f)\n", d[["network"]], d[["groups"]], d[["popularity"]]))
-cat(sprintf("hubs-and-the-rest, degree-corrected: %.1f\n", description_length(found, TRUE)[["total"]]))
+bind_rows(
+  "fitted, degree-corrected" = description_length(corrected, TRUE),
+  "hubs and the rest, degree-corrected" = description_length(found, TRUE),
+  .id = "grouping"
+) |>
+  mutate(n_groups = c(n_distinct(corrected), n_distinct(found)), .after = grouping) |>
+  select(grouping, n_groups, network, groups, popularity, total) |>
+  mutate(across(where(is.numeric), \(x) round(x, 1)))
 ```
 
 ::: {.code-output}
