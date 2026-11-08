@@ -42,22 +42,24 @@ Ego networks are also how most surveys see networks. You can't usually interview
 
 ```r
 library(knappnet)
+library(dplyr)
 
 # The ten-person friendship network. People are numbered from zero in Rust; here the
-# ties are written as numbers and turned into names.
-names <- c("Ana", "Ben", "Cleo", "Dev", "Eli", "Fay", "Gus", "Hana", "Ivo", "Jo")
-from <- c(0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 4, 5, 5, 6, 7, 8)
-to <- c(1, 2, 3, 5, 3, 4, 6, 3, 5, 4, 5, 6, 6, 6, 7, 7, 8, 9)
-edges <- data.frame(source = names[from + 1], target = names[to + 1])
-friends <- net_frame(edges, nodes = data.frame(id = names), directed = FALSE)
+# ties are written as those numbers and turned into names.
+people <- c("Ana", "Ben", "Cleo", "Dev", "Eli", "Fay", "Gus", "Hana", "Ivo", "Jo")
+friends <- tibble(
+  source = c(0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 4, 5, 5, 6, 7, 8),
+  target = c(1, 2, 3, 5, 3, 4, 6, 3, 5, 4, 5, 6, 6, 6, 7, 7, 8, 9)
+) |>
+  mutate(across(everything(), \(i) people[i + 1])) |>
+  net_frame(nodes = tibble(id = people), directed = FALSE)
+friends
 
 # Alters are the people within one step of ego, the default.
-ego <- net_ego_summary(friends)
-header <- sprintf("%-5s %8s %5s %8s %7s %11s", "", "contacts", "ties", "density", "pieces", "betweenness")
-rows <- sprintf("%-5s %8d %5d %8.3f %7d %11.3f", names, as.integer(ego$size),
-                as.integer(ego$ties), ego$density, as.integer(ego$components),
-                ego$ego_betweenness)
-writeLines(c(header, rows))
+net_ego_summary(friends) |>
+  select(person = node, contacts = size, ties, density, pieces = components,
+         betweenness = ego_betweenness) |>
+  mutate(across(where(is.numeric), \(x) round(x, 3)))
 ```
 
 ::: {.code-output}
@@ -201,10 +203,12 @@ Check it on the triangle: $n = 3$ and $t = 3$, so the effective size is $3 - 6/3
 ## R
 
 ```r
-size <- net_effective_size(friends)
-efficiency <- net_efficiency(friends)
-writeLines(c(sprintf("%-5s %14s %10s", "", "effective size", "efficiency"),
-             sprintf("%-5s %14.3f %10.3f", names, size, efficiency)))
+tibble(
+  person = people,
+  effective_size = net_effective_size(friends),
+  efficiency = net_efficiency(friends)
+) |>
+  mutate(across(where(is.numeric), \(x) round(x, 3)))
 ```
 
 ::: {.code-output}
@@ -295,8 +299,7 @@ In words: for each contact, add the direct share to the shares routed through yo
 ## R
 
 ```r
-constraint <- net_constraint(friends)
-writeLines(sprintf("%-5s %.3f", names, constraint))
+tibble(person = people, constraint = round(net_constraint(friends), 3))
 ```
 
 ::: {.code-output}
@@ -395,19 +398,18 @@ Here is a small example: nine people in three teams, Design, Build and Sales, an
 ```r
 # Design: Ada, Ben, Cy.  Build: Dee, Eve, Flo.  Sales: Gus, Hal, Ivy.
 team_names <- c("Ada", "Ben", "Cy", "Dee", "Eve", "Flo", "Gus", "Hal", "Ivy")
-team <- c(0, 0, 0, 1, 1, 1, 2, 2, 2)
+team <- rep(0:2, each = 3)
 # An arrow means: passes work to.
-wfrom <- c(0, 1, 2, 3, 4, 5, 3, 3, 6, 7)
-wto <- c(1, 2, 3, 4, 5, 6, 0, 6, 7, 8)
-work_edges <- data.frame(source = team_names[wfrom + 1], target = team_names[wto + 1])
-work <- net_frame(work_edges, nodes = data.frame(id = team_names), directed = TRUE)
+work <- tibble(
+  source = c(0, 1, 2, 3, 4, 5, 3, 3, 6, 7),
+  target = c(1, 2, 3, 4, 5, 6, 0, 6, 7, 8)
+) |>
+  mutate(across(everything(), \(i) team_names[i + 1])) |>
+  net_frame(nodes = tibble(id = team_names, team = team), directed = TRUE)
+work
 
-counts <- net_brokerage(work, groups = team)
-roles <- c("coordinator", "itinerant", "representative", "gatekeeper", "liaison", "total")
-role_matrix <- as.matrix(counts[roles])
-role_cells <- apply(role_matrix, 1, \(r) paste(sprintf("%5d", as.integer(r)), collapse = " "))
-writeLines(c(sprintf("%-4s %s", "", paste(sprintf("%5.5s", roles), collapse = " ")),
-             sprintf("%-4s %s", team_names, role_cells)))
+# Counts of each brokerage role per person, using the team column as the groups.
+net_brokerage(work, "team")
 ```
 
 ::: {.code-output}
@@ -564,12 +566,13 @@ For the friendship network, call the first five people (Ana through Eli) one gro
 
 ```r
 # Group 0 is the first five people, group 1 the other five.
-group <- c(0, 0, 0, 0, 0, 1, 1, 1, 1, 1)
-by_group <- net_ei_index(friends, group, scope = "group")
-by_person <- net_ei_index(friends, group, scope = "node")
-writeLines(c(sprintf("whole network  %+.3f", net_ei_index(friends, group, scope = "global")),
-             sprintf("group %d        %+.3f", seq_along(by_group) - 1L, by_group),
-             sprintf("%-5s          %+.3f", names, by_person)))
+group <- rep(0:1, each = 5)
+bind_rows(
+  tibble(scope = "whole network", ei = as.vector(net_ei_index(friends, group, scope = "global"))),
+  tibble(scope = paste("group", 0:1), ei = as.vector(net_ei_index(friends, group, scope = "group"))),
+  tibble(scope = people, ei = as.vector(net_ei_index(friends, group, scope = "node")))
+) |>
+  mutate(ei = round(ei, 3))
 ```
 
 ::: {.code-output}

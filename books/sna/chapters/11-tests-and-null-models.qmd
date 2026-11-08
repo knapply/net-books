@@ -42,21 +42,27 @@ Our two matrices are the friendship ties and a "same floor" matrix: a 1 for each
 ## R
 
 ```r
-# The ten-person friendship network, as pairs of positions (R counts from 1).
-names <- c("Ana", "Ben", "Cleo", "Dev", "Eli", "Fay", "Gus", "Hana", "Ivo", "Jo")
-from <- c(0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 4, 5, 5, 6, 7, 8) + 1
-to <- c(1, 2, 3, 5, 3, 4, 6, 3, 5, 4, 5, 6, 6, 6, 7, 7, 8, 9) + 1
-# Floor of each person: the first five on floor 0, the rest on floor 1.
-floor_id <- c(0, 0, 0, 0, 0, 1, 1, 1, 1, 1)
+library(knappnet)
+library(dplyr)
+library(purrr)
 
-n <- length(names)
+# The ten-person friendship network, as pairs of positions (R counts from 1).
+people <- c("Ana", "Ben", "Cleo", "Dev", "Eli", "Fay", "Gus", "Hana", "Ivo", "Jo")
+ties <- tibble(
+  from = c(0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 4, 5, 5, 6, 7, 8) + 1,
+  to = c(1, 2, 3, 5, 3, 4, 6, 3, 5, 4, 5, 6, 6, 6, 7, 7, 8, 9) + 1
+)
+# Floor of each person: the first five on floor 0, the rest on floor 1.
+floor_id <- rep(0:1, each = 5)
+
+n <- length(people)
 friends <- matrix(0, n, n)
-friends[cbind(from, to)] <- 1
+friends[cbind(ties$from, ties$to)] <- 1
 friends <- pmax(friends, t(friends)) # friendship goes both ways
 same_floor <- outer(floor_id, floor_id, "==") * 1
 diag(same_floor) <- 0
-cat(sprintf("%d pairs of people\n", n * (n - 1) / 2))
-cat(sprintf("%d friend pairs, %d same-floor pairs\n", sum(friends) / 2, sum(same_floor) / 2))
+
+tibble(pairs = choose(n, 2), friend_pairs = sum(friends) / 2, same_floor_pairs = sum(same_floor) / 2)
 ```
 
 ::: {.code-output}
@@ -147,13 +153,13 @@ Because the network is undirected, we tell the test to read each pair once (grap
 ## R
 
 ```r
-library(knappnet)
-
 # graph mode: undirected, so each pair is used once. Same Philox draws as Rust.
 test <- net_qap_cor(friends, same_floor, reps = 10000, seed = 1, mode = "graph")
-cat(sprintf("pairs used            %d\n", test$dyads))
-cat(sprintf("observed correlation  %.3f\n", test$statistic))
-cat(sprintf("share of relabelings at least that high  %.4f\n", test$p.value[["Pr(>=r)"]]))
+tibble(
+  pairs_used = test$dyads,
+  observed_correlation = round(as.numeric(test$statistic), 3),
+  share_at_least = round(test$p.value[["Pr(>=r)"]], 4)
+)
 ```
 
 ::: {.code-output}
@@ -233,10 +239,11 @@ The relabelings are worth looking at, not just summarizing. They show you what "
 
 ```r
 draws <- test$dist
-naive <- 1 / sqrt(test$dyads - 1)
-cat(sprintf("average relabeled correlation  %+.3f\n", mean(draws)))
-cat(sprintf("spread (sd) with QAP           %.3f\n", sd(draws)))
-cat(sprintf("spread an ordinary test assumes %.3f\n", naive))
+tibble(
+  quantity = c("average relabeled correlation", "spread (sd) with QAP", "spread an ordinary test assumes"),
+  value = c(mean(draws), sd(draws), 1 / sqrt(test$dyads - 1))
+) |>
+  mutate(value = round(value, 3))
 ```
 
 ::: {.code-output}
@@ -310,11 +317,13 @@ same_club <- outer(seq_len(n) %% 2, seq_len(n) %% 2, "==") * 1
 diag(same_club) <- 0
 fit <- net_mrqap(friends, list(floor = same_floor, club = same_club),
                  reps = 5000, seed = 1, mode = "graph")
-labels <- c("intercept", "same floor", "same club")
-writeLines(c(sprintf("%-12s %11s %7s %8s", "", "coefficient", "t", "p (two-sided)"),
-             sprintf("%-12s %11.3f %7.2f %8.4f", labels, fit$coefficients, fit$t,
-                     fit$p.value[, "Pr(>=|b|)"])))
-cat(sprintf("R-squared %.3f on %d pairs\n", fit$r.squared, fit$dyads))
+tibble(
+  term = c("intercept", "same floor", "same club"),
+  coefficient = round(as.numeric(fit$coefficients), 3),
+  t = round(as.numeric(fit$t), 2),
+  p_two_sided = round(as.numeric(fit$p.value[, "Pr(>=|b|)"]), 4)
+)
+tibble(r_squared = round(fit$r.squared, 3), pairs = fit$dyads)
 ```
 
 ::: {.code-output}
@@ -436,17 +445,20 @@ The simplest recipe holds fixed only the number of people and the number of ties
 ## R
 
 ```r
-g <- net_frame(data.frame(source = names[from], target = names[to]),
-               nodes = data.frame(id = names), directed = FALSE)
-observed <- as.numeric(net_transitivity(g))
+g <- tibble(source = people[ties$from], target = people[ties$to]) |>
+  net_frame(nodes = tibble(id = people), directed = FALSE)
+transitivity_of <- \(d) as.numeric(net_transitivity(d))
+observed <- transitivity_of(g)
 
 # 2,000 random networks: 10 people, 18 ties, undirected, no loops.
-draws <- net_random_gnm(n, 18, reps = 2000, seed = 1)
-scores <- vapply(draws, function(d) as.numeric(net_transitivity(d)), numeric(1))
-scores <- scores[!is.na(scores)]
-cat(sprintf("observed transitivity        %.3f\n", observed))
-cat(sprintf("random networks, average     %.3f\n", mean(scores)))
-cat(sprintf("random networks at least as clustered  %.4f\n", mean(scores >= observed - 1e-12)))
+scores <- net_random_gnm(n, 18, reps = 2000, seed = 1) |>
+  map_dbl(transitivity_of) |>
+  discard(is.na)
+tibble(
+  observed = round(observed, 3),
+  random_average = round(mean(scores), 3),
+  share_as_clustered = round(mean(scores >= observed - 1e-12), 4)
+)
 ```
 
 ::: {.code-output}
@@ -536,13 +548,15 @@ That null model is easy to beat, and the reason is instructive. Real networks ha
 ## R
 
 ```r
-degrees <- as.numeric(net_degree(g))
 # simple = TRUE keeps only simple networks; 100,000 is how many tries each draw gets.
-draws <- net_random_config(degrees, simple = TRUE, max_tries = 100000, reps = 2000, seed = 1)
-scores <- vapply(draws, function(d) as.numeric(net_transitivity(d)), numeric(1))
-scores <- scores[!is.na(scores)]
-cat(sprintf("random networks with the same degrees, average  %.3f\n", mean(scores)))
-cat(sprintf("at least as clustered as observed               %.4f\n", mean(scores >= observed - 1e-12)))
+scores <- net_degree(g) |>
+  net_random_config(simple = TRUE, max_tries = 100000, reps = 2000, seed = 1) |>
+  map_dbl(transitivity_of) |>
+  discard(is.na)
+tibble(
+  random_average = round(mean(scores), 3),
+  share_as_clustered = round(mean(scores >= observed - 1e-12), 4)
+)
 ```
 
 ::: {.code-output}

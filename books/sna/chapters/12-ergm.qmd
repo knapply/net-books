@@ -51,26 +51,30 @@ The smoother version is **geometrically weighted edgewise shared partners**, or 
 
 ```r
 library(network)
+library(dplyr)
 
 # Zachary's karate club: 34 members, 78 friendships. R counts from 1, so we add 1
 # to the positions 0 to 33 that the Rust tab uses.
-from <- c(
+ties <- tibble(
+  from = c(
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3,
     4, 4, 5, 5, 5, 6, 8, 8, 8, 9, 13, 14, 14, 15, 15, 18, 18, 19, 20, 20, 22, 22, 23, 23, 23, 23, 23, 24, 24,
     24, 25, 26, 26, 27, 28, 28, 29, 29, 30, 30, 31, 31, 32
-) + 1
-to <- c(
+  ) + 1,
+  to = c(
     1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 17, 19, 21, 31, 2, 3, 7, 13, 17, 19, 21, 30, 3, 7, 8, 9, 13, 27, 28,
     32, 7, 12, 13, 6, 10, 6, 10, 16, 16, 30, 32, 33, 33, 33, 32, 33, 32, 33, 32, 33, 33, 32, 33, 32, 33, 25, 27,
     29, 32, 33, 25, 27, 31, 31, 29, 33, 33, 31, 33, 32, 33, 32, 33, 32, 33, 33
-) + 1
+  ) + 1
+)
 # The side each member took (0 = Mr. Hi, 1 = the officer).
 side <- c(0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)
-club <- network(cbind(from, to), directed = FALSE, matrix.type = "edgelist")
-set.vertex.attribute(club, "side", side)
-cat(sprintf("%d people, %d ties, %d possible pairs\n",
-            network.size(club), network.edgecount(club), network.dyadcount(club)))
-cat(sprintf("%d on Mr. Hi's side, %d on the officer's\n", sum(side == 0), sum(side == 1)))
+club <- network(cbind(ties$from, ties$to), directed = FALSE, matrix.type = "edgelist")
+club %v% "side" <- side
+club
+
+tibble(side = if_else(side == 0, "Mr. Hi", "the officer")) |>
+  count(side)
 ```
 
 ::: {.code-output}
@@ -188,11 +192,18 @@ library(ergm) # the standard R package for ERGMs (statnet)
 
 fit_plain <- ergm(club ~ edges + nodematch("side"), estimate = "MPLE")
 est <- summary(fit_plain)$coefficients
-labels <- c("edges", "same side")
-writeLines(sprintf("%-10s %7.3f  (standard error %.3f)", labels, est[, "Estimate"], est[, "Std. Error"]))
+tibble(
+  term = c("edges", "same side"),
+  estimate = est[, "Estimate"],
+  std_error = est[, "Std. Error"]
+) |>
+  mutate(across(where(is.numeric), \(x) round(x, 3)))
+
 # The logistic function turns log-odds back into a probability.
-cat(sprintf("chance of a tie, opposite sides  %.3f\n", plogis(est[1, "Estimate"])))
-cat(sprintf("chance of a tie, same side       %.3f\n", plogis(est[1, "Estimate"] + est[2, "Estimate"])))
+tibble(
+  pair = c("opposite sides", "same side"),
+  chance_of_tie = round(plogis(c(est[1, "Estimate"], est[1, "Estimate"] + est[2, "Estimate"])), 3)
+)
 ```
 
 ::: {.code-output}
@@ -277,16 +288,20 @@ The reliable approach is **Monte Carlo maximum likelihood**, or MCMLE. It works 
 ## R
 
 ```r
-obs <- summary(club ~ edges + nodematch("side") + gwesp(0.5, fixed = TRUE)) # 0.5 is the decay
-cat(sprintf("observed statistics   [%s]\n", paste(sprintf("%.2f", obs), collapse = ", ")))
+summary(club ~ edges + nodematch("side") + gwesp(0.5, fixed = TRUE)) |> # 0.5 is the decay
+  round(2)
 
 # ergm runs its own Monte Carlo chains, so the estimates differ from Rust's in the last digits.
 fit <- ergm(club ~ edges + nodematch("side") + gwesp(0.5, fixed = TRUE),
             control = control.ergm(seed = 1))
 est <- summary(fit)$coefficients
-labels <- c("edges", "same side", "shared partners")
-writeLines(sprintf("%-16s %7.3f  (standard error %.3f)", labels, est[, "Estimate"], est[, "Std. Error"]))
-cat(sprintf("converged %s after %d rounds\n", tolower(as.character(!isTRUE(fit$failure))), fit$iterations))
+tibble(
+  term = c("edges", "same side", "shared partners"),
+  estimate = est[, "Estimate"],
+  std_error = est[, "Std. Error"]
+) |>
+  mutate(across(where(is.numeric), \(x) round(x, 3)))
+tibble(converged = !isTRUE(fit$failure), rounds = fit$iterations)
 ```
 
 ::: {.code-output}
@@ -363,19 +378,20 @@ We'll check three features we didn't include: the number of triangles, and the n
 ```r
 # Count triangles and stars in 4,000 networks from each model (the first draws are discarded).
 monitor <- ~ triangle + kstar(2) + kstar(3)
-averages <- function(model) {
+averages <- \(model) {
   draws <- simulate(model, nsim = 4000, monitor = monitor, output = "stats",
                     control = control.simulate.ergm(MCMC.burnin = 16384, MCMC.interval = 1024),
                     seed = 1)
-  colMeans(draws)[c("edges", "triangle", "kstar2", "kstar3")]
+  as.numeric(colMeans(draws)[c("edges", "triangle", "kstar2", "kstar3")])
 }
-actual <- summary(club ~ edges + triangle + kstar(2) + kstar(3))
-simple <- averages(fit_plain)
-closure <- averages(fit)
 # The simulations are random draws that differ from Rust's, so the averages differ a little.
-labels <- c("ties", "triangles", "two-stars", "three-stars")
-writeLines(c(sprintf("%-10s %8s %14s %14s", "", "real", "edges + side", "+ shared partners"),
-             sprintf("%-10s %8.1f %14.1f %14.1f", labels, actual, simple, closure)))
+tibble(
+  statistic = c("ties", "triangles", "two-stars", "three-stars"),
+  real = as.numeric(summary(club ~ edges + triangle + kstar(2) + kstar(3))),
+  `edges + side` = averages(fit_plain),
+  `+ shared partners` = averages(fit)
+) |>
+  mutate(across(where(is.numeric), \(x) round(x, 1)))
 ```
 
 ::: {.code-output}
