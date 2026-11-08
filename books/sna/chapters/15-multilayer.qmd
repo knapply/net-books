@@ -40,29 +40,33 @@ The classic two-mode dataset comes from a study of social class in a town in the
 
 ```r
 library(knappnet)
+library(dplyr)
+library(tibble)
 
 # The attendance table: one row per woman-event pair. The file labels differ a little from
 # the short names the chapter uses, so we list those, in the file's order.
-edges <- read.csv("data/southern_women/edges.csv")
 women <- c("Evelyn", "Laura", "Theresa", "Brenda", "Charlotte", "Frances", "Eleanor", "Pearl", "Ruth",
            "Verne", "Myra", "Katherine", "Sylvia", "Nora", "Helen", "Dorothy", "Olive", "Flora")
 events <- paste0("E", 1:14)
-edges$woman <- women[match(edges$woman, unique(edges$woman))]
+edges <- read.csv("data/southern_women/edges.csv") |>
+  as_tibble() |>
+  mutate(woman = women[match(woman, unique(woman))])
 
 # One network with 32 nodes, women first and then events; the mode column says which is which.
-nodes <- data.frame(id = c(women, events), mode = rep(c("woman", "event"), c(18, 14)))
+nodes <- tibble(id = c(women, events), mode = rep(c("woman", "event"), c(18, 14)))
 club <- net_twomode(edges, nodes = nodes, source = "woman", target = "event")
+club
 
-counts <- net_twomode_degree(club, normalized = FALSE)
-shares <- net_twomode_degree(club)
-cat(sprintf("%d women, 14 events, %d attendances\n", 18, nrow(club$edges)))
-cat(sprintf("two-mode density %.3f\n", net_twomode_density(club)))
-cat(sprintf("women attended between %d and %d events\n", min(counts[1:18]), max(counts[1:18])))
-cat(sprintf("events drew between %d and %d women\n", min(counts[19:32]), max(counts[19:32])))
-busiest <- which.max(counts[1:18])
-biggest <- 18 + which.max(counts[19:32])
-cat(sprintf("%s attended %d of 14 events (share %.2f); event %d drew %d of 18 women (share %.2f)\n",
-            women[busiest], counts[busiest], shares[busiest], biggest - 18, counts[biggest], shares[biggest]))
+degrees <- club$nodes |>
+  mutate(
+    attended = net_twomode_degree(club, normalized = FALSE),
+    share = round(net_twomode_degree(club), 2)
+  )
+degrees |> summarise(n = n(), fewest = min(attended), most = max(attended), .by = mode)
+net_twomode_density(club) |> round(3)
+
+# The busiest woman and the biggest event.
+degrees |> slice_max(attended, n = 1, by = mode, with_ties = FALSE)
 ```
 
 ::: {.code-output}
@@ -200,18 +204,17 @@ The network has 89 attendances. The two-mode density divides 89 by the $18 \time
 ```r
 # Project onto the women: two women are tied when they attended a common event,
 # with weight the number of events they shared.
-shared <- net_project(club, which = "first", method = "count")$edges
-cat(sprintf("%d of the 153 possible pairs of women share at least one event\n", nrow(shared)))
-cat(sprintf("total weight %g\n", sum(shared$weight)))
+shared <- net_project(club, which = "first", method = "count")$edges |>
+  select(source, target, weight) |>
+  arrange(desc(weight), match(source, women), match(target, women))
+shared |> summarise(pairs = n(), possible = choose(18, 2), total_weight = sum(weight))
 
 # Every event of size k ties k (k - 1) / 2 pairs, so the total can be predicted from the event sizes alone.
-sizes <- counts[19:32]
-cat(sprintf("predicted from the event sizes: %g\n", sum(sizes * (sizes - 1) / 2)))
+degrees |> filter(mode == "event") |> summarise(predicted = sum(attended * (attended - 1) / 2))
 
-shared <- shared[order(-shared$weight, match(shared$source, women), match(shared$target, women)), ]
-cat(sprintf("strongest pair: %s and %s share %g events\n", shared$source[1], shared$target[1], shared$weight[1]))
-cat(sprintf("%d pairs share exactly 6 events\n", sum(shared$weight == 6)))
-cat(sprintf("%d pairs share exactly 1 event\n", sum(shared$weight == 1)))
+# The strongest pair, and how many pairs share each number of events.
+head(shared, 1)
+count(shared, weight)
 ```
 
 ::: {.code-output}
@@ -310,12 +313,11 @@ Is a pair who shared a crowded event as close as a pair who shared a small one? 
 ```r
 # Newman's weighting: a shared event counts 1 / (attendance - 1), so a small, intimate event
 # counts for more than a crowded one.
-newman <- net_project(club, which = "first", method = "newman")$edges
-newman <- newman[order(-newman$weight, match(newman$source, women), match(newman$target, women)), ]
-cat(sprintf("strongest pairs by shared-event count: %s and %s (%g)\n", shared$source[1], shared$target[1], shared$weight[1]))
-cat("strongest pairs by Newman weight:\n")
-top <- head(newman, 3)
-writeLines(sprintf("  %s and %s: %.2f", top$source, top$target, top$weight))
+newman <- net_project(club, which = "first", method = "newman")$edges |>
+  select(source, target, weight) |>
+  arrange(desc(weight), match(source, women), match(target, women))
+bind_rows(shared_count = head(shared, 1), newman = head(newman, 3), .id = "weighting") |>
+  mutate(weight = round(weight, 2))
 ```
 
 ::: {.code-output}
@@ -394,17 +396,17 @@ If the women fall into two groups, the events should too: some events draw mostl
 # Split the women into the first nine and the last nine as listed, then put each event with the group
 # that supplied most of its attendees.
 B <- net_incidence(club)
-group_w <- rep(c(0, 1), each = 9)
-group_e <- as.integer(colSums(B[10:18, ]) > colSums(B[1:9, ]))
-cat(sprintf("first group's events:  [%s]\n", paste(which(group_e == 0), collapse = ", ")))
-cat(sprintf("second group's events: [%s]\n", paste(which(group_e == 1), collapse = ", ")))
+group_w <- rep(c("first", "second"), each = 9)
+group_e <- if_else(colSums(B[10:18, ]) > colSums(B[1:9, ]), "second", "first")
+tibble(event = events, group = group_e) |>
+  summarise(events = toString(event), .by = group)
 
 # Modularity for two-mode data (Barber 2007): ties inside groups, compared with what the two
 # modes' degrees would give by chance. The package has no function for it, so we write the formula.
 m <- sum(B)
+expected <- outer(rowSums(B), colSums(B)) / m
 inside <- outer(group_w, group_e, "==")
-q <- sum((B - outer(rowSums(B), colSums(B)) / m)[inside]) / m
-cat(sprintf("two-mode modularity of this split: %.3f\n", q))
+round(sum((B - expected)[inside]) / m, 3)
 ```
 
 ::: {.code-output}
@@ -506,26 +508,40 @@ We use two layers over the ten people of the office. The first is the advice net
 
 ```r
 # Two layers on the ten people of the office. Layer 1 is the advice network from the positions chapter (an arc means "asks").
-# Layer 2 is invented: who eats lunch together (undirected). Positions 1 to 10 are Ada to Jay.
-asks <- rbind(c(1, 2), c(2, 1), c(3, 1), c(3, 2), c(4, 1), c(4, 2), c(5, 1), c(5, 2), c(6, 3), c(7, 3), c(8, 4), c(9, 5), c(10, 5))
-lunch <- rbind(c(1, 2), c(3, 4), c(5, 6), c(7, 8), c(9, 10), c(1, 3), c(2, 4), c(3, 6))
-advice_layer <- matrix(0, 10, 10)
-lunch_layer <- matrix(0, 10, 10)
-# Treat advice as a plain connection (either direction) so the two layers are comparable pair by pair.
-advice_layer[rbind(asks, asks[, 2:1])] <- 1
-lunch_layer[rbind(lunch, lunch[, 2:1])] <- 1
+# Layer 2 is invented: who eats lunch together (undirected).
+people <- c("Ada", "Ben", "Cy", "Dee", "Eve", "Flo", "Gus", "Hal", "Ivy", "Jay")
+asks <- tibble(
+  source = people[c(1, 2, 3, 3, 4, 4, 5, 5, 6, 7, 8, 9, 10)],
+  target = people[c(2, 1, 1, 2, 1, 2, 1, 2, 3, 3, 4, 5, 5)]
+)
+lunch <- tibble(
+  source = people[c(1, 3, 5, 7, 9, 1, 2, 3)],
+  target = people[c(2, 4, 6, 8, 10, 3, 4, 6)]
+)
+nodes <- tibble(id = people)
 
-up <- upper.tri(advice_layer)
-advice_pairs <- sum(advice_layer[up])
-lunch_pairs <- sum(lunch_layer[up])
-both <- sum(advice_layer[up] == 1 & lunch_layer[up] == 1)
-cat(sprintf("advice pairs %d, lunch pairs %d, in both %d\n", advice_pairs, lunch_pairs, both))
-cat(sprintf("overlap (Jaccard) %.2f\n", both / (advice_pairs + lunch_pairs - both)))
+# Treat advice as a plain connection (either direction) so the two layers are comparable pair by pair.
+asked <- as.matrix(net_frame(asks, nodes = nodes, directed = TRUE))
+advice_layer <- pmax(asked, t(asked))
+lunch_layer <- as.matrix(net_frame(lunch, nodes = nodes, directed = FALSE))
+
+# One row per pair of people (each pair once): is it tied in each layer?
+layers <- tibble(
+  advice = advice_layer[upper.tri(advice_layer)],
+  lunch = lunch_layer[upper.tri(lunch_layer)]
+)
+layers |>
+  summarise(advice_pairs = sum(advice), lunch_pairs = sum(lunch), both = sum(advice & lunch)) |>
+  mutate(jaccard = round(both / (advice_pairs + lunch_pairs - both), 2))
 
 # Is that overlap more than relabeling the people would produce by chance? The QAP test of the tests chapter answers it.
 test <- net_qap_cor(advice_layer, lunch_layer, mode = "graph", reps = 10000, seed = 1)
-cat(sprintf("correlation between layers %.3f over %d pairs\n", test$statistic, test$dyads))
-cat(sprintf("share of relabelings at least that high %.3f\n", test$p.value[["Pr(>=r)"]]))
+tibble(
+  correlation = test$statistic,
+  pairs = test$dyads,
+  share_at_least = test$p.value[["Pr(>=r)"]]
+) |>
+  mutate(across(c(correlation, share_at_least), \(x) round(x, 3)))
 ```
 
 ::: {.code-output}

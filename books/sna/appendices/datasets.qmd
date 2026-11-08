@@ -33,12 +33,17 @@ Two other small networks in the book, the five-person advice network and the ten
 ## R
 
 ```r
+library(dplyr)
+library(purrr)
+
 # Each dataset is a folder of plain CSV files inside the book's data folder.
-describe_folder <- function(folder) {
-  lines <- readLines(file.path("data", folder, "edges.csv"))
-  sprintf("%-15s %4d rows   columns: %s", folder, length(lines) - 1, lines[1])
-}
-writeLines(vapply(sort(list.files("data")), describe_folder, character(1)))
+tibble(dataset = list.files("data")) |>
+  mutate(
+    edges = map(dataset, \(d) read.csv(file.path("data", d, "edges.csv"))),
+    rows = map_int(edges, nrow),
+    columns = map_chr(edges, \(e) toString(names(e)))
+  ) |>
+  select(-edges)
 ```
 
 ::: {.code-output}
