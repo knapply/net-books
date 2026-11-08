@@ -492,7 +492,171 @@ The simple model, with edges and sides only, produces fewer than half the real t
 
 ![How well each model reproduces features of the karate club it was not fit to. Each dot is the average over simulated networks as a percent of the real count, so 100 means a perfect match.](../figures/ergm-gof.svg){#fig-ergm-gof fig-alt="A dot chart with three rows: triangles, two-stars and three-stars. For triangles, the edges-and-side model is at 48 percent and the model with shared partners at 94 percent. For two-stars, the dots are at 65 and 74 percent. For three-stars, they are at 27 and 38 percent. A vertical line marks 100 percent."}
 
+## From coefficients to the chance of one tie
+
+The coefficients are easy to quote and easy to misread, so let's use them once, slowly, to answer a concrete question: given the fitted model, how likely is one particular tie?
+
+The recipe has three steps. For a pair of people who aren't tied yet, work out how much each statistic in the model would go up if the tie were added. These are the **change statistics**. Multiply each by its coefficient and add the results: that sum is the **conditional log-odds** of the tie, given every other tie in the network. Then the logistic function turns the log-odds into a probability, $1 / (1 + e^{-x})$.
+
+For our model the change statistics are easy to state. Adding any tie raises the edge count by 1. It raises the same-side count by 1 if the two people are on the same side, and by 0 if not. The shared-partner statistic is the fiddly one. A new tie between two people who have friends in common creates triangles, and the GWESP count goes up by an amount that depends on how many partners the two share and on how many partners the existing ties around them already have. We'll let the code count it by adding the tie and recounting.
+
+We'll compare two pairs, both untied in the real club and both with exactly two friends in common. Members 2 and 12 are on the same side. Members 8 and 14 are on opposite sides. Holding the shared partners equal means the only thing that differs is the side.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# The same two pairs, using the shared-partner fit from Step 3. R counts from 1, so we add 1
+# to the member positions the other tabs use.
+stats_of <- \(net) as.numeric(summary(net ~ edges + nodematch("side") + gwesp(0.5, fixed = TRUE)))
+one_tie <- \(from, to) {
+  with_tie <- club
+  with_tie[from + 1, to + 1] <- 1
+  stats_of(with_tie) - stats_of(club)
+}
+theta <- coef(fit)
+
+tibble(
+  pair = c("same side (2 and 12)", "opposite sides (8 and 14)"),
+  from = c(2, 8),
+  to = c(12, 14)
+) |>
+  mutate(
+    change = map2(from, to, one_tie),
+    partners = map2_dbl(from, to, \(i, j) sum(as.matrix(club)[i + 1, ] * as.matrix(club)[j + 1, ])),
+    edges_change = map_dbl(change, 1),
+    side_change = map_dbl(change, 2),
+    partner_change = map_dbl(change, 3),
+    log_odds = map_dbl(change, \(x) sum(theta * x)),
+    chance = plogis(log_odds)
+  ) |>
+  select(pair, partners, edges_change, side_change, partner_change, log_odds, chance) |>
+  mutate(across(where(is.numeric), \(x) round(x, 3)))
+```
+
+::: {.code-output}
+```text
+```
+:::
+
+## Python
+
+```python
+# The coefficients printed in Step 3 (edges, same side, shared partners), typed in by hand.
+theta = np.array([-3.924, 1.535, 0.697])
+decay = 0.5
+
+def gwesp(a):
+    # Each tie counts e^decay * (1 - (1 - e^-decay)^k), where k is its number of shared partners.
+    shared = a @ a
+    tied = np.triu(a, 1) > 0
+    return (np.exp(decay) * (1 - (1 - np.exp(-decay)) ** shared[tied])).sum()
+
+def change(i, j):
+    with_tie = adj.copy()
+    with_tie[i, j] = with_tie[j, i] = 1
+    return np.array([1.0, float(side[i] == side[j]), gwesp(with_tie) - gwesp(adj)])
+
+for label, i, j in [("same side (2 and 12)", 2, 12), ("opposite sides (8 and 14)", 8, 14)]:
+    delta = change(i, j)
+    log_odds = theta @ delta
+    print(f"{label}: {int(adj[i] @ adj[j])} shared partners, change {np.round(delta, 3)}")
+    print(f"  log-odds {theta[0]:.3f}*{delta[0]:.0f} + {theta[1]:.3f}*{delta[1]:.0f} + {theta[2]:.3f}*{delta[2]:.3f} = {log_odds:.3f}")
+    print(f"  chance of the tie {1 / (1 + np.exp(-log_odds)):.3f}")
+```
+
+::: {.code-output}
+```text
+same side (2 and 12): 2 shared partners, change [1.    1.    2.214]
+  log-odds -3.924*1 + 1.535*1 + 0.697*2.214 = -0.846
+  chance of the tie 0.300
+opposite sides (8 and 14): 2 shared partners, change [1.    0.    2.396]
+  log-odds -3.924*1 + 1.535*0 + 0.697*2.396 = -2.254
+  chance of the tie 0.095
+```
+:::
+
+## Rust
+
+```rust
+// Add each tie to a copy of the club and see how much the three statistics go up.
+let before = model.compute_statistics(&observed)?;
+for (label, a, b) in [("same side (2 and 12)", 2usize, 12usize), ("opposite sides (8 and 14)", 8, 14)] {
+    let mut with_tie = observed.clone();
+    with_tie.toggle(a, b);
+    let after = model.compute_statistics(&with_tie)?;
+    let delta: Vec<f64> = after.iter().zip(&before).map(|(x, y)| x - y).collect();
+    let partners = observed.out_neighbors(a).iter().filter(|v| observed.out_neighbors(b).contains(v)).count();
+    let log_odds: f64 = fit.coef.iter().zip(&delta).map(|(c, d)| c * d).sum();
+    println!("{label}: {partners} shared partners, change {delta:.3?}");
+    println!("  log-odds {:.3}*{:.0} + {:.3}*{:.0} + {:.3}*{:.3} = {:.3}", fit.coef[0], delta[0], fit.coef[1], delta[1], fit.coef[2], delta[2], log_odds);
+    println!("  chance of the tie {:.3}", chance(log_odds));
+}
+```
+
+::: {.code-output}
+```text
+same side (2 and 12): 2 shared partners, change [1.000, 1.000, 2.214]
+  log-odds -3.924*1 + 1.535*1 + 0.697*2.214 = -0.846
+  chance of the tie 0.300
+opposite sides (8 and 14): 2 shared partners, change [1.000, 0.000, 2.396]
+  log-odds -3.924*1 + 1.535*0 + 0.697*2.396 = -2.254
+  chance of the tie 0.095
+```
+:::
+
+:::
+
+Read the two results line by line. For members 2 and 12, the log-odds are $-3.924 + 1.535 + 0.697 \times 2.214 = -0.846$, which the logistic function turns into a chance of 0.300. For members 8 and 14, the same-side term drops out, leaving $-3.924 + 0.697 \times 2.396 = -2.254$ and a chance of 0.095. The three tabs agree. (The Python tab types in the rounded coefficients from Step 3, so it could drift from Rust in a later decimal; here it doesn't. The R tab uses R's own fit, whose coefficients differ from Rust's in the last digits, so its numbers land close to these rather than on them.)
+
+A few things are worth noticing. The same-side pair is about four times as likely to be tied as the cross-side pair in odds terms ($e^{-0.846 - (-2.254)} = e^{1.408} \approx 4.1$). Most of that is the same-side coefficient, $e^{1.535} \approx 4.6$, trimmed a little because the cross-side pair's tie would add slightly more to the shared-partner count (2.396 against 2.214). And two shared partners matter: with none, the cross-side pair would face log-odds of just $-3.924$, a chance of about 0.019, so two friends in common multiply its odds by roughly 5.3.
+
+Now the cautions, because a tidy probability invites over-reading. The 0.300 is the model's chance for this tie *given every other tie in the club exactly as observed*. It isn't a forecast that members 2 and 12 will become friends, and it isn't the share of such pairs that end up tied. These two pairs are, in fact, not tied in the real club, and a model that gives one of them a 30 percent chance isn't wrong for that; it's saying "pairs like this are tied about three times in ten, given everything else." The only way to ask whether those chances are well calibrated is to check the model against the data, which is what Step 4 did.
+
 ## Reading ERGMs honestly
+
+### What each piece of output is saying
+
+Here is the fitted model again, with every number we've printed, and what each one lets you say. The pattern in each pair of sentences is the same: the first is something the output supports, the second is the tempting step past it. (Numbers are from the Rust fit, with a standard error in parentheses.)
+
+**Edges, $-3.924$ (0.322).** This is the baseline log-odds of a tie between two people who are on opposite sides and share no partners. Its chance is about 0.019, and a large negative number is what any sparse network produces: only 14 percent of pairs are tied. It is a setting that makes the other terms add up, not a finding.
+
+| A defensible sentence | An over-claim |
+| --- | --- |
+| "The edges term sets the baseline density; two people on opposite sides with no friends in common have about a 2 percent chance of a tie in this model." | "The strongly negative edges coefficient shows the club members are reluctant to form friendships." |
+
+**Same side, 1.535 (0.284).** Holding edges and shared partners fixed, a tie between two people on the same side has log-odds 1.535 higher, which is odds about 4.6 times higher. An approximate 95 percent interval (the estimate plus or minus two standard errors) runs from 0.98 to 2.09, or from about 2.7 to 8.1 times the odds. It's smaller than the 2.111 of the simple model, because closure now accounts for part of it.
+
+| A defensible sentence | An over-claim |
+| --- | --- |
+| "Holding the other terms fixed, ties between members on the same side have about 4.6 times the odds of ties across sides (roughly 2.7 to 8.1)." | "Members are 4.6 times as likely to befriend someone on their own side." |
+
+The over-claim fails twice: odds are not probabilities, and "befriend" describes a choice the model never observes. What follows is a pattern in who is tied to whom.
+
+**Shared partners, 0.697 (0.174).** The coefficient is positive and four standard errors from zero, so ties in this club close triangles more often than edges and sides alone would give. The size is hard to read because GWESP discounts each extra partner: a tie whose statistic would rise by 1 has about 2.0 times the odds ($e^{0.697}$), and our two pairs, whose statistics would rise by 2.2 and 2.4, have about 4.7 and 5.3 times the odds of a tie with no partners.
+
+| A defensible sentence | An over-claim |
+| --- | --- |
+| "Beyond what sides explain, ties are more likely between members who already share friends, and this is why the same-side effect shrank from 2.11 to 1.54." | "Friends introduce their friends to each other, so trust drives the clustering." |
+
+The model sees that triangles are over-represented. It can't tell introduction from a shared gym schedule or from a split that was already underway.
+
+**Standard errors.** Each one says how much its coefficient would wobble from network to network if the fitted model were the true recipe. They are what makes "four standard errors from zero" meaningful. They do *not* say the karate club is typical of anything, and in a model with dependent ties they come from a simulation, so they carry a bit of Monte Carlo noise too.
+
+| A defensible sentence | An over-claim |
+| --- | --- |
+| "Given this one network and this model, the same-side coefficient is estimated at 1.54 with a standard error of 0.28; the closure coefficient is clearly positive." | "The same-side effect is significant, so it holds for karate clubs in general." |
+
+**Goodness of fit.** In Step 4, the shared-partner model's simulated networks average 42.1 triangles against 45 in the real club (94 percent), 389 two-stars against 528 (74 percent) and 669 three-stars against 1,764 (38 percent). The model gets closure about right and gets hubs badly wrong. The honest reading is a split verdict.
+
+| A defensible sentence | An over-claim |
+| --- | --- |
+| "The model reproduces the club's triangle count but not its hubs: simulated networks have well under half the real number of three-stars, so the coefficients should be read as describing sides and closure only, with uneven popularity unmodeled." | "The model fits well: the coefficients are significant and the triangles match." |
+
+A good-looking triangle count can't excuse a missing hub pattern. If three-stars matter for your question, add a degree term and refit before you believe anything else here.
+
+### Cautions that apply to every ERGM
 
 **Coefficients are conditional.** Each coefficient is the log-odds of a tie *given the rest of the network and the other statistics in the model*. It isn't a probability, and it doesn't mean each person independently chose to be friends with the same side. Exponentiate a coefficient to get an odds multiplier (for same-side ties, $e^{1.54} \approx 4.6$), and say "holding the other terms fixed."
 
@@ -505,6 +669,14 @@ The simple model, with edges and sides only, produces fewer than half the real t
 **Simulation means randomness.** MCMLE and the checks use random draws. Fix the seed, say how many draws you used, and don't read meaning into small differences between runs.
 
 **One network is one observation.** The standard errors describe uncertainty about the model's coefficients given this network. They don't say that the karate club is typical of anything. Generalizing beyond a single group takes more data, or a stated argument for why it should.
+
+### Writing it up
+
+When you report a fit, follow one shape: the model, the data, the method, one coefficient in plain words with its uncertainty, how the fit checked out, and a sentence on what it does not show. For the karate club, with the shared-partner model:
+
+> An ERGM with edges, same-side ties and geometrically weighted shared partners (decay 0.5) was fitted to one network of 34 club members and 78 friendships by Monte Carlo maximum likelihood. Holding the other terms fixed, same-side ties have coefficient 1.54 (standard error 0.28), meaning ties between members on the same side have about 4.6 times the odds of ties across sides. Shared partners have coefficient 0.70 (standard error 0.17), so ties are more likely to close triangles than the other terms explain. Goodness of fit is good for triangles (about 94 percent of the real count) but poor for hubs (simulated three-stars average 38 percent of the real count); the estimation converged in three rounds. This describes patterns in this one network; it does not show why the ties formed or that other networks will look the same.
+
+Notice what the paragraph leaves out. It doesn't say "preference", "because" or "significant", and it puts the poor hub fit in the same breath as the good triangle fit.
 
 ## A cheat sheet
 
