@@ -36,6 +36,10 @@ Cliques are demanding. In a large network, groups that are obviously meaningful 
 
 ```r
 library(knappnet)
+library(dplyr)
+library(purrr)
+
+options(pillar.sigfig = 4)
 
 # Zachary's karate club: 34 members, 78 friendships. Members 0 to 33 in his numbering.
 from <- c(
@@ -46,13 +50,13 @@ to <- c(
     1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 17, 19, 21, 31, 2, 3, 7, 13, 17, 19, 21, 30, 3, 7, 8, 9, 13, 27, 28,
     32, 7, 12, 13, 6, 10, 6, 10, 16, 16, 30, 32, 33, 33, 33, 32, 33, 32, 33, 32, 33, 33, 32, 33, 32, 33, 25, 27,
     29, 32, 33, 25, 27, 31, 31, 29, 33, 33, 31, 33, 32, 33, 32, 33, 32, 33, 33)
-g <- net_frame(data.frame(source = from, target = to),
-               nodes = data.frame(id = 0:33), directed = FALSE)
+g <- net_frame(tibble(source = from, target = to),
+               nodes = tibble(id = 0:33), directed = FALSE)
+g
 
 # Cliques: groups in which everyone is tied to everyone. Skip pairs (min_size = 3).
 cliques <- net_max_cliques(g, min_size = 3)
-cat(sprintf("largest clique   %d people\n", net_clique_number(g)))
-cat(sprintf("maximal cliques  %d (of 3 or more people)\n", length(cliques)))
+tibble(largest_clique = net_clique_number(g), maximal_cliques = length(cliques))
 ```
 
 ::: {.code-output}
@@ -183,7 +187,7 @@ Modularity can also come with a tuning knob, the **resolution**, that makes the 
 # Which side each member took when the club split (0 = Mr. Hi, 1 = the officer).
 sides <- c(
     0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)
-cat(sprintf("modularity of the real split  %.3f\n", net_modularity(g, sides)))
+net_modularity(g, sides)
 ```
 
 ::: {.code-output}
@@ -254,10 +258,13 @@ There are many more, and good surveys [@fortunato2010community]. Another family,
 ```r
 # Louvain with resolution 1, unweighted, and seed 1 so the answer can be reproduced.
 found <- net_louvain(g, resolution = 1, seed = 1)
-cat(sprintf("communities  %d, modularity %.3f\n", length(unique(found)), attr(found, "modularity")))
 
-# Check it: score the same partition with the modularity function from before.
-cat(sprintf("scored again  %.3f\n", net_modularity(g, found)))
+# Score the same partition again with the modularity function from before.
+tibble(
+  communities = n_distinct(found),
+  modularity = attr(found, "modularity"),
+  scored_again = net_modularity(g, found)
+)
 ```
 
 ::: {.code-output}
@@ -336,12 +343,13 @@ At a low setting, Louvain finds two communities, which line up closely with the 
 ## R
 
 ```r
-# R and Python draw different random numbers, so only some rows can agree.
-resolutions <- c(0.5, 1, 1.5, 2, 3)
-fits <- lapply(resolutions, \(r) net_louvain(g, resolution = r, seed = 1))
-n_groups <- vapply(fits, \(f) length(unique(f)), integer(1))
-modularities <- vapply(fits, \(f) net_modularity(g, f), numeric(1))
-writeLines(sprintf("resolution %g: %2d groups, modularity %.3f", resolutions, n_groups, modularities))
+tibble(resolution = c(0.5, 1, 1.5, 2, 3)) |>
+  mutate(
+    fit = map(resolution, \(r) net_louvain(g, resolution = r, seed = 1)),
+    groups = map_int(fit, n_distinct),
+    modularity = map_dbl(fit, \(f) net_modularity(g, f))
+  ) |>
+  select(-fit)
 ```
 
 ::: {.code-output}
@@ -410,7 +418,7 @@ How do you tell whether two ways of dividing a network agree? Several scores exi
 
 ```r
 labels <- net_louvain(g, resolution = 1, seed = 1)
-cat(sprintf("adjusted Rand  %.3f\n", net_compare_partitions(labels, sides, method = "adjusted_rand")))
+net_compare_partitions(labels, sides, method = "adjusted_rand")
 ```
 
 ::: {.code-output}

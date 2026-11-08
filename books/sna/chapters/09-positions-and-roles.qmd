@@ -32,15 +32,18 @@ I drew the picture in rows because I already knew the answer, which is cheating 
 
 ```r
 library(knappnet)
+library(dplyr)
+library(purrr)
 
-# People are numbered from zero in Rust; here we use their names directly.
+options(pillar.sigfig = 4)
+
 people <- c("Ada", "Ben", "Cy", "Dee", "Eve", "Flo", "Gus", "Hal", "Ivy", "Jay")
 # One position in each list is one tie: from[i] goes to to[i] for advice.
 from <- c(0, 1, 2, 2, 3, 3, 4, 4, 5, 6, 7, 8, 9)
 to <- c(1, 0, 0, 1, 0, 1, 0, 1, 2, 2, 3, 4, 4)
-edges <- data.frame(source = people[from + 1], target = people[to + 1])
-office <- net_frame(edges, nodes = data.frame(id = people), directed = TRUE)
-cat(sprintf("%d people, %d ties\n", length(people), nrow(edges)))
+office <- tibble(source = people[from + 1], target = people[to + 1]) |>
+  net_frame(nodes = tibble(id = people), directed = TRUE)
+office
 ```
 
 ::: {.code-output}
@@ -134,8 +137,12 @@ where $a_{ik}$ is 1 if $i$ has a tie to $k$ and 0 if not. In words: go through e
 ```r
 # net_struct_equiv() compares tie profiles by Euclidean distance by default.
 dists <- net_struct_equiv(office)
-pairs <- matrix(c(5, 6, 8, 9, 0, 1, 5, 7, 2, 3, 2, 4), ncol = 2, byrow = TRUE) + 1
-writeLines(sprintf("%-4s and %-4s %.3f", people[pairs[, 1]], people[pairs[, 2]], dists[pairs]))
+
+tibble(
+  a = c("Flo", "Ivy", "Ada", "Flo", "Cy", "Cy"),
+  b = c("Gus", "Jay", "Ben", "Hal", "Dee", "Eve")
+) |>
+  mutate(distance = map2_dbl(a, b, \(x, y) dists[x, y]))
 ```
 
 ::: {.code-output}
@@ -223,10 +230,10 @@ An algorithm for finding the regular equivalence classes is CATREGE [@borgatti19
 
 ```r
 # net_regular_equiv() numbers the classes from 1; the book counts from 0.
-classes <- net_regular_equiv(office)
-members <- split(people, classes) |>
-  vapply(\(m) paste(sprintf('"%s"', m), collapse = ", "), character(1))
-writeLines(sprintf("class %d  [%s]", as.integer(names(members)) - 1L, members))
+office$nodes |>
+  mutate(class = net_regular_equiv(office) - 1L) |>
+  group_by(class) |>
+  summarise(members = paste(id, collapse = ", "))
 ```
 
 ::: {.code-output}
@@ -316,14 +323,13 @@ Once you have positions, you can do something lovely: shrink the network. A **bl
 # Position of each person: 0 = leaders, 1 = managers, 2 = staff.
 positions <- c(0, 0, 1, 1, 1, 2, 2, 2, 2, 2)
 model <- net_blockmodel(office, membership = positions)
-show_matrix <- function(label, m) {
-  rows <- apply(m, 1, \(r) paste0("  ", paste(sprintf("%.2f", r), collapse = "  ")))
-  writeLines(c(paste0(label, " (rows ask, columns are asked)"), rows))
-}
-cat(sprintf("whole-network density %.3f\n", model$overall_density))
-show_matrix("block densities", model$density)
-show_matrix("image", model$image)
-cat(sprintf("share of tie variation explained %.3f\n", model$r_squared))
+
+# One row per ordered pair of positions: the density of ties from the row's block to the column's block,
+# and the image (1 when the block is denser than the whole network).
+net_block_summary(model) |>
+  select(from, to, density, image)
+
+tibble(overall_density = model$overall_density, r_squared = model$r_squared)
 ```
 
 ::: {.code-output}
@@ -450,13 +456,15 @@ Trying every split is out of reach for big networks (there are over a thousand f
 friend_names <- c("Ana", "Ben", "Cleo", "Dev", "Eli", "Fay", "Gus", "Hana", "Ivo", "Jo")
 ffrom <- c(0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 4, 5, 5, 6, 7, 8)
 fto <- c(1, 2, 3, 5, 3, 4, 6, 3, 5, 4, 5, 6, 6, 6, 7, 7, 8, 9)
-friend_edges <- data.frame(source = friend_names[ffrom + 1], target = friend_names[fto + 1])
-friends <- net_frame(friend_edges, nodes = data.frame(id = friend_names), directed = FALSE)
+friends <- tibble(source = friend_names[ffrom + 1], target = friend_names[fto + 1]) |>
+  net_frame(nodes = tibble(id = friend_names), directed = FALSE)
+friends
 
 fitted <- net_core_periphery(friends, method = "discrete", seed = 1)
-core <- sprintf('"%s"', friend_names[fitted$core])
-cat(sprintf("core  [%s]\n", paste(core, collapse = ", ")))
-cat(sprintf("correlation with the ideal pattern  %.3f\n", fitted$correlation))
+friends$nodes |>
+  mutate(in_core = fitted$core)
+
+tibble(correlation = fitted$correlation)
 ```
 
 ::: {.code-output}
