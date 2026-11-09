@@ -2,25 +2,24 @@
 
 ::: {.callout-note appearance="simple"}
 ## Prerequisites
-@sec-paths-and-cohesion and @sec-ergm. We reuse the office advice network from @sec-positions-and-roles.
+@sec-time, where we described networks that change without modeling them, and @sec-ergm, whose effects reappear here. We reuse the office advice network from @sec-positions-and-roles.
 :::
 
-## Networks change
+## From describing change to modeling it
 
 ::: {.callout-tip appearance="simple"}
 ## Code lives next to the idea
-Each idea comes with its code right where it is explained. The Rust blocks in this chapter run top to bottom as one script, so later blocks reuse names defined earlier. The people, contacts and messages are invented for this chapter, so that we can show every number and, in one case, check an estimate against the truth.
+Each idea comes with its code right where it is explained. The Rust blocks in this chapter run top to bottom as one script, so later blocks reuse names defined earlier. The people and messages are invented for this chapter, so that we can show every number and, in one case, check an estimate against the truth.
 :::
 
-Everything so far treated a network as a photograph. But friendships form and fade, emails fly back and forth, diseases spread along contacts that happen in a certain order. A single photograph hides all of that. This chapter is about what changes when time is part of the data.
+In @sec-time we looked at networks in time without asking why they change. We held time four ways, counted who could reach whom along time-respecting paths, and measured burstiness. Those are descriptions: they say what the recorded data look like. This chapter is about *models*: stories about how ties form and fade, with coefficients you can estimate and test.
 
-Time can enter in three shapes, and they call for different tools.
+The two kinds of time data from @sec-time that have standard models are these.
 
-- **Contacts with times.** We know who met whom and when: phone calls, face-to-face meetings, emails. The question is often *flow*: who could have passed something on to whom? The tools are **time-respecting paths** and measures of **burstiness**.
 - **Snapshots.** We observe the whole network at a few moments, such as a school class surveyed each autumn. The question is how ties *change* between waves and why. The tool is the **stochastic actor-oriented model**, or **SAOM** [@snijders2001statistical; @snijders2010introduction].
 - **Event streams.** We observe a long sequence of timed, directed events: who wrote to whom, in what order. The question is what makes the *next* event likely. The tool is the **relational event model**, or **REM** [@butts2008relational; @perry2013point].
 
-A good overview of the first shape is Holme and Saramäki [@holme2012temporal]. We'll take the three in turn.
+Models are harder to read than descriptions, and they can say more than the data support, so everything in the "reading honestly" section of @sec-time still applies: the window, the edges of the observation period and the resolution of the clock all matter here too. For a broader survey of temporal networks, see Holme and Saramäki [@holme2012temporal]. We'll take the two models in turn.
 
 ## Snapshots: how do ties change?
 
@@ -38,7 +37,7 @@ where "no change" has gain 0. Better options are likelier but never certain: peo
 
 We'll use two effects. **Outdegree** is a cost (coefficient $-2$) for every tie an actor keeps, so ties don't survive for free. **Reciprocity** is a bonus (coefficient $+1.5$) for a tie that is returned. So for an actor, starting a tie to someone who already asks them for advice has gain $-2 + 1.5 = -0.5$, and starting a tie to someone who doesn't has gain $-2$. Dropping an existing tie to someone who doesn't reciprocate has gain $+2$, since the cost goes away, and dropping a reciprocated tie has gain $+2 - 1.5 = +0.5$.
 
-### Step 4: one ministep by hand and by code
+### Step 1: one ministep by hand and by code
 
 Take Cy in the office network. Cy asks Ada and Ben for advice, and Flo and Gus ask Cy. Nobody Cy asks asks back. With the gains above:
 
@@ -58,6 +57,11 @@ The weights add to $1 + 14.778 + 1.213 + 0.677 = 17.668$. So the chance Cy drops
 ## R
 
 ```r
+library(knappnet)
+library(dplyr)
+library(tidyr)
+library(purrr)
+
 office_names <- c("Ada", "Ben", "Cy", "Dee", "Eve", "Flo", "Gus", "Hal", "Ivy", "Jay")
 asks <- c(0, 1, 2, 2, 3, 3, 4, 4, 5, 6, 7, 8, 9) + 1
 is_asked <- c(1, 0, 0, 1, 0, 1, 0, 1, 2, 2, 3, 4, 4) + 1
@@ -131,6 +135,8 @@ sum(chances$chance)
 ## Python
 
 ```python
+import numpy as np
+
 office_names = ["Ada", "Ben", "Cy", "Dee", "Eve", "Flo", "Gus", "Hal", "Ivy", "Jay"]
 asks = [0, 1, 2, 2, 3, 3, 4, 4, 5, 6, 7, 8, 9]
 is_asked = [1, 0, 0, 1, 0, 1, 0, 1, 2, 2, 3, 4, 4]
@@ -236,7 +242,7 @@ total 1.000
 
 The code agrees: 0.418 each for dropping Cy's two ties, 0.034 for starting to ask Flo or Gus, 0.008 for starting any of the other five, and 0.057 for doing nothing. With these coefficients, Cy is much likelier to drop a tie than to do anything else. That is what a negative outdegree coefficient means.
 
-### Step 5: simulate a period
+### Step 2: simulate a period
 
 The real power of the SAOM story is that it can be *run*. Start from the observed network, let every actor have chances at rate 3 per period, and see where the network ends up.
 
@@ -376,9 +382,9 @@ For a sender $s$ and receiver $r$, the rate of the next message is $\exp(\beta_1
 
 The model takes each event in order and asks: given everything before, how likely was it that *this* pair, out of all possible pairs, was the one that came next? The product of those probabilities is the **partial likelihood** [@cox1972regression], and it is maximized to estimate $\beta$. Only the *order* of the events matters in this version, not the exact timing.
 
-### Step 6: fit the model
+### Step 3: fit the model
 
-We use our eighty messages. They weren't recorded from real people: we generated them from a known rule, in which each reply is more likely than a fresh message, and repeating the same message to the same person is less likely than average. Using invented data lets us do something real data never allows: compare the estimates with the truth.
+We use the eighty messages from @sec-time. They weren't recorded from real people: we generated them from a known rule, in which each reply is more likely than a fresh message, and repeating the same message to the same person is less likely than average. Using invented data lets us do something real data never allows: compare the estimates with the truth.
 
 ::: {.panel-tabset group="language"}
 
@@ -499,6 +505,17 @@ log-likelihood -309.5, against -322.0 with no effects
 ```rust
 use knappnet::temporal::rem::{compute_rem_statistics, fit, EventStream, FitOptions, RemOptions, RemStat, StatSpec};
 
+// Eighty messages among eight coworkers, invented for this book. Times are in hours.
+let times: [f64; 80] = [
+    0.3, 0.8, 3.3, 4.8, 6.8, 25.4, 28.4, 33.4, 35.2, 36.8,
+    37.0, 38.0, 43.6, 44.5, 46.3, 46.6, 48.2, 49.0, 49.3, 50.1,
+    50.4, 50.7, 52.4, 52.7, 53.3, 55.0, 56.0, 56.9, 57.8, 58.6,
+    58.8, 63.3, 64.5, 64.6, 65.6, 77.9, 78.0, 85.1, 98.6, 99.4,
+    99.7, 102.9, 105.4, 106.1, 107.1, 107.2, 108.0, 128.2, 128.6, 128.8,
+    129.2, 130.8, 134.5, 135.2, 148.1, 149.0, 149.3, 176.8, 182.2, 182.4,
+    182.6, 182.8, 183.1, 183.6, 184.6, 185.9, 193.0, 195.1, 196.2, 202.8,
+    203.2, 204.4, 204.7, 205.8, 206.1, 208.4, 208.5, 214.4, 215.2, 217.3,
+];
 // The same eighty messages, now with who sent each one to whom (positions 0 to 7).
 let sender: [i64; 80] = [
     6, 2, 5, 7, 4, 4, 6, 5, 3, 4, 6, 0, 5, 6, 2, 3, 1, 5, 7, 2,
@@ -544,44 +561,46 @@ The truth we used was $-1.0$ and $+1.0$. The estimates ($-0.75$ and $+0.76$) are
 
 ## Reading dynamic models honestly
 
-**Order is data, but only the order you recorded.** A time-respecting path assumes that a contact is the *only* way something can move. Real spreading can happen between contacts. A path says what is *possible* under the recorded events, not what *happened*.
-
-**Time resolution changes the answer.** Contacts that happen "at the same time" in a day-level log may have happened in any order. Whether simultaneous contacts can chain is a modeling choice, and results can change with it.
+The cautions from @sec-time about windows, edges and clocks apply to models as well. Here are the ones that are specific to the two models in this chapter.
 
 **The SAOM story is a story.** Actors who "decide" one tie at a time are a modeling device. It lets us simulate and estimate, but it doesn't claim that people reason that way or that changes are never coordinated.
 
+**A model of waves can't see inside a wave.** The SAOM treats the change between two observations as the result of many small, unobserved steps. If the waves are far apart, those steps are guesses, and effects that happen fast (a tie that appears and vanishes between waves) are invisible.
+
 **Histories can feed on themselves.** In an event model, effects like repetition and reciprocity can reinforce each other, so a pair that chats a lot gets even more likely to chat. We saw that while building our example: when we made both repeating and replying more likely, a single pair ended up writing nearly all the messages. Check whether a few pairs dominate before reading too much into the coefficients.
 
+**Only the order, in this version of the REM.** The model we fit uses the order of the messages and ignores the gaps between them. A model of the exact timing would use more of the data, and could say different things about bursts and silences.
+
 **Waves are not events.** Two waves of the same survey are a very different kind of data from a log of timed messages. A SAOM uses the first, a REM the second, and you can't swap one for the other.
+
+**Coefficients describe the model, not the cause.** A reciprocity coefficient says that, in this model, returning a tie is rewarded. It doesn't say people return ties because they are polite, or that no third factor is at work.
 
 ## A cheat sheet
 
 | Piece | What it does | Watch out for |
 | --- | --- | --- |
-| Time-respecting path | A path whose contacts happen in order | Not symmetric; depends on the order of events |
-| Influence set (reach) | Everyone a person's message could reach | Counts possibility, not probability |
-| Earliest arrival | When a message first gets to someone | Not the same as fastest or shortest |
-| Burstiness $B$ | Clumpiness of waiting times, from $-1$ to $+1$ | Noisy with few events |
-| Memory $M$ | Whether short gaps follow short gaps | Needs at least three gaps |
 | SAOM ministep | One actor, one tie change, chosen by gain | Coefficients are per actor choices, not network totals |
 | SAOM simulation | Runs the network forward a period | Needs coefficients: they must be estimated |
 | REM coefficient | Log multiplier on a pair's rate | Check that a few pairs don't dominate |
+| Partial likelihood | Scores each event by how likely its pair was, given the past | Uses order only, not timing |
+
+For time-respecting paths, reach, earliest arrival and burstiness, see @sec-time.
 
 ## Exercises
 
-1. **By hand.** Add a seventh contact to the six-person example: Cleo meets Dev again at time 7. Who can Ana reach now? Who can Eli reach? Does Dev's reach change?
-2. **By hand.** An actor's options have gains $+1$, $0$ (no change) and $-1$. What is the probability of each?
-3. **By hand.** The gaps between six events are 1, 1, 1, 1, 1 and 7. Find $\mu$, $\sigma$ and $B$. (Use the standard deviation with $n$, not $n - 1$.)
-4. **Coding.** Change the order of contacts in the six-person example, for instance by swapping the times of the contacts at 2 and 3. How do the reach counts change?
-5. **Coding.** Rerun the simulation with a reciprocity coefficient of 3. How many mutual pairs remain? Why might the number of ties changed also go up?
-6. **Interpretation.** A reader sees "each earlier message in the other direction multiplies the rate by 2.13" and writes "so people are 2.13 times more likely to reply than to send a first message, because they are polite." Reply kindly: what does the coefficient say, and what does it not say?
+1. **By hand.** An actor's options have gains $+1$, $0$ (no change) and $-1$. What is the probability of each?
+2. **By hand.** In the office example, Cy asks Ada and Ben for advice, and Flo and Gus ask Cy. Suppose the reciprocity coefficient were $0$ instead of $+1.5$ and the outdegree coefficient stayed at $-2$. What is the probability that Cy drops the tie to Ada? (The weights add up differently: work them out.)
+3. **Coding.** Rerun the simulation with a reciprocity coefficient of 3. How many mutual pairs remain? Why might the number of ties changed also go up?
+4. **Coding.** Fit the event model with only the reciprocity effect. Does its coefficient change much from the two-effect fit? Why might it?
+5. **Interpretation.** A reader sees "each earlier message in the other direction multiplies the rate by 2.13" and writes "so people are 2.13 times more likely to reply than to send a first message, because they are polite." Reply kindly: what does the coefficient say, and what does it not say?
+6. **Interpretation.** A study fits a SAOM to two survey waves a year apart and concludes that "students decide to befriend those who are friends of their friends." Which parts of that sentence does the model support, and which are the modeling story?
 
 ## Summary
 
 ::: {.callout-tip appearance="simple"}
-Time changes what a network can tell us. For timed contacts, a time-respecting path must follow the order of events, so reach can be unequal and asymmetric: in our example Dev reaches everyone but Ana reaches only two people, though the drawing without time shows everyone connected. Burstiness measures whether events arrive in clumps, from $-1$ for a metronome to near $+1$ for flurries and silences. For snapshots, the stochastic actor-oriented model has actors change one tie at a time, with probabilities set by the gain from each option, and it can be simulated forward to see what a coefficient does. For event streams, the relational event model gives each pair a rate that depends on the past, and we fit it by partial likelihood. In our invented messages it recovered a rate multiplier of about 0.47 for repeating and 2.13 for replying. All three describe patterns in recorded data, not the reasons behind them.
+Where @sec-time described change, this chapter models it. For snapshots, the stochastic actor-oriented model has actors change one tie at a time, with probabilities set by the gain from each option, and it can be simulated forward to see what a coefficient does. For event streams, the relational event model gives each pair a rate that depends on the past, and we fit it by partial likelihood. In our invented messages it recovered a rate multiplier of about 0.47 for repeating and 2.13 for replying. Both describe patterns in recorded data under a stated story, not the reasons behind them.
 :::
 
 ## Further reading
 
-For temporal networks in general, @holme2012temporal. For reach and influence sets, @kempe2002connectivity and @holme2005network, and for temporal closeness, @pan2011path. For burstiness, @goh2008burstiness and the correction in @kim2016measuring. For the SAOM, @snijders2001statistical and @snijders2010introduction, and for practice, Phil Murphy's RSiena class notes [@murphyrpubs701832]. For relational events, @butts2008relational, @perry2013point and @vu2015relational, and for the dynamic network actor model, @stadtfeld2017interactions. For the partial likelihood behind the REM, @cox1972regression.
+For the SAOM, @snijders2001statistical and @snijders2010introduction, and for practice, Phil Murphy's RSiena class notes [@murphyrpubs701832]. For relational events, @butts2008relational, @perry2013point and @vu2015relational, and for the dynamic network actor model, @stadtfeld2017interactions. For the partial likelihood behind the REM, @cox1972regression. For temporal networks in general, @holme2012temporal, and for the descriptive tools that come first (reach, burstiness, windows), @sec-time.
