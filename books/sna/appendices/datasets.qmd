@@ -39,7 +39,9 @@ library(dplyr)
 library(purrr)
 
 # Each dataset is a folder of plain CSV files inside the book's data folder.
+# The two spatial datasets keep theirs in subfolders (see the space chapter), so we list the folders that hold an edges.csv.
 tibble(dataset = list.files("data")) |>
+  filter(file.exists(file.path("data", dataset, "edges.csv"))) |>
   mutate(
     edges = map(dataset, \(d) read.csv(file.path("data", d, "edges.csv"))),
     rows = map_int(edges, nrow),
@@ -68,6 +70,8 @@ from pathlib import Path
 
 # Each dataset is a folder of plain CSV files inside the book's data folder.
 for folder in sorted(Path("data").iterdir()):
+    if not (folder / "edges.csv").exists():
+        continue
     lines = (folder / "edges.csv").read_text().splitlines()
     print(f"{folder.name:<15} {len(lines) - 1:>4} rows   columns: {lines[0]}")
 ```
@@ -89,6 +93,9 @@ southern_women    89 rows   columns: woman,event
 let mut folders: Vec<_> = std::fs::read_dir("data")?.map(|entry| entry.unwrap().path()).collect();
 folders.sort();
 for folder in folders {
+    if !folder.join("edges.csv").exists() {
+        continue;
+    }
     let edges = std::fs::read_to_string(folder.join("edges.csv"))?;
     let header = edges.lines().next().unwrap();
     println!("{:<15} {:>4} rows   columns: {}", folder.file_name().unwrap().to_str().unwrap(), edges.lines().count() - 1, header);
