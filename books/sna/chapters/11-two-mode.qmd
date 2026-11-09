@@ -2,23 +2,41 @@
 
 ::: {.callout-note appearance="simple"}
 ## Prerequisites
-@sec-networks-as-data, @sec-subgroups and @sec-tests-and-null-models. We lean on the one-mode and two-mode distinction from @sec-networks-as-data.
+@sec-networks-as-data, for the difference between one-mode and two-mode data, and @sec-centrality and @sec-paths-and-cohesion, for degree, closeness, betweenness and clustering. No statistics are needed yet.
 :::
 
 ## When people are tied through something else
 
 ::: {.callout-tip appearance="simple"}
 ## Code lives next to the idea
-Each idea comes with its code right where it is explained. The Rust blocks in this chapter run top to bottom as one script, so later blocks reuse names defined earlier.
+Each idea comes with its code right where it is explained. The blocks in this chapter run top to bottom as one script, so later blocks reuse names defined earlier.
 :::
 
-Not every tie runs between two people. Two scientists are linked because they wrote the same paper. Two neighbors, because they sit on the same committee. Two members of a town, because they attended the same party. The people are connected *through something else*, and that something else has its own identity, its own size and its own pull.
+Not every tie runs between two people. Two scientists are linked because they wrote the same paper. Two neighbors, because they sit on the same committee. Two women in a town, because both went to the same party. The people are connected *through something else*, and that something else has its own identity, its own size and its own pull.
 
-This chapter has two halves. The first is about **two-mode networks**, where there are two kinds of nodes (people and events, authors and papers) and ties only run *between* the kinds. The second is about **layers**: several kinds of tie among the *same* people, like advice, friendship and lunch.
+This chapter is about data of that shape, called **two-mode** data. We'll learn to store it, draw it, measure it directly, and (when it helps) squash it into the people-to-people networks you already know how to analyze. Squashing is where most of the traps are, so we'll spend time on what it keeps and what it throws away.
 
-## Two-mode data
+Our guide is the most famous small dataset in network analysis. In the 1930s, Allison Davis, Burleigh Gardner and Mary Gardner studied social class in a town in the American South, and recorded which of 18 women attended which of 14 social events [@davis1941deep]. Nobody wrote down who talked to whom. All we have is who turned up where. @fig-southern-bipartite draws it: women on the left, events on the right, and a line for every attendance.
 
-A two-mode network is usually stored as an **incidence matrix**: one row for each node of the first kind, one column for each node of the second, and a 1 where the two are tied. A tiny example: Ana attends Choir and Chess, Ben attends Choir, and Cleo attends Chess.
+![The southern women as a two-mode network: 18 women on the left, 14 events on the right, one line for each of the 89 attendances. Every line runs between the two columns, never within one. The lines of event 8, the biggest, are orange.](../figures/southern-bipartite.svg){#fig-southern-bipartite fig-alt="Eighteen women in a left column and fourteen events in a right column, joined by 89 lines. Event 8 has 14 lines, drawn in orange, and event 9 has 12. The first nine women attend only events 1 to 9, and the last nine women mostly attend events 7 to 14. No line joins two women or two events."}
+
+The picture is already a little busy, and that is the point. Eighty-nine lines among 32 nodes is a lot to read by eye, and the question people have argued about for decades is whether the women fall into groups. We'll get there.
+
+## Two kinds of node
+
+Two words to settle before anything else. A **mode** is a kind of node. A **two-mode network** has two modes, and ties run only *between* them, never within one. You'll also hear **bipartite network** (the graph theorist's name for the same shape), **affiliation network** (when one mode is people and the other is groups they belong to) and **membership data**.
+
+Other examples are everywhere once you look: authors and the papers they wrote, patients and the hospitals they visited, accounts and the hashtags they used, directors and the boards they sit on, customers and the products they bought. In each, we'll call the first mode the "people" and the second mode the "events" whenever we want a single vocabulary, but remember that "events" can be clubs, papers, boards or products.
+
+Three things follow from the shape, and each will matter later.
+
+- **Counts mean different things in each mode.** A woman's degree is how many events she attended. An event's degree is how many women were there. Those are different quantities, even though both are "number of ties".
+- **Some ties are impossible.** A woman can't be tied to another woman, so only $18 \times 14 = 252$ of the node pairs could ever be tied.
+- **Each mode has a different maximum.** A woman can attend at most 14 events. An event can draw at most 18 women.
+
+## The incidence matrix
+
+A two-mode network is usually stored as an **incidence matrix**: one row for each node of the first mode, one column for each node of the second, and a 1 where the two are tied. A tiny example: Ana attends Choir and Chess, Ben attends Choir, and Cleo attends Chess.
 
 | | Choir | Chess |
 | --- | --- | --- |
@@ -26,13 +44,11 @@ A two-mode network is usually stored as an **incidence matrix**: one row for eac
 | Ben | 1 | 0 |
 | Cleo | 0 | 1 |
 
-Nobody here is tied to another person, only to an event. To get a network of people we **project**: tie two people when they share an event. Ana and Ben share Choir, Ana and Cleo share Chess, and Ben and Cleo share nothing. Count the shared events and you get a weight on every pair: Ana to Ben is 1, Ana to Cleo is 1, Ben to Cleo is 0. In matrix terms, multiply the incidence matrix by its transpose, $A A^{\top}$, and read off the off-diagonal. Multiply the other way, $A^{\top} A$, and you get the projection onto the events: Choir and Chess are tied by their one shared member, Ana. This is Breiger's *duality of persons and groups* [@breiger1974duality]: each projection tells the other half of the story.
+It isn't square (here, 3 rows and 2 columns), and its rows and columns are different kinds of thing. That is the whole difference from the adjacency matrix of @sec-networks-as-data, where rows and columns are the same people in the same order.
 
-The projection is convenient, because every one-mode tool from earlier chapters then applies. It is also lossy, and sometimes misleading, as we'll see.
+### Loading the southern women
 
-### Step 1: the southern women
-
-The classic two-mode dataset comes from a study of social class in a town in the American South in the 1930s. Davis, Gardner and Gardner recorded which of 18 women attended which of 14 social events [@davis1941deep]. It has been analyzed in dozens of papers, because the tie pattern is rich enough to argue about: are there two groups of women, and which events divide them?
+The attendance data is a two-column table, one row per attendance. In knappnet you build a two-mode network from it by saying which column is the first mode and which is the second.
 
 ::: {.panel-tabset group="language"}
 
@@ -57,6 +73,10 @@ nodes <- tibble(id = c(women, events), mode = rep(c("woman", "event"), c(18, 14)
 club <- net_twomode(edges, nodes = nodes, source = "woman", target = "event")
 club
 
+# The incidence matrix: 18 women (rows) by 14 events (columns).
+B <- net_incidence(club)
+dim(B)
+
 degrees <- club$nodes |>
   mutate(
     attended = net_twomode_degree(club, normalized = FALSE),
@@ -71,34 +91,7 @@ degrees |> slice_max(attended, n = 1, by = mode, with_ties = FALSE)
 
 ::: {.code-output}
 ```text
-# net_frame: 32 nodes, 89 edges
-#   directed:  no        mode: two-mode (18 woman, 14 event; between modes only)
-#   weights:   unweighted
-#   time:      static    space: none
-#   simple:    no loops, no parallel edges
-#   components: 1    isolates: 0    density: 0.179
-#
-# Nodes (32 x 2)       Edges (89 x 2)
-#   id        mode       woman  event
-#   <chr>     <chr>      <chr>  <chr>
-# 1 Evelyn    woman    1 Evelyn E1
-# 2 Laura     woman    2 Evelyn E2
-# 3 Theresa   woman    3 Evelyn E3
-# 4 Brenda    woman    4 Evelyn E4
-# 5 Charlotte woman    5 Evelyn E5
-# 6 Frances   woman    6 Evelyn E6
-#   ... 26 more rows     ... 83 more rows
-# A tibble: 2 × 4
-  mode      n fewest  most
-  <chr> <int>  <dbl> <dbl>
-1 woman    18      2     8
-2 event    14      3    14
-[1] 0.353
-# A tibble: 2 × 4
-  id     mode  attended share
-  <chr>  <chr>    <dbl> <dbl>
-1 Evelyn woman        8  0.57
-2 E8     event       14  0.78
+PENDING
 ```
 :::
 
@@ -120,6 +113,7 @@ labels = list(dict.fromkeys(row["woman"] for row in rows))
 attend = np.zeros((18, 14), dtype=int)
 for row in rows:
     attend[labels.index(row["woman"]), int(row["event"][1:]) - 1] = 1
+print(f"incidence matrix: {attend.shape[0]} rows (women) by {attend.shape[1]} columns (events)")
 
 # Two-mode degrees are counts; dividing by the size of the other mode gives shares.
 w_count, e_count = attend.sum(axis=1), attend.sum(axis=0)
@@ -135,6 +129,7 @@ print(f"{women[busiest]} attended {w_count[busiest]} of 14 events (share {w_shar
 
 ::: {.code-output}
 ```text
+incidence matrix: 18 rows (women) by 14 columns (events)
 18 women, 14 events, 89 attendances
 two-mode density 0.353
 women attended between 2 and 8 events
@@ -188,29 +183,110 @@ println!("{} attended {} of 14 events (share {:.2}); event {} drew {} of 18 wome
 
 ::: {.code-output}
 ```text
-Undirected network: 32 nodes, 89 ties
-  Density           0.179
-  Degree            2 to 14, mean 5.56
-  Connected pieces  1
-  Isolated nodes    0
-  Loops, repeats    none
-  Busiest           node 25 (14), node 26 (12), node 24 (10)
-
-18 women, 14 events, 89 attendances
-two-mode density 0.353
-women attended between 2 and 8 events
-events drew between 3 and 14 women
-Evelyn attended 8 of 14 events (share 0.57); event 8 drew 14 of 18 women (share 0.78)
+PENDING
 ```
 :::
 
 :::
 
-The network has 89 attendances. The two-mode density divides 89 by the $18 \times 14 = 252$ possible woman-event ties, about 35 percent. Women attended between 2 and 8 events, and events drew between 3 and 14 women. Two-mode degrees are normalized by the *other* mode's size, because a woman can only attend 14 events and an event can only draw 18 women [@borgatti1997network; @borgatti2011analyzing]: Evelyn attended 8 of 14, a share of 0.57, and event 8 drew 14 of 18, a share of 0.78. Comparing those two numbers, as if "8" and "14" were on one scale, would be a mistake. @fig-davis-matrix draws the data, on the left.
+The network has 89 attendances. The **two-mode density** divides 89 by the $18 \times 14 = 252$ possible woman-event ties, about 35 percent. Women attended between 2 and 8 events, and events drew between 3 and 14 women. @fig-incidence-heatmap draws the incidence matrix with those totals on its margins.
 
-![The southern women. Left: who attended which of 14 events. Right: the projection onto the women, where each cell counts the events a pair shared.](../figures/davis-matrix.svg){#fig-davis-matrix fig-alt="Two grids. The left grid has 18 rows for women and 14 columns for events, with 89 blue cells. Blue cells form a band that runs from the upper left, where the first women attended events 1 to 9, to the lower right, where the last women attended events 7 to 14. The right grid has 18 rows and 18 columns shaded by the number of shared events from 0 to 7. Dark shading fills the top-left block of the first nine women and the bottom-right block of the last nine, with lighter shading elsewhere."}
+![The incidence matrix as a picture. A blue cell means the woman (row) attended the event (column). The numbers on the right are row totals, the number of events each woman attended; the numbers underneath are column totals, the number of women at each event.](../figures/incidence-heatmap.svg){#fig-incidence-heatmap fig-alt="A grid of 18 rows, one for each woman, and 14 columns, one for each event, with 89 blue cells. Row totals on the right run from 2 to 8. Column totals underneath are 3, 3, 6, 4, 8, 8, 10, 14, 12, 5, 4, 6, 3, 3, with the 14 and the 12 for events 8 and 9 in orange. Blue cells run in a band from the upper left to the lower right."}
 
-### Step 2: project onto the women
+Two-mode degrees are normalized by the *other* mode's size [@borgatti1997network; @borgatti2011analyzing]: Evelyn attended 8 of 14 events, a share of 0.57, and event 8 drew 14 of 18 women, a share of 0.78. Comparing "8" and "14" directly, as if they were on one scale, would be a mistake. One is a count out of 14 possible events, the other a count out of 18 possible women.
+
+Notice, too, that "the busiest woman" is a slightly unfair thing to ask. Evelyn, Theresa and Nora all attended 8 events. The code reports one of them because it has to report something. When you see a single name at the top of a ranking, check for ties before you tell a story about it.
+
+## Why not just treat it as one-mode?
+
+You *can* feed the 32 nodes to any one-mode tool: a two-mode network is a legal network. The software won't complain. It will just answer slightly different questions from the ones you meant to ask.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# Pretend all 32 nodes are one kind. The density then counts all 496 pairs as possible ties.
+tibble(
+  one_mode_density = 2 * nrow(edges) / (32 * 31),
+  two_mode_density = nrow(edges) / (18 * 14)
+) |>
+  mutate(across(everything(), \(x) round(x, 3)))
+
+# The average degree blends two different things.
+degrees |> summarise(mean_degree = round(mean(attended), 2), .by = mode)
+mean(degrees$attended) |> round(2)
+
+# One-mode clustering asks whether friends of friends are friends. Here it can never be so.
+net_transitivity(club)
+```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
+
+## Python
+
+```python
+# Pretend all 32 nodes are one kind. The density then counts all 496 pairs as possible ties.
+print(f"one-mode density {2 * attend.sum() / (32 * 31):.3f}")
+print(f"two-mode density {attend.sum() / (18 * 14):.3f}")
+
+# The average degree blends two different things.
+print(f"mean degree: women {w_count.mean():.2f}, events {e_count.mean():.2f}, all 32 nodes {2 * attend.sum() / 32:.2f}")
+
+# One-mode clustering asks whether friends of friends are friends. Here it can never be so:
+# a triangle needs three nodes that are all tied, and two women (or two events) never are.
+full = np.block([[np.zeros((18, 18), dtype=int), attend], [attend.T, np.zeros((14, 14), dtype=int)]])
+print(f"triangles in the network: {np.trace(full @ full @ full) // 6}")
+```
+
+::: {.code-output}
+```text
+one-mode density 0.179
+two-mode density 0.353
+mean degree: women 4.94, events 6.36, all 32 nodes 5.56
+triangles in the network: 0
+```
+:::
+
+## Rust
+
+```rust
+use knappnet::metrics::descriptive::{compute_transitivity, ClusteringOptions};
+
+// Pretend all 32 nodes are one kind. The density then counts all 496 pairs as possible ties.
+let edges = club.edge_count() as f64;
+println!("one-mode density {:.3}", 2.0 * edges / (32.0 * 31.0));
+println!("two-mode density {:.3}", edges / (18.0 * 14.0));
+
+// The average degree blends two different things.
+let mean_of = |scores: &[f64]| scores.iter().sum::<f64>() / scores.len() as f64;
+println!("mean degree: women {:.2}, events {:.2}, all 32 nodes {:.2}", mean_of(&counts[..18]), mean_of(&counts[18..]), mean_of(&counts));
+
+// One-mode clustering asks whether friends of friends are friends. Here it can never be so.
+println!("transitivity {:.3}", compute_transitivity(&club, ClusteringOptions::default()));
+```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
+
+:::
+
+Three things go wrong. The density is too low, because it counts 244 woman-woman and event-event pairs that could never be tied. The average degree describes nobody: women have a mean of 4.94 attendances and events a mean of 6.36, and 5.56 is neither. And clustering, which asks whether your contacts are tied to each other, is exactly zero by construction. A triangle needs three nodes that are all tied to one another, and in a two-mode network two nodes of the same mode never are. That zero isn't a finding. It's the shape of the data.
+
+The same warning covers anything built from triangles, and it is why two-mode data has its own measures, which we'll meet below.
+
+## Projection: the people-to-people view
+
+Often you want a network of the women themselves. To get one we **project**: tie two women when they share an event. In the tiny example, Ana and Ben share Choir, Ana and Cleo share Chess, and Ben and Cleo share nothing. Count the shared events and every pair gets a weight: Ana to Ben is 1, Ana to Cleo is 1, Ben to Cleo is 0.
+
+In matrix terms, multiply the incidence matrix $A$ by its transpose, $A A^{\top}$, and read off the off-diagonal. Cell $(i, j)$ of $A A^{\top}$ adds up, over every event, "did $i$ attend" times "did $j$ attend", which is the number of events they shared. (The diagonal holds each woman's own number of events, and we ignore it.) Multiply the other way, $A^{\top} A$, and you get the projection onto the *events*: Choir and Chess are tied by their one shared member, Ana. This is Breiger's *duality of persons and groups* [@breiger1974duality]: each projection tells the other half of the story.
 
 ::: {.panel-tabset group="language"}
 
@@ -230,26 +306,18 @@ degrees |> filter(mode == "event") |> summarise(predicted = sum(attended * (atte
 # The strongest pair, and how many pairs share each number of events.
 head(shared, 1)
 count(shared, weight)
+
+# The other projection: events tied by shared women.
+dual <- net_project(club, which = "second", method = "count")$edges |>
+  select(source, target, weight) |>
+  arrange(desc(weight))
+dual |> summarise(pairs = n(), possible = choose(14, 2))
+head(dual, 1)
 ```
 
 ::: {.code-output}
 ```text
-  pairs possible total_weight
-1   139      153          322
-# A tibble: 1 × 1
-  predicted
-      <dbl>
-1       322
-  source  target weight
-1 Evelyn Theresa      7
-  weight  n
-1      1 44
-2      2 49
-3      3 22
-4      4 15
-5      5  1
-6      6  7
-7      7  1
+PENDING
 ```
 :::
 
@@ -271,6 +339,13 @@ top, (a, b) = together[ranked[0]], ranked[0]
 print(f"strongest pair: {women[a]} and {women[b]} share {top} events")
 print(f"{sum(together[p] == 6 for p in pairs)} pairs share exactly 6 events")
 print(f"{sum(together[p] == 1 for p in pairs)} pairs share exactly 1 event")
+
+# The other projection: events tied by shared women, A-transpose times A.
+among_events = attend.T @ attend
+event_pairs = [(i, j) for i in range(14) for j in range(i + 1, 14) if among_events[i, j] > 0]
+best = max(event_pairs, key=lambda p: (among_events[p], -p[0]))
+print(f"{len(event_pairs)} of the 91 possible pairs of events share at least one woman")
+print(f"strongest pair: events {best[0] + 1} and {best[1] + 1} share {among_events[best]} women")
 ```
 
 ::: {.code-output}
@@ -281,6 +356,8 @@ predicted from the event sizes: 322
 strongest pair: Evelyn and Theresa share 7 events
 7 pairs share exactly 6 events
 44 pairs share exactly 1 event
+66 of the 91 possible pairs of events share at least one woman
+strongest pair: events 8 and 9 share 9 women
 ```
 :::
 
@@ -306,30 +383,286 @@ let (top, a, b) = ranked[0];
 println!("strongest pair: {} and {} share {} events", women[a], women[b], top);
 println!("{} pairs share exactly 6 events", ranked.iter().filter(|p| p.0 == 6.0).count());
 println!("{} pairs share exactly 1 event", ranked.iter().filter(|p| p.0 == 1.0).count());
+
+// The other projection: events tied by shared women.
+let among_events = project(&club, &is_event, ProjectionOptions { second: true, weight: ProjectionWeight::Count, ..Default::default() })?;
+let best = (0..among_events.from.len())
+    .max_by(|&x, &y| among_events.weights[x].partial_cmp(&among_events.weights[y]).unwrap().then(y.cmp(&x)))
+    .unwrap();
+println!("{} of the 91 possible pairs of events share at least one woman", among_events.from.len());
+println!("strongest pair: events {} and {} share {} women", among_events.from[best] - 17, among_events.to[best] - 17, among_events.weights[best]);
 ```
 
 ::: {.code-output}
 ```text
-139 of the 153 possible pairs of women share at least one event
-total weight 322
-predicted from the event sizes: 322
-strongest pair: Evelyn and Theresa share 7 events
-7 pairs share exactly 6 events
-44 pairs share exactly 1 event
+PENDING
 ```
 :::
 
 :::
 
-Of 153 possible pairs of women, 139 share at least one event. That is a *very* dense network, 91 percent, built from a two-mode network that was only 35 percent dense. This is the first thing to notice about projections: they make ties out of coincidence. The 322 shared-event counts are completely determined by the event sizes, because an event with $k$ attendees ties $k(k-1)/2$ pairs. Event 8 alone, with 14 women, produces 91 of them. @fig-event-sizes shows how the biggest events dominate.
+Of 153 possible pairs of women, 139 share at least one event. That is a *very* dense network, 91 percent, built from a two-mode network that was only 35 percent dense. This is the first thing to notice about projections: they make ties out of coincidence. The strongest pair is Evelyn and Theresa, who attended 7 events together. The projection onto the events is dense too: 66 of the 91 possible pairs share a woman, and events 8 and 9 share the most, 9 women.
+
+@fig-davis-matrix shows the data twice, the incidence matrix on the left and the projection onto the women on the right.
+
+![The southern women. Left: who attended which of 14 events. Right: the projection onto the women, where each cell counts the events a pair shared.](../figures/davis-matrix.svg){#fig-davis-matrix fig-alt="Two grids. The left grid has 18 rows for women and 14 columns for events, with 89 blue cells. Blue cells form a band that runs from the upper left, where the first women attended events 1 to 9, to the lower right, where the last women attended events 7 to 14. The right grid has 18 rows and 18 columns shaded by the number of shared events from 0 to 7. Dark shading fills the top-left block of the first nine women and the bottom-right block of the last nine, with lighter shading elsewhere."}
+
+The right-hand grid shows the structure that the plain density number hides: two dense blocks, the first nine women and the last nine, with a thinner bridge between them. @fig-projection-network shows the same thing as a network. Drawn with every tie, it's a hairball. Drawn with only the 24 pairs that shared four or more events, two groups appear.
+
+![The projection onto the women, drawn two ways. Left: every pair that shared at least one event, 139 of the 153 possible pairs, a hairball. Right: only the 24 pairs that shared four or more events, where two groups of women (the first nine listed, in blue, and the last nine, in orange) become visible: none of the strong ties crosses between them.](../figures/projection-network.svg){#fig-projection-network fig-alt="Two rings of the same 18 women, with the first nine in blue and the last nine in orange. The left ring has 139 gray lines, so many that individual ties cannot be told apart. The right ring has 24 blue lines, thicker for pairs that shared more events, and every one of them joins two women of the same color. Four women, Dorothy, Olive, Flora and Pearl, have no line."}
+
+Hold on to that contrast. The projection is convenient, because every one-mode tool from earlier chapters then applies. It is also a lossy and sometimes misleading summary, and the next section puts numbers on how.
+
+## What a projection loses
+
+Here is a fact worth saying slowly. An event with $k$ attendees creates $k(k-1)/2$ ties in the projection. That grows with the *square* of the attendance. A party of 14 makes 91 ties. A party of 3 makes 3. So the 322 shared-event counts in the southern women data are completely determined by the event sizes, and a few big events do most of the talking. @fig-event-sizes shows how.
 
 ![Attendance at each event, and the number of pairs of women it ties together in the projection.](../figures/event-sizes.svg){#fig-event-sizes fig-alt="A bar chart of 14 events. Attendance is 3, 3, 6, 4, 8, 8, 10, 14, 12, 5, 4, 6, 3 and 3. Beneath each bar is the number of pairs the event ties: 3, 3, 15, 6, 28, 28, 45, 91, 66, 10, 6, 15, 3, 3. Events 8 and 9, with 14 and 12 attendees, are highlighted."}
 
-The right-hand grid in @fig-davis-matrix is this projection. It shows the structure that the plain density number hides: two dense blocks, the first nine women and the last nine, with a thinner bridge between them. The strongest pair is Evelyn and Theresa, who attended 7 events together.
+How much of the projection depends on the biggest events? One way to find out: leave them out, project again, and see what remains.
 
-### Step 3: weight the projection with care
+::: {.panel-tabset group="language"}
 
-Is a pair who shared a crowded event as close as a pair who shared a small one? Probably not: a party of 14 doesn't give two attendees much reason to have talked. Newman proposed weighting each shared event by $1 / (k - 1)$, where $k$ is the event's attendance, so that small events count for more [@newman2001scientific].
+## R
+
+```r
+# How much of the projection do the two biggest events produce?
+event_pairs <- degrees |>
+  filter(mode == "event") |>
+  mutate(pairs = attended * (attended - 1) / 2)
+event_pairs |>
+  slice_max(pairs, n = 2) |>
+  summarise(events = toString(id), pairs = sum(pairs), total = sum(event_pairs$pairs), share = round(pairs / total, 2))
+
+# Leave events out and project again: how many of the 153 pairs of women are still tied?
+library(purrr)
+drops <- list(`all events` = character(), `without event 8` = "E8", `without events 8 and 9` = c("E8", "E9"))
+drops |>
+  imap(\(drop, label) {
+    kept <- net_twomode(filter(edges, !event %in% drop), nodes = nodes, source = "woman", target = "event")
+    tibble(dropped = label, tied = nrow(net_project(kept, which = "first")$edges))
+  }) |>
+  list_rbind() |>
+  mutate(share = round(tied / 153, 2))
+```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
+
+## Python
+
+```python
+# How much of the projection do the two biggest events produce?
+pairs_by_event = e_count * (e_count - 1) // 2
+two_biggest = np.argsort(-pairs_by_event)[:2]
+made = pairs_by_event[two_biggest].sum()
+print(f"events {two_biggest[0] + 1} and {two_biggest[1] + 1} produce {made} of the {pairs_by_event.sum()} "
+      f"shared-event counts ({made / pairs_by_event.sum():.0%})")
+
+# Leave events out and project again: how many of the 153 pairs of women are still tied?
+for label, drop in [("all events", []), ("without event 8", [7]), ("without events 8 and 9", [7, 8])]:
+    kept = np.delete(attend, drop, axis=1)
+    together_kept = kept @ kept.T
+    np.fill_diagonal(together_kept, 0)
+    tied = (together_kept > 0).sum() // 2
+    print(f"{label:22} {tied} pairs tied ({tied / 153:.0%})")
+```
+
+::: {.code-output}
+```text
+events 8 and 9 produce 157 of the 322 shared-event counts (49%)
+all events             139 pairs tied (91%)
+without event 8        121 pairs tied (79%)
+without events 8 and 9 81 pairs tied (53%)
+```
+:::
+
+## Rust
+
+```rust
+// How much of the projection do the two biggest events produce?
+let pair_counts: Vec<f64> = counts[18..].iter().map(|k| k * (k - 1.0) / 2.0).collect();
+let total_pairs: f64 = pair_counts.iter().sum();
+let mut by_size: Vec<usize> = (0..14).collect();
+by_size.sort_by(|&x, &y| pair_counts[y].partial_cmp(&pair_counts[x]).unwrap());
+let made = pair_counts[by_size[0]] + pair_counts[by_size[1]];
+println!("events {} and {} produce {} of the {} shared-event counts ({:.0}%)", by_size[0] + 1, by_size[1] + 1, made, total_pairs, 100.0 * made / total_pairs);
+
+// Leave events out and project again: how many of the 153 pairs of women are still tied?
+let versions: [(&str, Vec<usize>); 3] = [("all events", vec![]), ("without event 8", vec![7]), ("without events 8 and 9", vec![7, 8])];
+for (label, dropped) in versions.iter() {
+    let mut from = Vec::new();
+    let mut to = Vec::new();
+    for (w, events) in attended.iter().enumerate() {
+        for &e in events.iter() {
+            if !dropped.contains(&e) {
+                from.push(w as i64);
+                to.push(18 + e as i64);
+            }
+        }
+    }
+    let kept = Graph::from_edges(32, &from, &to, None, false)?;
+    let tied = project(&kept, &is_event, ProjectionOptions { second: false, weight: ProjectionWeight::Count, ..Default::default() })?.from.len();
+    println!("{:22} {} pairs tied ({:.0}%)", label, tied, 100.0 * tied as f64 / 153.0);
+}
+```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
+
+:::
+
+Events 8 and 9 alone produce 157 of the 322 shared-event counts, almost half. Leave out event 8 and the share of tied pairs drops from 91 to 79 percent. Leave out events 8 and 9 and only 53 percent of the pairs are still tied: Dorothy, who attended just those two events, is now tied to nobody. Whatever the projection says about "who is close to whom" depends heavily on a couple of crowded occasions, and nothing in a projection tells you that.
+
+### A hairball you can check by hand
+
+The southern women are real, and real data is hard to verify by eye. So here is a tiny invented one. **These people and events are made up**, to show one effect cleanly. Eight people, Ana to Hana, go to four small events: Choir (Ana, Ben, Cleo), Chess (Cleo, Dev), Quiz (Esi, Finn, Gus) and Garden (Gus, Hana). Then, one evening, all eight go to the Town hall.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+library(tidyr)
+
+# An invented town: eight people, five events. The town hall is attended by everyone.
+people <- c("Ana", "Ben", "Cleo", "Dev", "Esi", "Finn", "Gus", "Hana")
+groups <- list(Choir = c("Ana", "Ben", "Cleo"), Chess = c("Cleo", "Dev"), Quiz = c("Esi", "Finn", "Gus"),
+               Garden = c("Gus", "Hana"), `Town hall` = people)
+town_edges <- enframe(groups, name = "event", value = "person") |> unnest(person)
+town_nodes <- tibble(id = c(people, names(groups)), mode = rep(c("person", "event"), c(8, 5)))
+build <- \(x) net_twomode(x, nodes = town_nodes, source = "person", target = "event")
+town <- build(town_edges)
+
+# With and without the town hall: how many of the 28 pairs of people are tied?
+tied <- \(x) nrow(net_project(build(x), which = "first")$edges)
+tibble(
+  version = c("with the town hall", "without the town hall"),
+  tied = c(tied(town_edges), tied(filter(town_edges, event != "Town hall"))),
+  possible = choose(8, 2)
+)
+
+# Two pairs: both tied in either version, but very differently. Count and Newman weights (see below).
+list(count = "count", newman = "newman") |>
+  map(\(method) net_project(town, which = "first", method = method)$edges) |>
+  list_rbind(names_to = "weighting") |>
+  filter(source == "Ana", target %in% c("Ben", "Esi")) |>
+  select(weighting, source, target, weight) |>
+  mutate(weight = round(weight, 2))
+```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
+
+## Python
+
+```python
+# An invented town: eight people, five events. The town hall is attended by everyone.
+people = ["Ana", "Ben", "Cleo", "Dev", "Esi", "Finn", "Gus", "Hana"]
+groups = {"Choir": ["Ana", "Ben", "Cleo"], "Chess": ["Cleo", "Dev"], "Quiz": ["Esi", "Finn", "Gus"],
+          "Garden": ["Gus", "Hana"], "Town hall": people}
+town = np.array([[person in members for members in groups.values()] for person in people], dtype=int)
+town_sizes = town.sum(axis=0)
+
+# With and without the town hall: how many of the 28 pairs of people are tied?
+def tied_pairs(incidence):
+    both = incidence @ incidence.T
+    np.fill_diagonal(both, 0)
+    return (both > 0).sum() // 2
+
+print(f"with the town hall:    {tied_pairs(town)} of 28 pairs tied")
+print(f"without the town hall: {tied_pairs(town[:, :4])} of 28 pairs tied")
+
+# Two pairs: both tied in either version, but very differently. Count and Newman weights (see below).
+town_count = town @ town.T
+town_newman = (town / (town_sizes - 1)) @ town.T
+for first, second in [("Ana", "Ben"), ("Ana", "Esi")]:
+    i, j = people.index(first), people.index(second)
+    print(f"{first} and {second}: count {town_count[i, j]}, Newman weight {town_newman[i, j]:.2f}")
+```
+
+::: {.code-output}
+```text
+with the town hall:    28 of 28 pairs tied
+without the town hall: 8 of 28 pairs tied
+Ana and Ben: count 2, Newman weight 0.64
+Ana and Esi: count 1, Newman weight 0.14
+```
+:::
+
+## Rust
+
+```rust
+// An invented town: eight people (nodes 0 to 7), five events (nodes 8 to 12). The town hall is attended by everyone.
+let people = ["Ana", "Ben", "Cleo", "Dev", "Esi", "Finn", "Gus", "Hana"];
+let groups: [&[usize]; 5] = [&[0, 1, 2], &[2, 3], &[4, 5, 6], &[6, 7], &[0, 1, 2, 3, 4, 5, 6, 7]];
+let town_types: Vec<bool> = (0..13).map(|node| node >= 8).collect();
+let town_graph = |events_kept: usize| {
+    let mut from = Vec::new();
+    let mut to = Vec::new();
+    for (event, members) in groups.iter().enumerate().take(events_kept) {
+        for &person in members.iter() {
+            from.push(person as i64);
+            to.push(8 + event as i64);
+        }
+    }
+    Graph::from_edges(13, &from, &to, None, false).unwrap()
+};
+let town_project = |graph: &Graph, weight: ProjectionWeight| {
+    project(graph, &town_types, ProjectionOptions { second: false, weight, ..Default::default() }).unwrap()
+};
+
+// With and without the town hall: how many of the 28 pairs of people are tied?
+println!("with the town hall:    {} of 28 pairs tied", town_project(&town_graph(5), ProjectionWeight::Count).from.len());
+println!("without the town hall: {} of 28 pairs tied", town_project(&town_graph(4), ProjectionWeight::Count).from.len());
+
+// Two pairs: both tied in either version, but very differently. Count and Newman weights (see below).
+let town_count = town_project(&town_graph(5), ProjectionWeight::Count);
+let town_newman = town_project(&town_graph(5), ProjectionWeight::Newman);
+let weight_of = |p: &knappnet::metrics::bipartite::Projection, a: u32, b: u32| {
+    (0..p.from.len()).find(|&k| p.from[k] == a && p.to[k] == b).map(|k| p.weights[k]).unwrap()
+};
+for (first, second) in [(0u32, 1u32), (0, 4)] {
+    println!("{} and {}: count {}, Newman weight {:.2}", people[first as usize], people[second as usize], weight_of(&town_count, first, second), weight_of(&town_newman, first, second));
+}
+```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
+
+:::
+
+With the town hall, all 28 pairs are tied, a complete network in which every person looks equally close to every other. Without it, 8 pairs remain, in two clusters of four. The town hall alone supplies 28 of the 36 shared-event counts. @fig-town-hall draws both versions.
+
+![An invented example of a hairball. Eight people share four small events (choir, chess, quiz, garden) and one town hall that all of them attended. With the town hall, every one of the 28 pairs is tied. Without it, eight pairs remain, in two clusters.](../figures/town-hall.svg){#fig-town-hall fig-alt="Two rings of the same eight people, Ana to Hana, invented for illustration. The left ring has 28 lines, one for every pair. The right ring has 8 blue lines forming two separate clusters: Ana, Ben, Cleo and Dev in one, Esi, Finn, Gus and Hana in the other."}
+
+The plain count already hints at the fix. Ana and Ben share two events and Ana and Esi share one, so Ana and Ben look closer. But *which* events? Ana and Esi share only the town hall. Ana and Ben share the town hall *and* an intimate choir. A better weighting would notice that the second pair has something the first lacks.
+
+### Three costs
+
+A projection has three costs, and the examples above showed the first two.
+
+- **It invents ties from coincidence.** The town hall made 28 ties, and none of them means anyone spoke.
+- **It loses which event.** Two women who share three small events and two who share three huge ones look identical in a plain count.
+- **It loses the other mode.** Events are as interesting as the people, and a projection onto women ignores their structure. The dual projection (events tied by shared women) tells the other half. Everett and Borgatti suggest analyzing both together [@everett2013dual].
+
+There is a fourth, subtler cost. Many different two-mode networks have the *same* projection. Three people could all attend one meeting, or could pair up across three separate meetings, and the projection is a triangle either way. Once you've projected, you can't tell which happened.
+
+## Weighting a projection with care
+
+Is a pair who shared a crowded event as close as a pair who shared a small one? Probably not: a party of 14 doesn't give two attendees much reason to have talked. Newman proposed weighting each shared event by $1 / (k - 1)$, where $k$ is the event's attendance, so that small events count for more [@newman2001scientific]. In the town, the choir (3 people) counts $1/2$ for each pair of its members, and the town hall (8 people) counts $1/7$. Ana and Ben share both, for $1/2 + 1/7 = 0.64$. Ana and Esi share only the town hall, for $1/7 = 0.14$.
 
 ::: {.panel-tabset group="language"}
 
@@ -347,11 +680,7 @@ bind_rows(shared_count = head(shared, 1), newman = head(newman, 3), .id = "weigh
 
 ::: {.code-output}
 ```text
-     weighting    source  target weight
-1 shared_count    Evelyn Theresa   7.00
-2       newman    Sylvia    Nora   1.65
-3       newman Katherine  Sylvia   1.62
-4       newman    Evelyn   Laura   1.56
+PENDING
 ```
 :::
 
@@ -397,19 +726,196 @@ for &(weight, p, q) in &ranked_newman[..3] {
 
 ::: {.code-output}
 ```text
-strongest pairs by shared-event count: Evelyn and Theresa (7)
-strongest pairs by Newman weight:
-  Sylvia and Nora: 1.65
-  Katherine and Sylvia: 1.62
-  Evelyn and Laura: 1.56
+PENDING
 ```
 :::
 
 :::
 
-The ranking changes. By plain counts, the strongest tie is in the first group (Evelyn and Theresa, with 7 events, and seven other pairs at 6). By Newman weight, the two strongest are Sylvia and Nora, and Katherine and Sylvia, in the second group: they shared both of the three-person events (13 and 14) and two other small ones (10 and 12). Neither ranking is wrong. They answer different questions: "who spent the most occasions together?" and "who shared the most occasions that were small enough to make a connection?" Pick the one that matches your theory and say which you used.
+The ranking changes. By plain counts, the strongest tie is in the first group (Evelyn and Theresa, with 7 events, and seven other pairs at 6). By Newman weight, the two strongest are Sylvia and Nora, and Katherine and Sylvia, in the second group: they shared both of the three-person events (13 and 14) and two other small ones (10 and 12). @fig-weight-compare shows every pair under both weightings.
 
-### Step 4: are there two groups?
+![Each dot is one of the 139 pairs of women who shared at least one event, plotted by plain count (across) and Newman weight (up). Pairs with the same count can have very different Newman weights, because small events count for more. The strongest pair under each weighting is orange.](../figures/weight-compare.svg){#fig-weight-compare fig-alt="A scatter plot of 139 dots. The horizontal axis is shared events from 0 to 7 and the vertical axis is Newman weight from 0 to 2. Dots with the same count are spread vertically: pairs with 3 shared events have Newman weights from 0.28 to 0.68. Two dots are orange and labeled: Evelyn and Theresa at 7 shared events, and Sylvia and Nora with the highest Newman weight."}
+
+Neither ranking is wrong. They answer different questions: "who spent the most occasions together?" and "who shared the most occasions that were small enough to make a connection?" Pick the one that matches your theory and say which you used. Newman weighting also assumes that people at a small event are more likely to have interacted. That's an assumption about the world, not a fact about the matrix, and for some data (a lecture hall, say, or a mailing list) it may be wrong.
+
+## Centrality for two-mode data
+
+You don't have to project to find the important nodes. Degree, closeness and betweenness all make sense in a two-mode network. A woman is close to events, and through them to other women. Only the normalization changes, because a node can be tied only to the other mode, so the largest possible score depends on how big both modes are [@borgatti1997network; @borgatti2011analyzing]. That is why you shouldn't read a woman's score against an event's.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+library(tidyr)
+
+# Three centralities, each normalized for two-mode data. Round first so near-ties count as ties.
+club$nodes |>
+  mutate(
+    degree = net_twomode_degree(club),
+    closeness = net_twomode_closeness(club),
+    betweenness = net_twomode_betweenness(club)
+  ) |>
+  pivot_longer(degree:betweenness, names_to = "measure") |>
+  mutate(value = round(value, 3)) |>
+  slice_max(value, n = 3, by = c(measure, mode), with_ties = FALSE) |>
+  summarise(top_three = toString(paste(id, sprintf("%.2f", value))), .by = c(measure, mode))
+```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
+
+## Python
+
+```python
+import networkx as nx
+from networkx.algorithms import bipartite
+
+# The same network as a NetworkX graph: women are nodes 0 to 17, events are nodes 18 to 31.
+club_nx = nx.from_numpy_array(full)
+first_mode = set(range(18))
+names = women + [f"E{e + 1}" for e in range(14)]
+measures = {"degree": bipartite.degree_centrality(club_nx, first_mode),
+            "closeness": bipartite.closeness_centrality(club_nx, first_mode),
+            "betweenness": bipartite.betweenness_centrality(club_nx, first_mode)}
+
+# Three centralities, each normalized for two-mode data. Round first so near-ties count as ties.
+for measure, scores in measures.items():
+    for kind, nodes in (("women", range(18)), ("events", range(18, 32))):
+        best = sorted(nodes, key=lambda v: (-round(scores[v], 3), v))[:3]
+        print(f"{measure:11} {kind:6} " + ", ".join(f"{names[v]} {scores[v]:.2f}" for v in best))
+```
+
+::: {.code-output}
+```text
+degree      women  Evelyn 0.57, Theresa 0.57, Nora 0.57
+degree      events E8 0.78, E9 0.67, E7 0.56
+closeness   women  Evelyn 0.80, Theresa 0.80, Nora 0.80
+closeness   events E8 0.85, E9 0.79, E7 0.73
+betweenness women  Nora 0.11, Evelyn 0.10, Theresa 0.09
+betweenness events E8 0.24, E9 0.23, E7 0.13
+```
+:::
+
+## Rust
+
+```rust
+use knappnet::metrics::bipartite::{compute_twomode_betweenness, compute_twomode_closeness, TwoModeClosenessOptions};
+
+let names: Vec<String> = women.iter().map(|w| w.to_string()).chain((1..=14).map(|e| format!("E{e}"))).collect();
+let measures = [
+    ("degree", compute_twomode_degree(&club, &is_event, true)?),
+    ("closeness", compute_twomode_closeness(&club, &is_event, TwoModeClosenessOptions::default())?),
+    ("betweenness", compute_twomode_betweenness(&club, &is_event, true, 0)?),
+];
+
+// Three centralities, each normalized for two-mode data. Round first so near-ties count as ties.
+for (measure, scores) in measures.iter() {
+    for (kind, lo, hi) in [("women", 0, 18), ("events", 18, 32)] {
+        let mut ids: Vec<usize> = (lo..hi).collect();
+        ids.sort_by(|&x, &y| (scores[y] * 1000.0).round().partial_cmp(&(scores[x] * 1000.0).round()).unwrap().then(x.cmp(&y)));
+        let best: Vec<String> = ids[..3].iter().map(|&v| format!("{} {:.2}", names[v], scores[v])).collect();
+        println!("{:11} {:6} {}", measure, kind, best.join(", "));
+    }
+}
+```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
+
+:::
+
+Read the three lines for the women together. By degree, three women tie at the top. Closeness cannot separate them either. Only betweenness picks one, Nora, and her score is modest (0.11 of the most any woman in a network this size could have). The events tell the same story more strongly: events 8 and 9 top all three lists, so they are the hubs through which the women reach one another.
+
+What each reading means depends on context. A high-degree event is a *popular* event, one that many people chose. A high-betweenness event is a *bridge*, one that connects people who otherwise share little. In a club the first is a big party and the second might be a mixer that brings two circles together. In a hospital-and-patients network, the first is a busy hospital and the second a referral center. The measures are the same, and the stories differ.
+
+## Cohesion: four-cycles and groups
+
+In one-mode networks, we ask how closed the neighborhoods are by counting triangles. We just saw that a two-mode network has none, so the smallest closed shape is a **four-cycle**: two women who both attended the same two events. Network scientists sometimes call it a **butterfly**. If the same pair of women keeps turning up together at different events, the network has many four-cycles.
+
+A pair of women who shared $s$ events makes $s(s-1)/2$ four-cycles, one for each pair of those events. Evelyn and Theresa, who shared 7, make 21 on their own. Robins and Alexander built a clustering coefficient for two-mode data on this idea: four times the number of four-cycles, divided by the number of three-step paths (woman, event, woman, event) in the network [@robins2004small]. Each four-cycle contains four such paths, hence the 4. In words: of all the ways to walk woman, event, woman, event, what share are closed by the first woman also having attended that last event? The ratio runs from 0 to 1.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# Four-cycles: a pair of women who shared s events makes s (s - 1) / 2 of them, and each is
+# counted once from each of its two women. The package has no function for this, so we use the matrix.
+S <- B %*% t(B)
+diag(S) <- 0
+four_cycles <- sum(choose(S, 2)) / 2
+
+# Three-step paths: for every attendance, (events she attended - 1) times (women at the event - 1).
+three_paths <- sum(B * outer(rowSums(B) - 1, colSums(B) - 1))
+
+# Robins and Alexander: four times the four-cycles, divided by the three-step paths.
+tibble(four_cycles, three_paths, clustering = round(4 * four_cycles / three_paths, 3))
+```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
+
+## Python
+
+```python
+# Four-cycles: a pair of women who shared s events makes s (s - 1) / 2 of them, and each is
+# counted once from each of its two women.
+off = together - np.diag(np.diag(together))
+four_cycles = int((off * (off - 1) // 2).sum() // 2)
+
+# Three-step paths: for every attendance, (events she attended - 1) times (women at the event - 1).
+three_paths = int((attend * np.outer(w_count - 1, e_count - 1)).sum())
+
+# Robins and Alexander: four times the four-cycles, divided by the three-step paths.
+print(f"{four_cycles} four-cycles, {three_paths} three-step paths")
+print(f"clustering {4 * four_cycles / three_paths:.3f}")
+print(f"NetworkX agrees: {bipartite.robins_alexander_clustering(club_nx):.3f}")
+```
+
+::: {.code-output}
+```text
+341 four-cycles, 2916 three-step paths
+clustering 0.468
+NetworkX agrees: 0.468
+```
+:::
+
+## Rust
+
+```rust
+use knappnet::metrics::bipartite_extra::{count_butterflies, count_three_paths};
+
+// Four-cycles, counted for every node; each has two women and two events, so the total is the sum over all nodes divided by four.
+let per_node = count_butterflies(&club).to_u128();
+let four_cycles = per_node.iter().sum::<u128>() / 4;
+let three_paths = count_three_paths(&club);
+
+// Robins and Alexander: four times the four-cycles, divided by the three-step paths.
+println!("{} four-cycles, {} three-step paths", four_cycles, three_paths);
+println!("clustering {:.3}", 4.0 * four_cycles as f64 / three_paths);
+```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
+
+:::
+
+There are 341 four-cycles, and a clustering coefficient of 0.468: close to half of the three-step paths close into a four-cycle. That sounds high, but a number like 0.468 means little on its own: how high it looks depends on how many events people attend and how big those events are. It only means something against a comparison. @sec-tests-and-null-models shows how to build one, by shuffling the network while keeping every woman's and every event's degree. NetworkX and knappnet's Rust engine also offer a per-node version of two-mode clustering, from Latapy, Magnien and Del Vecchio [@latapy2008basic], which asks, for each node, how much of its list of partners it has in common with the nodes two steps away. Cycles in two-mode data are studied in more depth by @lind2005cycles.
+
+### Are there two groups?
 
 If the women fall into two groups, the events should too: some events draw mostly one group, some the other. Modularity (@sec-subgroups) can be adapted to two-mode data. Barber's version compares the ties *inside* each group with what the degrees of the two modes would produce by chance [@barber2007modularity].
 
@@ -420,7 +926,6 @@ If the women fall into two groups, the events should too: some events draw mostl
 ```r
 # Split the women into the first nine and the last nine as listed, then put each event with the group
 # that supplied most of its attendees.
-B <- net_incidence(club)
 group_w <- rep(c("first", "second"), each = 9)
 group_e <- if_else(colSums(B[10:18, ]) > colSums(B[1:9, ]), "second", "first")
 tibble(event = events, group = group_e) |>
@@ -436,12 +941,7 @@ round(sum((B - expected)[inside]) / m, 3)
 
 ::: {.code-output}
 ```text
-# A tibble: 2 × 2
-  group  events                        
-  <chr>  <chr>                         
-1 first  E1, E2, E3, E4, E5, E6, E7, E8
-2 second E9, E10, E11, E12, E13, E14   
-[1] 0.318
+PENDING
 ```
 :::
 
@@ -498,70 +998,158 @@ println!("two-mode modularity of this split: {q:.3}");
 
 ::: {.code-output}
 ```text
-first group's events:  [1, 2, 3, 4, 5, 6, 7, 8]
-second group's events: [9, 10, 11, 12, 13, 14]
-two-mode modularity of this split: 0.318
+PENDING
 ```
 :::
 
 :::
 
-Events 1 to 8 go with the first group of women and events 9 to 14 with the second. The modularity of this split is 0.318. A caution: this number isn't on the same footing as one-mode modularity, and you shouldn't compare it with the values from @sec-subgroups. For two-mode data the maximum possible value, and what counts as a high one, depend on the sizes and degrees of both modes. Use it to compare *groupings of the same two-mode network*, as we compared groupings by description length in @sec-latent-space, not to rank networks against each other.
+Events 1 to 8 go with the first group of women and events 9 to 14 with the second. The modularity of this split is 0.318. A caution: this number isn't on the same footing as one-mode modularity, and you shouldn't compare it with the values from @sec-subgroups. For two-mode data the maximum possible value, and what counts as a high one, depend on the sizes and degrees of both modes. Use it to compare *groupings of the same two-mode network*, such as this split against a different one, not to rank networks against each other.
 
-### What a projection loses
+We chose the split ("first nine and last nine") by looking at the picture. That is fine for illustration, but a split chosen by eye will always look good on the data it was chosen from. Treat 0.318 as a description of this grouping, not as evidence that the groups are real.
 
-Projections are useful but have three costs.
+## Reading two-mode results honestly
 
-- **They invent ties from coincidence.** Event 8 made 91 ties, and none of them means the women spoke.
-- **They lose which event.** Two women who share three small events and two who share three huge ones look identical in a plain count.
-- **They lose the other mode.** Events are as interesting as the people, and a projection onto women ignores their structure. The dual projection (events tied by shared women) tells the other half. Everett and Borgatti suggest analyzing both together [@everett2013dual].
+Two-mode results are easy to over-read, because both the data and the projection invite stories the numbers can't carry. Here are the habits that keep you honest.
 
-When you can, analyze the two-mode network directly (two-mode degree, two-mode groups) and use projections as a *view*, not as the data.
+### What a high degree means
 
-## What this chapter does not cover
-This section treats layers one pair at a time. Full multilayer methods, such as models that link a person across layers in a single matrix, centralities that work across layers and community detection for multilayer data, are an active area [@kivela2014multilayer]. The tools in this book's code don't include them yet, so we've stuck to overlap and QAP, which are useful and easy to explain.
+A woman with high degree attended many events. That's all the data says. It could mean she was socially active, or well-liked, or had the time, or lived nearby, or that her attendance was recorded more carefully than other people's. An event with high degree drew many women. It might be popular, or open to everyone, or large by design. Neither number tells you who talked to whom at the event. **Attendance is not interaction.** The ties are *co-presence*, and treating co-presence as a relationship is a modeling choice you should state out loud.
+
+### The projection is a choice, and not a neutral one
+
+The same two-mode data gives different one-mode networks depending on the weighting, and different conclusions. We've seen three versions of the southern women: plain counts, Newman weights, and thresholded counts. Say which you used and why, and say that you projected, because readers who skip that step will treat the projected ties as observed.
+
+### Compare the projection with the two-mode answer
+
+Whenever you compute something on a projection, compute its two-mode counterpart and see whether they agree. When they don't, the projection is adding something.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# Two ways to ask "how connected is each woman": her two-mode degree (events attended), the number of
+# other women she shares an event with in the projection, and her Newman strength (sum of Newman weights).
+S <- B %*% t(B)
+diag(S) <- 0
+N <- sweep(B, 2, colSums(B) - 1, "/") %*% t(B)
+diag(N) <- 0
+tibble(woman = women, events = rowSums(B), shares_with = rowSums(S > 0), newman_strength = rowSums(N)) |>
+  filter(woman %in% c("Dorothy", "Charlotte"))
+
+# A curiosity: summed over every other woman, Newman weights add back up to the number of events attended.
+all.equal(unname(rowSums(N)), unname(rowSums(B)))
+```
+
+::: {.code-output}
+```text
+PENDING
+```
 :::
 
-## Reading these models honestly
+## Python
 
-**A projection is a choice.** The same two-mode data gives different one-mode networks depending on the weighting, and different conclusions. Say which you used and why.
+```python
+# Two ways to ask "how connected is each woman": her two-mode degree (events attended), the number of
+# other women she shares an event with in the projection, and her Newman strength (sum of Newman weights).
+shares_with = (off > 0).sum(axis=1)
+newman_off = newman - np.diag(np.diag(newman))
+for name in ("Dorothy", "Charlotte"):
+    w = women.index(name)
+    print(f"{name} attended {w_count[w]} events and shares an event with {shares_with[w]} of the 17 other women")
 
-**Don't mix the modes.** A one-mode measure applied to a projection can be strongly affected by one big event or one prolific person. Look at event sizes before you read centrality in a projection.
+# A curiosity: summed over every other woman, Newman weights add back up to the number of events attended.
+print(f"Newman strength equals events attended for every woman: {np.allclose(newman_off.sum(axis=1), w_count)}")
+```
 
-**Two-mode measures have their own scales.** Normalize by the other mode, and don't compare raw numbers across modes.
+::: {.code-output}
+```text
+Dorothy attended 2 events and shares an event with 16 of the 17 other women
+Charlotte attended 4 events and shares an event with 11 of the 17 other women
+Newman strength equals events attended for every woman: True
+```
+:::
 
-**Overlap between layers is not influence.** Two layers can overlap because one causes the other, because a third thing causes both, or because the layers are measured in related ways. The overlap says nothing about which.
+## Rust
 
-**Small networks, small power.** With ten people, even a decent correlation between layers can easily happen by chance. Report the test, not only the correlation.
+```rust
+// Two ways to ask "how connected is each woman": her two-mode degree (events attended), the number of
+// other women she shares an event with in the projection, and her Newman strength (sum of Newman weights).
+let mut shares_with = vec![0usize; 18];
+for k in 0..shared.from.len() {
+    shares_with[shared.from[k] as usize] += 1;
+    shares_with[shared.to[k] as usize] += 1;
+}
+let mut strength = vec![0.0f64; 18];
+for k in 0..newman.from.len() {
+    strength[newman.from[k] as usize] += newman.weights[k];
+    strength[newman.to[k] as usize] += newman.weights[k];
+}
+for name in ["Dorothy", "Charlotte"] {
+    let w = women.iter().position(|&x| x == name).unwrap();
+    println!("{} attended {} events and shares an event with {} of the 17 other women", name, counts[w], shares_with[w]);
+}
+
+// A curiosity: summed over every other woman, Newman weights add back up to the number of events attended.
+let same = (0..18).all(|w| (strength[w] - counts[w]).abs() < 1e-9);
+println!("Newman strength equals events attended for every woman: {same}");
+```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
+
+:::
+
+Dorothy attended 2 events and Charlotte attended 4. In the two-mode data, Charlotte is plainly the more active. In the projection, Dorothy shares an event with 16 of the 17 other women and Charlotte with only 11, so a one-mode tool would call Dorothy *better connected*. She is, in one sense: both of her events were the biggest of the season. But she attended just two events, and a reader told that she is the most connected woman in town would picture someone quite different.
+
+The curiosity at the end is no accident. Each event a woman attended gives her $k - 1$ co-attendees at weight $1/(k-1)$ apiece, which adds to exactly 1 per event, whatever its size. So a woman's Newman strength is her two-mode degree. Newman's weighting, in other words, quietly undoes the big-event inflation in the one measure where it can.
+
+### Three quick checks
+
+Before you report anything from a projection, run these three. Each takes a few lines.
+
+1. **Leave out the biggest event.** Re-project without it, as we did above, and see whether your conclusion survives. If one event moves it, say so.
+2. **Try both weightings.** Compute plain counts and Newman weights. If your top results change (as ours did, from Evelyn and Theresa to Sylvia and Nora), report both, or say why one fits your question better.
+3. **Compare with the two-mode measure.** Pair a projected number with its two-mode counterpart, as we did for Dorothy and Charlotte. A disagreement is a finding about the projection, not about the people.
+
+### What these data cannot show
+
+Even a clean two-mode analysis can't tell you whether the women knew each other, whether an event's attendance list is complete, or whether the 14 events are a fair sample of the town's social life. Two small notes on the invented town as well: its eight people and five events were chosen to make a point, and no real town was measured. When your own data come from logs or membership lists, ask how someone ended up on the list, and who is missing from it.
 
 ## A cheat sheet
 
 | Piece | What it does | Watch out for |
 | --- | --- | --- |
 | Incidence matrix | People by events, 1 where attended | Not square; rows and columns are different things |
+| Two-mode density | Ties divided by people times events | Don't use the one-mode density formula |
+| Two-mode degree | Share of the other mode attended | Normalize by the other mode's size; check for ties at the top |
 | Projection | Ties people who share an event | Big events create many coincidental ties |
 | Newman weight | Counts a shared event as $1/(k-1)$ | Changes the ranking; state which you used |
 | Dual projection | Ties events that share people | Tells the other half of the story |
-| Two-mode degree | Share of the other mode attended | Normalize by the other mode's size |
+| Four-cycles | Pairs of people sharing two events | Compare with a null model before calling it high |
 | Two-mode modularity | Groups in a two-mode network | Not comparable with one-mode modularity |
-| Layer overlap | Pairs tied in both layers | Jaccard divides by pairs tied in either |
-| QAP correlation | Is the overlap more than chance? | Needs enough people to have any power |
 
 ## Exercises
 
-1. **By hand.** Four people attend three events: Ana at Choir and Chess, Ben at Choir, Cleo at Chess and Quiz, Dev at Quiz. Write the incidence matrix and find the projection onto the people. Which pairs are tied, and with what weights?
+1. **By hand.** Four people attend three events: Ana at Choir and Chess, Ben at Choir, Cleo at Chess and Quiz, Dev at Quiz. Write the incidence matrix and find the projection onto the people. Which pairs are tied, and with what weights? Then project onto the events instead.
 2. **By hand.** Suppose a fifteenth event were attended by 10 of the 18 women. How many pairs of women does it tie together? Could it add any pairs to the 139 that already share an event?
 3. **By hand.** Two women share three events. In one case the events had 3, 3 and 4 attendees. In the other they had 12, 12 and 14. Compute Newman's weight for each. Which pair looks closer?
-4. **Coding.** Project the southern women onto the *events* instead. How many pairs of events share at least one woman? Which two events share the most women?
-5. **Coding.** Move Nora from the second group to the first and recompute the two-mode modularity. Does it go up or down?
-6. **Interpretation.** A paper projects a network of authors and papers onto the authors and reports that the most central author is the one with the most co-authors. Write a short, kind reply about what the projection might be hiding.
+4. **By hand.** Three people could all attend one meeting, or could pair up across three separate meetings: Ana and Ben at the first, Ben and Cleo at the second, Ana and Cleo at the third. Draw both two-mode networks and show that the plain projections are the same triangle. What would tell them apart?
+5. **Coding.** Project the southern women onto the *events* with both weightings. The rule is the same, with a woman's number of events playing the part of $k$. Which two events are strongest under each weighting?
+6. **Coding.** Move Nora from the second group to the first and recompute the two-mode modularity. Does it go up or down?
+7. **Coding.** In the invented town, drop the Town hall and add one new event attended by Ana, Cleo, Esi and Gus. How many pairs are tied now, and do the two clusters survive?
+8. **Interpretation.** A paper projects a network of authors and papers onto the authors and reports that the most central author is the one with the most co-authors. Write a short, kind reply about what the projection might be hiding, using what Dorothy and Charlotte taught us.
 
 ## Summary
 
 ::: {.callout-tip appearance="simple"}
-A two-mode network ties one kind of node to another, such as women to the events they attend, and is stored as an incidence matrix. Projecting it onto one mode ties two nodes when they share a partner, which makes every one-mode tool available but turns coincidence into ties: in the southern women data, 35 percent of possible woman-event ties become 91 percent of possible woman-woman ties, and two events alone account for almost half of the shared-event counts. Weighting by Newman's $1/(k-1)$ changes which pairs look strongest, so the weighting is a choice to state. Two-mode degree and modularity need their own normalization. Layers, several kinds of tie among the same people, can be compared by overlap and a QAP correlation, which, with ten people, can't separate a moderate overlap from chance.
+A two-mode network ties one kind of node to another, such as women to the events they attend, and is stored as an incidence matrix. Treating it as one-mode gives a density that is too low, an average degree that describes nobody and a clustering of exactly zero. Projecting it onto one mode ties two nodes when they share a partner, which makes every one-mode tool available but turns coincidence into ties: in the southern women data, 35 percent of possible woman-event ties become 91 percent of possible woman-woman ties, and two events alone account for almost half of the shared-event counts. Leaving out the biggest events shrinks the projection fast. Weighting by Newman's $1/(k-1)$ changes which pairs look strongest, so the weighting is a choice to state. Two-mode degree, centrality, four-cycles and modularity need their own normalizations, and each should be compared with something (the other mode, a null model, a rival grouping) before it's reported. Attendance is co-presence, not interaction. Several kinds of tie among the same people are the subject of @sec-multilayer, and ties that change over time of @sec-time.
 :::
 
 ## Further reading
 
-For the duality of persons and groups, @breiger1974duality, and for the data, @davis1941deep. For two-mode centrality and its normalization, @borgatti1997network and @borgatti2011analyzing, and for weighted projections, @newman2001scientific. For analyzing both projections together, @everett2013dual, and for two-mode modularity, @barber2007modularity. For multilayer networks, @kivela2014multilayer. In R, Phil Murphy's notes on two-mode networks in igraph and statnet are a good place to practice [@murphyrpubs317838; @murphyrpubs542335].
+For the duality of persons and groups, @breiger1974duality, and for the data, @davis1941deep. For two-mode centrality and its normalization, @borgatti1997network and @borgatti2011analyzing, and for weighted projections, @newman2001scientific. For analyzing both projections together, @everett2013dual, and for two-mode modularity, @barber2007modularity. For two-mode clustering, @robins2004small, @latapy2008basic and @lind2005cycles. In R, Phil Murphy's notes on two-mode networks in igraph and statnet are a good place to practice [@murphyrpubs317838; @murphyrpubs542335].
