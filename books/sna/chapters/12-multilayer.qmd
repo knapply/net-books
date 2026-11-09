@@ -2,152 +2,887 @@
 
 ::: {.callout-note appearance="simple"}
 ## Prerequisites
-Networks as data, and Paths, distance and cohesion.
+@sec-networks-as-data, @sec-centrality and @sec-paths-and-cohesion. We use degree, betweenness, density and reciprocity, and we meet QAP, which @sec-tests-and-null-models explains properly.
 :::
 
-## Introduction
+## One kind of tie is rarely the whole story
 
-Several kinds of tie among the same people: layers, overlap and redundancy, aggregation, layer-aware measures, and what flattening hides.
+Ask a colleague who they trust and you get one network. Ask who they go to for advice and you get another. Look at the org chart and you get a third. Same people, three different pictures, and each one is a fair answer to a fair question.
 
-TODO(prose, see docs/VOICE.md): motivating question, the idea in plain words, what the reader can
-do after this chapter.
+Most of the book so far has treated a network as one set of ties. That is a sensible place to start, and it is also a simplification. People are tied to each other in many ways at once: they work together, live on the same street, text each other, owe each other money. A **layer** is one of those kinds of tie, a network of its own on the same people. When you keep the layers apart instead of mixing them, you can ask questions a single network can't answer.
 
-## More than one kind of tie
+- Do the same pairs show up in every layer, or does each layer have its own pairs?
+- If you know two people are tied in one layer, how much more likely is a tie in another?
+- Is someone central in every layer, or only in one? Does the answer change who you'd call "the key person"?
+- What do you lose when you flatten the layers into one network?
 
-TODO(prose): concept, definition, a small worked example by hand.
+This chapter works through those questions on a classic dataset, then on a second one that behaves quite differently, and ends with the ways reading several layers at once can go wrong. We stay with simple tools: overlap, conditional probability, and the single-network measures you already know, applied layer by layer. They get you a long way, and they make the limits of fancier methods easier to see.
 
-Every code example uses this three-tab block, followed by its output. The tab text is placeholder until
-the library interface is final; the comment names the measure it will call.
+## Krackhardt's managers
+
+David Krackhardt studied the 21 managers of a small manufacturing firm. He asked each of them two questions, "to whom do you go for advice?" and "who is your friend?", and took a third network from the company's records: who reports to whom [@krackhardt1987cognitive]. The data are in the book's `data/krackhardt` folder. The ties we use are the ones each manager reported about himself, which the data's README calls the locally aggregated structure.
+
+That makes three layers on one set of 21 people. Every tie points from one manager to another: an advice tie goes from the person who asks to the person asked, a friendship tie from the person who names to the person named, and a reporting tie from a manager to their boss. @fig-multilayer-layers draws all three on one shared layout, so every manager stays in the same place and you can watch a single person across the layers.
+
+![Krackhardt's 21 managers drawn three times with every manager in the same place each time. Lines show a tie in either direction. Manager 2 (blue) and manager 17 (orange) are marked so you can follow them from layer to layer.](../figures/multilayer-layers.svg){#fig-multilayer-layers fig-alt="Three copies of the same 21 dots in the same positions. The left copy, advice, has 145 lines and is dense. The middle copy, friendship, has 79 lines. The right copy, reporting lines, has 20 lines and forms a tree. Two dots are larger and filled in every copy: manager 2 in blue and manager 17 in orange."}
+
+The three pictures look nothing alike. Advice is a thicket, friendship is airier, and reporting is a tree with a few managers collecting most of the lines. Before comparing them, take each layer's basic numbers: how many ties, how dense, and how many are reciprocated. Each layer is stored as a 21 by 21 table of 0s and 1s, where a 1 in row $i$ and column $j$ means manager $i$ names manager $j$.
 
 ::: {.panel-tabset group="language"}
 
 ## R
 
 ```r
-# TODO(code, R): compare two layers of one network
+# Krackhardt's 21 managers: one 21 x 21 table of 0s and 1s per layer.
+# A 1 in row i, column j means manager i names manager j.
+kr <- read.csv("data/krackhardt/edges.csv")
+layer <- kr |>
+  split(~relation) |>
+  map(\(e) {
+    m <- matrix(0, 21, 21)
+    m[cbind(e$from, e$to)] <- 1
+    m
+  })
+
+tibble(
+  layer = names(layer),
+  arcs = map_dbl(layer, sum),
+  density = round(arcs / (21 * 20), 3),
+  reciprocated = round(map_dbl(layer, \(m) sum(m * t(m)) / sum(m)), 2)
+)
 ```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
 
 ## Python
 
 ```python
-# TODO(code, Python): compare two layers of one network
+import csv
+
+import networkx as nx
+import numpy as np
+
+# Krackhardt's 21 managers: one 21 x 21 table of 0s and 1s per layer.
+# A 1 in row i, column j means manager i names manager j.
+with open("data/krackhardt/edges.csv") as f:
+    rows = list(csv.DictReader(f))
+names = ["advice", "friendship", "reports_to"]
+layer = {k: np.zeros((21, 21), dtype=int) for k in names}
+for r in rows:
+    layer[r["relation"]][int(r["from"]) - 1, int(r["to"]) - 1] = 1
+
+for k in names:
+    m = layer[k]
+    arcs = int(m.sum())
+    print(f"{k:<11} {arcs:>4} arcs, density {arcs / 420:.3f}, reciprocated {(m * m.T).sum() / arcs:.2f}")
 ```
+
+::: {.code-output}
+```text
+advice       190 arcs, density 0.452, reciprocated 0.47
+friendship   102 arcs, density 0.243, reciprocated 0.45
+reports_to    20 arcs, density 0.048, reciprocated 0.00
+```
+:::
 
 ## Rust
 
 ```rust
-// TODO(code, Rust): compare two layers of one network
+use knappnet::Graph;
+
+// Krackhardt's 21 managers: one 21 x 21 table of 0s and 1s per layer.
+// A 1 in row i, column j means manager i names manager j. Managers are numbered 1 to 21; positions are 0 to 20.
+let names = ["advice", "friendship", "reports_to"];
+let mut layer = [[[0u8; 21]; 21]; 3];
+let text = std::fs::read_to_string("data/krackhardt/edges.csv")?;
+for line in text.lines().skip(1) {
+    let p: Vec<&str> = line.split(',').collect();
+    let k = names.iter().position(|&n| n == p[2]).unwrap();
+    layer[k][p[0].parse::<usize>().unwrap() - 1][p[1].parse::<usize>().unwrap() - 1] = 1;
+}
+
+for k in 0..3 {
+    let arcs: usize = layer[k].iter().flatten().filter(|&&x| x == 1).count();
+    let mutual = (0..21).flat_map(|i| (0..21).map(move |j| (i, j))).filter(|&(i, j)| layer[k][i][j] == 1 && layer[k][j][i] == 1).count();
+    println!("{:<11} {:>4} arcs, density {:.3}, reciprocated {:.2}", names[k], arcs, arcs as f64 / 420.0, mutual as f64 / arcs as f64);
+}
 ```
 
-:::
-
 ::: {.code-output}
-TODO(output): the printed result of the code above, once it runs.
+```text
+advice       190 arcs, density 0.452, reciprocated 0.47
+friendship   102 arcs, density 0.243, reciprocated 0.45
+reports_to    20 arcs, density 0.048, reciprocated 0.00
+```
 :::
 
-## Layers: more than one kind of tie
+:::
 
-The second half of the chapter changes the question. Suppose you have the same ten people and know three things about each pair: whether they exchange advice, whether they eat lunch together, whether they appear in the same project channel. That is three **layers**, one network per kind of relation on a common set of people. A network with several layers is **multilayer** or **multiplex** [@kivela2014multilayer].
+Advice has 190 arcs, nearly half of the 420 possible ones, and 47 percent of them are returned. Friendship has 102 arcs and about as much reciprocity (45 percent). Reporting lines have 20 arcs, one for every manager but the CEO, and none is returned: no boss reports to the person who reports to them. These three layers differ in size, in density and in what a direction *means*. Hold on to that; it will matter when we compare them.
 
-Layers raise questions single networks can't answer. Do the same pairs show up in each layer? Does a person central in one layer stay central in another? When a tie exists in one layer, does it make a tie in another more likely?
+## Words for several layers
 
-The simplest tools are the ones we already have. *Overlap* counts the pairs tied in both layers, and the Jaccard index divides that by the pairs tied in either. The **QAP correlation** of @sec-tests-and-null-models asks whether the overlap is more than chance would give, while respecting the dependence among a person's ties.
+The vocabulary here is not fully settled, so it helps to say what each word covers.
 
-### Step 5: compare two layers
+A **multigraph** is a single network that is allowed to have several ties between the same two nodes. Nothing says what the parallel ties are. Two people who exchanged ten emails might be drawn as ten parallel lines.
 
-We use two layers over the ten people of the office. The first is the advice network from @sec-positions-and-roles, with the direction ignored so that a tie means "one asked the other." The second is invented: who eats lunch together.
+A **multiplex network** has the same nodes in every layer, and each layer is one kind of tie. The ties only run within a layer. Krackhardt's managers are multiplex: 21 people, three kinds of tie.
+
+A **multilayer network** is the general case [@kivela2014multilayer]. Layers can be kinds of tie, but also times, places or platforms. A person need not appear in every layer, and ties can run *between* layers, for example from a person on one platform to a different person on another. Ties inside a layer are *intralayer* ties. A tie that links a person to *themselves* in another layer is a *coupling*. A multiplex network is the special case with the same nodes everywhere and couplings only. A formal treatment of all of this is in @dedomenico2013mathematical.
+
+You will also meet the word **multiplexity**, usually meaning how many layers a pair of people share. We use it that way.
+
+A tiny example you can check by hand. Three people, Ana, Ben and Cleo, and two layers.
+
+| Pair | In advice? | In lunch? |
+| --- | --- | --- |
+| Ana and Ben | yes | yes |
+| Ben and Cleo | yes | no |
+| Ana and Cleo | no | no |
+
+Two pairs are tied in advice, one pair in lunch, and one pair (Ana and Ben) in both. Three words from this chapter fit on that table. The *overlap* is the count of pairs in both layers, here 1. The **Jaccard index** divides the overlap by the number of pairs tied in either layer, here 1 out of 2, so 0.5. And a *conditional probability* asks about one layer given the other: of the two advice pairs, one is also a lunch pair, so the chance of lunch given advice is 1 in 2, while of the one lunch pair, every one is an advice pair, so the chance of advice given lunch is 1.
+
+Is the knappnet code for this a multilayer object? It can be. In R a multiplex network with a `relation` role is split into layers with `net_split_relations()`, and `net_as_multilayer()` adds the coupling ties for the general case. Below we mostly use plain tables, one per layer, because each step is then visible.
+
+## Overlap and redundancy
+
+Here is the first real question. Do the same pairs of managers appear in advice, friendship and reporting? Two numbers answer it from different angles.
+
+The **overlap** of two layers is the number of ties present in both. The **Jaccard index** turns that into a share by dividing by the number of ties present in *either*, so it runs from 0 (nothing in common) to 1 (identical layers). Because it divides by the union, it does not reward a big layer for simply containing a small one.
+
+The Jaccard index says how alike the layers are overall. A **conditional probability** asks a more pointed question. Pick an advice tie at random. How likely is it that the same ordered pair is also a friendship tie? To judge a number like that you have to compare it with how common friendship ties are among *all* ordered pairs, which is the **base rate**. If friendship is in 24 percent of all ordered pairs, and 32 percent of advice pairs, then advice pairs are a little more likely than a random pair to also be friends. The ratio of the two, here about 1.3, is how many times more likely.
 
 ::: {.panel-tabset group="language"}
 
 ## R
 
 ```r
-# Two layers on the ten people of the office. Layer 1 is the advice network from the positions chapter (an arc means "asks").
-# Layer 2 is invented: who eats lunch together (undirected).
-people <- c("Ada", "Ben", "Cy", "Dee", "Eve", "Flo", "Gus", "Hal", "Ivy", "Jay")
-asks <- tibble(
-  source = people[c(1, 2, 3, 3, 4, 4, 5, 5, 6, 7, 8, 9, 10)],
-  target = people[c(2, 1, 1, 2, 1, 2, 1, 2, 3, 3, 4, 5, 5)]
+pairs <- tribble(
+  ~a, ~b,
+  "advice", "friendship",
+  "advice", "reports_to",
+  "friendship", "reports_to"
 )
-lunch <- tibble(
-  source = people[c(1, 3, 5, 7, 9, 1, 2, 3)],
-  target = people[c(2, 4, 6, 8, 10, 3, 4, 6)]
-)
-nodes <- tibble(id = people)
+total <- \(k) sum(layer[[k]])
+any_direction <- \(k) pmax(layer[[k]], t(layer[[k]]))[upper.tri(layer[[k]])]
 
-# Treat advice as a plain connection (either direction) so the two layers are comparable pair by pair.
-asked <- as.matrix(net_frame(asks, nodes = nodes, directed = TRUE))
-advice_layer <- pmax(asked, t(asked))
-lunch_layer <- as.matrix(net_frame(lunch, nodes = nodes, directed = FALSE))
+# Overlap and Jaccard, counting arcs, and again when a tie in either direction counts.
+pairs |>
+  mutate(
+    both = map2_dbl(a, b, \(x, y) sum(layer[[x]] * layer[[y]])),
+    jaccard = round(both / (map_dbl(a, total) + map_dbl(b, total) - both), 2),
+    jaccard_either_direction = round(
+      map2_dbl(a, b, \(x, y) sum(any_direction(x) * any_direction(y)) / sum(pmax(any_direction(x), any_direction(y)))),
+      2
+    )
+  )
 
-# One row per pair of people (each pair once): is it tied in each layer?
-layers <- tibble(
-  advice = advice_layer[upper.tri(advice_layer)],
-  lunch = lunch_layer[upper.tri(lunch_layer)]
-)
-layers |>
-  summarise(advice_pairs = sum(advice), lunch_pairs = sum(lunch), both = sum(advice & lunch)) |>
-  mutate(jaccard = round(both / (advice_pairs + lunch_pairs - both), 2))
-
-# Is that overlap more than relabeling the people would produce by chance? The QAP test of the tests chapter answers it.
-test <- net_qap_cor(advice_layer, lunch_layer, mode = "graph", reps = 10000, seed = 1)
-tibble(
-  correlation = test$statistic,
-  pairs = test$dyads,
-  share_at_least = test$p.value[["Pr(>=r)"]]
+# Given a tie in one layer, how likely is the same pair in another? Compared with the base rate.
+tribble(
+  ~given, ~then,
+  "advice", "friendship",
+  "friendship", "advice",
+  "reports_to", "advice",
+  "advice", "reports_to"
 ) |>
-  mutate(across(c(correlation, share_at_least), \(x) round(x, 3)))
+  mutate(
+    p_given = round(map2_dbl(given, then, \(g, t) sum(layer[[g]] * layer[[t]]) / total(g)), 3),
+    p_overall = round(map_dbl(then, total) / 420, 3),
+    ratio = round(p_given / p_overall, 2)
+  )
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 1 × 4
-  advice_pairs lunch_pairs  both jaccard
-         <dbl>       <dbl> <int>   <dbl>
-1           12           8     4    0.25
-# A tibble: 1 × 3
-  correlation pairs share_at_least
-        <dbl> <dbl>          <dbl>
-1       0.245    45          0.108
+PENDING
 ```
 :::
 
 ## Python
 
 ```python
-# Two layers on the ten people of the office. Layer 1 is the advice network from the positions chapter (an arc means "asks").
-# Layer 2 is invented: who eats lunch together (undirected). Positions 0 to 9 are Ada to Jay.
-asks = [(0, 1), (1, 0), (2, 0), (2, 1), (3, 0), (3, 1), (4, 0), (4, 1), (5, 2), (6, 2), (7, 3), (8, 4), (9, 4)]
-lunch = [(0, 1), (2, 3), (4, 5), (6, 7), (8, 9), (0, 2), (1, 3), (2, 5)]
-advice_layer = np.zeros((10, 10))
-lunch_layer = np.zeros((10, 10))
-# Treat advice as a plain connection (either direction) so the two layers are comparable pair by pair.
-for i, j in asks:
-    advice_layer[i, j] = advice_layer[j, i] = 1
-for i, j in lunch:
-    lunch_layer[i, j] = lunch_layer[j, i] = 1
+pairs = [("advice", "friendship"), ("advice", "reports_to"), ("friendship", "reports_to")]
+upper = np.triu_indices(21, k=1)
 
-up = np.triu_indices(10, k=1)
-x, y = advice_layer[up], lunch_layer[up]
-advice_pairs, lunch_pairs, both = int(x.sum()), int(y.sum()), int((x * y).sum())
-print(f"advice pairs {advice_pairs}, lunch pairs {lunch_pairs}, in both {both}")
-print(f"overlap (Jaccard) {both / (advice_pairs + lunch_pairs - both):.2f}")
+def either_direction(m):
+    # a pair counts as tied if either manager names the other
+    return (m | m.T)[upper]
 
-# Is that overlap more than relabeling the people would produce by chance? The QAP test of the tests chapter answers it.
-# No mainstream Python package has it, so we relabel the people in one layer (rows and columns together).
-observed = np.corrcoef(x, y)[0, 1]
-print(f"correlation between layers {observed:.3f} over {len(x)} pairs")
-rng = np.random.default_rng(1)
-draws = [np.corrcoef(advice_layer[np.ix_(p, p)][up], y)[0, 1] for p in (rng.permutation(10) for _ in range(10000))]
-print(f"share of relabelings at least that high {np.mean(np.array(draws) >= observed - 1e-10):.3f}")
+# Overlap and Jaccard, counting arcs, and again when a tie in either direction counts.
+print("layers                       both  Jaccard  Jaccard, either direction")
+for a, b in pairs:
+    both = int((layer[a] & layer[b]).sum())
+    jaccard = both / (layer[a] | layer[b]).sum()
+    x, y = either_direction(layer[a]), either_direction(layer[b])
+    print(f"{a + ' & ' + b:<27} {both:>5} {jaccard:>8.2f} {(x & y).sum() / (x | y).sum():>26.2f}")
+
+# Given a tie in one layer, how likely is the same pair in another? Compared with the base rate.
+print("given         then          P(then | given)  P(then) overall  ratio")
+for given, then in [("advice", "friendship"), ("friendship", "advice"), ("reports_to", "advice"), ("advice", "reports_to")]:
+    p_given = (layer[given] & layer[then]).sum() / layer[given].sum()
+    p_overall = layer[then].sum() / 420
+    print(f"{given:<13} {then:<13} {p_given:>15.3f} {p_overall:>16.3f} {p_given / p_overall:>7.2f}")
 ```
 
 ::: {.code-output}
 ```text
-advice pairs 12, lunch pairs 8, in both 4
-overlap (Jaccard) 0.25
-correlation between layers 0.245 over 45 pairs
-share of relabelings at least that high 0.110
+layers                       both  Jaccard  Jaccard, either direction
+advice & friendship            60     0.26                       0.41
+advice & reports_to            19     0.10                       0.14
+friendship & reports_to        12     0.11                       0.14
+given         then          P(then | given)  P(then) overall  ratio
+advice        friendship              0.316            0.243    1.30
+friendship    advice                  0.588            0.452    1.30
+reports_to    advice                  0.950            0.452    2.10
+advice        reports_to              0.100            0.048    2.10
+```
+:::
+
+## Rust
+
+```rust
+let pairs = [(0, 1), (0, 2), (1, 2)];
+let arcs = |k: usize| layer[k].iter().flatten().filter(|&&x| x == 1).count();
+let in_both = |a: usize, b: usize| (0..21).flat_map(|i| (0..21).map(move |j| (i, j))).filter(|&(i, j)| layer[a][i][j] == 1 && layer[b][i][j] == 1).count();
+// Overlap and Jaccard, counting arcs, and again when a tie in either direction counts.
+println!("layers                       both  Jaccard  Jaccard, either direction");
+for (a, b) in pairs {
+    let both = in_both(a, b);
+    let tied = |k: usize, i: usize, j: usize| layer[k][i][j] == 1 || layer[k][j][i] == 1;
+    let upper: Vec<(usize, usize)> = (0..21).flat_map(|i| ((i + 1)..21).map(move |j| (i, j))).collect();
+    let both_any = upper.iter().filter(|&&(i, j)| tied(a, i, j) && tied(b, i, j)).count();
+    let either_any = upper.iter().filter(|&&(i, j)| tied(a, i, j) || tied(b, i, j)).count();
+    println!("{:<27} {:>5} {:>8.2} {:>26.2}", format!("{} & {}", names[a], names[b]), both,
+             both as f64 / (arcs(a) + arcs(b) - both) as f64, both_any as f64 / either_any as f64);
+}
+
+// Given a tie in one layer, how likely is the same pair in another? Compared with the base rate.
+println!("given         then          P(then | given)  P(then) overall  ratio");
+for (given, then) in [(0, 1), (1, 0), (2, 0), (0, 2)] {
+    let p_given = in_both(given, then) as f64 / arcs(given) as f64;
+    let p_overall = arcs(then) as f64 / 420.0;
+    println!("{:<13} {:<13} {:>15.3} {:>16.3} {:>7.2}", names[given], names[then], p_given, p_overall, p_given / p_overall);
+}
+```
+
+::: {.code-output}
+```text
+layers                       both  Jaccard  Jaccard, either direction
+advice & friendship            60     0.26                       0.41
+advice & reports_to            19     0.10                       0.14
+friendship & reports_to        12     0.11                       0.14
+given         then          P(then | given)  P(then) overall  ratio
+advice        friendship              0.316            0.243    1.30
+friendship    advice                  0.588            0.452    1.30
+reports_to    advice                  0.950            0.452    2.10
+advice        reports_to              0.100            0.048    2.10
+```
+:::
+
+:::
+
+Look at the first table. Advice and friendship share 60 arcs, a Jaccard of 0.26, so about a quarter of the pairs tied in either layer are tied in both. Advice and reporting share 19 arcs, and friendship and reporting 12. Now look at what happens when direction stops mattering: a tie counts if *either* manager names the other, and the Jaccard of advice and friendship goes up to 0.41. Same data, a different answer, because the question changed. We'll come back to that.
+
+The second table is more interesting. Of the 190 advice arcs, about 32 percent are also friendship arcs, against 24 percent of all ordered pairs. Advice arcs are somewhat more likely than a random pair to be friendship arcs, about 1.3 times more likely, and not dramatically so. Turn it around and the same ratio shows up: of the 102 friendship arcs, 59 percent are advice arcs, against 45 percent overall. (The ratio is the same in both directions. That's not a coincidence: both are the overlap divided by what you'd expect if the layers were unrelated.)
+
+Reporting is the outlier. Of the 20 reporting arcs, 19 are advice arcs: a manager very nearly always goes to their own boss for advice. That is 95 percent against a base rate of 45 percent, a ratio of about 2.1. Read it the other way and the ratio is the same, but now it says something different. Only 10 percent of advice arcs are reporting arcs, which is also twice the 5 percent of ordered pairs that are reporting arcs. Most advice goes sideways or across the firm, not up the chain.
+
+::: {.callout-warning appearance="simple"}
+## What a conditional probability does and does not say
+"Given advice, how likely is friendship?" describes how the two layers sit together *in this firm at this moment*. It doesn't say that advice leads to friendship, or friendship to advice, or that either is the reason for the other. The 95 percent for reporting is mostly the firm's design: a manager's boss is the person they are supposed to turn to. Overlap is a fact about the data. Explaining it takes more than the data.
+:::
+
+**Redundancy** is the idea behind this arithmetic. Two layers are redundant when one tells you what the other would. If advice and friendship were identical, you'd only need to ask one question. The overlap numbers say they're neither identical nor independent. Whether the overlap is high enough to treat the layers as one is not a statistical question. It depends on what you're about to do with the answer.
+
+## Flattening: union and sum
+
+You have three layers and a method that handles one network. The easy move is to merge them. There are two simple ways.
+
+The **union** says a pair is tied if it is tied in *any* layer. You end up with a single ordinary network. The **sum** (or weighted aggregate) keeps a count: the weight on a pair is the number of layers it is tied in. The union is the sum with every weight above 0 squashed to 1.
+
+How much does each merge keep? Code each ordered pair of managers by *which* layers tie it, and count.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# Code each ordered pair by the layers that tie it: advice 1, friendship 2, reporting 4.
+code <- (layer$advice + 2 * layer$friendship + 4 * layer$reports_to)[row(layer$advice) != col(layer$advice)]
+labels <- c("no layer", "advice only", "friendship only", "advice + friendship",
+            "reporting only", "advice + reporting", "friendship + reporting", "all three")
+
+tibble(code = factor(code, levels = 0:7)) |>
+  count(code, .drop = FALSE) |>
+  mutate(tied_in = labels, .before = 1) |>
+  select(tied_in, pairs = n)
+
+# What each merge keeps.
+tibble(union_arcs = sum(code > 0), in_two_or_more = sum(code %in% c(3, 5, 6, 7)))
+```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
+
+## Python
+
+```python
+# Code each ordered pair by the layers that tie it: advice 1, friendship 2, reporting 4.
+code = (layer["advice"] + 2 * layer["friendship"] + 4 * layer["reports_to"])[~np.eye(21, dtype=bool)]
+labels = ["no layer", "advice only", "friendship only", "advice + friendship", "reporting only",
+          "advice + reporting", "friendship + reporting", "all three"]
+for c, label in enumerate(labels):
+    print(f"{label:<24} {(code == c).sum():>4}")
+
+# What each merge keeps.
+print(f"union keeps {(code > 0).sum()} arcs; {np.isin(code, [3, 5, 6, 7]).sum()} of them are in two or more layers")
+```
+
+::: {.code-output}
+```text
+no layer                  188
+advice only               122
+friendship only            41
+advice + friendship        49
+reporting only              0
+advice + reporting          8
+friendship + reporting      1
+all three                  11
+union keeps 232 arcs; 69 of them are in two or more layers
+```
+:::
+
+## Rust
+
+```rust
+// Code each ordered pair by the layers that tie it: advice 1, friendship 2, reporting 4.
+let code: Vec<u8> = (0..21).flat_map(|i| (0..21).map(move |j| (i, j))).filter(|&(i, j)| i != j)
+    .map(|(i, j)| layer[0][i][j] + 2 * layer[1][i][j] + 4 * layer[2][i][j]).collect();
+let labels = ["no layer", "advice only", "friendship only", "advice + friendship", "reporting only",
+              "advice + reporting", "friendship + reporting", "all three"];
+for (c, label) in labels.iter().enumerate() {
+    println!("{:<24} {:>4}", label, code.iter().filter(|&&x| x as usize == c).count());
+}
+
+// What each merge keeps.
+println!("union keeps {} arcs; {} of them are in two or more layers",
+         code.iter().filter(|&&x| x > 0).count(), code.iter().filter(|&&x| [3, 5, 6, 7].contains(&x)).count());
+```
+
+::: {.code-output}
+```text
+no layer                  188
+advice only               122
+friendship only            41
+advice + friendship        49
+reporting only              0
+advice + reporting          8
+friendship + reporting      1
+all three                  11
+union keeps 232 arcs; 69 of them are in two or more layers
+```
+:::
+
+:::
+
+@fig-multilayer-overlap draws the same counts.
+
+![Every directed pair of managers sorted by the layers it belongs to. Most tied pairs live in a single layer; only a few are tied in all three.](../figures/multilayer-overlap.svg){#fig-multilayer-overlap fig-alt="Horizontal bars, one for each combination of layers. advice: 122. friendship: 41. reporting: 0. advice + friendship: 49. advice + reporting: 8. friendship + reporting: 1. advice + friendship + reporting: 11. A note under the bars says 188 of the 420 directed pairs are tied in no layer."}
+
+Of 420 ordered pairs, 188 are tied in no layer at all, and 232 are tied in at least one. The union keeps all 232 as ties. Only 69 of them are tied in two or more layers, so if you take the union, 163 of its 232 arcs (70 percent) are a tie from exactly one layer, and the merged network can't say which. A merged tie might be a friendship, a request for advice, or a boss. Those are different kinds of thing. The sum is more careful: a weight of 3 marks the 11 pairs where the boss is also an advisor and a friend. But adding assumes that one layer's tie is worth the same as another's, which has to be argued, not assumed.
+
+::: {.callout-tip appearance="simple"}
+## What flattening hides
+Which layer a tie came from. Whether two ties between the same pair agree in direction. Whether a person's ties are all of one kind. A sparse layer disappears beside a dense one. If a question is about one kind of tie, such as who people trust with a secret, answer it from that layer. Flatten only when your question is really about "connected in any way."
+:::
+
+## Layer by layer: degree and centrality
+
+So far we've compared the *ties*. The other question is about the *people*. Is the manager who is sought out for advice the same one who is named a friend? That is a question about how a person's degree in one layer relates to their degree in another, which Battiston and colleagues call the inter-layer degree correlation [@battiston2014structural]. Take each manager's in-degree in each layer (how many people name them) and correlate.
+
+Two correlations are worth printing. The ordinary Pearson one is sensitive to a few extreme values. Spearman's $\rho$ is the same correlation computed on ranks, so one very popular person can't dominate it.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+indeg <- map(layer, colSums)
+outdeg <- map(layer, rowSums)
+pairs |>
+  mutate(
+    in_degree_r = map2_dbl(a, b, \(x, y) cor(indeg[[x]], indeg[[y]])),
+    in_degree_rho = map2_dbl(a, b, \(x, y) cor(indeg[[x]], indeg[[y]], method = "spearman")),
+    out_degree_r = map2_dbl(a, b, \(x, y) cor(outdeg[[x]], outdeg[[y]]))
+  ) |>
+  mutate(across(where(is.numeric), \(x) round(x, 2)))
+```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
+
+## Python
+
+```python
+def ranks(x):
+    # 1 for the smallest; tied values share the average of their ranks
+    return np.array([(x < v).sum() + ((x == v).sum() + 1) / 2 for v in x])
+
+def corr(x, y):
+    return np.corrcoef(x, y)[0, 1]
+
+print("layers                      in-degree r  in-degree rho  out-degree r")
+for a, b in pairs:
+    ia, ib = layer[a].sum(axis=0), layer[b].sum(axis=0)
+    oa, ob = layer[a].sum(axis=1), layer[b].sum(axis=1)
+    print(f"{a + ' & ' + b:<27} {corr(ia, ib):>9.2f} {corr(ranks(ia), ranks(ib)):>14.2f} {corr(oa, ob):>13.2f}")
+```
+
+::: {.code-output}
+```text
+layers                      in-degree r  in-degree rho  out-degree r
+advice & friendship              0.31           0.14         -0.11
+advice & reports_to              0.54           0.65          0.04
+friendship & reports_to          0.09           0.00          0.25
+```
+:::
+
+## Rust
+
+```rust
+use knappnet::{compute_degree, DegreeMode};
+
+// Each layer as a directed network, so knappnet can count who names whom.
+let directed = |k: usize| -> Result<Graph, knappnet::Error> {
+    let arcs: Vec<(i64, i64)> = (0..21).flat_map(|i| (0..21).map(move |j| (i, j))).filter(|&(i, j)| layer[k][i][j] == 1).map(|(i, j)| (i as i64, j as i64)).collect();
+    let from: Vec<i64> = arcs.iter().map(|a| a.0).collect();
+    let to: Vec<i64> = arcs.iter().map(|a| a.1).collect();
+    Graph::from_edges(21, &from, &to, None, true)
+};
+let g = [directed(0)?, directed(1)?, directed(2)?];
+let ranks = |x: &[f64]| -> Vec<f64> {
+    x.iter().map(|&v| x.iter().filter(|&&u| u < v).count() as f64 + (x.iter().filter(|&&u| u == v).count() as f64 + 1.0) / 2.0).collect()
+};
+let corr = |x: &[f64], y: &[f64]| -> f64 {
+    let (mx, my) = (x.iter().sum::<f64>() / x.len() as f64, y.iter().sum::<f64>() / y.len() as f64);
+    let sxy: f64 = x.iter().zip(y).map(|(a, b)| (a - mx) * (b - my)).sum();
+    sxy / (x.iter().map(|a| (a - mx).powi(2)).sum::<f64>() * y.iter().map(|b| (b - my).powi(2)).sum::<f64>()).sqrt()
+};
+
+println!("layers                      in-degree r  in-degree rho  out-degree r");
+for (a, b) in pairs {
+    let (ia, ib) = (compute_degree(&g[a], DegreeMode::In, true), compute_degree(&g[b], DegreeMode::In, true));
+    let (oa, ob) = (compute_degree(&g[a], DegreeMode::Out, true), compute_degree(&g[b], DegreeMode::Out, true));
+    println!("{:<27} {:>9.2} {:>14.2} {:>13.2}", format!("{} & {}", names[a], names[b]), corr(&ia, &ib), corr(&ranks(&ia), &ranks(&ib)), corr(&oa, &ob));
+}
+```
+
+::: {.code-output}
+```text
+layers                      in-degree r  in-degree rho  out-degree r
+advice & friendship              0.31           0.14         -0.11
+advice & reports_to              0.54           0.65          0.04
+friendship & reports_to          0.09           0.00          0.25
+```
+:::
+
+:::
+
+Read the in-degree columns together. Advice and friendship have an in-degree correlation of 0.31 but a rank correlation of only 0.14, which says that the Pearson figure leans on a few managers and that for most of the firm, being sought for advice and being named a friend have little to do with each other. Advice and reporting come out higher (0.54 and 0.65). That fits the firm's shape: the managers named as bosses are the ones sought for advice. The out-degree for advice and friendship is slightly negative (-0.11): the managers who go to many people for advice are not the ones who name many friends. Treat the out-degree for reporting with care: every manager but the CEO has exactly one boss, so there is almost nothing to correlate. That number comes from how the data were made, not from how the firm works.
+
+Now the personal version of the question. Take betweenness, the share of shortest routes that pass through a person (see @sec-centrality), and compute it in the advice layer, the friendship layer, and the merged network (the union of all three). We ignore direction here, so that a pair is tied if either manager names the other. For each layer we print the managers in the top three of any of them.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+sym <- \(m) pmax(m, t(m))
+union <- pmin(layer$advice + layer$friendship + layer$reports_to, 1)
+between <- \(m) net_betweenness(as_net_frame(sym(m), directed = FALSE))
+
+scores <- tibble(
+  manager = 1:21,
+  advice = between(layer$advice),
+  friendship = between(layer$friendship),
+  all_ties = between(union)
+) |>
+  mutate(across(c(advice, friendship, all_ties), \(x) rank(-x), .names = "{.col}_rank"))
+
+scores |>
+  filter(if_any(ends_with("_rank"), \(r) r <= 3)) |>
+  mutate(across(c(advice, friendship, all_ties), \(x) round(x, 1))) |>
+  select(manager, advice, advice_rank, friendship, friendship_rank, all_ties, all_ties_rank)
+
+# A check: keep only friendships that both managers name.
+mutual <- between(layer$friendship * t(layer$friendship))
+tibble(manager = 17, betweenness = round(mutual[17], 1), rank = rank(-mutual)[17])
+```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
+
+## Python
+
+```python
+union = layer["advice"] | layer["friendship"] | layer["reports_to"]
+
+def between(m):
+    # ignore direction: a pair is tied if either manager names the other
+    g = nx.from_numpy_array(m | m.T)
+    b = nx.betweenness_centrality(g, normalized=False)
+    return np.array([b[i] for i in range(21)])
+
+score = {"advice": between(layer["advice"]), "friendship": between(layer["friendship"]), "all ties": between(union)}
+rank = {k: ranks(-v) for k, v in score.items()}  # 1 = most between
+
+top = [i for i in range(21) if any(r[i] <= 3 for r in rank.values())]
+print("manager    advice (rank)   friendship (rank)   all ties (rank)")
+for i in top:
+    print(f"{i + 1:>7}  " + "   ".join(f"{score[k][i]:>8.1f} ({rank[k][i]:>2.0f})" for k in score))
+
+# A check: keep only friendships that both managers name.
+mutual = between(layer["friendship"] & layer["friendship"].T)
+print(f"manager 17 with only mutual friendships: betweenness {mutual[16]:.1f}, rank {ranks(-mutual)[16]:.0f}")
+```
+
+::: {.code-output}
+```text
+manager    advice (rank)   friendship (rank)   all ties (rank)
+      2       6.4 ( 3)        9.5 ( 4)        4.8 ( 2)
+      5       5.1 ( 5)       12.1 ( 3)        3.9 ( 4)
+      9       6.5 ( 2)        1.3 (15)        4.1 ( 3)
+     11       1.1 (15)       28.0 ( 2)        2.5 (11)
+     15       9.1 ( 1)        4.3 ( 8)        5.7 ( 1)
+     17       0.8 (16)       43.9 ( 1)        3.7 ( 5)
+manager 17 with only mutual friendships: betweenness 72.0, rank 1
+```
+:::
+
+## Rust
+
+```rust
+use knappnet::{compute_betweenness, BetweennessOptions};
+
+let mut union = [[0u8; 21]; 21];
+for i in 0..21 { for j in 0..21 { union[i][j] = layer[0][i][j].max(layer[1][i][j]).max(layer[2][i][j]); } }
+
+// Ignore direction: a pair is tied if either manager names the other.
+let between = |m: &[[u8; 21]; 21]| -> Result<Vec<f64>, knappnet::Error> {
+    let pairs: Vec<(i64, i64)> = (0..21).flat_map(|i| ((i + 1)..21).map(move |j| (i, j))).filter(|&(i, j)| m[i][j] == 1 || m[j][i] == 1).map(|(i, j)| (i as i64, j as i64)).collect();
+    let from: Vec<i64> = pairs.iter().map(|p| p.0).collect();
+    let to: Vec<i64> = pairs.iter().map(|p| p.1).collect();
+    compute_betweenness(&Graph::from_edges(21, &from, &to, None, false)?, BetweennessOptions::default())
+};
+let score = [between(&layer[0])?, between(&layer[1])?, between(&union)?];
+let rank: Vec<Vec<f64>> = score.iter().map(|s| ranks(&s.iter().map(|v| -v).collect::<Vec<f64>>())).collect();
+
+println!("manager    advice (rank)   friendship (rank)   all ties (rank)");
+for i in (0..21).filter(|&i| rank.iter().any(|r| r[i] <= 3.0)) {
+    let cells: Vec<String> = (0..3).map(|k| format!("{:>8.1} ({:>2.0})", score[k][i], rank[k][i])).collect();
+    println!("{:>7}  {}", i + 1, cells.join("   "));
+}
+
+// A check: keep only friendships that both managers name.
+let mut mutual_layer = [[0u8; 21]; 21];
+for i in 0..21 { for j in 0..21 { mutual_layer[i][j] = layer[1][i][j] * layer[1][j][i]; } }
+let mutual = between(&mutual_layer)?;
+let mutual_rank = ranks(&mutual.iter().map(|v| -v).collect::<Vec<f64>>());
+println!("manager 17 with only mutual friendships: betweenness {:.1}, rank {:.0}", mutual[16], mutual_rank[16]);
+```
+
+::: {.code-output}
+```text
+manager    advice (rank)   friendship (rank)   all ties (rank)
+      2       6.4 ( 3)        9.5 ( 4)        4.8 ( 2)
+      5       5.1 ( 5)       12.1 ( 3)        3.9 ( 4)
+      9       6.5 ( 2)        1.3 (15)        4.1 ( 3)
+     11       1.1 (15)       28.0 ( 2)        2.5 (11)
+     15       9.1 ( 1)        4.3 ( 8)        5.7 ( 1)
+     17       0.8 (16)       43.9 ( 1)        3.7 ( 5)
+manager 17 with only mutual friendships: betweenness 72.0, rank 1
+```
+:::
+
+:::
+
+Manager 17 is the one to look at. In the friendship layer he has by far the largest betweenness, 43.9, and ranks first. In the advice layer he scores 0.8 and ranks 16th out of 21. Manager 2, by contrast, is near the top in advice and still high in friendship. @fig-multilayer-ranks puts every manager on one picture: manager 17 is the dot far from the diagonal.
+
+![Each dot is a manager. The horizontal position is the manager's betweenness rank among the advice ties and the vertical position is the rank among the friendship ties (1 is the most between). Manager 17 (orange) is first in friendship and far down in advice. Tied managers share an average rank.](../figures/multilayer-ranks.svg){#fig-multilayer-ranks fig-alt="A square scatter plot with 21 dots and a dashed diagonal. The other 20 dots are blue. The orange dot for manager 17 sits at the top of the plot, rank 1 on the friendship axis, and at rank 16 of 21 on the advice axis, far from the diagonal."}
+
+Why does this matter? Pick any one layer to ask "who is the key person?" and you can get a different answer from each. Here the answer from the merged network happens to land near the advice layer's, because the advice layer has nearly twice as many ties as the friendship layer and dominates the union. Manager 17 slips to fifth. If your question was who connects the *social* circles, the merged network has buried the answer. This is the practical cost of flattening: not that the numbers are wrong, but that the sparse layer is drowned out. Betweenness values are also not comparable *across* layers as raw numbers. A sparse layer has longer routes, so its values run larger. That is why we compare ranks.
+
+What does it say about manager 17? Not much by itself. He names 18 friends, the most of anyone, and is named by six. Because we ignore direction, all 18 count as ties, so it's fair to ask whether his position rests on friendships nobody returned. The last line of the output is that check: keep only friendships both managers name, and he is still first. That makes the finding sturdier. It still describes a position in one layer. It does not say that he is influential, liked or trusted.
+
+## Layer-aware paths
+
+Everything so far looked at layers one at a time, or after merging them. A method that treats the layers as *one* structure is a different kind of tool. The usual approach is a **supra-adjacency matrix**: stack the layers into one big table, with each layer's adjacency table on the diagonal and, off the diagonal, couplings that link each person to their own copy in the other layers [@kivela2014multilayer; @dedomenico2013mathematical].
+
+A hand-checkable case. Take Ana, Ben and Cleo again, with advice tying Ana and Ben, and lunch tying Ben and Cleo. The supra network has six nodes: each person once in each layer. The couplings join Ana-in-advice to Ana-in-lunch, and likewise for Ben and Cleo. Now ask how far Ana is from Cleo. In the merged network, two steps: Ana to Ben to Cleo. In the supra network, if switching layers costs a step, it takes three: Ana to Ben within advice, Ben from advice to lunch, Ben to Cleo within lunch. That extra step is the price of changing the *kind* of tie, which is sometimes exactly the thing you want to measure. Passing a work request along an advice chain and then having to switch to a social tie to pass on a favour are different acts.
+
+This book doesn't compute layer-aware paths. In R, knappnet can hold a multilayer network and adds the coupling ties for you (`net_as_multilayer()`), but I haven't verified a ready-made layer-aware path measure in any of the three tools used here, so I explain the idea in words and print no number for it. If you need these measures, look at tools built for the job: @magnani2021analysis describes an R package for multiplex social networks and @nurmi2024pymnet a Python library for multilayer networks. For community detection that spans layers, see @mucha2010community. Check what each one assumes about the couplings before you trust its output.
+
+## A second set of layers: Sampson's novices
+
+Krackhardt's layers are three different *kinds of tie*, all asked of the same people at about the same time. Sampson's monastery data are a good contrast. Samuel Sampson lived with a group of 18 novices in a New England monastery and asked each of them to rank the three novices they liked best, esteemed most and so on, for several relations, in a positive and a negative version of each [@sampson1968novitiate]. Liking was recorded at three times. The data are in the book's `data/sampson` folder.
+
+We use ten layers: liking at three times, then esteem, praise and positive influence, then disliking, disesteem, blame and negative influence. For each pair of layers we correlate the two tables of 0s and 1s over all 306 ordered pairs of novices. The code first prints how many ties each layer has and the fewest and most any novice names, which will turn out to matter.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+sn <- read.csv("data/sampson/nodes.csv")
+number <- set_names(sn$number, sn$name)
+order <- c("liking_t1", "liking_t2", "liking_t3", "esteem", "praise", "positive_influence",
+           "disliking", "disesteem", "blame", "negative_influence")
+short <- c("like1", "like2", "like3", "esteem", "praise", "influ+", "dislike", "disest", "blame", "influ-")
+
+sampson <- read.csv("data/sampson/edges.csv") |>
+  mutate(key = if_else(relation == "liking", paste0("liking_t", time), relation)) |>
+  split(~key) |>
+  map(\(e) {
+    m <- matrix(0, 18, 18)
+    m[cbind(unname(number[e$from]), unname(number[e$to]))] <- 1
+    m
+  })
+
+# How many ties, and how many does one novice name at the fewest and the most?
+tibble(
+  layer = order,
+  ties = map_dbl(sampson[order], sum),
+  fewest = map_dbl(sampson[order], \(m) min(rowSums(m))),
+  most = map_dbl(sampson[order], \(m) max(rowSums(m)))
+)
+
+# Correlation between layers over all ordered pairs of novices.
+sampson[order] |>
+  map(\(m) m[row(m) != col(m)]) |>
+  set_names(short) |>
+  as_tibble() |>
+  cor() |>
+  round(2)
+```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
+
+## Python
+
+```python
+with open("data/sampson/nodes.csv") as f:
+    number = {r["name"]: int(r["number"]) - 1 for r in csv.DictReader(f)}
+with open("data/sampson/edges.csv") as f:
+    sampson_rows = list(csv.DictReader(f))
+order = ["liking_t1", "liking_t2", "liking_t3", "esteem", "praise", "positive_influence",
+         "disliking", "disesteem", "blame", "negative_influence"]
+short = ["like1", "like2", "like3", "esteem", "praise", "influ+", "dislike", "disest", "blame", "influ-"]
+
+sampson = {k: np.zeros((18, 18), dtype=int) for k in order}
+for r in sampson_rows:
+    key = r["relation"] + (f"_t{r['time']}" if r["relation"] == "liking" else "")
+    sampson[key][number[r["from"]], number[r["to"]]] = 1
+
+# How many ties, and how many does one novice name at the fewest and the most?
+for k in order:
+    m = sampson[k]
+    print(f"{k:<19} {m.sum():>3} ties, fewest named {m.sum(axis=1).min()}, most {m.sum(axis=1).max()}")
+
+# Correlation between layers over all ordered pairs of novices.
+off = ~np.eye(18, dtype=bool)
+table = np.corrcoef(np.array([sampson[k][off] for k in order]))
+print(" " * 8 + "".join(f"{s:>8}" for s in short))
+for s, row in zip(short, table):
+    print(f"{s:<8}" + "".join(f"{v:>8.2f}" for v in row))
+```
+
+::: {.code-output}
+```text
+liking_t1            55 ties, fewest named 3, most 4
+liking_t2            57 ties, fewest named 3, most 4
+liking_t3            56 ties, fewest named 3, most 4
+esteem               54 ties, fewest named 0, most 4
+praise               39 ties, fewest named 0, most 4
+positive_influence   53 ties, fewest named 0, most 4
+disliking            47 ties, fewest named 0, most 4
+disesteem            58 ties, fewest named 0, most 5
+blame                41 ties, fewest named 0, most 5
+negative_influence   50 ties, fewest named 0, most 5
+           like1   like2   like3  esteem  praise  influ+ dislike  disest   blame  influ-
+like1       1.00    0.54    0.55    0.01    0.03    0.01    0.04   -0.03   -0.01   -0.07
+like2       0.54    1.00    0.64    0.02    0.04    0.00    0.01   -0.06   -0.04   -0.05
+like3       0.55    0.64    1.00    0.07    0.12    0.07    0.03   -0.03   -0.06   -0.03
+esteem      0.01    0.02    0.07    1.00    0.54    0.67   -0.17   -0.22   -0.16   -0.20
+praise      0.03    0.04    0.12    0.54    1.00    0.58   -0.16   -0.16   -0.15   -0.17
+influ+      0.01    0.00    0.07    0.67    0.58    1.00   -0.12   -0.18   -0.18   -0.20
+dislike     0.04    0.01    0.03   -0.17   -0.16   -0.12    1.00    0.65    0.28    0.55
+disest     -0.03   -0.06   -0.03   -0.22   -0.16   -0.18    0.65    1.00    0.37    0.58
+blame      -0.01   -0.04   -0.06   -0.16   -0.15   -0.18    0.28    0.37    1.00    0.35
+influ-     -0.07   -0.05   -0.03   -0.20   -0.17   -0.20    0.55    0.58    0.35    1.00
+```
+:::
+
+## Rust
+
+```rust
+use std::collections::HashMap;
+
+let nodes = std::fs::read_to_string("data/sampson/nodes.csv")?;
+let number: HashMap<&str, usize> = nodes.lines().skip(1).map(|l| { let p: Vec<&str> = l.split(',').collect(); (p[0], p[1].parse::<usize>().unwrap() - 1) }).collect();
+let order = ["liking_t1", "liking_t2", "liking_t3", "esteem", "praise", "positive_influence",
+             "disliking", "disesteem", "blame", "negative_influence"];
+let short = ["like1", "like2", "like3", "esteem", "praise", "influ+", "dislike", "disest", "blame", "influ-"];
+
+let mut sampson = vec![[[0u8; 18]; 18]; 10];
+let edges = std::fs::read_to_string("data/sampson/edges.csv")?;
+for line in edges.lines().skip(1) {
+    let p: Vec<&str> = line.split(',').collect(); // from, to, relation, sign, time, rank
+    let key = if p[2] == "liking" { format!("liking_t{}", p[4]) } else { p[2].to_string() };
+    let k = order.iter().position(|&o| o == key).unwrap();
+    sampson[k][number[p[0]]][number[p[1]]] = 1;
+}
+
+// How many ties, and how many does one novice name at the fewest and the most?
+for (k, name) in order.iter().enumerate() {
+    let named: Vec<usize> = (0..18).map(|i| sampson[k][i].iter().filter(|&&x| x == 1).count()).collect();
+    println!("{:<19} {:>3} ties, fewest named {}, most {}", name, named.iter().sum::<usize>(), named.iter().min().unwrap(), named.iter().max().unwrap());
+}
+
+// Correlation between layers over all ordered pairs of novices.
+let cells: Vec<Vec<f64>> = (0..10).map(|k| (0..18).flat_map(|i| (0..18).map(move |j| (i, j))).filter(|&(i, j)| i != j).map(|(i, j)| sampson[k][i][j] as f64).collect()).collect();
+print!("{:8}", "");
+for s in short { print!("{:>8}", s); }
+println!();
+for a in 0..10 {
+    print!("{:<8}", short[a]);
+    for b in 0..10 { print!("{:>8.2}", corr(&cells[a], &cells[b])); }
+    println!();
+}
+```
+
+::: {.code-output}
+```text
+liking_t1            55 ties, fewest named 3, most 4
+liking_t2            57 ties, fewest named 3, most 4
+liking_t3            56 ties, fewest named 3, most 4
+esteem               54 ties, fewest named 0, most 4
+praise               39 ties, fewest named 0, most 4
+positive_influence   53 ties, fewest named 0, most 4
+disliking            47 ties, fewest named 0, most 4
+disesteem            58 ties, fewest named 0, most 5
+blame                41 ties, fewest named 0, most 5
+negative_influence   50 ties, fewest named 0, most 5
+           like1   like2   like3  esteem  praise  influ+ dislike  disest   blame  influ-
+like1       1.00    0.54    0.55    0.01    0.03    0.01    0.04   -0.03   -0.01   -0.07
+like2       0.54    1.00    0.64    0.02    0.04    0.00    0.01   -0.06   -0.04   -0.05
+like3       0.55    0.64    1.00    0.07    0.12    0.07    0.03   -0.03   -0.06   -0.03
+esteem      0.01    0.02    0.07    1.00    0.54    0.67   -0.17   -0.22   -0.16   -0.20
+praise      0.03    0.04    0.12    0.54    1.00    0.58   -0.16   -0.16   -0.15   -0.17
+influ+      0.01    0.00    0.07    0.67    0.58    1.00   -0.12   -0.18   -0.18   -0.20
+dislike     0.04    0.01    0.03   -0.17   -0.16   -0.12    1.00    0.65    0.28    0.55
+disest     -0.03   -0.06   -0.03   -0.22   -0.16   -0.18    0.65    1.00    0.37    0.58
+blame      -0.01   -0.04   -0.06   -0.16   -0.15   -0.18    0.28    0.37    1.00    0.35
+influ-     -0.07   -0.05   -0.03   -0.20   -0.17   -0.20    0.55    0.58    0.35    1.00
+```
+:::
+
+:::
+
+@fig-multilayer-sampson draws that table of correlations.
+
+![Correlations between ten layers among Sampson's 18 novices: liking at three times, esteem, praise and positive influence, then their negative counterparts. The positive relations other than liking go together, the negative ones go together, and liking stands apart from both.](../figures/multilayer-sampson.svg){#fig-multilayer-sampson fig-alt="A ten by ten grid of numbers shaded blue for positive and red for negative correlations. The three liking rows form a blue block with values from 0.54 to 0.64. Esteem, praise and positive influence form a second blue block from 0.54 to 0.67. The four negative relations form a third blue block from 0.28 to 0.65. Between the second and third blocks every value is red, from -0.22 to -0.12. Liking at time 3 against esteem is only 0.07."}
+
+Three things stand out, and none of them is visible in Krackhardt's data.
+
+First, **layers can be waves.** The three liking layers are the same question asked at three times, and they correlate at 0.54 to 0.64 with each other: who likes whom is fairly stable, but not fixed. That is a hint at the time dimension that @sec-time takes up properly.
+
+Second, **layers can be unrelated.** Liking correlates with esteem, praise and influence at essentially nothing (0.01 to 0.12). Whom a novice *likes* and whom he *esteems* are different groups of people. A single "positive ties" network built from the union would mix two different structures.
+
+Third, **the negative layers are not the absence of the positive ones.** Esteem and disesteem are mildly negatively correlated (-0.22), as you'd hope, but liking and disliking at time 3 are not related at all (0.03). Not being among someone's three favourites does not make you one of the people they dislike, and nothing in a table of 0s and 1s can tell those apart unless you kept the negative layer.
+
+Now look at the first printout. Every novice named three or four people in each of the three liking layers, and no one named more than four or five in any layer, because each question asked for a ranking of the top three (with a few ties). That is a feature of how the data were collected. It means out-degree in these layers is set by the questionnaire and not by the novices, and it means correlations between layers are partly shaped by the same cap. We come back to this below.
+
+## Reading multilayer results honestly
+
+A layer-by-layer analysis produces many numbers. It is easy to say too much about them. A few rules.
+
+**Are the layers comparable at all?** Two layers can be compared only as far as they measure similar things on the same people. Krackhardt's advice and friendship ties are what each manager said about himself; the reporting layer is from company records. Sampson's layers are ranked top-three choices. A comparison treats those as the same kind of thing, which they are not. A difference in density might reflect the question wording, not the people. Say what each layer is before you compare it.
+
+**Measure type changes what a number means.** A correlation between layers depends on how dense each layer is, and on whether you treat a tie as present or absent or as a count or a rank. A Jaccard index has the same problem, in a milder form. Don't compare overlap numbers from different datasets unless the layers are similar in density and how they were measured. Compare against what you would expect by chance, not against 0 or 1.
+
+**Direction matters, and merging directions is a choice.** We got a Jaccard of 0.26 for advice and friendship when we counted arcs, and 0.41 when we ignored direction. Neither is wrong. They answer "do the same ordered pairs appear?" and "do the same *pairs* appear?" Say which you computed. For some layers direction hardly exists (reporting lines run one way by design), and symmetrizing everything to "tied or not" throws away information about who asks whom.
+
+**Overlap is not redundancy, and it is not cause.** Two layers overlap for many reasons: people really do befriend those they ask for advice, but the same questionnaire may have prompted the same names, one layer may have been defined by the other (a boss is the person you are supposed to ask), or both may follow the firm's physical layout. The data can show that two layers go together. They can't say why, or which came first. Everything here is a snapshot.
+
+**A central person in a layer is central in that layer.** Manager 17 is a bridge in the friendship layer. That is the whole claim. It does not say he's well liked, trusted or influential, and it doesn't say he matters in any other layer. A flattened network gives one score for a person who plays several roles; a layered one gives several scores and invites you to choose which one fits your question.
+
+**Is the overlap more than chance?** So far we have described overlaps. A natural next question is whether the overlap is *more than you would expect if the layers were unrelated*. The right comparison isn't to shuffle the ties independently, because ties that share a person are not independent of each other. The **quadratic assignment procedure** (QAP) relabels the *people* in one layer, rows and columns together, and recomputes the correlation. If the real correlation is unusual among the relabeled ones, the layers go together more than chance alone would explain [@hubert1976quadratic; @krackhardt1987qap]. @sec-tests-and-null-models explains why this works and where it breaks. Here is the test on three pairs of Krackhardt's layers, reading every ordered pair.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+tests <- pairs |>
+  mutate(test = map2(a, b, \(x, y) net_qap_cor(layer[[x]], layer[[y]], mode = "digraph", reps = 10000, seed = 1)))
+tests |>
+  mutate(
+    correlation = round(map_dbl(test, \(t) as.numeric(t$statistic)), 3),
+    share_at_least = round(map_dbl(test, \(t) t$p.value[["Pr(>=r)"]]), 4)
+  ) |>
+  select(a, b, correlation, share_at_least)
+```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
+
+## Python
+
+```python
+def qap(a, b, reps=10000, seed=1):
+    # relabel the managers in one layer (rows and columns together) and recompute the correlation
+    off = ~np.eye(21, dtype=bool)
+    rng = np.random.default_rng(seed)
+    observed = corr(a[off], b[off])
+    draws = np.empty(reps)
+    for r in range(reps):
+        p = rng.permutation(21)
+        draws[r] = corr(a[np.ix_(p, p)][off], b[off])
+    return observed, np.mean(draws >= observed - 1e-10)
+
+# Python draws its own relabelings, so the last digit of the share can differ from the other tabs.
+print("layers                      correlation  share of relabelings at least that high")
+for a, b in pairs:
+    r, share = qap(layer[a], layer[b])
+    print(f"{a + ' & ' + b:<27} {r:>11.3f} {share:>20.4f}")
+```
+
+::: {.code-output}
+```text
+layers                      correlation  share of relabelings at least that high
+advice & friendship               0.155               0.0192
+advice & reports_to               0.224               0.0000
+friendship & reports_to           0.186               0.0001
 ```
 :::
 
@@ -157,59 +892,53 @@ share of relabelings at least that high 0.110
 use knappnet::matrix::Dense;
 use knappnet::qap::{compute_qap_cor, Permutations, QapCorOptions, QapMode};
 
-// Two layers on the ten people of the office. Layer 1 is the advice network from the positions chapter (an arc means "asks").
-// Layer 2 is invented: who eats lunch together (undirected). Positions 0 to 9 are Ada to Jay.
-let asks = [(0, 1), (1, 0), (2, 0), (2, 1), (3, 0), (3, 1), (4, 0), (4, 1), (5, 2), (6, 2), (7, 3), (8, 4), (9, 4)];
-let lunch = [(0, 1), (2, 3), (4, 5), (6, 7), (8, 9), (0, 2), (1, 3), (2, 5)];
-let mut advice_layer = Dense::zeros(10, 10);
-let mut lunch_layer = Dense::zeros(10, 10);
-// Treat advice as a plain connection (either direction) so the two layers are comparable pair by pair.
-for &(i, j) in &asks { advice_layer.set(i, j, 1.0); advice_layer.set(j, i, 1.0); }
-for &(i, j) in &lunch { lunch_layer.set(i, j, 1.0); lunch_layer.set(j, i, 1.0); }
-
-let pairs_in = |layer: &Dense| (0..10).flat_map(|i| ((i + 1)..10).map(move |j| (i, j))).filter(|&(i, j)| layer.get(i, j) == 1.0).count();
-let advice_pairs = pairs_in(&advice_layer);
-let lunch_pairs = pairs_in(&lunch_layer);
-let both = (0..10).flat_map(|i| ((i + 1)..10).map(move |j| (i, j))).filter(|&(i, j)| advice_layer.get(i, j) == 1.0 && lunch_layer.get(i, j) == 1.0).count();
-println!("advice pairs {advice_pairs}, lunch pairs {lunch_pairs}, in both {both}");
-println!("overlap (Jaccard) {:.2}", both as f64 / (advice_pairs + lunch_pairs - both) as f64);
-
-// Is that overlap more than relabeling the people would produce by chance? The QAP test of the tests chapter answers it.
-let options = QapCorOptions { mode: QapMode::Graph, permutations: Permutations::Random { reps: 10_000, seed: 1 }, ..Default::default() };
-let test = compute_qap_cor(&advice_layer, &lunch_layer, options)?;
-println!("correlation between layers {:.3} over {} pairs", test.statistic, test.dyads);
-println!("share of relabelings at least that high {:.3}", test.tail.compute_p_ge());
+let dense = |k: usize| {
+    let mut d = Dense::zeros(21, 21);
+    for i in 0..21 { for j in 0..21 { d.set(i, j, layer[k][i][j] as f64); } }
+    d
+};
+println!("layers                      correlation  share of relabelings at least that high");
+for (a, b) in pairs {
+    let options = QapCorOptions { mode: QapMode::Digraph, permutations: Permutations::Random { reps: 10_000, seed: 1 }, ..Default::default() };
+    let test = compute_qap_cor(&dense(a), &dense(b), options)?;
+    println!("{:<27} {:>11.3} {:>20.4}", format!("{} & {}", names[a], names[b]), test.statistic, test.tail.compute_p_ge());
+}
 ```
 
 ::: {.code-output}
 ```text
-advice pairs 12, lunch pairs 8, in both 4
-overlap (Jaccard) 0.25
-correlation between layers 0.245 over 45 pairs
-share of relabelings at least that high 0.108
+layers                      correlation  share of relabelings at least that high
+advice & friendship               0.155               0.0186
+advice & reports_to               0.224               0.0000
+friendship & reports_to           0.186               0.0002
 ```
 :::
 
 :::
 
-Of 12 advice pairs and 8 lunch pairs, 4 are in both. The Jaccard overlap is 0.25: one pair in four tied in either layer is tied in both. The correlation between the layers is 0.245. Is that surprising? Across 10,000 relabelings of the people, about 11 percent produce a correlation at least this high. With ten people, that isn't enough to rule out chance. Overlap this big could easily come from two unrelated layers.
+The correlation between advice and friendship is 0.155 over the 420 ordered pairs, and about 2 percent of the 10,000 relabelings (0.0186 in the Rust run) reach it. So the overlap is more than the people's bundled ties alone would produce, but only just, and 0.02 from one of three tests on one small firm is not a settled answer. Advice and reporting correlate at 0.224, and essentially no relabeling gets there. That is no surprise, since reporting lines largely *define* who you turn to for advice; a result that is "significant" because of how the firm is built isn't news. Friendship and reporting are at 0.186, again rarely matched.
 
-The Python version of this example draws its own random relabelings, so the last digits of the share of relabelings can differ from the Rust and R values.
+Notice that the correlations are small (0.155 to 0.224) while the Jaccard indices were 0.26, 0.10 and 0.11. They are different statistics and shouldn't be set side by side. The correlation between two mostly empty tables is small even when ties line up, because it is measured against what a sparse layer would share by chance anyway. Ask what the test is *for*: it tells you whether the overlap is bigger than chance, not whether it is big. Remember too that the Python tab draws its own relabelings, so its last digits differ a little from Rust's.
 
-::: {.callout-warning appearance="simple"}
+**Say what the layers are not.** A layered analysis of managers' reports is an analysis of what they reported. A pair absent from friendship is a pair that was not named, not necessarily a pair that isn't friends. Missing ties look the same as true absences. If one layer is more completely observed than another, its overlap with other layers will look different for reasons that have nothing to do with the people.
+
+**Report with the question attached.** "Advice and friendship overlap" is not a result. A defensible sentence names the layers, the unit (ordered pairs or pairs), the statistic, the number, what it is compared against and what it leaves out, for example: "Of the 190 advice arcs among the 21 managers, 60 (32 percent) are also friendship arcs, against 24 percent of all ordered pairs; this describes the managers' own reports at one moment and does not show that one tie leads to the other."
 
 ## Exercises
 
-1. TODO(exercise): a by-hand exercise on a tiny network.
-2. TODO(exercise): a coding exercise on a dataset from the appendix.
-3. TODO(exercise): an interpretation exercise.
+1. **By hand.** Ana, Ben, Cleo and Dev have two layers. Advice ties Ana-Ben, Ben-Cleo and Cleo-Dev. Lunch ties Ana-Ben and Cleo-Dev. Work out the overlap, the Jaccard index, the chance of lunch given advice and the chance of advice given lunch. Which of the last two is larger, and why?
+2. **By hand.** In the Ana-Ben-Cleo example, add a third person, Dev, who is tied to Cleo in the lunch layer. How many steps is Ana from Dev in the merged network, and how many in a supra network where switching layers costs one step?
+3. **Coding.** Using the Krackhardt layers, compute the chance that a friendship arc is also a reporting arc, and the base rate it should be compared with. Is friendship more likely between a manager and their boss than between a random pair?
+4. **Coding.** For Sampson's novices, compute the Jaccard index of liking at time 1 and liking at time 3. What share of the first wave's ties are repeated in the third? What does that say about whether layers that are waves are "the same" network?
+5. **Interpretation.** A consultant writes: "Advice and friendship overlap at 0.41, so you only need to survey friendship." Write a short, kind reply. Which Jaccard did they use, what does it leave out, and what would you check before agreeing?
+6. **Design.** A company has an email network, a chat network and an org chart. Which of the three layers have a direction? Which would you call comparable in density? How would you decide whether to merge them for a question about "who can get a message across the company quickly"?
 
 ## Summary
 
 ::: {.callout-tip appearance="simple"}
-TODO(summary): three to five sentences, then the one-line takeaway.
+Many networks have more than one kind of tie among the same people. Keeping the kinds apart as layers lets you ask whether the same pairs appear in each (overlap and Jaccard), how likely one tie is given another (conditional probability against a base rate), and whether the same people are central in each (layer-by-layer degree and betweenness). Merging layers into a union or a sum is easy and hides which layer a tie came from; a sparse layer disappears beside a dense one. On Krackhardt's managers, advice and friendship overlap modestly, reporting lines nearly always carry advice, and manager 17 is the friendship hub but nowhere near the top for advice. On Sampson's novices, liking, esteem and the negative relations form separate blocks, and the questionnaire itself shapes how many ties anyone can name. Layers are only comparable when they measure similar things in similar ways, and overlap shows that layers go together, never why.
 :::
 
 ## Further reading
 
-TODO(refs): cite with `@key` from `shared/bib/references.bib`.
+For the full framework of multilayer networks, with its vocabulary and what it adds to single networks, see @kivela2014multilayer, and for a formal treatment with tensors, @dedomenico2013mathematical. For structural measures of multiplex networks, including edge overlap and inter-layer degree correlations, see @battiston2014structural. For community detection that works across layers, see @mucha2010community. For software, see @magnani2021analysis for R and @nurmi2024pymnet for Python. For the data, see @krackhardt1987cognitive for the managers and @sampson1968novitiate for the novices; the novices were analysed as multiple networks in @white1976social and @breiger1975algorithm. For QAP, see @hubert1976quadratic and @krackhardt1987qap. For several relations among Florentine families used to explain a rise to power, see @padgett1993robust. For multiple relations in the textbook of the UCINET tradition, see @hanneman2005introduction.
