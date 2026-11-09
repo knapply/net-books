@@ -1917,11 +1917,12 @@ FIGURES = {
 }
 
 
-try:
-    from fig_classic import FIGURES as _CLASSIC
-    FIGURES.update(_CLASSIC)
-except ImportError:
-    pass
+import importlib
+for _name in ["fig_classic", "fig_two_mode", "fig_multilayer", "fig_time", "fig_space"]:
+    try:
+        FIGURES.update(importlib.import_module(_name).FIGURES)
+    except ImportError:
+        pass
 
 
 def main() -> int:
