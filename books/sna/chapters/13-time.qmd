@@ -45,6 +45,358 @@ the library interface is final; the comment names the measure it will call.
 TODO(output): the printed result of the code above, once it runs.
 :::
 
+## Contacts in time: who can reach whom?
+
+Take six people and six contacts. At time 1 Ana meets Ben, at time 2 Cleo meets Dev, at time 3 Ben meets Cleo, at time 4 Dev meets Eli, at time 5 Ana meets Ben again, and at time 6 Eli meets Fay. Draw it without time and you get a chain, Ana to Ben to Cleo to Dev to Eli to Fay, and everyone can reach everyone: if Ana has news, it can surely get to Fay.
+
+Now respect the clock. Ana tells Ben at time 1. Ben meets Cleo at time 3, so Cleo hears at time 3. But Cleo's meeting with Dev was at time 2, which is *over* by the time Cleo hears. The news stops with Cleo. Ana reaches Ben and Cleo and nobody else.
+
+Dev's story is different. Dev tells Cleo at time 2, who tells Ben at 3, who tells Ana at 5. Dev also tells Eli at 4, who tells Fay at 6. Dev reaches all five. That asymmetry is the point: **reachability depends on the order of events**, it doesn't have to be symmetric, and a static picture can't show it. A path that respects the order of contacts is called a **time-respecting path**, and the set of people it reaches is a person's **influence set** [@kempe2002connectivity; @holme2005network].
+
+![The same six contacts, drawn with time running left to right. A bar joins the two people who meet at that moment. Highlighted bars are the contacts a message can use.](../figures/time-respecting.svg){#fig-time-respecting fig-alt="Two timelines side by side, with six horizontal lines for Ana, Ben, Cleo, Dev, Eli and Fay and vertical bars for six contacts at times 1 to 6. On the left, only the contacts at times 1 (Ana and Ben) and 3 (Ben and Cleo) are highlighted. On the right, all six contacts are highlighted and each person is labeled with the time Dev's message reaches them: Cleo 2, Ben 3, Eli 4, Ana 5, Fay 6."}
+
+### Step 1: count who can reach whom
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+library(knappnet)
+library(dplyr)
+library(tidyr)
+library(purrr)
+
+people <- c("Ana", "Ben", "Cleo", "Dev", "Eli", "Fay")
+contacts <- tibble(
+  source = people[c(1, 3, 2, 4, 1, 5)],
+  target = people[c(2, 4, 3, 5, 2, 6)],
+  time = 1:6
+)
+# Contacts are undirected instants: who met whom, and when.
+g <- net_temporal(contacts, nodes = tibble(id = people), directed = FALSE)
+g
+
+# For every person, how many others can a message reach if it only moves forward in time?
+g$nodes |> mutate(reach = net_temporal_reach(g))
+```
+
+::: {.code-output}
+```text
+# temporal_net_frame: 6 nodes, 6 edges
+#   directed:  no        mode: one-mode (6 actors)
+#   weights:   unweighted
+#   time:      contacts (6 events, 1 to 6)
+#   space:     none
+#   clock:     numbers
+#   simple:    no loops, no parallel edges
+#   components: 1    isolates: 0    density: 0.400
+#
+# Nodes (6 x 1)   Edges (6 x 3)
+#   id              source target time
+#   <chr>           <chr>  <chr>  <int>
+# 1 Ana           1 Ana    Ben    1
+# 2 Ben           2 Cleo   Dev    2
+# 3 Cleo          3 Ben    Cleo   3
+# 4 Dev           4 Dev    Eli    4
+# 5 Eli           5 Ana    Ben    5
+# 6 Fay           6 Eli    Fay    6
+# A tibble: 6 × 2
+  id    reach
+  <chr> <dbl>
+1 Ana       2
+2 Ben       2
+3 Cleo      5
+4 Dev       5
+5 Eli       2
+6 Fay       1
+```
+:::
+
+## Python
+
+```python
+import numpy as np
+
+names = ["Ana", "Ben", "Cleo", "Dev", "Eli", "Fay"]
+person_a = [0, 2, 1, 3, 0, 4]
+person_b = [1, 3, 2, 4, 1, 5]
+when = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+# NetworkX has no time-respecting paths, so we walk the contacts in time order:
+# a contact passes the message on if one of its two people already has it.
+contacts = sorted(zip(when, person_a, person_b))
+
+def earliest_arrival(root):
+    arrive = {root: -np.inf}
+    for t, a, b in contacts:
+        for u, v in ((a, b), (b, a)):
+            if u in arrive and arrive[u] <= t and t < arrive.get(v, np.inf):
+                arrive[v] = t
+    return arrive
+
+for k, name in enumerate(names):
+    count = len(earliest_arrival(k)) - 1
+    print(f"{name:<5} can reach {count} of the 5 others")
+```
+
+::: {.code-output}
+```text
+Ana   can reach 2 of the 5 others
+Ben   can reach 2 of the 5 others
+Cleo  can reach 5 of the 5 others
+Dev   can reach 5 of the 5 others
+Eli   can reach 2 of the 5 others
+Fay   can reach 1 of the 5 others
+```
+:::
+
+## Rust
+
+```rust
+use knappnet::temporal::{count_temporal_reach, Direction, PathOptions, TemporalNetwork};
+
+// Six people and six contacts, invented for this chapter. Each contact is one instant: who met whom, and when.
+let names = ["Ana", "Ben", "Cleo", "Dev", "Eli", "Fay"];
+let person_a = [0, 2, 1, 3, 0, 4];
+let person_b = [1, 3, 2, 4, 1, 5];
+let when = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+let contacts = TemporalNetwork::new(6, &person_a, &person_b, &when, None, false)?;
+
+// For every person, how many others can a message reach if it only moves forward in time?
+let reach = count_temporal_reach(&contacts, Direction::Out, &PathOptions::default())?;
+for (name, count) in names.iter().zip(&reach) {
+    println!("{name:<5} can reach {count} of the 5 others");
+}
+```
+
+::: {.code-output}
+```text
+Ana   can reach 2 of the 5 others
+Ben   can reach 2 of the 5 others
+Cleo  can reach 5 of the 5 others
+Dev   can reach 5 of the 5 others
+Eli   can reach 2 of the 5 others
+Fay   can reach 1 of the 5 others
+```
+:::
+
+:::
+
+Ana, Ben and Eli reach two people each, Fay reaches only Eli (their one contact comes last), and Cleo and Dev reach all five. A static graph of the same contacts says everyone reaches 5. The time-respecting count says four of the six can reach fewer than half the group.
+
+### Step 2: how fast?
+
+Reaching someone isn't the same as reaching them quickly. The **earliest arrival** time from a person to everyone else tells us when the news first gets there.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# The earliest moment a message from Ana, and from Dev, can arrive at everyone else.
+# Inf means never.
+net_temporal_distances(g, from = c("Ana", "Dev")) |>
+  as_tibble(rownames = "from") |>
+  pivot_longer(-from, names_to = "to", values_to = "arrives") |>
+  filter(from != to)
+```
+
+::: {.code-output}
+```text
+# A tibble: 10 × 3
+   from  to    arrives
+   <chr> <chr>   <dbl>
+ 1 Ana   Ben         1
+ 2 Ana   Cleo        3
+ 3 Ana   Dev       Inf
+ 4 Ana   Eli       Inf
+ 5 Ana   Fay       Inf
+ 6 Dev   Ana         5
+ 7 Dev   Ben         3
+ 8 Dev   Cleo        2
+ 9 Dev   Eli         4
+10 Dev   Fay         6
+```
+:::
+
+## Python
+
+```python
+for who, root in [("Ana", 0), ("Dev", 3)]:
+    arrive = earliest_arrival(root)
+    line = f"from {who}:"
+    for k, name in enumerate(names):
+        if k != root:
+            line += f"  {name} at t={arrive[k]:g}" if k in arrive else f"  {name} never"
+    print(line)
+```
+
+::: {.code-output}
+```text
+from Ana:  Ben at t=1  Cleo at t=3  Dev never  Eli never  Fay never
+from Dev:  Ana at t=5  Ben at t=3  Cleo at t=2  Eli at t=4  Fay at t=6
+```
+:::
+
+## Rust
+
+```rust
+use knappnet::temporal::{find_temporal_paths, Criterion};
+
+// The earliest moment a message from Ana (0), and from Dev (3), can arrive at everyone else.
+let from_ana_and_dev = find_temporal_paths(&contacts, Criterion::EarliestArrival, Direction::Out, &[0, 3], &PathOptions::default())?;
+for (who, root) in [("Ana", 0), ("Dev", 3)] {
+    print!("from {who}:");
+    for (k, name) in names.iter().enumerate().filter(|&(k, _)| k != root) {
+        let t = from_ana_and_dev[(if root == 0 { 0 } else { 1 }) * 6 + k];
+        if t.is_finite() { print!("  {name} at t={t}") } else { print!("  {name} never") }
+    }
+    println!();
+}
+```
+
+::: {.code-output}
+```text
+from Ana:  Ben at t=1  Cleo at t=3  Dev never  Eli never  Fay never
+from Dev:  Ana at t=5  Ben at t=3  Cleo at t=2  Eli at t=4  Fay at t=6
+```
+:::
+
+:::
+
+These match @fig-time-respecting: Dev's message gets to Cleo at 2, Ben at 3, Eli at 4, Ana at 5 and Fay at 6, and Ana's message never gets past Cleo. Other kinds of "shortest" matter too. The *fastest* path minimizes the elapsed time between leaving and arriving, and the *shortest* path counts contacts used. They can disagree, and which one you want depends on whether you care about speed, effort or risk. Pan and Saramäki [@pan2011path] turn average arrival times into a temporal version of closeness centrality.
+
+### Step 3: are contacts bursty?
+
+Contact data has a second feature that static networks can't show: *when* events happen. People don't write emails like a metronome. They send a flurry, then go quiet. Goh and Barabási [@goh2008burstiness] gave a simple number for this. Take the waiting times between events, the *gaps*, and compare their spread to their average:
+
+$$
+B \;=\; \frac{\sigma - \mu}{\sigma + \mu},
+$$
+
+where $\mu$ is the mean gap and $\sigma$ its standard deviation. If events come at perfectly even intervals, $\sigma = 0$ and $B = -1$. If they arrive at random with no memory, $B$ is around 0. If they come in clumps separated by long silences, $\sigma$ is large and $B$ approaches $+1$. A second number, $M$, is the correlation between each gap and the next, and measures *memory*: whether short gaps tend to follow short gaps.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# Eighty messages among eight coworkers, invented for this chapter. Times are in hours.
+times <- c(
+  0.3, 0.8, 3.3, 4.8, 6.8, 25.4, 28.4, 33.4, 35.2, 36.8,
+  37.0, 38.0, 43.6, 44.5, 46.3, 46.6, 48.2, 49.0, 49.3, 50.1,
+  50.4, 50.7, 52.4, 52.7, 53.3, 55.0, 56.0, 56.9, 57.8, 58.6,
+  58.8, 63.3, 64.5, 64.6, 65.6, 77.9, 78.0, 85.1, 98.6, 99.4,
+  99.7, 102.9, 105.4, 106.1, 107.1, 107.2, 108.0, 128.2, 128.6, 128.8,
+  129.2, 130.8, 134.5, 135.2, 148.1, 149.0, 149.3, 176.8, 182.2, 182.4,
+  182.6, 182.8, 183.1, 183.6, 184.6, 185.9, 193.0, 195.1, 196.2, 202.8,
+  203.2, 204.4, 204.7, 205.8, 206.1, 208.4, 208.5, 214.4, 215.2, 217.3
+)
+gaps <- diff(times)
+
+# Treat the whole log as one stream of events (a single node with a self-loop per message)
+# and ask for its burstiness B and memory M.
+stream_stats <- \(t) {
+  net_temporal(tibble(source = "all", target = "all", time = t), directed = TRUE) |>
+    net_burstiness()
+}
+tibble(n_gaps = length(gaps), shortest = min(gaps), longest = max(gaps)) |>
+  bind_cols(stream_stats(times) |> select(burstiness, memory)) |>
+  mutate(across(where(is.numeric), \(x) round(x, 2)))
+
+# Compare with a metronome: the same number of events, perfectly evenly spaced.
+stream_stats(2.75 * 1:80)$burstiness |> round(2)
+```
+
+::: {.code-output}
+```text
+# A tibble: 1 × 5
+  n_gaps shortest longest burstiness memory
+   <dbl>    <dbl>   <dbl>      <dbl>  <dbl>
+1     79      0.1    27.5       0.27  -0.03
+[1] -1
+```
+:::
+
+## Python
+
+```python
+times = np.array([
+    0.3, 0.8, 3.3, 4.8, 6.8, 25.4, 28.4, 33.4, 35.2, 36.8,
+    37.0, 38.0, 43.6, 44.5, 46.3, 46.6, 48.2, 49.0, 49.3, 50.1,
+    50.4, 50.7, 52.4, 52.7, 53.3, 55.0, 56.0, 56.9, 57.8, 58.6,
+    58.8, 63.3, 64.5, 64.6, 65.6, 77.9, 78.0, 85.1, 98.6, 99.4,
+    99.7, 102.9, 105.4, 106.1, 107.1, 107.2, 108.0, 128.2, 128.6, 128.8,
+    129.2, 130.8, 134.5, 135.2, 148.1, 149.0, 149.3, 176.8, 182.2, 182.4,
+    182.6, 182.8, 183.1, 183.6, 184.6, 185.9, 193.0, 195.1, 196.2, 202.8,
+    203.2, 204.4, 204.7, 205.8, 206.1, 208.4, 208.5, 214.4, 215.2, 217.3,
+])
+gaps = np.diff(times)
+
+def burstiness_memory(gaps):
+    b = (gaps.std() - gaps.mean()) / (gaps.std() + gaps.mean())
+    m = np.corrcoef(gaps[:-1], gaps[1:])[0, 1] if gaps[:-1].std() > 0 else np.nan
+    return b, m
+
+burstiness, memory = burstiness_memory(gaps)
+print(f"{len(gaps)} gaps, shortest {gaps.min():.1f} hours, longest {gaps.max():.1f} hours")
+print(f"burstiness B = {burstiness:.2f}, memory M = {memory:.2f}")
+b_regular, _ = burstiness_memory(np.full(79, 2.75))
+print(f"evenly spaced: B = {b_regular:.2f}")
+```
+
+::: {.code-output}
+```text
+79 gaps, shortest 0.1 hours, longest 27.5 hours
+burstiness B = 0.27, memory M = -0.03
+evenly spaced: B = -1.00
+```
+:::
+
+## Rust
+
+```rust
+use knappnet::temporal::events::compute_burstiness_memory;
+
+// Eighty messages among eight coworkers, invented for this chapter. Times are in hours.
+let times: [f64; 80] = [
+    0.3, 0.8, 3.3, 4.8, 6.8, 25.4, 28.4, 33.4, 35.2, 36.8,
+    37.0, 38.0, 43.6, 44.5, 46.3, 46.6, 48.2, 49.0, 49.3, 50.1,
+    50.4, 50.7, 52.4, 52.7, 53.3, 55.0, 56.0, 56.9, 57.8, 58.6,
+    58.8, 63.3, 64.5, 64.6, 65.6, 77.9, 78.0, 85.1, 98.6, 99.4,
+    99.7, 102.9, 105.4, 106.1, 107.1, 107.2, 108.0, 128.2, 128.6, 128.8,
+    129.2, 130.8, 134.5, 135.2, 148.1, 149.0, 149.3, 176.8, 182.2, 182.4,
+    182.6, 182.8, 183.1, 183.6, 184.6, 185.9, 193.0, 195.1, 196.2, 202.8,
+    203.2, 204.4, 204.7, 205.8, 206.1, 208.4, 208.5, 214.4, 215.2, 217.3,
+];
+let gaps: Vec<f64> = times.windows(2).map(|pair| pair[1] - pair[0]).collect();
+
+let (burstiness, memory) = compute_burstiness_memory(&gaps);
+println!("{} gaps, shortest {:.1} hours, longest {:.1} hours", gaps.len(), gaps.iter().cloned().fold(f64::MAX, f64::min), gaps.iter().cloned().fold(0.0, f64::max));
+println!("burstiness B = {burstiness:.2}, memory M = {memory:.2}");
+
+// Compare with a metronome: the same number of events, perfectly evenly spaced.
+let (b_regular, _) = compute_burstiness_memory(&vec![2.75; 79]);
+println!("evenly spaced: B = {b_regular:.2}");
+```
+
+::: {.code-output}
+```text
+79 gaps, shortest 0.1 hours, longest 27.5 hours
+burstiness B = 0.27, memory M = -0.03
+evenly spaced: B = -1.00
+```
+:::
+
+:::
+
+Our invented messages have $B = 0.27$, so they are bursty: gaps range from 0.1 hours to 27.5 hours, with long silences between flurries. The memory $M$ is about $-0.03$, essentially zero, so a short gap doesn't make the next gap any shorter or longer. A metronome would have $B = -1$. @fig-burst-ticks shows the two side by side.
+
+![Eighty events in a perfectly regular rhythm (top) and in our message stream (bottom).](../figures/burst-ticks.svg){#fig-burst-ticks fig-alt="Two rows of vertical tick marks across a timeline. The top row, labeled a metronome with B of minus 1, has ticks at equal spacing. The bottom row, labeled the message stream with B of 0.27, has 80 ticks gathered into clumps separated by long empty stretches."}
+
+Burstiness matters for flow. Bursts can speed up spreading within a flurry and slow it down across the silences. Two caveats: with few events, $B$ is noisy, and it isn't corrected for the number of events [@kim2016measuring], so compare people or pairs with similar activity.
+
+
 ## Exercises
 
 1. TODO(exercise): a by-hand exercise on a tiny network.
