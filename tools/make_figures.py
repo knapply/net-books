@@ -1761,7 +1761,7 @@ def time_respecting():
             c.text(right + 14, ry(k) + 5, f"at t={t}", size=12, anchor="start", fill=col)
         c.node(left - 2, ry(root), "", r=9, fill=col + "55", stroke=col, sw=2.5)
     c.text(450, 385, "Dev reaches Ana, but Ana cannot reach Dev: the Cleo to Dev contact (t=2) happened before Ben and Cleo met (t=3).", size=12.5, fill=MUTED)
-    meta = dict(chapter=14,
+    meta = dict(chapter=13,
                 caption="The same six contacts, drawn as a timeline. Left: Ana reaches Ben at time 1 and Cleo at time 3, then runs out of later contacts. Right: Dev reaches everyone, because the contacts arrive in a useful order. A network drawn without time would make all six people equally connected.",
                 alt="Two timelines side by side, with six horizontal lines for Ana, Ben, Cleo, Dev, Eli and Fay and vertical bars for six contacts at times 1 to 6. On the left, only the contacts at times 1 (Ana and Ben) and 3 (Ben and Cleo) are highlighted. On the right, all six contacts are highlighted and each person is labeled with the time Dev's message reaches them: Cleo 2, Ben 3, Eli 4, Ana 5, Fay 6.",
                 data={"contacts": [{"time": t, "a": TEMPORAL_NAMES[a], "b": TEMPORAL_NAMES[b]} for t, a, b in TEMPORAL_CONTACTS], "reach_counts": [2, 2, 5, 5, 2, 1]})
@@ -1784,7 +1784,7 @@ def burst_ticks():
         c.text(right + 0, y - 26, label, size=13, weight="700", anchor="end")
     c.text(left, 210, "time", size=12.5, anchor="start", fill=MUTED)
     c.text(450, 232, "Bursty gaps: mostly short, sometimes very long. A metronome has no bursts at all.", size=12.5, fill=MUTED)
-    meta = dict(chapter=14,
+    meta = dict(chapter=13,
                 caption="Burstiness B compares the spread of the waiting times between events with their average. Evenly spaced events have B of -1. Events that arrive in clumps with long silences between have B above 0.",
                 alt="Two rows of vertical tick marks across a timeline. The top row, labeled a metronome with B of minus 1, has ticks at equal spacing. The bottom row, labeled the message stream with B of 0.27, has 80 ticks gathered into clumps separated by long empty stretches.",
                 data={"stream_times": STREAM_TIMES, "stream_B": 0.27})
@@ -1811,7 +1811,7 @@ def saom_sim():
     for k, (name, col) in enumerate(labels):
         c.rect(220 + k * 190, 322, 16, 16, fill=col + "55", stroke=col, sw=2)
         c.text(244 + k * 190, 335, name, size=12.5, anchor="start")
-    meta = dict(chapter=14,
+    meta = dict(chapter=13,
                 caption="Simulating one period of the office advice network (@sec-positions-and-roles) forward from its starting point, 2,000 times for each setting. Left: ties thin out either way because the outdegree coefficient is negative. Right: with a positive reciprocity coefficient, the ties that survive are much more often mutual.",
                 alt="Two groups of three bars. In the Ties group, the start has 13 ties, the run without reciprocity averages 5.78 and the run with reciprocity 1.5 averages 7.33. In the Mutual pairs group, the start has 1, the run without reciprocity 0.18, and the run with reciprocity 1.17.",
                 data={"ties": [13.0, 5.78, 7.33], "mutual_pairs": [1.0, 0.18, 1.17]})
@@ -1859,7 +1859,7 @@ def davis_matrix():
         c.add(f'<line x1="{xr - 2}" y1="{y0 + pos * cell}" x2="{xr + n * cell + 2}" y2="{y0 + pos * cell}" stroke="{INK}" stroke-width="1.6" stroke-dasharray="5 4"/>')
     c.text(450, 488, "Dashed lines split the women, as listed, into the first nine and the last nine.", size=12.5, fill=MUTED)
     c.text(450, 508, "Events are numbered 1 to 14 across the top of the left grid.", size=12.5, fill=MUTED)
-    meta = dict(chapter=15,
+    meta = dict(chapter=11,
                 caption="Davis, Gardner and Gardner's southern women [@davis1941deep]. Left: the incidence matrix, one blue cell for every attendance (89 in all). Right: its projection onto the women, where each cell counts the events a pair shared. The two groups of women show up as two dense blocks, with a thin bridge between them.",
                 alt="Two grids. The left grid has 18 rows for women and 14 columns for events, with 89 blue cells. Blue cells form a band that runs from the upper left, where the first women attended events 1 to 9, to the lower right, where the last women attended events 7 to 14. The right grid has 18 rows and 18 columns shaded by the number of shared events from 0 to 7. Dark shading fills the top-left block of the first nine women and the bottom-right block of the last nine, with lighter shading elsewhere.",
                 data={"women": DAVIS_WOMEN, "attended": DAVIS_ATTENDED, "shared": [[v if v is not None else 0 for v in row] for row in shared]})
@@ -1885,7 +1885,7 @@ def event_sizes():
     c.text(left - 14, base + 48, "pairs tied", size=12, anchor="end", fill=MUTED)
     c.text(left - 14, base - 40, "attended", size=12, anchor="end", fill=MUTED)
     c.text(450, 335, "Events 8 and 9 together account for 157 of the 322 shared-event counts, almost half.", size=12.5, fill=MUTED)
-    meta = dict(chapter=15,
+    meta = dict(chapter=11,
                 caption="Attendance at each of the fourteen events (bars) and the number of pairs of women each one ties together when the data are projected onto the women (the row beneath). A pair count grows with the square of the attendance, so the two biggest events account for almost half of all the shared-event counts.",
                 alt="A bar chart of 14 events. Attendance is 3, 3, 6, 4, 8, 8, 10, 14, 12, 5, 4, 6, 3 and 3. Beneath each bar is the number of pairs the event ties: 3, 3, 15, 6, 28, 28, 45, 91, 66, 10, 6, 15, 3, 3. Events 8 and 9, with 14 and 12 attendees, are highlighted.",
                 data={"sizes": DAVIS_EVENT_SIZES, "pairs": [s * (s - 1) // 2 for s in DAVIS_EVENT_SIZES]})
