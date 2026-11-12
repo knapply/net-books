@@ -1,0 +1,58 @@
+id = "weighted-degree"
+title = "Strength and generalized (weighted) degree"
+kind = "measure"
+chapter = "signed-and-valued"
+summary = "The total weight on a node's ties (strength), and Opsahl's blend of number of ties and total weight with a tuning parameter."
+answers = "How much tie weight passes through this node, and how does the answer change if many weak ties count for more or less than a few strong ones?"
+
+data_requirements = [
+  "Ties must carry non-negative numbers that mean the same thing for every tie (counts, hours, volume). Weights of different kinds should be standardized or kept as separate layers.",
+  "You must know whether a larger weight means a stronger tie (strength) or a longer one (distance). Strength and generalized degree assume strength.",
+  "Weights should have been measured over comparable periods or samples. Counts over unequal observation times are not comparable.",
+]
+
+assumptions = [
+  "Weight is on a scale where adding makes sense. Ranks (a first choice coded 3, a third choice 1) are not interval weights.",
+  "Strength mixes the number of ties and their size. Two nodes can share a strength with very different structures.",
+  "The tuning parameter alpha is a judgment about how much one strong tie is worth compared with several weak ones. Alpha 0 gives degree, alpha 1 gives strength, and the ranking can change in between.",
+  "In a fixed-choice design (each person names three) the total weight a person gives is set by the question. Only weight received varies.",
+]
+
+readings = [
+  { context = "Communication in an office (messages or emails)", high = "Handles a lot of traffic. Not necessarily close, trusted or influential, and volume can be routine or one-way.", low = "Little traffic. May still be an important contact for a few people." },
+  { context = "Friendship or support network (hours together, shared contexts)", high = "Invests heavily in others, or has a few very close ties. Depends on alpha which of these is meant.", low = "Few or light ties." },
+  { context = "Transport or supply network (flows, capacity)", high = "A major hub by volume.", low = "A minor node by volume. Flows need not follow shortest routes." },
+  { context = "Online platform (replies, interactions)", high = "A very active account. Interaction counts include arguments and spam.", low = "A quiet account." },
+]
+
+pitfalls = [
+  "Treating strength as degree. It mixes how many with how much and can reorder who looks central.",
+  "Reporting one alpha. The ranking can change between alpha values, so report a few, as in the karate club example where member 33 overtakes member 1 between alpha 1.5 and 2.",
+  "Comparing strengths across networks with different weight scales or observation periods.",
+  "Using rank data as weights, which treats the gap between first and second choice as equal to the gap between second and third.",
+  "Thresholding to a plain network before computing degree without reporting the threshold and its effect. Changing the cut can fragment the network.",
+]
+
+checks = [
+  "Recompute at alpha 0, 0.5, 1 and 1.5 or more, and report who changes rank.",
+  "Rescale all weights by a constant. Strength rescales by that constant and ranks must not change; if they do, something other than strength was computed.",
+  "Compare with a version that ignores weights (degree) and a version that thresholds at several cuts.",
+  "Look at the mean weight per tie of the nodes whose rank changes most between degree and strength.",
+]
+
+do_not_claim = [
+  "That a high strength means closeness, trust, influence or importance without evidence about what the weights measure.",
+  "That strong ties are good for the person who has them.",
+  "That any one alpha is correct.",
+  "That weights measured over different periods or relations are comparable.",
+]
+
+report_template = "In this {tie_meaning} network of {n} {node_type}, weights are {weight_meaning} ({weight_kind}). {node} has {degree} ties with total weight {strength} (mean {mean_weight} per tie). Its rank is {rank_degree} by degree, {rank_strength} by strength, and {rank_alpha} at alpha = {alpha}. The ranking {changes_or_not} across alpha values {alphas}. This describes tie weight, not what the weights mean for the person."
+
+related = ["structural-balance", "betweenness"]
+sources = ["opsahl2010node", "barrat2004architecture"]
+
+[knappnet]
+rust = "compute_strength(&graph, DegreeMode::All, true); generalized degree is k^(1 - alpha) * s^alpha from compute_degree and compute_strength, written by hand"
+r = "net_strength(g); generalized degree written by hand from net_degree(g) and net_strength(g)"
+python = "G.degree(weight='weight') in networkx; generalized degree written by hand"
