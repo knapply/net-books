@@ -118,11 +118,11 @@ frustration <- function(n, ties) {
 }
 
 list(office = office, `office plus Ben-Dev` = office_plus) |>
-  map(\(ties) {
-    neg <- negatives_in(ties, triangle_ties(5, ties))
-    best <- frustration(5, ties)
+  map(\(d) {
+    neg <- negatives_in(d, triangle_ties(5, d))
+    best <- frustration(5, d)
     tibble(
-      ties = nrow(ties), triangles = length(neg),
+      ties = nrow(d), triangles = length(neg),
       neg_0 = sum(neg == 0), neg_1 = sum(neg == 1), neg_2 = sum(neg == 2), neg_3 = sum(neg == 3),
       balanced = sum(neg %% 2 == 0), frustration = best$index,
       anas_camp = paste(people[best$splits[1, ] == 1], collapse = " ")
@@ -354,9 +354,9 @@ pairs <- affect |>
 agree <- pairs |> filter(positive != negative) |> mutate(sign = if_else(positive, 1, -1))
 net_rank <- pairs |> filter(net != 0) |> mutate(sign = sign(net))
 
-tibble(pairs = nrow(pairs), both_signs = sum(pairs$positive & pairs$negative), net_zero = sum(pairs$net == 0))
+tibble(with_a_choice = nrow(pairs), both_signs = sum(pairs$positive & pairs$negative), net_zero = sum(pairs$net == 0))
 list(agree = agree, net_rank = net_rank) |>
-  map(\(ties) tibble(ties = nrow(ties), positive = sum(ties$sign > 0), negative = sum(ties$sign < 0))) |>
+  map(\(d) tibble(ties = nrow(d), positive = sum(d$sign > 0), negative = sum(d$sign < 0))) |>
   list_rbind(names_to = "rule")
 ```
 
@@ -460,13 +460,13 @@ Now the triangles and the frustration index. The second block also checks Davis'
 
 ```r
 by_rule <- list(agree = agree, net_rank = net_rank) |>
-  map(\(ties) {
-    neg <- negatives_in(ties, triangle_ties(18, ties))
-    best <- frustration(18, ties)
-    tibble(ties = nrow(ties), triangles = length(neg),
+  map(\(d) {
+    neg <- negatives_in(d, triangle_ties(18, d))
+    best <- frustration(18, d)
+    tibble(ties = nrow(d), triangles = length(neg),
            `+++` = sum(neg == 0), `++-` = sum(neg == 1), `+--` = sum(neg == 2), `---` = sum(neg == 3),
            balanced_share = round(mean(neg %% 2 == 0), 3), frustration = best$index,
-           share_of_ties = round(best$index / nrow(ties), 3), best_splits = nrow(best$splits))
+           share_of_ties = round(best$index / nrow(d), 3), best_splits = nrow(best$splits))
   }) |>
   list_rbind(names_to = "rule")
 by_rule
@@ -597,7 +597,7 @@ Read it slowly, because it holds the chapter's central lesson.
 - **The balanced share looks decent.** Of 34 triangles, 23 are balanced: 9 are $+++$ and 14 are $+--$. That is 0.676.
 - **The network is not balanced, and not clusterable either.** The best two-camp split still leaves 11 of the 55 ties frustrated (0.2 of them), and the positive ties connect all 18 novices into a single piece, so all 26 negative ties sit inside it. Davis's test fails. There is no way to cut the monastery into groups with positive ties inside and negative ties between.
 - **The split is informative anyway.** It puts 11 novices in one camp and 7 in the other (@fig-sampson-signed). Most positive ties are inside the camps and most negative ties between them. The 11 exceptions are the thick lines.
-- **The two rules agree about the story.** Under the net-rank rule the numbers are different (64 ties, 14 frustrated, 0.219 of the ties), but the finding is the same: close to balanced, not balanced, and two best splits instead of one, so on that rule the camps are less sharply determined.
+- **The two rules agree about the story.** Under the net-rank rule the numbers are different (64 ties, 14 frustrated, 0.219 of the ties), but the finding is the same: not balanced, not clusterable, and two best splits instead of one, so on that rule the camps are less sharply determined.
 - **"Enemy of my enemy" holds more often than not.** Of the 19 triangles with two or three negative ties, 14 have the "friendly" shape: the two people who dislike the same novice like each other. The other 5 are three mutual enemies.
 
 ![Sampson's novices at time 3: positive ties (liking, solid blue) and negative ties (disliking, dashed red), drawn only where every choice about the pair had the same sign. The novices are split into the two camps that leave the fewest ties disagreeing; those ties are drawn thick.](../figures/sampson-signed.svg){#fig-sampson-signed fig-alt="A network of 18 named novices joined by 55 ties, 29 positive and 26 negative. Eleven novices are drawn as open circles in a ring on the left and seven as filled squares in a ring on the right. 11 ties disagree with that split: 8 negative ties inside a camp and 3 positive ties between the camps."}
@@ -870,7 +870,7 @@ Compare Peter, Berthold and Boniface. Peter is liked by 6 novices and disliked b
 
 **Community detection.** Standard modularity rewards dense groups of positive ties and knows nothing about negative ones. Run on the absolute values of signed ties, it will happily put sworn enemies into one community. Traag and Bruggeman's signed version [@traag2009community] scores a partition by how many positive ties are *inside* groups compared with chance, and how many negative ties are *between* groups compared with chance, with the two parts weighed against their own null expectations. The Doreian-Mrvar score above does a similar thing without the null model. In Sampson, the two-camp split frustrates 11 ties; any signed community method should recover something at least that good, and you can check it.
 
-**Reciprocity and triangles.** In an unsigned network a triangle is a triangle. In a signed one, there are four kinds with four meanings. Always report the counts by type (as the code above does), not one combined total.
+**Triangle-based measures.** In an unsigned network a triangle is a triangle. In a signed one, there are four kinds with four meanings. Always report the counts by type (as the code above does), not one combined total.
 
 ## Reading signed networks in different settings
 
@@ -896,11 +896,11 @@ What about a network with no signs at all? The Florentine marriage network among
 ```r
 marriages <- read.csv("data/florentine/edges.csv") |> as_tibble()
 families <- sort(unique(c(marriages$source, marriages$target)))
-ties <- marriages |> transmute(a = match(source, families), b = match(target, families), sign = 1)
-neg <- negatives_in(ties, triangle_ties(length(families), ties))
+links <- marriages |> transmute(a = match(source, families), b = match(target, families), sign = 1)
+neg <- negatives_in(links, triangle_ties(length(families), links))
 tibble(
-  families = length(families), ties = nrow(ties), triangles = length(neg), with_a_negative_tie = sum(neg > 0),
-  frustration = frustration(length(families), ties)$index
+  families = length(families), ties = nrow(links), triangles = length(neg), with_a_negative_tie = sum(neg > 0),
+  frustration = frustration(length(families), links)$index
 )
 ```
 
@@ -1401,7 +1401,7 @@ One more thing the table shows, if you compare the tabs: tools can disagree even
 Three more cautions.
 
 - **Weights come from a measurement.** Counts of interactions depend on how long you watched. Two groups observed for different lengths of time have weights that aren't comparable.
-- **Ranks are not intervals.** In Sampson's data a first choice is coded 3 and a third choice 1. Using those as weights treats the gap between first and second choice as equal to the gap between second and third, which was never asked. For a fixed-choice design (name three people), the total weight each novice gives is a constant. Only the weights *received* vary.
+- **Ranks are not intervals.** In Sampson's data a first choice is coded 3 and a third choice 1. Using those as weights treats the gap between first and second choice as equal to the gap between second and third, which was never asked. For a fixed-choice design (name three people), the total weight each novice gives is nearly constant. Only the weights *received* vary much.
 - **Weights from different relations don't mix.** Adding hours together to emails sent to "weight" a tie combines units that have no common scale. Standardize each first, or keep them as separate layers (@sec-multilayer).
 
 ## Common misconceptions
@@ -1460,7 +1460,7 @@ A report on a signed network should say how the sign was defined, how conflicted
 ## Summary
 
 ::: {.callout-tip appearance="simple"}
-A signed network adds a sign to each tie, and Heider's balance asks whether triangles have an even number of negatives. Cartwright and Harary showed that balance for the whole network means the people split into two camps; Davis relaxed that to any number of groups. Count the balanced triangles *and* the frustration index, and compare with shuffled signs, because sparse networks are easy to balance (Sampson's monastery is close to balanced, not balanced, and not strikingly more balanced than chance). A valued network adds a number, and you must say whether it is a strength or a distance. Strength and Opsahl's generalized degree trade count against weight, thresholds change the picture, and most standard measures need non-negative ties.
+A signed network adds a sign to each tie, and Heider's balance asks whether triangles have an even number of negatives. Cartwright and Harary showed that balance for the whole network means the people split into two camps; Davis relaxed that to any number of groups. Count the balanced triangles *and* the frustration index, and compare with shuffled signs, because sparse networks are easy to balance (Sampson's monastery is not balanced, not clusterable, and only modestly more balanced than shuffled signs). A valued network adds a number, and you must say whether it is a strength or a distance. Strength and Opsahl's generalized degree trade count against weight, thresholds change the picture, and most standard measures need non-negative ties.
 
 The takeaway: before any measure, say what a sign or a weight *means*, then check the result against what shuffling or re-cutting would give.
 :::
