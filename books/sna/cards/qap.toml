@@ -1,0 +1,58 @@
+id = "qap"
+title = "QAP correlation and permutation test"
+kind = "measure"
+chapter = "tests-and-null-models"
+summary = "The correlation between two network matrices over all pairs of people, tested by relabeling the people in one matrix many times instead of assuming pairs are independent."
+answers = "Do two relationships among the same people (or a relationship and a similarity pattern) line up more than the way each person's ties are bundled together would produce by chance?"
+
+data_requirements = [
+  "Two matrices over the same people in the same order (for example advice ties and a same-department matrix).",
+  "Directed data are read as ordered pairs; undirected or symmetric data should be read as each pair once.",
+  "At least six or seven people: with n people there are only n! relabelings, and with 4 people the smallest possible p-value is 1/3.",
+  "No missing cells, or a stated rule for them.",
+]
+
+assumptions = [
+  "Under the null, people could be relabeled in one matrix without changing its meaning; this fixes each matrix's internal structure and breaks only the alignment between them.",
+  "The statistic (Pearson correlation of the pair values) is a sensible summary; for rare ties a 0-1 correlation is small even when overlap is strong.",
+  "Two matrices are compared, nothing else is held constant. A third matrix that drives both is not accounted for (use MRQAP for that).",
+]
+
+readings = [
+  { context = "Advice and friendship in an office", high = "People who are friends are more likely to be asked for advice, beyond how often each person asks and is asked.", low = "Advice follows other lines (rank, department, reporting) more than friendship." },
+  { context = "Trade and geographic distance among countries", high = "Closer countries trade more; the correlation is negative if distance is coded as distance and positive if coded as closeness.", low = "Distance does not line up with trade after bundling is respected." },
+  { context = "Marriage ties and shared trade among families", high = "Families linked by marriage are also linked by business more than chance alignment would give.", low = "The two kinds of ties are independent patterns in this network." },
+  { context = "Follows and shared interests on a platform", high = "Accounts with shared interests follow each other more than chance alignment.", low = "Following is not organized by the measured interest pattern." },
+]
+
+pitfalls = [
+  "Reading a small p-value as the size of the effect. The correlation itself is the size; the p-value says how often relabeling alone gives one that large.",
+  "Reporting a one-sided share when the question was two-sided, or the reverse.",
+  "Using too few relabelings. With 1,000 draws a p-value near 0.05 can move by about 0.007 from run to run.",
+  "Treating directed ties as undirected (or the reverse) so that the number of pairs, and the p-value, are wrong.",
+  "Reading an association as a cause, or as a statement about people outside this network.",
+]
+
+checks = [
+  "Rerun with another seed and with more relabelings. A conclusion that flips is not a conclusion.",
+  "Compare with the ordinary correlation test. A large gap shows how much the bundling of pairs matters here.",
+  "Drop a random 10 percent of ties and recompute. The correlation should stay close.",
+  "Add the third matrix you worry about and fit MRQAP; see whether the association survives.",
+]
+
+do_not_claim = [
+  "That one relationship causes or produces the other.",
+  "That the association holds in other networks or for a larger population.",
+  "That a large p-value shows there is no association; with one small network the test has little power.",
+  "That the association holds for each person, rather than across all pairs together.",
+]
+
+report_template = "Across {pairs} {pair_meaning}, the correlation between {matrix_a} and {matrix_b} is {r}. Relabeling the {n} {node_type} {reps} times at random gave a correlation at least this extreme in {share} of draws ({tail}). This shows how far the two patterns line up in this network; it does not show why, and it does not account for other patterns."
+
+related = ["mrqap", "network-autocorrelation", "ergm"]
+sources = ["hubert1976quadratic", "krackhardt1987qap", "dekker2007sensitivity"]
+
+[knappnet]
+rust = "knappnet::qap::compute_qap_cor(&y, &x, QapCorOptions::default())"
+r = "net_qap_cor(y, x, reps = 5000, mode = \"digraph\")"
+python = "none yet; relabel rows and columns together with numpy as in the chapter (R reference: sna::qaptest)"

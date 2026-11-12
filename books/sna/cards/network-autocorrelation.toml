@@ -1,0 +1,62 @@
+id = "network-autocorrelation"
+title = "Network effects (network autocorrelation) model"
+kind = "model"
+chapter = "network-regression"
+summary = "A regression for a node-level outcome in which each node's outcome also depends on a weighted average of its neighbors' outcomes, y = rho W y + X beta + e, fitted by maximum likelihood."
+answers = "After accounting for each person's own attributes, do people tied to each other have more similar values of an outcome than their attributes explain, and how strongly?"
+
+data_requirements = [
+  "A numeric outcome measured once for every node, roughly continuous.",
+  "One weight matrix W built from a network over the same nodes, with an explicit rule for who counts as a neighbor and how rows are scaled.",
+  "Attributes (X) measured for every node. About 20 or more nodes; with fewer the estimate of rho is very uncertain.",
+  "Nodes with no neighbors keep a row of zeros in W; say how many there are.",
+]
+
+assumptions = [
+  "The weight matrix describes the actual channel of dependence. Different choices of W can give different signs of rho.",
+  "The outcome is approximately normal given X once the network effect is removed (the likelihood is Gaussian).",
+  "One network effect applies to all nodes; the model does not separate influence from selection (people choosing similar others).",
+  "Values are observed at one time. The model describes an equilibrium-style association, not a process.",
+  "Rho is only defined inside the interval where I minus rho W can be inverted; row-standardized weights give an interval inside minus 1 to 1.",
+]
+
+readings = [
+  { context = "Tenure or performance in an office, W = whom each person asks for advice", high = "Positive rho: people whose advisers have long tenure tend to have long tenure themselves beyond their own age and level.", low = "Near zero: neighbors' values add nothing once own attributes are in. Negative: people tied to long-tenure colleagues have shorter tenure." },
+  { context = "Adoption or opinion in a friendship network", high = "Positive rho: connected people tend to share the opinion; consistent with influence, with selection, or with a shared environment.", low = "Near zero or negative: ties do not line up with similar opinions." },
+  { context = "Prices or outcomes of trading partners", high = "Positive rho: partners' outcomes move together beyond shared attributes.", low = "Near zero: partners' outcomes are independent given attributes." },
+  { context = "Regional or neighboring outcomes on a transport network", high = "Positive rho: neighbors resemble each other beyond shared covariates, as in spatial autocorrelation.", low = "Near zero: no such resemblance." },
+]
+
+pitfalls = [
+  "Reading rho as proof of influence. Homophily (choosing similar friends), a shared setting and omitted variables all produce a positive rho.",
+  "Choosing W after seeing the data. Rho can change sign across reasonable weight matrices; decide W first and show the others.",
+  "Ignoring uncertainty. With 21 nodes a 95 percent interval for rho can run from about zero to nearly one.",
+  "Reporting only rho. The regression coefficients also change when rho is in the model.",
+  "Using row-standardized weights without noting that nodes with no neighbors drop out of the network term.",
+  "Fitting a count or a binary outcome with this Gaussian model without checking that it makes sense.",
+]
+
+checks = [
+  "Fit with rho fixed at 0 and compare coefficients and log-likelihood with the full model (likelihood ratio test).",
+  "Report a profile-likelihood interval for rho, not just the point estimate.",
+  "Refit with other plausible weight matrices (incoming versus outgoing ties, either direction, another relation) and report all.",
+  "Refit after dropping a random 10 percent of ties.",
+  "Compare with a model that adds the neighbors' average attributes instead of their outcomes (see whether rho is needed).",
+]
+
+do_not_claim = [
+  "That neighbors cause each other's outcomes.",
+  "That a non-significant rho shows no network effect; low power is likely.",
+  "That the estimate holds for other networks, other times or other populations.",
+  "That the size of rho is a share of variance explained by the network.",
+]
+
+report_template = "A network effects model for {outcome} among {n} {node_type}, with weights W = {weights} and predictors {predictors}, gave rho = {rho} (95 percent profile interval {low} to {high}; likelihood ratio {lr}, p = {p}). Without the network term the coefficient of {term} was {beta0}; with it, {beta}. This describes how values line up with the values of tied nodes; it does not separate influence from selection or shared setting, and it depends on how W was built."
+
+related = ["mrqap", "qap", "ergm"]
+sources = ["anselin1988spatial", "doreian1980linear", "leenders2002modeling", "ord1975estimation"]
+
+[knappnet]
+rust = "none yet; hand-written profile likelihood as in the chapter"
+r = "sna::lnam(y, x, W1 = W)"
+python = "none yet; hand-written profile likelihood with numpy as in the chapter"

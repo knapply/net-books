@@ -1,0 +1,62 @@
+id = "mrqap"
+title = "Multiple regression QAP (dyadic regression with permutation tests)"
+kind = "model"
+chapter = "network-regression"
+summary = "A linear regression of one relationship on several predictor matrices over all pairs of people, with p-values from relabeling the people (double semi-partialling) instead of the usual independence assumption."
+answers = "Which pair-level patterns (being friends, reporting to, sharing a department, differing in rank) go with who has a tie to whom, holding the others fixed, and could chance alone in a bundled network produce such coefficients?"
+
+data_requirements = [
+  "A response matrix and predictor matrices over the same people in the same order, with a stated treatment of the diagonal (usually excluded).",
+  "Directed data use ordered pairs; undirected data use each pair once (graph mode) with symmetric predictors.",
+  "Predictors are known for every pair; node attributes enter as similarity or difference matrices.",
+  "Networks of about ten people up to a few hundred; the cost grows with pairs times relabelings.",
+]
+
+assumptions = [
+  "A linear form: for a 0-1 response the coefficients are changes in the chance of a tie (a linear probability model), not odds.",
+  "Relabeling people is a fair null: the response and the predictors could be matched differently without changing what each matrix is.",
+  "The right predictors are in the model. A leftover pattern (reciprocity, popularity, closure) is absorbed into the coefficients that remain.",
+  "Coefficients describe association across all pairs; they say nothing about any single person's choices.",
+]
+
+readings = [
+  { context = "Advice ties in an office with a reporting-to predictor", high = "Pairs where one reports to the other are much more likely to have an advice tie, holding friendship and similarity fixed.", low = "Reporting lines do not add to who asks whom once the other predictors are in." },
+  { context = "Same-department predictor", high = "Ties are more common inside departments than between them, holding the other predictors fixed.", low = "Departments do not organize the ties beyond what the other predictors explain; a negative value means ties cross departments more." },
+  { context = "Difference in age, rank or tenure", high = "The tie is more likely the larger the difference (heterophily on that attribute).", low = "A negative value means similar people are tied (homophily) in this sample." },
+  { context = "Valued response (count of ties between a pair)", high = "The coefficient is a change in the expected count per unit of the predictor.", low = "Near zero: the predictor does not move the count." },
+]
+
+pitfalls = [
+  "Using ordinary regression p-values. Each person appears in many pairs, so they can be far too small; compare them with the permutation p-values.",
+  "Using the older Y-permutation test when predictors overlap. Double semi-partialling is the recommended default.",
+  "Reading a standardized or raw coefficient on a difference matrix without saying the unit (per year, per level).",
+  "Using too few relabelings; report the number and the seed.",
+  "Reading a logistic version's p-values as validating the model. The permutation protects inference, not the fit of the likelihood.",
+  "Treating a significant coefficient as evidence that the predictor causes the tie.",
+]
+
+checks = [
+  "Compare ordinary and permutation p-values. A big gap on a predictor that mostly varies by person (rank, age) signals row and column effects.",
+  "Refit after dropping a random 10 percent of ties; coefficients should barely move.",
+  "Refit on a degree-preserving randomization of the response. Coefficients should be near zero and not significant.",
+  "Check the fit against what the model ignores: reciprocity and the spread of out-degree and in-degree.",
+  "Rerun with more relabelings and another seed.",
+]
+
+do_not_claim = [
+  "That a predictor causes or explains why a tie forms.",
+  "That a non-significant coefficient shows no effect; one small network has little power.",
+  "That the coefficients hold for other networks or the wider population.",
+  "That the model fits because R-squared is moderate; R-squared on a sparse tie matrix is low even for a good model.",
+  "That ties are independent given the predictors. If ties depend on other ties, use a model that says how (ERGM).",
+]
+
+report_template = "A regression of {response} on {predictors} over {pairs} {pair_meaning} among {n} {node_type} gave coefficient {estimate} for {term} (t = {t}). Relabeling the {node_type} {reps} times by double semi-partialling gave a two-sided p-value of {p}; the ordinary p-value was {p_ordinary}. R-squared is {r2}. This describes association across pairs in this network; it does not show why the ties formed or that the pattern holds elsewhere."
+
+related = ["qap", "network-autocorrelation", "ergm"]
+sources = ["krackhardt1988predicting", "dekker2007sensitivity", "hubert1976quadratic", "krackhardt1987qap"]
+
+[knappnet]
+rust = "knappnet::qap::fit_mrqap(&y, &[x1, x2], MrqapOptions::default())"
+r = "net_mrqap(y, list(x1 = x1, x2 = x2), reps = 5000, method = \"dsp\")"
+python = "none yet; hand-written with numpy as in the chapter (R reference: sna::netlm(..., nullhyp = \"qapspp\"))"
