@@ -1,0 +1,62 @@
+id = "clustering"
+title = "Transitivity and clustering coefficients"
+kind = "measure"
+chapter = "triads-and-motifs"
+summary = "How often two people who share a contact are tied to each other, measured for the whole network (transitivity), for each person (local clustering) or as the average of the local values."
+answers = "When two of someone's contacts are picked, how likely are they to know each other, compared with the number of ties in the network?"
+
+data_requirements = [
+  "Ties that mean something shared (friendship, collaboration, communication), so that a shared contact is a reason for two people to know each other.",
+  "Direction is ignored by the standard versions (a directed network is read as undirected). Directed and weighted versions exist and give different numbers.",
+  "People with fewer than two contacts have an undefined local coefficient. State how they are handled.",
+  "The boundary of the network should be sensible: a contact outside the boundary breaks triangles that would otherwise close.",
+]
+
+assumptions = [
+  "A triangle is a sign of closure. In collaboration data one large group creates many triangles without any of them being a choice.",
+  "The number of triples of contacts is the right baseline. In dense networks even random ties close many triples, so clustering must be read against the density.",
+  "Global transitivity, average local clustering and a per-person coefficient are different weightings of the same triples and need not agree.",
+  "Ties are observed without missing data. A missing tie opens a triangle and lowers clustering.",
+]
+
+readings = [
+  { context = "Friendship in an office, school or club", high = "Friends of friends are friends: cliques form, norms are enforced by mutual observation, and outsiders find it hard to join. Check it is not just density.", low = "Friends are spread over separate circles. Ties bridge groups, which helps reach but gives each person little shared support." },
+  { context = "Marriage or alliance networks among families", high = "Families that marry the same partners: tight alliance blocs.", low = "Alliances that bridge. Low clustering with a hub, as in the Florentine marriages, is the pattern of a broker, not a circle." },
+  { context = "Collaboration or co-authorship", high = "Often mechanical: a few large teams make every member tied to every other.", low = "Many small teams or one-off pairs." },
+  { context = "Online follow or friend graphs", high = "May reflect friend recommendations that suggest friends of friends, not only people's choices.", low = "Broadcast structure: many followers who do not know each other." },
+  { context = "Transport, power and supply", high = "Direct alternatives exist if one leg fails: some redundancy, though not necessarily over long distances.", low = "Hub-and-spoke or tree-like: a failure at the hub has no local detour." },
+]
+
+pitfalls = [
+  "Reporting 'clustering' without saying which one. Global transitivity (ratio of sums) and average local clustering (mean of ratios) differ, often by several hundredths and sometimes much more.",
+  "Not saying how people with fewer than two contacts were treated (left out, as in igraph's default, or counted as zero, as in NetworkX). On small networks this changes the average a lot.",
+  "Calling a clustering value high or low without comparing with the density or a random baseline. A random network in which every pair is equally likely to be tied has transitivity near its density.",
+  "Comparing clustering across networks of different density or size without a baseline.",
+  "Reading high clustering as the presence of communities. It says triples close, not that there are groups.",
+  "Reading local clustering of a high-degree node as precise: it is a ratio over many pairs and can be low simply because the node connects separate groups.",
+]
+
+checks = [
+  "Report the density next to the transitivity. If transitivity is close to density, there is no excess closure.",
+  "Compute both global transitivity and average local clustering, and say which conventions were used. If they differ much, find which people have the largest weight in the first and the smallest degree in the second.",
+  "Compare with a random network that keeps the degree sequence (for example by edge swaps). If clustering is ordinary there, it follows from the degree distribution.",
+  "Drop a random 5 to 10 percent of ties several times and recompute. A defensible value is stable.",
+  "List the nodes with fewer than two contacts and recompute without them.",
+]
+
+do_not_claim = [
+  "That high clustering means trust, cooperation or community.",
+  "That clustering caused an outcome such as faster diffusion or lower mobility.",
+  "That a value is high or low in general. It is high or low relative to a stated baseline.",
+  "That two networks with the same clustering are structured alike.",
+]
+
+report_template = "In this {tie_meaning} network of {n} {node_type} (density {density}), global transitivity is {transitivity} and the average local clustering coefficient is {average} ({undefined_rule} for people with fewer than two contacts). Random networks with the same {held_fixed} give {null_mean} on average ({draws} draws), so closure is {above_or_near} that baseline. This describes how often contacts of the same person are tied, not why. The values change by {change} when {perturbation}."
+
+related = ["triad-census", "small-world", "betweenness", "ergm"]
+sources = ["watts1998collective", "newman2001random", "wasserman1994social", "newman2018networks", "maslov2002specificity"]
+
+[knappnet]
+rust = "compute_transitivity(&graph, ClusteringOptions::default()); compute_average_clustering(&graph, ClusteringOptions::default())"
+r = "net_transitivity(g); net_clustering(g); net_avg_clustering(g)"
+python = "networkx.transitivity(G); networkx.clustering(G); networkx.average_clustering(G)"

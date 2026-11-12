@@ -297,7 +297,7 @@ friendship density 0.243  M 23 A 56 N 131  reciprocity 0.451  chance 0.240 (sd 0
 
 :::
 
-@@RECIP@@
+Against chance, the two relations behave very differently. In the advice network 47 percent of ties are returned (0.474), but random networks with the same 190 ties return 45 percent on average (0.452, spread 0.037), and a third of them (0.33) are at least as reciprocal as the real network. On its own, advice reciprocity shows nothing beyond what the *number* of ties would give. In the friendship network 45 percent are returned (0.451), against 24 percent (0.240, spread 0.055) in random networks with 102 ties, and none of the 2,000 random networks reaches the observed value. The same "about 45 percent returned" is unremarkable for advice and a strong signal for friendship, and the difference is the density, 0.452 against 0.243.
 
 Two cautions. First, reciprocity can be built into the data collection: if people are asked to name *mutual* friends, or if the tie is something like "attended the same meeting" that is symmetric by nature, the number is 1 by design and means nothing. Second, missing data bends it: if a manager did not answer the survey, his outgoing ties are missing, so every tie *toward* him looks unreturned and reciprocity is biased down.
 
@@ -599,7 +599,11 @@ average, as zero       0.160
 
 :::
 
-@@FLORENCE@@
+Read the table through the weights. The Medici have six marriage partners, which makes 15 pairs of partners and 15 of the network's 47 connected triples (the two families with exactly two marriages add one each), almost a third. Only one of those 15 pairs is married, so the Medici pull the global ratio down. As a *person*, though, the Medici count once among the eleven families with a defined coefficient, so the average of the local coefficients (0.218) is moved far more by the five families at 0.333 and by Peruzzi at 0.667. Count the four families with a single marriage as zeros and the average falls to 0.160. Three numbers, 0.191, 0.218 and 0.160, for one network, and none of them is wrong.
+
+The more useful comparison is with the density. The share of all possible marriages that happened is 0.190, and transitivity is 0.191: two marriage partners of the same family are about as likely to be married to each other as any two families picked at random. There is no sign of closure beyond what the number of marriages already gives. That fits an account of the Medici as brokers between families that were not otherwise connected [@padgett1993robust], though one network with 20 marriages and three triangles cannot establish it.
+
+A defensible sentence is "transitivity in the marriage network (0.19) is no higher than its density (0.19), so there is no excess closure." An over-claiming one is "the families did not form blocs": three triangles are too few to say.
 
 ### Reading clustering
 
@@ -804,7 +808,7 @@ mutual pairs implied  45 and 23
 
 :::
 
-@@CENSUS@@
+Each column sums to 1,330, the number of triples of 21 managers. The advice network has 190 transitive triads (030T) and 2 cyclic ones (030C); friendship has 23 and none. Advice has far more triads with several ties (120, 210 and 300) mostly because it has nearly twice as many ties (190 against 102), so compare the shapes of the two columns and not the raw counts. The last line is the check: the mutual pairs implied by the census are 45 for advice and 23 for friendship, exactly the mutual counts in the dyad census above.
 
 ## Transitive, intransitive and cyclic
 
@@ -863,8 +867,8 @@ compare <- \(null) {
   tibble(
     triad = names(obs),
     observed = unname(obs),
-    null_mean = colMeans(null),
-    null_sd = map_dbl(null, sd),
+    null_mean = unname(colMeans(null)),
+    null_sd = unname(map_dbl(null, sd)),
     z = (observed - null_mean) / null_sd
   )
 }
@@ -988,7 +992,7 @@ triad observed null mean  null sd      z
 
 :::
 
-@@UMAN@@
+Read the z column. Against this null, 030T (190 against about 106, z = 10.5) and 021D (z = 11.9) are far above chance, and 030C (2 against about 35, z = -5.9), 021C (z = -9.0) and 120C (z = -9.3) are far below. In words: given how many pairs are mutual, one-way and empty, the one-way ties line up into transitive pecking orders and avoid loops and chains much more than ties pointed at random would. The mutual pairs themselves are not being tested here, since this null fixes how many there are (102 is close to its null, z = 1.1).
 
 Now the fourth rung. Keep every manager's number of advice-seekers and advice-givers fixed and rewire the rest.
 
@@ -1015,7 +1019,7 @@ swap_once <- function(e, pick) {
 }
 chain <- function(e, steps) {
   picks <- matrix(sample.int(length(e$from), 2 * steps, replace = TRUE), nrow = 2)
-  reduce(asplit(picks, 2), swap_once, .init = e)
+  reduce(split(picks, col(picks)), swap_once, .init = e)
 }
 
 start <- list(from = as.integer(advice$edges$source), to = as.integer(advice$edges$target))
@@ -1039,6 +1043,14 @@ degree_table |>
     z_degree = round(z, 1),
     z_dyads = round(uman_table$z, 1)
   )
+
+# The mutual pairs this null expects (from the identity above), and how in- and out-degree move together.
+tibble(
+  mutual_pairs_expected = sum(mutual_in_type * degree_table$null_mean) / 19,
+  mutual_pairs_observed = d$mutual,
+  in_out_correlation = cor(net_degree(advice, mode = "in"), net_degree(advice, mode = "out"))
+) |>
+  mutate(across(everything(), \(x) round(x, 2)))
 ```
 
 ::: {.code-output}
@@ -1065,6 +1077,11 @@ degree_mean, degree_sd, degree_z = compare(degree)
 print(f"{'triad':<5} {'observed':>8} {'degree mean':>11} {'z degree':>9} {'z dyads':>8}")
 for k, name in enumerate(NAMES):
     print(f"{name:<5} {obs[k]:>8} {degree_mean[k]:>11.1f} {degree_z[k]:>9.1f} {uman_z[k]:>8.1f}")
+
+# The mutual pairs this null expects (from the identity above), and how in- and out-degree move together.
+expected = np.dot(mutual_in_type, degree_mean) / 19
+in_out = np.corrcoef([advice.in_degree(v) for v in advice], [advice.out_degree(v) for v in advice])[0, 1]
+print(f"mutual pairs: expected {expected:.1f}, observed {mutual}; in- and out-degree correlation {in_out:.2f}")
 ```
 
 ::: {.code-output}
@@ -1116,6 +1133,16 @@ println!("{:<5} {:>8} {:>11} {:>9} {:>8}", "triad", "observed", "degree mean", "
 for k in 0..16 {
     println!("{:<5} {:>8} {:>11.1} {:>9.1} {:>8.1}", TRIAD_NAMES[k], obs[k], degree_table[k].0, degree_table[k].2, uman_table[k].2);
 }
+
+// The mutual pairs this null expects (from the identity above), and how in- and out-degree move together.
+let expected: f64 = (0..16).map(|k| mutual_in_type[k] * degree_table[k].0).sum::<f64>() / 19.0;
+let out_deg = compute_degree(&advice, DegreeMode::Out, true);
+let in_deg = compute_degree(&advice, DegreeMode::In, true);
+let (mean_out, mean_in) = (out_deg.iter().sum::<f64>() / 21.0, in_deg.iter().sum::<f64>() / 21.0);
+let cov: f64 = out_deg.iter().zip(&in_deg).map(|(o, i)| (o - mean_out) * (i - mean_in)).sum();
+let var_out: f64 = out_deg.iter().map(|o| (o - mean_out).powi(2)).sum();
+let var_in: f64 = in_deg.iter().map(|i| (i - mean_in).powi(2)).sum();
+println!("mutual pairs: expected {expected:.1}, observed {mutual}; in- and out-degree correlation {:.2}", cov / (var_out * var_in).sqrt());
 ```
 
 ::: {.code-output}
@@ -1142,7 +1169,9 @@ triad observed degree mean  z degree  z dyads
 
 :::
 
-@@DEGREE@@
+The picture changes. With every manager's in- and out-degree held fixed, 030T is no longer high: the null expects about 235 and the observed 190 is, if anything, a little low (z = -1.8). The cyclic 030C is 2 against about 8 (z = -1.4), and 021D is ordinary (160 against 158). A few managers who are asked by many people, and a few who ask many, are enough to produce a great many transitive triads automatically.
+
+Some things do survive. The types with mutual pairs are well above this null (102: 90 against 33, z = 6.7; 201: z = 5.8; 300: z = 4.0), and 120C, a mutual pair with a one-way chain through the third person, stays far below it (17 against 54, z = -4.0). The last line explains the mutual pairs: this null expects about 37 returned pairs and we observe 45. The reason it expects fewer than the uniform null of the last section (about 43, from the 0.452 chance reciprocity above) is that managers who ask a lot are asked little, so in- and out-degree are negatively correlated (-0.32), which leaves fewer chances for two people to ask each other.
 
 @fig-triad-census-null draws both comparisons on the census itself.
 
@@ -1150,13 +1179,13 @@ triad observed degree mean  z degree  z dyads
 
 ### What each comparison licenses
 
-Read the two tables against each other and the story is the most useful thing in this chapter.
+Read the two tables against each other, because the story is the most useful thing in this chapter.
 
-- Against the dyad-census null, 030T has a huge positive z-score and 030C a large negative one. Taken alone this says: *given how many pairs are mutual, asymmetric or empty, the one-way ties line up into pecking orders far more than if they were pointed at random.*
-- Against the degree-preserving null, the same two counts are ordinary. The excess of transitive triads disappears once you grant that some managers are asked by many people and some ask many people. A few popular advisers, pointed at by a lot of people who also point at each other's advisers, generate pecking-order triads automatically.
-- Some excesses survive both: mutual pairs and the types built from them (102, 201, 300) stay well above both nulls. That is the robust finding: advice here is returned more often than degrees alone would give.
+- Against the dyad-census null, 030T has a huge positive z-score and 030C and 120C large negative ones. This says: *given how many pairs are mutual, one-way or empty, the one-way ties line up into pecking orders and avoid loops far more than if they were pointed at random.*
+- Against the degree-preserving null, 030T and 030C are ordinary. The excess of transitive triads disappears once you grant that some managers are asked by many people and some ask many. A few popular advisers, asked by many people who also ask each other's advisers, generate pecking-order triads automatically.
+- Some findings survive both. Triads with three mutual pairs (300) are above both nulls, and 120C is far below both: a mutual pair with a one-way chain through a third person, which contains a loop (A to B to C and back to A), is rare. Having *few loops* is robust here; having *many pecking orders* is not.
 
-So a defensible sentence is "managers return advice more often than their individual popularity and activity would predict, and the one-way advice ties are arranged in transitive rather than cyclic patterns, though a null that holds each manager's number of advice-givers and advice-seekers fixed produces as many pecking-order triads as we see." The over-claiming sentence is "advice in this firm follows a hierarchy more than chance would give, z = 10." That is true of one null and false of another, and it does not say what the hierarchy is: the grid shows the busiest columns belong to a few managers, and who they are (the vice presidents) is a fact about the firm that the census cannot tell you.
+So a defensible sentence is "the advice ties contain far fewer loops than random networks with the same degrees, and managers return advice more often than their individual popularity and activity would predict; the number of transitive triads, though, is what a null that holds each manager's number of advice-givers and advice-seekers fixed would produce." The over-claiming sentence is "advice in this firm follows a hierarchy more than chance would give, z = 10." That is true of one null, false of another, and silent about what the hierarchy is: the grid shows the busiest columns belong to a few managers (the first three are 2, 18 and 21, who hold the rank of vice president in the data), and the census cannot tell you whether it is their rank, their expertise or their location that people respond to.
 
 A null model also cannot say *why*. A significant excess is a measurement of a pattern, not a proof of a mechanism, and the 16 comparisons are not independent tests. Treat them as a profile to read, not a list of 16 hypotheses.
 
@@ -1264,7 +1293,9 @@ wave  arcs  mutual  030T  030C  transitivity
 
 :::
 
-@@SAMPSON@@
+The number of ties barely moves (55, 57 and 56), and neither does the number of mutual pairs (14, 15 and 15). Read as undirected, that is 41, 42 and 41 pairs of novices who like each other in at least one direction. Yet the share of connected triples that close rises from 0.262 to 0.337 to 0.426, so the same number of ties makes more closed triangles at the third wave than at the first. The transitive triads (030T) are 7, 2 and 3 and the cyclic ones 0, 2 and 1, which is too few to read: a network of 18 people has only 816 triples, and any one type has a handful.
+
+A defensible sentence is "among the same number of liking ties, a larger share of connected triples closed between the first and third wave." An over-claiming one is "the monastery split because friendships closed up." There is no null here, each number rests on a few triangles, and a census says what the pattern is, never what caused it.
 
 ## Stress-testing a census
 
@@ -1290,7 +1321,7 @@ dropped <- map(1:500, \(i) {
 tibble(
   statistic = names(dropped),
   full_network = c(obs[["030T"]], obs[["030C"]], net_transitivity(advice)),
-  mean_after_dropping = map_dbl(dropped, mean),
+  mean_after_dropping = unname(map_dbl(dropped, mean)),
   low_5pct = map_dbl(dropped, \(x) unname(quantile(x, 0.05))),
   high_95pct = map_dbl(dropped, \(x) unname(quantile(x, 0.95)))
 ) |>
@@ -1374,7 +1405,7 @@ transitivity     0.735       0.682    0.657     0.705
 
 :::
 
-@@DROP@@
+Dropping a tenth of the ties lowers transitivity only a little, from 0.735 to about 0.68, with the middle 90 percent of draws between about 0.66 and 0.71. The census counts move more. The 030T count falls from 190 to about 160 (the middle 90 percent runs from about 135 to 192). It falls by less than you would guess from three ties each having to survive, because a lost tie also *turns* triads into 030T: a triad of type 120D or 210 that loses a tie can become a transitive 030T. For the same reason the cyclic count *rises*, from 2 to about 3.6 on average, as triads with more ties lose one and become 030C. Two lessons follow. A type count can go up when ties go missing, and a claim resting on a count as small as 2 is far less stable than one resting on 190. The overall story, many transitive triads and almost no cyclic ones, holds in every draw: even the 95th percentile of 030C (about 8) is far below the 5th percentile of 030T.
 
 ## Common misconceptions and where tools disagree
 

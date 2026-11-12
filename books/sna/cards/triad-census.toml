@@ -1,0 +1,62 @@
+id = "triad-census"
+title = "Dyad and triad census"
+kind = "measure"
+chapter = "triads-and-motifs"
+summary = "Counts of every kind of pair (mutual, asymmetric, null) and every kind of three-person pattern (16 directed types, 4 undirected) in a network."
+answers = "Which small patterns (returned ties, pecking orders, loops, chains, open triples) make up this network, and are any of them more or less common than a stated random baseline would give?"
+
+data_requirements = [
+  "A network of binary ties on a fixed set of people. Weights are ignored and parallel ties collapse to one; say how a weighted network was dichotomized.",
+  "Direction must mean something for the 16-type census. An undirected network is read as all-mutual and only the types 003, 102, 201 and 300 can occur.",
+  "The set of people must be complete enough that most triples are observed. Triples with a missing person or missing ties are counted as if the ties were absent.",
+  "Comparison with a null needs a stated null (what is held fixed), a number of draws, and the same software for the observed and the random networks.",
+]
+
+assumptions = [
+  "A tie is a state that could be present or absent for every pair. If one person could not have chosen another (a boundary or a fixed number of choices per person), the null must respect that.",
+  "The counts describe three people at a time. Patterns that need four or more people (a bi-fan, a chain of four) are not in it.",
+  "Counts are exact only on the simple network: self-loops are ignored and parallel ties are collapsed.",
+  "A z-score against a null is read relative to that null. The 16 counts are dependent (they sum to the number of triples and share ties), so they are not 16 independent tests.",
+]
+
+readings = [
+  { context = "Advice or deference among colleagues", high = "Many transitive triads (030T) and few cyclic ones (030C) suggest advice flows up a ranking. Many mutual types suggest peers who consult each other.", low = "Few transitive triads suggest advice is not organized by rank, or that ties are sparse and scattered." },
+  { context = "Friendship in a small group", high = "Many 300 and 201-like triads (everyone mutual) indicate cliques. A surplus of mutual pairs with no closure suggests pairs, not groups.", low = "Many 102 and 012 triads can indicate isolated pairs and one-way attachments; few closed triads can indicate ties that bridge rather than close." },
+  { context = "Gene regulation or other directed process networks", high = "An over-represented 030T (the feed-forward loop) relative to a degree-preserving null is a candidate building block. It is a statistical fact about the network, not evidence that the pattern has a function.", low = "Few cyclic triads can be the signature of an acyclic process (a pipeline, a causal order)." },
+  { context = "Online follows and messaging", high = "Many mutual types reflect follow-back norms; a high 021U (two accounts that both follow a third, without being followed back) reflects celebrity or broadcast structure.", low = "Few transitive triads suggest the network is a set of hubs and followers, not a web of friends." },
+  { context = "Trade, transport or supply", high = "Cycles (030C) can mean circular flows; transitive triads can mean tiered supply (A supplies B and C, B supplies C).", low = "A near-absence of cycles is expected in a strictly tiered chain and says little beyond the tiering." },
+]
+
+pitfalls = [
+  "Reading a count without a null. A count of 190 transitive triads is neither high nor low until you say what it is compared with.",
+  "Reading a z-score from one null as the answer. The same census can look strongly hierarchical against one null and ordinary against another.",
+  "Comparing raw counts across networks of different size. Counts grow with the cube of the number of people.",
+  "Mixing up labels. Tools agree on the 16 codes but the D and U in 111D, 111U, 120D and 120U are easy to swap in hand-made tables; test any home-made census against the identity that the mutual pairs implied by the census equal the dyad census.",
+  "Treating the 16 comparisons as independent tests, or picking the one type with the largest z after looking.",
+  "Treating a significant excess as a mechanism. The census describes a pattern, not what produced it.",
+]
+
+checks = [
+  "Check the identity: the number of mutual pairs implied by the triad census (mutual pairs inside each type, summed, divided by n minus 2) must equal the dyad census. If it fails, a count or label is wrong.",
+  "Compare against at least two nulls (one holding the dyad census fixed, one holding every in- and out-degree fixed) and report both. Report an excess as robust only if it survives both.",
+  "Use the percentile of the draws as well as the z-score, and use enough draws (at least 1,000) that the percentile is not at the floor.",
+  "Drop a random 10 percent of ties several hundred times and recompute. Counts of a type can move a lot because deleting a tie changes the type of the triads it was in.",
+  "Check that the null respects the data collection (for example fixed-choice surveys cap out-degree) and that the network boundary is right.",
+]
+
+do_not_claim = [
+  "That an over-represented type is functional, intended or causal.",
+  "That a pattern is 'significant' without naming the null and the number of draws.",
+  "That the census of one network can be compared with another network's raw counts when their sizes differ.",
+  "That missing ties leave the census unchanged. A missing tie turns every triad that contains it into a different type.",
+]
+
+report_template = "In this {tie_meaning} network of {n} {node_type}, {count} of the {triples} triples are of type {type}. Against random networks that keep {held_fixed} ({draws} draws), the expected count is {null_mean} (z = {z}, {percentile} of draws below the observed count). Against random networks that keep {held_fixed_2}, the z-score is {z_2}. This describes how often the pattern occurs relative to these baselines, not why. The result is {stable_or_not} when {perturbation}."
+
+related = ["clustering", "ergm", "small-world", "qap"]
+sources = ["holland1970method", "holland1976local", "batagelj2001subquadratic", "milo2002network", "maslov2002specificity", "wasserman1994social"]
+
+[knappnet]
+rust = "compute_triad_census(&graph, 0)"
+r = "net_triad_census(g)"
+python = "networkx.triadic_census(G)"
