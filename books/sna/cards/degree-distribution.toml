@@ -1,0 +1,61 @@
+id = "degree-distribution"
+title = "Degree distribution"
+kind = "measure"
+chapter = "small-worlds"
+summary = "How many nodes have each number of ties, shown as a histogram or as the share of nodes with at least k ties."
+answers = "Is the number of ties spread evenly across people, or do a few people hold a large share of all ties?"
+
+data_requirements = [
+  "A tie list in which a tie means the same thing for every pair, so that counting ties is meaningful.",
+  "For a directed network, decide whether you want in-degree, out-degree or both, and say which. Each has its own distribution.",
+  "Decide in advance how repeated ties and loops are counted. A repeated tie counted twice changes the distribution.",
+  "A boundary that is the same for everyone. If some people were interviewed and others only named, the interviewed ones will look more connected.",
+]
+
+assumptions = [
+  "A tie is a tie: degree counts ties and ignores how strong, recent or costly each one is. Use strength for weighted networks.",
+  "The network is complete enough that counts are not truncated. Surveys that let people name at most five friends cap the out-degree at five.",
+  "Nodes that were sampled have the same chance of being included whatever their degree. In snowball or hub-first samples this fails and tails look heavier or lighter than they are.",
+  "With few nodes, the shape is noisy. A network of 30 people has a handful of nodes in its tail, and a tail of a handful says little about a mechanism.",
+]
+
+readings = [
+  { context = "Marriage or alliance network among families", high = "A family with many marriage ties. In a small network the top one or two families can hold a large share of all ties.", low = "A family with one or two ties. It reaches other families only through them." },
+  { context = "Friendship or advice network inside an organization", high = "Someone many colleagues name or are named by. It says they are widely connected in this relation, not that they are liked, trusted or influential.", low = "Someone few people name. This can reflect a role, a newcomer, or non-response rather than isolation." },
+  { context = "Supply, transport or infrastructure network", high = "A hub: many routes meet there. A heavy tail means a few hubs matter a great deal for resilience.", low = "A node with few routes. If most nodes look like this, delays at a hub spread to many." },
+  { context = "Online platform with follows or links", high = "An account with many followers or links. These counts are often heavy tailed because attention is unequal, which is not the same as a particular generating process.", low = "An account with few links; on large platforms this is the typical account." },
+]
+
+pitfalls = [
+  "Calling a distribution scale-free or power-law because it looks straight on a log-log plot. Many other shapes look straight over a short range.",
+  "Comparing histograms of networks with different average degree or size without normalizing. Use shares, and compare means first.",
+  "Fitting a line to a log-log histogram by least squares. The estimates are biased; use a maximum likelihood fit and compare with alternatives.",
+  "Reading the largest degree in a small network as evidence of a hub mechanism. Even random networks have a largest degree.",
+  "Using the mean for a heavy-tailed distribution without also reporting the median and the maximum.",
+  "Mixing in-degree and out-degree in one distribution of a directed network.",
+]
+
+checks = [
+  "Report the mean, the median, the maximum and the share of all ties held by the top 1 or 10 percent of nodes, not the mean alone.",
+  "Plot the complementary cumulative distribution (share with at least k ties) on log axes. It needs no binning and shows the tail.",
+  "Compare with a random network of the same size and number of ties. If a tail like yours appears in random draws, it is not evidence of anything special.",
+  "Drop a random 10 percent of nodes or ties several times and redraw. A shape that changes a lot is a sampling artifact.",
+  "If you claim a power-law tail, fit it by maximum likelihood, choose where the tail starts by a stated rule, and compare it with at least one alternative such as the log-normal or exponential.",
+]
+
+do_not_claim = [
+  "That the network arose by preferential attachment, or by any particular growth process, because of its degree distribution.",
+  "That a heavy tail makes the network robust to random failure and fragile to attack, without checking it on this network.",
+  "That the distribution in a sample is the distribution in the population.",
+  "That a few high-degree people are the cause of what spreads through the network. They are in a position to reach many people; what they do is a separate question.",
+]
+
+report_template = "In this {tie_meaning} network of {n} {node_type}, degree ranges from {min} to {max}, with mean {mean} and median {median}; the top {top_share_group} of {node_type} hold {top_share} of all ties. The distribution is {shape_description}. This describes how ties are spread, not how the network arose. {tail_caveat}"
+
+related = ["small-world", "degree", "betweenness"]
+sources = ["erdos1959random", "barabasi1999emergence", "clauset2009powerlaw", "newman2003structure"]
+
+[knappnet]
+rust = "compute_degree(&graph, DegreeMode::All, true), then count by degree"
+r = "net_degree_dist(g, cumulative = TRUE)"
+python = "collections.Counter(d for _, d in G.degree())"

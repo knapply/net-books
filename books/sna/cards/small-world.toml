@@ -1,0 +1,61 @@
+id = "small-world"
+title = "Small-world structure and the small-world quotient"
+kind = "model"
+chapter = "small-worlds"
+summary = "A network is small-world in the sense of Watts and Strogatz when its clustering is much higher than a random network's while its typical distance is about as short; the quotient Q = (C / C_random) / (L / L_random) summarizes the comparison."
+answers = "Are people close to each other in few steps and, at the same time, tied into tight local groups, compared with a random network of the same size?"
+
+data_requirements = [
+  "An undirected, simple reading of the network. Directions are ignored, repeated ties counted once and loops dropped; say so.",
+  "One connected piece, or a statement of how distance is computed across pieces. The mean over reachable pairs ignores pairs with no route.",
+  "A tie list with the same meaning for every pair, and a boundary you can defend.",
+  "A random baseline you name: the same number of nodes and ties placed at random, or the same degrees, or a lattice. The answer depends on it.",
+]
+
+assumptions = [
+  "The baseline is the right comparison. Against a random network with the same number of ties, any network with uneven degrees looks clustered. Against one with the same degrees, much of that disappears.",
+  "Size is held in view. The clustering ratio grows with the number of nodes for a fixed structure, so Q is not comparable across networks of different sizes.",
+  "Shortest paths are the relevant notion of distance. Real information and infection often take other routes.",
+  "Clustering is measured the same way throughout: transitivity and the mean of local coefficients differ, and tools differ on nodes with fewer than two neighbours.",
+]
+
+readings = [
+  { context = "Marriage or alliance network among families", high = "Families sit in tight local circles, yet a few cross-cutting marriages keep everyone within a few steps. Compare with the same-degree baseline before concluding the pattern is more than a few well-connected families.", low = "Either the network has no unusual local closure, or it is so sparse that closure is rare either way. In a network of 15 families the ratio is very noisy." },
+  { context = "Friendship or advice network inside an organization", high = "Colleagues cluster in teams and are still close to anyone through a few go-betweens. In a dense network almost everyone is close to everyone, so a short distance carries little information.", low = "Teams are not closed, or there are long chains of acquaintances. Check whether the network is really one organization or several joined at a few points." },
+  { context = "Supply, transport or infrastructure network", high = "Local clusters with some long links. Efficient for reaching many places, and a few long links may be single points of failure.", low = "Distances are long or clustering is low. Geography often forces long distances; it is not necessarily a sign of poor design." },
+  { context = "Online platform with follows or links", high = "Clusters of people who follow the same accounts with short routes across the platform. Very large sparse networks produce a very large ratio whatever the mechanism.", low = "Few triangles, as in networks where ties are mostly broadcast follows and not mutual." },
+]
+
+pitfalls = [
+  "Reporting Q without saying which random baseline and how many random networks were drawn.",
+  "Reading a Q above 1 as proof of a small world. For large sparse networks Q is above 1 almost by default, and any threshold is a convention.",
+  "Comparing Q across networks of different size or density, or against published values computed by another method.",
+  "Treating the small-world property as an explanation. It describes a pattern; many different processes make it.",
+  "Using it on a network of a few dozen nodes. The random baselines vary enough that the ratio is unstable.",
+  "Dropping disconnected pieces silently. Say how many nodes were left out.",
+]
+
+checks = [
+  "Report C, L, C_random and L_random separately, not only the quotient.",
+  "Recompute with a second baseline that keeps the degree sequence. If the clustering excess shrinks a lot, degree variation explains most of it.",
+  "Rerun with a different seed and more random networks and see how much Q moves.",
+  "Drop a random 10 percent of ties several times and recompute. An unstable Q is not a finding.",
+  "Compare with a lattice (high clustering, long paths) and a random network (low clustering, short paths) of the same size to see where the network sits between them.",
+]
+
+do_not_claim = [
+  "That the network grew through the Watts-Strogatz rewiring process, or any process.",
+  "That people can find the short routes. Short routes existing is not the same as people being able to use them.",
+  "That information, infection or influence will spread quickly, without data on the spreading process.",
+  "That Q above some cut-off makes the network small-world in a way that holds across studies.",
+]
+
+report_template = "In this {tie_meaning} network of {n} {node_type} (read as undirected; {left_out} left out), transitivity is {c} and mean distance is {l}. Random networks with the same {baseline_kept} give {c_random} and {l_random} (mean of {reps}), so the quotient is {q}. This compares the network with one baseline and does not say how it arose. {caveat}"
+
+related = ["degree-distribution", "transitivity", "mean-distance"]
+sources = ["watts1998collective", "humphries2008network", "telesford2011ubiquity", "travers1969experimental", "erdos1959random"]
+
+[knappnet]
+rust = "compute_small_world(&graph, SmallWorldOptions { local: false, reps: 500, seed: 1, threads: 0 })"
+r = "net_small_world(g, local = FALSE, reps = 500, seed = 1)"
+python = "no direct call; compute transitivity and mean distance of G and of nx.gnm_random_graph(n, m) draws by hand (networkx.sigma uses a different baseline)"
