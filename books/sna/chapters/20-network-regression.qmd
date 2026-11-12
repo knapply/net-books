@@ -78,10 +78,11 @@ predictors <- list(friendship = friendship, reports_to = reports_to, same_dept =
 dyads <- tibble(i = as.vector(row(advice)), j = as.vector(col(advice))) |> filter(i != j)
 share <- outer(dyads$i, dyads$i, "==") | outer(dyads$i, dyads$j, "==") |
   outer(dyads$j, dyads$i, "==") | outer(dyads$j, dyads$j, "==")
+n_dyads <- nrow(dyads)
 tibble(
-  managers = n, dyads = nrow(dyads), advice_ties = sum(advice),
-  density = round(sum(advice) / nrow(dyads), 3),
-  pairs_of_dyads = choose(nrow(dyads), 2), pairs_sharing_a_person = (sum(share) - nrow(dyads)) / 2,
+  managers = n, dyads = n_dyads, advice_ties = sum(advice),
+  density = round(sum(advice) / n_dyads, 3),
+  pairs_of_dyads = choose(n_dyads, 2), pairs_sharing_a_person = (sum(share) - n_dyads) / 2,
   each_dyad_shares_with = mean(rowSums(share)) - 1
 )
 tibble(reporting_pairs = sum(reports_to), with_an_advice_tie = sum(advice * reports_to))
@@ -210,7 +211,7 @@ reporting pairs with an advice tie: 19 of 20
 
 :::
 
-The advice network is dense: 190 of the 420 possible ties are there, a density of 0.452. The last line in each tab is the one that matters for this chapter. Of the 87,990 ways to pick two different pairs of managers, 16,170 pairs of pairs share a person. That is only 18 percent of them, but it means every single pair shares a person with 77 of the other 419. One more number from these lines will matter later: 19 of the 20 managers who report to someone go to that person for advice.
+The advice network is dense: 190 of the 420 possible ties are there, a density of 0.452. The next two lines matter most for this chapter. Of the 87,990 ways to pick two different pairs of managers, 16,170 pairs of pairs share a person. That is only 18 percent of them, but it means every single pair shares a person with 77 of the other 419. One more number from these lines will matter later: 19 of the 20 managers who report to someone go to that person for advice.
 
 @fig-nr-dependence shows the same thing on seven people. Pick one pair (blue). Every pair in the same two people's rows and columns (orange) is connected to it through a person.
 
@@ -357,7 +358,7 @@ QAP calls it significant in 7 of 200
 
 :::
 
-## The ordinary test cried wolf in 73 of 200 runs, a false-alarm rate of 36.5 percent where 5 percent was promised. QAP, which relabels people and so keeps each person's bundle of pairs together, did so in 7 of 200 (3.5 percent, which is within the wobble you'd expect from 200 runs). That is the whole case for the rest of the chapter. The regression is fine; the p-values need a different definition of chance.
+The ordinary test cried wolf in 73 of 200 runs, a false-alarm rate of 36.5 percent where 5 percent was promised. QAP, which relabels people and so keeps each person's bundle of pairs together, did so in 7 of 200 (3.5 percent, which is within the wobble you'd expect from 200 runs). That is the whole case for the rest of the chapter. The regression is fine; the p-values need a different definition of chance.
 
 ## A hand-worked example on four people
 
@@ -1673,9 +1674,9 @@ When the question becomes "why do ties form?", the regressions in this chapter r
 Tools disagree in smaller ways, and the differences are worth knowing.
 
 - **Names.** `sna::netlm` calls double semi-partialling `nullhyp = "qapspp"` and Y-permutation `"qapy"`; knappnet calls them `"dsp"` and `"y"`.
-- **MRQAP.** VERIF_NETLM
-- **Logistic.** VERIF_NETLOGIT
-- **Network effects.** VERIF_LNAM
+- **MRQAP.** `sna::netlm(..., nullhyp = "qapspp")` gives the same coefficients and t statistics as `net_mrqap`, to four decimals, for both the directed and the valued model. The permutation p-values differ by Monte Carlo noise: with 5,000 relabelings each, the largest gap was 0.016 (friendship, 0.156 against 0.172), and the Y-permutation p-values were within 0.016 as well.
+- **Logistic.** `sna::netlogit` gives the same coefficients, to four decimals. Its permutation p-values (400 relabelings) are within about 0.04 of ours, and they give the same verdict: only reports_to is clearly distinguishable from chance.
+- **Network effects.** `sna::lnam(y, X, W1 = W)` gives the same estimates to four decimals ($\rho$ = 0.5380, coefficients 2.6437, 0.3259 and $-4.3401$, $\sigma^2$ = 34.41). It reports a Wald test for $\rho$ from the information matrix (standard error 0.284, p = 0.058) where we report a likelihood ratio test (p = 0.095) and a profile interval; the Wald interval, about $-0.02$ to 1.09, is shifted up from the profile interval of $-0.11$ to 0.95. Both say "suggestive". Its "null model" is a mean-only model, not the $\rho = 0$ regression we compare with.
 - **The p-value convention.** Count-over-$B$ (`sna`, knappnet) versus $(1 + \text{count})/(1 + B)$ differ by at most $1/B$, which matters only when the count is small.
 
 ## Exercises
