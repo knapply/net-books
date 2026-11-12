@@ -1,0 +1,59 @@
+id = "epidemic-threshold"
+title = "Epidemic threshold (SIR degree-moment and SIS eigenvalue rules)"
+kind = "measure"
+chapter = "diffusion"
+summary = "The transmissibility (SIR) or infection-to-recovery ratio (SIS) above which a large network can sustain a large outbreak, computed from the degrees (SIR) or the largest eigenvalue of the adjacency matrix (SIS)."
+answers = "How easy is it for something that spreads along ties to take off in this network, and how much do uneven degrees (hubs) lower the bar?"
+
+data_requirements = [
+  "A network whose ties mean opportunity to pass the thing on (contact, exposure), not only a recorded friendship.",
+  "For the degree-moment rule: degrees for every node, so that the mean degree and the mean squared degree can be computed.",
+  "For the eigenvalue rule: a complete adjacency matrix, with undirected ties for the simple form given here.",
+  "Large networks. Both rules are large-network approximations.",
+]
+
+assumptions = [
+  "Transmission along each tie is independent and equally likely (one transmissibility T for every tie).",
+  "For the SIR degree-moment rule, the network is tree-like and degrees of tied nodes are not correlated; triangles and degree correlations change the real threshold.",
+  "The network is static during the outbreak.",
+  "The population is large enough that a lucky early run of non-transmission or recovery does not end the outbreak by chance.",
+]
+
+readings = [
+  { context = "Infectious disease in a school or office", high = "A high threshold means transmission must be likely per contact before a large outbreak is possible; interventions that lower transmissibility can push below it.", low = "A low threshold (large mean squared degree relative to mean degree) means a few well-connected people make outbreaks possible even when transmission per contact is modest." },
+  { context = "Rumour or information in an organization", high = "Information needs strong reasons to be passed on, or the network is sparse and even; it may stay local.", low = "Hubs and brokers make it easy to spread widely; losing them would raise the threshold." },
+  { context = "Failure cascades in a supply or dependency network", high = "Failures are likely to stay contained unless dependencies are strong.", low = "A few highly connected suppliers make wide cascades possible even if most dependencies are weak." },
+  { context = "Online platform sharing", high = "Content needs a high share-rate per exposure to reach a large audience.", low = "Accounts with very large audiences lower the bar, but exposure is not adoption." },
+]
+
+pitfalls = [
+  "Treating the threshold as a sharp line in a small network. In the 34-person karate club the SIR curve bends gradually and the SIS rule at a ratio above the threshold still died out in nearly every simulated run.",
+  "Mixing up the per-step infection chance with the transmissibility T. Over a whole infectious period they differ unless recovery takes exactly one step.",
+  "Using the SIR and SIS thresholds interchangeably. They come from different models and usually give different numbers.",
+  "Assuming the final outbreak size depends only on T. The threshold does; the final size also depends on how long people stay infectious and on clustering.",
+  "Taking recorded ties as contact ties. Missing or non-contact ties move the threshold in unknown directions.",
+]
+
+checks = [
+  "Simulate the outbreak many times on the same network and compare the share of runs that become large with the threshold's prediction; expect a gradual change in small networks.",
+  "Recompute the threshold after dropping a random share of ties, and after rewiring ties while keeping degrees, to see how much it depends on the exact ties.",
+  "Compare the degree-moment value with the eigenvalue value; large differences point to degree correlations or clustering.",
+  "Report the mean and the interval over many simulated runs, with the number of runs and the random seed.",
+]
+
+do_not_claim = [
+  "That an outbreak on this network would or would not happen, from the threshold alone.",
+  "That the simulated or computed numbers describe a real outbreak; they describe the stated rule on the stated ties.",
+  "That hubs are the best intervention target without a model of the intervention.",
+  "That a network above the threshold will always have a large outbreak; early extinction by chance is common.",
+]
+
+report_template = "On a network of {n} {node_type} and {m} ties, the degree-moment SIR threshold is T_c = {t_c} (mean degree {mean_k}, mean squared degree {mean_k2}) and the largest adjacency eigenvalue is {lambda_1}, giving an SIS threshold ratio of about {sis_ratio}. These are large-network approximations. In {runs} simulated outbreaks (rule: {rule}; seed rule: {seed_rule}; random seed {random_seed}) the mean attack rate was {mean_attack} with the middle 95 percent of runs between {low} and {high}. The outbreaks are simulated; they show what the stated rule would do on these ties, not what happened."
+
+related = ["contagion", "degree-distribution", "clustering"]
+sources = ["newman2002spread", "pastorsatorras2001epidemic", "pastorsatorras2015epidemic", "kermack1927contribution"]
+
+[knappnet]
+rust = "none (knappnet has no diffusion functions; write the simulation by hand as in the chapter)"
+r = "none (hand-written spread() in the chapter; moments from rowSums(adjacency), eigenvalue from eigen())"
+python = "none (hand-written spread() in the chapter; moments from numpy, eigenvalue from numpy.linalg.eigvalsh)"
