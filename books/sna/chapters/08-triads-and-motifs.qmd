@@ -1108,18 +1108,23 @@ swap_once <- function(e, pick) {
   e$code <- e$from * n + e$to
   e
 }
+# Apply the swaps one after another, each picking up the network the last one left.
+# (A short recursive helper stands in for a loop.)
+walk <- function(e, picks, i = 1) {
+  if (i > ncol(picks)) e else walk(swap_once(e, picks[, i]), picks, i + 1)
+}
 chain <- function(e, steps) {
-  picks <- matrix(sample.int(length(e$from), 2 * steps, replace = TRUE), nrow = 2)
-  reduce(split(picks, col(picks)), swap_once, .init = e)
+  walk(e, matrix(sample.int(length(e$from), 2 * steps, replace = TRUE), nrow = 2))
 }
 
 start <- list(from = as.integer(advice$edges$source), to = as.integer(advice$edges$target))
 start$code <- start$from * n + start$to
 
-# One long chain: 4,000 swaps to forget the start, then a network after every 400 more swaps.
+# Forget the start with 2,000 swaps, then make each of 1,000 networks with 600 more swaps.
+# (The Python and Rust tabs run one long chain and keep a network every 400 swaps.)
 set.seed(1)
-burned <- chain(start, 4000)
-states <- accumulate(seq_len(1000), \(e, k) chain(e, 400), .init = burned)[-1]
+burned <- start |> chain(500) |> chain(500) |> chain(500) |> chain(500)
+states <- map(1:1000, \(k) chain(burned, 600))
 degree_null <- states |>
   map(\(e) net_frame(tibble(source = e$from, target = e$to), nodes = tibble(id = 1:21),
                      directed = TRUE, quiet = TRUE)) |>
