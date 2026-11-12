@@ -16,6 +16,12 @@ These are the questions behind some of the oldest ideas in the field. How many h
 Each measure below comes with its code right where it is explained. The Rust blocks in this chapter run top to bottom as one script: the first builds the friendship network, and later ones reuse it.
 :::
 
+## What you'll be able to do
+
+By the end of the chapter you should be able to compute, read and defend six kinds of whole-network number: **distances** (how far apart people are), **components** (whether the network is in one piece), **density** (how many of the possible ties exist), **reciprocity** (whether ties are returned), **connectivity** (how many people or ties you would have to remove to break the network) and **cohesion** (where it is tightest). For each one we follow the same path: a question, a tiny example you can check on paper, the precise definition, the code, and then the ways the number goes wrong. At the end, two classic networks, the Florentine marriages and Krackhardt's managers, give us real data to practice on.
+
+Most of these ideas are older than network software. The vocabulary of walks, distance, eccentricity, radius and diameter is standard graph theory [@harary1969graph; @bondy2008graph]. Whitney [@whitney1932congruent] and Menger [@menger1927allgemeinen] gave us the mathematics of connectivity. Sociologists borrowed all of it: @wasserman1994social is the standard reference for density, reciprocity and the dyad and triad counts, and @borgatti2022analyzing, @hanneman2005introduction and @newman2018networks cover the same ground from social-science and physics angles.
+
 ## Walks, paths and distance
 
 Start with the vocabulary of getting from A to B.
@@ -147,6 +153,148 @@ diameter       4
 
 The mean of 1.978 and the diameter of 4 match the distance table: the largest entry is 4, and the typical pair is about two steps apart.
 
+### The definitions, precisely
+
+The plain-words versions above hide a few details that matter as soon as you compare networks or write a result down. Here they are with symbols. Write $n$ for the number of people.
+
+A **walk** of length $\ell$ from person $i$ to person $j$ is a list of people $i = v_0, v_1, \dots, v_\ell = j$ in which each person is tied to the next. The **distance** $d(i,j)$ is the smallest length of any walk from $i$ to $j$. (A shortest walk can't revisit anyone, so it is automatically a path, which is why "shortest path" and "shortest walk" mean the same thing.) We set $d(i,i) = 0$, and $d(i,j) = \infty$ when there is no walk at all. In an undirected network $d(i,j) = d(j,i)$. In a directed one the walk has to follow the arrows, so $d(i,j)$ and $d(j,i)$ can differ, and one can be infinite while the other is small.
+
+A pair can have more than one shortest path. Write $\sigma_{ij}$ for how many there are; the betweenness of @sec-centrality is built from these counts.
+
+From the distances come three summaries:
+
+$$
+\varepsilon(i) = \max_{j} d(i,j), \qquad D = \max_{i} \varepsilon(i), \qquad r = \min_{i} \varepsilon(i).
+$$
+
+Here $\varepsilon(i)$ is the **eccentricity** of person $i$, $D$ is the **diameter** and $r$ is the **radius**. The people whose eccentricity equals the radius form the **center** of the network, and those whose eccentricity equals the diameter form its **periphery**. In a connected, undirected network the two are tied together by $r \le D \le 2r$. The first inequality is clear from the definitions. For the second, pick a central person $c$. Everyone is within $r$ steps of $c$, so any two people are within $2r$ steps of each other, by going through $c$.
+
+Two averages describe the typical pair:
+
+$$
+L = \frac{1}{n(n-1)} \sum_{i \neq j} d(i,j), \qquad
+H = \left[ \frac{1}{n(n-1)} \sum_{i \neq j} \frac{1}{d(i,j)} \right]^{-1}.
+$$
+
+$L$ is the **mean distance**, also called the average path length. $H$ is the **harmonic mean distance**: add up the *reciprocals* of the distances, average them, and take the reciprocal of that average, with the convention $1/\infty = 0$. Its inverse, $E = 1/H$, goes by the name **global efficiency** [@marchiori2000harmony; @latora2001efficient]. Two facts about $H$ are worth keeping. First, whenever every pair can reach each other, $H \le L$, because a harmonic mean never exceeds the arithmetic mean. Second, and this is the reason it exists, $H$ is still defined when some pairs *can't* reach each other: an unreachable pair adds $1/\infty = 0$ to the sum instead of poisoning it with an infinity. We'll see shortly why that matters.
+
+Let's check all of this on five people, small enough to do on paper. Ben, Cleo and Dev form a triangle; Ana is tied only to Ben, and Eli only to Dev (the network of @fig-walks-paths).
+
+| | Ana | Ben | Cleo | Dev | Eli | Eccentricity |
+| --- | --- | --- | --- | --- | --- | --- |
+| Ana | 0 | 1 | 2 | 2 | 3 | 3 |
+| Ben | 1 | 0 | 1 | 1 | 2 | 2 |
+| Cleo | 2 | 1 | 0 | 1 | 2 | 2 |
+| Dev | 2 | 1 | 1 | 0 | 1 | 2 |
+| Eli | 3 | 2 | 2 | 1 | 0 | 3 |
+
+The radius is 2 and the diameter is 3, so $2 \le 3 \le 4$ holds. The center is Ben, Cleo and Dev; the periphery is Ana and Eli. There are ten pairs: five at distance 1 (Ana and Ben, Ben and Cleo, Ben and Dev, Cleo and Dev, Dev and Eli), four at distance 2 (Ana and Cleo, Ana and Dev, Ben and Eli, Cleo and Eli) and one, Ana and Eli, at distance 3. So $L = (5 \cdot 1 + 4 \cdot 2 + 1 \cdot 3)/10 = 1.6$. For the harmonic version the reciprocals add up to $5 + 4/2 + 1/3 = 22/3$, their average over the ten pairs is $22/30$, and so $H = 30/22 \approx 1.364$. As promised, $H < L$.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# Five people: Ben, Cleo and Dev form a triangle; Ana hangs off Ben and Eli off Dev.
+five <- c("Ana", "Ben", "Cleo", "Dev", "Eli")
+small <- tibble(
+  source = c("Ana", "Ben", "Ben", "Cleo", "Dev"),
+  target = c("Ben", "Cleo", "Dev", "Dev", "Eli")
+) |>
+  net_frame(nodes = tibble(id = five), directed = FALSE)
+
+# The distance table. A person's eccentricity is the largest number in their row.
+net_distances(small)
+tibble(person = five, eccentricity = net_eccentricity(small))
+
+# knappnet's R package has no function for the harmonic mean distance yet, so we write
+# it from the distance table: one over the average of 1/d across ordered pairs.
+harmonic_mean_distance <- function(g) {
+  d <- net_distances(g)
+  1 / mean(1 / d[row(d) != col(d)])
+}
+
+tibble(
+  radius = net_radius(small),
+  diameter = net_diameter(small),
+  mean_distance = net_mean_distance(small),
+  harmonic_mean_distance = harmonic_mean_distance(small)
+)
+```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
+
+## Python
+
+```python
+# Five people: Ben, Cleo and Dev form a triangle; Ana hangs off Ben and Eli off Dev.
+five = ["Ana", "Ben", "Cleo", "Dev", "Eli"]
+small = nx.Graph([(0, 1), (1, 2), (1, 3), (2, 3), (3, 4)])
+
+# The distance table. A person's eccentricity is the largest number in their row.
+dist = dict(nx.all_pairs_shortest_path_length(small))
+for i, name in enumerate(five):
+    print(f"{name:<5}", [dist[i][j] for j in range(5)])
+ecc = nx.eccentricity(small)
+print("eccentricity", [ecc[i] for i in range(5)])
+
+print(f"radius {nx.radius(small)}  diameter {nx.diameter(small)}  "
+      f"mean distance {nx.average_shortest_path_length(small):.3f}")
+# NetworkX calls the average of 1/d the global efficiency; the harmonic mean distance is 1 over it.
+print(f"harmonic mean distance {1 / nx.global_efficiency(small):.3f}")
+```
+
+::: {.code-output}
+```text
+Ana   [0, 1, 2, 2, 3]
+Ben   [1, 0, 1, 1, 2]
+Cleo  [2, 1, 0, 1, 2]
+Dev   [2, 1, 1, 0, 1]
+Eli   [3, 2, 2, 1, 0]
+eccentricity [3, 2, 2, 2, 3]
+radius 2  diameter 3  mean distance 1.600
+harmonic mean distance 1.364
+```
+:::
+
+## Rust
+
+```rust
+use knappnet::metrics::descriptive::{compute_eccentricity, compute_radius};
+use knappnet::metrics::distance_measures::compute_harmonic_diameter;
+
+// Five people: Ben, Cleo and Dev form a triangle; Ana hangs off Ben and Eli off Dev.
+let small = Graph::from_edges(5, &[0, 1, 1, 2, 3], &[1, 2, 3, 3, 4], None, false)?;
+let ecc: Vec<u32> = compute_eccentricity(&small, paths)?.iter().map(|&e| e as u32).collect();
+println!("eccentricity  {ecc:?}");
+println!(
+    "radius {}  diameter {}  mean distance {:.3}",
+    compute_radius(&small, paths)?,
+    compute_diameter(&small, paths, true)?,
+    compute_mean_distance(&small, paths, true)?
+);
+// The engine calls the harmonic mean distance the "harmonic diameter".
+println!("harmonic mean distance  {:.3}", compute_harmonic_diameter(&small, paths)?);
+```
+
+::: {.code-output}
+```text
+eccentricity  [3, 2, 2, 2, 3]
+radius 2  diameter 3  mean distance 1.600
+harmonic mean distance  1.364
+```
+:::
+
+:::
+
+The code agrees with the paper: eccentricities 3, 2, 2, 2, 3, radius 2, diameter 3, mean distance 1.6 and harmonic mean distance 1.364.
+
+One more detail before we move on. If ties carry weights, a distance can be the sum of the weights along a path, but then a *larger* weight means *farther*. Social data usually works the other way: a larger weight means a *stronger* tie, which ought to bring people closer. knappnet reads weights as lengths unless you say otherwise, and tools differ, so check what yours does before trusting a weighted distance, and say in your report which way you went.
+
 ### Six degrees, and what that figure leaves out
 
 The idea that everyone is only a few steps from everyone else has a famous experimental root. Jeffrey Travers and Stanley Milgram [@travers1969experimental] asked people to get a letter to a stranger in another city by passing it only to someone they knew on a first-name basis. The chains that reached the target were short, on the order of half a dozen steps, which gave rise to the phrase "six degrees of separation."
@@ -157,6 +305,19 @@ It's worth remembering what that finding does and doesn't say. The number comes 
 
 Distances matter because many things in social life travel along ties: information, jobs, norms, infections, favors. If the typical distance is short, those things can reach nearly anyone quickly. If it's long, they stall. A caution from @sec-centrality carries over: shortest paths are a model of how things flow, and many real things don't take the shortest route [@borgatti2005centrality].
 
+### What distance means in different settings
+
+The same mean distance can mean quite different things depending on what the ties are.
+
+| Setting | Short distances (small mean, small diameter) | Long distances | What the number does not show |
+| --- | --- | --- | --- |
+| Marriage or alliance network among families | A deal or a rumor can reach most families through a few marriages | Families are reachable only through long chains, so clusters may act separately | Whether anyone used those chains. Marriages are slow and costly to form, so a short distance is not the same as easy contact |
+| Communication inside an organization | A message needs few handoffs, so announcements and gossip can travel fast, if people pass them on | Information is filtered through many hands, or runs only along formal reporting lines | Whether people actually pass things along, or how much is lost at each handoff |
+| Transport or supply network (counting stops) | Few transfers between any two places | Many stops, so delays add up | Real travel time or cost, unless the ties are weighted by them |
+| Online platform | Almost anyone is a few connections from anyone, often because a few accounts are very well connected | Communities are sealed off, or the platform links people only locally | What a tie *is* (a follow, a friendship, a message) differs from platform to platform, so distances are not comparable across them |
+
+Two cautions apply everywhere. The **diameter is decided by a single pair**. In the friendship network it is 4 only because of five pairs that all involve Jo (@fig-distance-matrix); every other pair is within 3 steps, and the typical pair is 2. Use the mean (or the harmonic mean) for the typical pair, and the diameter for the worst case, and say which is which. And **distances only mean something among people who can reach each other**, which brings us to components.
+
 ## Components: is it all one network?
 
 Sometimes you can't get from A to B at all. A **component** is a piece of the network in which everyone can reach everyone else. A network that's in one piece has one component. A network with a clique of friends who've never met another group has two.
@@ -166,6 +327,10 @@ In a directed network there are two ways to ask. A **weak component** ignores th
 ![Components. In an undirected network a component is a piece in which everyone can reach everyone. In a directed network we distinguish weak components (ignore arrow direction) from strong ones (follow the arrows both ways).](../figures/components.svg){#fig-components fig-alt="Left: a four-person cluster and a separate three-person triangle, with no tie between them. Right: three people joined in a one-way cycle and two people who point at each other, with one dashed arrow from the cycle to the pair."}
 
 Components matter for a practical reason: many measures break, or quietly change meaning, when the network isn't in one piece. Distances between pieces are undefined, so mean distance and diameter are only computed within pieces, and the closeness measure from @sec-centrality needs its harmonic version. Always check how many components you have, and how big they are, before you compute anything else. And ask where the gaps came from. A gap might reflect something real, like two departments that never talk, or something about your data collection, like a boundary that cut ties off (@sec-networks-as-data).
+
+Here is the precise version. Say that $i$ and $j$ are *joined* when $d(i,j) < \infty$. In an undirected network, being joined is reflexive (everyone is joined to themselves), symmetric (if $i$ reaches $j$ then $j$ reaches $i$) and transitive (a walk from $i$ to $j$ followed by a walk from $j$ to $k$ is a walk from $i$ to $k$). A relation with those three properties splits the people into groups that don't overlap, and those groups are the components. Their sizes add up to $n$. The biggest is the **largest component** (when it holds most of the people it is often called the *giant* component). A person with no ties at all is an **isolate** and counts as a component of size one, so a roster that includes 200 people nobody named has 200 extra components.
+
+For a directed network, the **weak components** are the components you get after erasing the arrowheads. Two people are in the same **strong component** when each can reach the other by following arrows: $d(i,j) < \infty$ *and* $d(j,i) < \infty$. That relation is also reflexive, symmetric and transitive, so strong components don't overlap either.
 
 ::: {.panel-tabset group="language"}
 
@@ -262,6 +427,189 @@ components  2 with sizes [10, 2]
 
 Two components, of sizes 10 and 2: the friendship network, and the pair who only know each other.
 
+### A directed example, by hand
+
+Take the right-hand drawing of @fig-components: three people on a one-way loop (call them A, B, C), two people who point at each other (D and E), and one arrow from C to D.
+
+Following arrows, A can reach D, through B, then C, then the extra arrow. D can never get back, because every arrow that leaves D or E stays inside the pair. So A and D are in the same *weak* component and in different *strong* ones. The loop is a strong component of size 3, the pair is another of size 2, and one weak component of size 5 holds everyone. Because every strong component sits inside a weak one, the number of strong components is never smaller than the number of weak ones.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+library(purrr)
+
+# Three people in a one-way loop (A to B to C to A), two who point at each other (D and E),
+# and one arrow from C to D.
+chain <- tibble(
+  source = c("A", "B", "C", "D", "E", "C"),
+  target = c("B", "C", "A", "E", "D", "D")
+) |>
+  net_frame(nodes = tibble(id = LETTERS[1:5]), directed = TRUE)
+
+c(weak = "weak", strong = "strong") |>
+  map(\(kind) net_components(chain, mode = kind)) |>
+  map(\(p) tibble(pieces = p$no, sizes = paste(sort(p$csize, decreasing = TRUE), collapse = ", "))) |>
+  list_rbind(names_to = "kind")
+```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
+
+## Python
+
+```python
+# Three people in a one-way loop (0 to 1 to 2 to 0), two who point at each other (3 and 4),
+# and one arrow from 2 to 3.
+chain = nx.DiGraph([(0, 1), (1, 2), (2, 0), (3, 4), (4, 3), (2, 3)])
+weak = sorted((len(c) for c in nx.weakly_connected_components(chain)), reverse=True)
+strong = sorted((len(c) for c in nx.strongly_connected_components(chain)), reverse=True)
+print(f"weak components    {len(weak)} with sizes {weak}")
+print(f"strong components  {len(strong)} with sizes {strong}")
+print("can 0 reach 3?", nx.has_path(chain, 0, 3), "  can 3 reach 0?", nx.has_path(chain, 3, 0))
+```
+
+::: {.code-output}
+```text
+weak components    1 with sizes [5]
+strong components  2 with sizes [3, 2]
+can 0 reach 3? True   can 3 reach 0? False
+```
+:::
+
+## Rust
+
+```rust
+// Three people in a one-way loop (0 to 1 to 2 to 0), two who point at each other (3 and 4),
+// and one arrow from 2 to 3.
+let chain = Graph::from_edges(5, &[0, 1, 2, 3, 4, 2], &[1, 2, 0, 4, 3, 3], None, true)?;
+for (name, kind) in [("weak", ComponentKind::Weak), ("strong", ComponentKind::Strong)] {
+    let parts = find_components(&chain, kind);
+    println!("{name:<7} {} with sizes {:?}", parts.count(), parts.sizes);
+}
+```
+
+::: {.code-output}
+```text
+weak    1 with sizes [5]
+strong  2 with sizes [3, 2]
+```
+:::
+
+:::
+
+### When the network falls apart: what happens to distances
+
+Everything we computed about distance quietly assumed you can get from anyone to anyone. With Kai and Lou added, who know only each other, that is no longer true: 40 of the 132 ordered pairs of people (about 30%) have no route at all. Software has to do *something* with those pairs, and three conventions are in use.
+
+1. **Refuse.** NetworkX's average path length raises an error if the network is not connected.
+2. **Average over the pairs that do have a route.** This is the default in igraph and in knappnet.
+3. **Count an unreachable pair as infinitely far.** Then the mean distance and the diameter are infinite, which is honest and not very useful.
+
+Convention 2 is the one to be careful with, because it can move in the wrong direction.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# Share of ordered pairs of people with no route between them.
+unreachable_share <- function(g) {
+  sizes <- net_components(g)$csize
+  n <- nrow(g$nodes)
+  1 - sum(sizes * (sizes - 1)) / (n * (n - 1))
+}
+
+tibble(
+  measure = c("mean distance, reachable pairs only", "diameter, reachable pairs only",
+              "mean distance, unreachable counted as infinite", "harmonic mean distance",
+              "share of pairs with no route"),
+  friends = c(net_mean_distance(friends), net_diameter(friends),
+              net_mean_distance(friends, unconnected = FALSE), harmonic_mean_distance(friends),
+              unreachable_share(friends)),
+  everyone = c(net_mean_distance(everyone), net_diameter(everyone),
+               net_mean_distance(everyone, unconnected = FALSE), harmonic_mean_distance(everyone),
+               unreachable_share(everyone))
+)
+```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
+
+## Python
+
+```python
+def reachable_stats(g):
+    """Mean and largest distance over the ordered pairs that have a route, and the share that have none."""
+    n = g.number_of_nodes()
+    lengths = [d for u, row in nx.all_pairs_shortest_path_length(g) for v, d in row.items() if v != u]
+    return sum(lengths) / len(lengths), max(lengths), 1 - len(lengths) / (n * (n - 1))
+
+for name, g in [("friends", friends), ("everyone", everyone)]:
+    mean, diameter, none = reachable_stats(g)
+    print(f"{name:<9} mean {mean:.3f}  diameter {diameter}  harmonic {1 / nx.global_efficiency(g):.3f}  no route {none:.3f}")
+
+try:
+    nx.average_shortest_path_length(everyone)
+except nx.NetworkXError as error:
+    print("NetworkX refuses on everyone:", error)
+```
+
+::: {.code-output}
+```text
+friends   mean 1.978  diameter 4  harmonic 1.547  no route 0.000
+everyone  mean 1.957  diameter 4  harmonic 2.194  no route 0.303
+NetworkX refuses on everyone: Graph is not connected.
+```
+:::
+
+## Rust
+
+```rust
+// The last argument says whether to average over reachable pairs only (true) or to let an
+// unreachable pair make the answer infinite (false).
+for (name, g) in [("friends", &friends), ("everyone", &everyone)] {
+    let parts = find_components(g, ComponentKind::Weak);
+    let n = g.node_count() as f64;
+    let reachable: f64 = parts.sizes.iter().map(|&s| (s * (s - 1)) as f64).sum();
+    println!(
+        "{name:<9} mean {:.3}  diameter {}  mean if unreachable is infinite {:.3}  harmonic {:.3}  no route {:.3}",
+        compute_mean_distance(g, paths, true)?,
+        compute_diameter(g, paths, true)?,
+        compute_mean_distance(g, paths, false)?,
+        compute_harmonic_diameter(g, paths)?,
+        1.0 - reachable / (n * (n - 1.0))
+    );
+}
+```
+
+::: {.code-output}
+```text
+friends   mean 1.978  diameter 4  mean if unreachable is infinite 1.9777777777777779  harmonic 1.547  no route 0.000
+everyone  mean 1.957  diameter 4  mean if unreachable is infinite inf  harmonic 2.194  no route 0.303
+```
+:::
+
+:::
+
+Adding Kai and Lou made the network *look closer*: the mean distance fell from 1.978 to 1.957, though nothing about the original ten people changed. The new pair added one distance of 1, which pulled the average down, and the 40 pairs that can no longer reach each other were simply left out of the average. The harmonic mean distance, which lets an unreachable pair contribute zero, gets the direction right: it rose from 1.547 to 2.194, and the efficiency $E = 1/H$ fell from 0.646 to 0.456.
+
+What to do about it:
+
+- **Report the number of components and their sizes before any distance.** "Two components, of 10 and 2 people" is part of the result.
+- **Say which pairs an average covers.** "Mean distance 1.96 among the 92 ordered pairs that can reach each other, 70% of all pairs" is a defensible sentence. "Mean distance 1.96" is not.
+- **Either work inside the largest component and say so, or use the harmonic mean distance**, which handles the whole network. Don't quietly drop people to make a number computable.
+- **Don't compare mean distances between networks with different shares of unreachable pairs.**
+
+Where do the gaps come from? A gap can be real (two departments that never talk) or an artifact of how the data were collected (a survey that stopped at the edge of one team, or a sample that missed the ties between groups). The numbers can't tell you which; the story of how the data were gathered can.
+
 ## Density: how many of the possible ties exist
 
 **Density** is the share of possible ties that are actually there. In an undirected network of $n$ people, there are $n(n-1)/2$ possible ties, so
@@ -324,6 +672,107 @@ density  0.400
 :::
 
 That's 18 ties out of 45 possible, which is 0.400.
+
+### Density depends on size
+
+Density and mean degree are two views of the same count. If $\bar{k}$ is the average number of ties per person, then $2m = n\bar{k}$, and so
+
+$$
+\text{density} = \frac{2m}{n(n-1)} = \frac{\bar{k}}{n-1}.
+$$
+
+Now picture a team of 8 and a company of 800 in which everyone has about four ties. The team's density is $4/7 \approx 0.57$; the company's is $4/799 \approx 0.005$. Nobody in the company is less sociable, yet the density is a hundred times lower. People's ties don't grow with the size of the group they belong to, so density falls toward zero as networks grow.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# A ring in which everyone is tied to the two people on each side: 4 ties each, however big the ring.
+ring <- function(n) {
+  i <- 0:(n - 1)
+  tibble(source = c(i, i), target = c((i + 1) %% n, (i + 2) %% n)) |>
+    mutate(across(everything(), as.character)) |>
+    net_frame(nodes = tibble(id = as.character(i)), directed = FALSE)
+}
+
+c(20, 100, 500) |>
+  map(\(n) {
+    g <- ring(n)
+    tibble(people = n, ties = nrow(g$edges), density = net_density(g), mean_distance = net_mean_distance(g))
+  }) |>
+  list_rbind()
+```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
+
+## Python
+
+```python
+# A ring in which everyone is tied to the two people on each side: 4 ties each, however big the ring.
+print(f"{'people':>7} {'ties':>6} {'density':>8} {'mean distance':>14}")
+for n in [20, 100, 500]:
+    ring = nx.circulant_graph(n, [1, 2])
+    print(f"{n:>7} {ring.number_of_edges():>6} {nx.density(ring):>8.3f} {nx.average_shortest_path_length(ring):>14.3f}")
+```
+
+::: {.code-output}
+```text
+ people   ties  density  mean distance
+     20     40    0.211          2.895
+    100    200    0.040         12.879
+    500   1000    0.008         62.876
+```
+:::
+
+## Rust
+
+```rust
+// A ring in which everyone is tied to the two people on each side: 4 ties each, however big the ring.
+println!("{:>7} {:>6} {:>8} {:>14}", "people", "ties", "density", "mean distance");
+for n in [20usize, 100, 500] {
+    let m = n as i64;
+    let a: Vec<i64> = (0..m).chain(0..m).collect();
+    let b: Vec<i64> = (0..m).map(|i| (i + 1) % m).chain((0..m).map(|i| (i + 2) % m)).collect();
+    let ring = Graph::from_edges(n, &a, &b, None, false)?;
+    println!(
+        "{n:>7} {:>6} {:>8.3} {:>14.3}",
+        ring.edge_count(),
+        compute_density(&ring, false),
+        compute_mean_distance(&ring, paths, true)?
+    );
+}
+```
+
+::: {.code-output}
+```text
+ people   ties  density  mean distance
+     20     40    0.211          2.895
+    100    200    0.040         12.879
+    500   1000    0.008         62.876
+```
+:::
+
+:::
+
+![Density is mean degree divided by n - 1. Hold the number of ties per person fixed and density falls toward zero as the network grows. The circles mark the rings of 20, 100 and 500 people from the code.](../figures/paths-density-size.svg){#fig-density-size fig-alt="A chart with the number of people from 10 to 10,000 on a log scale across the bottom and density from 0 to 1 up the side. Two curves fall steeply and then flatten near zero: one for everyone having 4 ties, one for 10 ties. Three circles on the 4-tie curve mark 20 people at 0.211, 100 people at 0.040 and 500 people at 0.008."}
+
+The rings show something about distance too. Each person knows only their neighbors, so the mean distance grows in step with the size of the ring (2.9, 12.9 and 62.9): the extreme case, in which every tie is local. Real networks with a few long-range ties grow far more slowly [@newman2018networks], which is the surprise behind the small-world idea of @sec-small-worlds. A ring and a social network can have the same number of ties per person and completely different distances.
+
+### What density means in different settings
+
+| Setting | High density | Low density | What it does not show |
+| --- | --- | --- | --- |
+| Marriage or alliance network among families | Most families are linked directly to many others, so any one family is easy to bypass | Few direct links each, so a family that joins two others holds a real position | Whether the ties were chosen or arranged, or how much they mattered |
+| Communication inside an office | Many people talk to many others, as in a small team; information is widely shared but also redundant | Messages move through a few people or reporting lines | How useful or frequent the talk is: density counts ties, not their quality |
+| Transport or supply network | Many direct links, so many alternatives, at a cost to build and maintain | Hub-and-spoke or chains: cheap and fragile | Capacity: a dense network of thin links can still jam |
+| Online platform | Rare at scale; found in small groups such as a group chat | The normal case. Density falls toward zero as the platform grows | Anything about how many ties a person has: use mean degree for that |
+
+**Compare density only between networks of similar size and the same kind of tie.** Otherwise compare mean degree, or compare each network with a random network of its own size and number of ties (@sec-tests-and-null-models). Tools also differ in what they count: igraph and NetworkX divide the number of edges by the number of possible pairs, so repeated ties and loops can push the density above 1, while sna and UCINET count each distinct pair once and ignore loops. On a clean, simple network they agree.
 
 ## Reciprocity and transitivity: do ties come back, and do friends of friends connect?
 
@@ -417,6 +866,93 @@ reciprocity  0.286
 
 Two of the seven ties are returned (Ana and Chloe, both ways), which is 2 out of 7, or 0.286.
 
+### Reciprocity needs a baseline
+
+To define reciprocity precisely, count pairs of people (dyads). Each pair is in one of three states: **mutual** (both ties present), **asymmetric** (one tie) or **null** (none). Call the numbers of each $M$, $A$ and $N$, so $M + A + N = n(n-1)/2$. The number of ties is $2M + A$, and the share of ties that are returned is
+
+$$
+r = \frac{2M}{2M + A}.
+$$
+
+In the advice network $M = 1$ (Ana and Chloe), $A = 5$ and $N = 4$, so $r = 2/7$.
+
+Here is the part people miss. Suppose ties were handed out at random, each possible tie present with probability equal to the density $\Delta$. Then any tie you pick has a return tie with probability about $\Delta$, so reciprocity should be compared with the density, not with zero. The advice network has density $7/20 = 0.35$ and reciprocity 0.286: its ties are returned *no more* often than chance alone would return them. (With five people "chance" is a noisy yardstick, but the logic is the same for large networks.) Garlaschelli and Loffredo [@garlaschelli2004patterns] turned this into one number, $\rho = (r - \Delta)/(1 - \Delta)$, which is above zero when ties are returned more often than chance, near zero for chance, and below zero for less.
+
+The same network, four conventions:
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# The same five-person advice network under the four conventions.
+tibble(
+  convention = c("default", "ratio", "dyadic", "correlation"),
+  value = map_dbl(convention, \(m) net_reciprocity(advice, mode = m))
+) |>
+  add_row(convention = "density, for comparison", value = net_density(advice))
+```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
+
+## Python
+
+```python
+# Count the dyads (pairs of people): mutual, asymmetric and null.
+mutual = sum(1 for u, v in advice.edges if u < v and advice.has_edge(v, u))
+asym = advice.number_of_edges() - 2 * mutual
+null = 5 * 4 // 2 - mutual - asym
+arcs, dens = advice.number_of_edges(), nx.density(advice)
+share = 2 * mutual / arcs
+print(f"dyads: {mutual} mutual, {asym} asymmetric, {null} null")
+print(f"default      {share:.3f}   (nx.reciprocity gives {nx.reciprocity(advice):.3f})")
+print(f"ratio        {mutual / (mutual + asym):.3f}")
+print(f"dyadic       {(mutual + null) / (mutual + asym + null):.3f}")
+print(f"correlation  {(share - dens) / (1 - dens):.3f}")
+print(f"density      {dens:.3f}")
+```
+
+::: {.code-output}
+```text
+dyads: 1 mutual, 5 asymmetric, 4 null
+default      0.286   (nx.reciprocity gives 0.286)
+ratio        0.167
+dyadic       0.500
+correlation  -0.099
+density      0.350
+```
+:::
+
+## Rust
+
+```rust
+let modes = [ReciprocityMode::Default, ReciprocityMode::Ratio, ReciprocityMode::Dyadic, ReciprocityMode::Correlation];
+for mode in modes {
+    println!("{:<12} {:.3}", format!("{mode:?}"), compute_reciprocity(&advice, mode));
+}
+println!("{:<12} {:.3}", "density", compute_density(&advice, false));
+```
+
+::: {.code-output}
+```text
+Default      0.286
+Ratio        0.167
+Dyadic       0.500
+Correlation  -0.099
+density      0.350
+```
+:::
+
+:::
+
+Four defensible answers to "how reciprocal is this network": 0.286, 0.167, 0.500 and $-0.099$. They count different things. The default is the share of ties that are returned. The ratio is the share of non-null dyads that are mutual. The dyadic version is the share of dyads that are mutual *or null*, so a sparse network earns credit for its many empty pairs. The correlation is $\rho$, which has the chance baseline built in. Name the convention whenever you report a reciprocity.
+
+How to read it depends on what the tie means. In a **friendship network** high reciprocity is expected, and a low value suggests that people name friends who don't name them back, or that the ties were collected by asking each person separately. In an **advice or help network** a low value is normal and often follows hierarchy or expertise: people go to those who know more. In a **follow network on an online platform** a low value is the norm, because following someone obliges nobody. In a **supply or transport network** direction usually means flow, and reciprocity says whether goods or traffic move both ways. In every setting the number says nothing about trust, power or the quality of the tie, only about whether the relation points back.
+
 
 **Transitivity** asks whether friends of friends are friends. Pick any two people who share a friend. How often are they tied to each other as well? Counting all such triples, the share that close into triangles is the network's **transitivity**. In the friendship network it's 0.58. You can also ask the question one person at a time: of all pairs among *my* friends, what share are tied?, which is the person's **local clustering**.
 
@@ -428,6 +964,7 @@ Two of the seven ties are returned (Ana and Chloe, both ways), which is 2 out of
 
 ```r
 round(net_transitivity(friends), 3)
+round(net_transitivity(small), 3)
 ```
 
 ::: {.code-output}
@@ -440,11 +977,13 @@ round(net_transitivity(friends), 3)
 
 ```python
 print(f"transitivity  {nx.transitivity(friends):.3f}")
+print(f"five people   {nx.transitivity(small):.3f}")
 ```
 
 ::: {.code-output}
 ```text
 transitivity  0.579
+five people   0.429
 ```
 :::
 
@@ -454,17 +993,27 @@ transitivity  0.579
 use knappnet::metrics::descriptive::{compute_transitivity, ClusteringOptions};
 
 println!("transitivity  {:.3}", compute_transitivity(&friends, ClusteringOptions::default()));
+println!("five people   {:.3}", compute_transitivity(&small, ClusteringOptions::default()));
 ```
 
 ::: {.code-output}
 ```text
 transitivity  0.579
+five people   0.429
 ```
 :::
 
 :::
 
 About 58% of the connected triples in the friendship network close into triangles.
+
+Here is the arithmetic behind that. A **connected triple** is a person together with two of their friends, counted for the person in the middle; a person with $k$ friends is the middle of $\binom{k}{2}$ triples. If $T$ is the number of triangles, each triangle contains three connected triples (one for each corner), so
+
+$$
+C = \frac{3T}{\sum_i \binom{k_i}{2}}.
+$$
+
+In the five-person network of this chapter there is one triangle (Ben, Cleo, Dev) and the people have 1, 3, 2, 3 and 1 friends, which gives $0 + 3 + 1 + 3 + 0 = 7$ triples, so $C = 3/7 \approx 0.43$. In the ten-person friendship network, 11 triangles and 57 triples give $33/57 = 0.579$. How to read transitivity, how it differs from the average of the local clustering values, and what to compare it with are covered in depth in @sec-triads-and-motifs. Here we only need the definition.
 
 
 Sociologically, transitivity is the measure of **closure**. It echoes Simmel's point about triads and Heider's idea that a friend of my friend is easier to like (@sec-foundations). Where it's high, people share contacts, norms get enforced because everyone is watching, and trust is easier to build. That is the logic of closure in social capital theory, which you also met in @sec-foundations.
@@ -585,6 +1134,227 @@ for (name, count) in TRIAD_NAMES.iter().zip(census) {
 
 The counts add up to 10, because five people make ten different triples. Most types are absent, which is typical of a small, sparse network. Three of the ten triples are 021U, where two people both go to the same third person (Dev and Eli both go to Chloe, for instance).
 
+## Connectivity: how hard is the network to break?
+
+Components tell you whether the network is in one piece today. **Connectivity** asks how close it is to not being: how many people, or how many ties, would have to disappear before it falls apart? That is the question behind the single point of failure in a supply chain, the team that depends on one person to talk to another, and the cell that survives an arrest.
+
+### Cut points and bridges
+
+A **cut point** (or articulation point) is a person whose removal leaves the network with more components than before. A **bridge** is a tie whose removal does. In the five-person network from earlier, Ben and Dev are cut points (take Ben away and Ana is stranded), and Ana-Ben and Dev-Eli are bridges. The three ties of the triangle are not bridges, because each pair still has a way around.
+
+A bridge in this sense has no alternative route at all. That is stricter than Granovetter's bridge from @sec-foundations, which is often relaxed to a tie whose two ends share no friend. Every bridge in our sense qualifies, but the reverse isn't true: two people with no friend in common may still be linked by a long way around. Cut points and bridges can be found in a single pass over the network [@tarjan1972depth].
+
+### Vertex and edge connectivity
+
+Counting how much you must remove gives two numbers. The **vertex connectivity** $\kappa(G)$ is the smallest number of people whose removal disconnects the network (or leaves a single person). The **edge connectivity** $\lambda(G)$ is the smallest number of ties whose removal disconnects it. If the network is already in pieces, both are 0, and by convention a network in which everyone is tied to everyone else has $\kappa = n - 1$. Write $\delta(G)$ for the smallest degree. Whitney [@whitney1932congruent] showed that
+
+$$
+\kappa(G) \le \lambda(G) \le \delta(G).
+$$
+
+The right-hand inequality is easy to see: cut every tie of the person with the fewest ties and you have isolated them. The left-hand one says it is never harder to break a network by removing people than by removing ties, because for any set of ties that disconnects it, removing one end of each tie does the job with no more removals. A network is **k-connected** when $\kappa \ge k$, so that at least $k$ people must go before it falls apart. For any network of three or more people, $\kappa = 1$ means there is a cut point; every tree is like that.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# Cut points, and the bridges as rows of the edge table.
+net_cut_points(friends)
+friends$edges[net_bridges(friends), ]
+
+# knappnet's R package has no connectivity function yet, so count by brute force: the
+# smallest number of people whose removal leaves the rest in more than one piece.
+vertex_connectivity <- function(g, max_k = 4) {
+  ids <- g$nodes$id
+  splits <- function(drop) net_components(net_subnetwork(g, setdiff(ids, drop)))$no > 1
+  detect(seq_len(max_k), \(k) any(combn(ids, k, splits)))
+}
+
+core7 <- net_subnetwork(friends, people[1:7])
+tibble(
+  network = c("whole friendship network", "seven-person core"),
+  vertex_connectivity = c(vertex_connectivity(friends), vertex_connectivity(core7))
+)
+```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
+
+## Python
+
+```python
+# People are numbered from zero: 7 is Hana, 8 is Ivo, 9 is Jo.
+print("cut points", sorted(nx.articulation_points(friends)))
+print("bridges   ", sorted(tuple(sorted(e)) for e in nx.bridges(friends)))
+
+core7 = friends.subgraph(range(7))
+print(f"vertex connectivity  whole {nx.node_connectivity(friends)}  core {nx.node_connectivity(core7)}")
+print(f"edge connectivity    whole {nx.edge_connectivity(friends)}  core {nx.edge_connectivity(core7)}")
+```
+
+::: {.code-output}
+```text
+cut points [7, 8]
+bridges    [(7, 8), (8, 9)]
+vertex connectivity  whole 1  core 3
+edge connectivity    whole 1  core 3
+```
+:::
+
+## Rust
+
+```rust
+use knappnet::metrics::connectivity::{compute_edge_connectivity, compute_node_connectivity};
+use knappnet::metrics::descriptive::{find_bridges, find_cut_points};
+
+// People are numbered from zero: 7 is Hana, 8 is Ivo, 9 is Jo. A bridge is reported as its
+// position in the list of ties.
+println!("cut points  {:?}", find_cut_points(&friends));
+println!("bridges     {:?}", find_bridges(&friends));
+
+// The seven-person core: only the ties among people 0 to 6.
+let keep: Vec<usize> = (0..from.len()).filter(|&k| from[k] < 7 && to[k] < 7).collect();
+let core_from: Vec<i64> = keep.iter().map(|&k| from[k]).collect();
+let core_to: Vec<i64> = keep.iter().map(|&k| to[k]).collect();
+let core7 = Graph::from_edges(7, &core_from, &core_to, None, false)?;
+println!(
+    "vertex connectivity  whole {}  core {}",
+    compute_node_connectivity(&friends, 0)?,
+    compute_node_connectivity(&core7, 0)?
+);
+println!(
+    "edge connectivity    whole {}  core {}",
+    compute_edge_connectivity(&friends, 0)?,
+    compute_edge_connectivity(&core7, 0)?
+);
+```
+
+::: {.code-output}
+```text
+cut points  [7, 8]
+bridges     [16, 17]
+vertex connectivity  whole 1  core 3
+edge connectivity    whole 1  core 3
+```
+:::
+
+:::
+
+The whole friendship network has two cut points, Hana and Ivo, and two bridges, Hana-Ivo and Ivo-Jo, so $\kappa = 1$ (and $\lambda = 1$, since a bridge is a single tie whose removal disconnects the network). The seven-person core has $\kappa = 3$ and $\lambda = 3$, and its smallest degree is also 3, so Whitney's inequality reads $3 \le 3 \le 3$. The thin tail of Hana, Ivo and Jo moves the headline number from 3 to 1. That is what connectivity is: a worst-case number. It answers "what is the weakest point?", not "how tight is the typical part?". When the answer is 1, say *which* person or tie, and report the connectivity of the part you care about too.
+
+### Menger's theorem: breaking it and routing around it are the same question
+
+Pick two people, $s$ and $t$, who are not tied directly. Menger's theorem [@menger1927allgemeinen] says that the smallest number of *other* people whose removal separates $s$ from $t$ equals the largest number of routes from $s$ to $t$ that share nobody in between. A matching version holds for ties: the fewest ties whose removal separates them equals the most routes that share no tie.
+
+One direction is plain common sense. If you have found $k$ routes that share nobody in between, any set of people that separates $s$ from $t$ must contain at least one person from each route, so it has at least $k$ people. The surprise is the other direction: you can always find a separating set that is *exactly* as small as the number of routes. A consequence, again due to Whitney, is that a network is $k$-connected exactly when every pair of people is joined by $k$ routes that share nobody in between. "Hard to cut" and "many independent ways around" are one idea seen from two sides, which is why both phrasings appear when sociologists talk about cohesion.
+
+@fig-menger is small enough to check by hand. Six people sit on a ring, and there is one extra tie between $a$ and $c$.
+
+![Menger's theorem on six people. The blue route (s, a, b, t) and the orange route (s, d, c, t) share nobody in between, so at least two people must be removed to separate s from t. Removing a and d (dashed rings) does separate them, so two is exactly the number.](../figures/paths-menger.svg){#fig-menger fig-alt="Six circles on a hexagon labeled s, a, b, t, c and d, joined in a ring, plus a grey line between a and c across the middle. The ring path s, a, b, t is drawn thick blue and the ring path s, d, c, t is drawn thick orange. The circles a and d have dashed rings around them."}
+
+Between $s$ and $t$ there are two routes that share nobody in between: $s, a, b, t$ and $s, d, c, t$. There can't be a third, because $s$ has only two ties. And no single person separates them: take out $a$ and $s, d, c, t$ is left; take out $b$ and $s, a, c, t$ is left; take out $c$ and $s, a, b, t$ is left; take out $d$ and $s, a, b, t$ is left. So the fewest people is 2, exactly as the two routes predicted. Which two? $\{a, d\}$ (both of $s$'s neighbors) works, and so do $\{b, c\}$ and $\{a, c\}$: three different sets, all of size 2.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# Six people in a ring (s, a, b, t, c, d) with an extra tie between a and c.
+six <- c("s", "a", "b", "t", "c", "d")
+ring6 <- tibble(
+  source = c("s", "a", "b", "t", "c", "d", "a"),
+  target = c("a", "b", "t", "c", "d", "s", "c")
+) |>
+  net_frame(nodes = tibble(id = six), directed = FALSE)
+
+# Does removing these people leave s and t in different pieces?
+separates <- function(drop) {
+  rest <- setdiff(six, drop)
+  membership <- net_components(net_subnetwork(ring6, rest))$membership
+  membership[match("s", rest)] != membership[match("t", rest)]
+}
+
+# Every set of other people of each size, and the ones that separate s from t.
+separators <- map(1:3, \(k) keep(combn(c("a", "b", "c", "d"), k, simplify = FALSE), separates))
+tibble(size = 1:3, separating_sets = map_int(separators, length))
+map_chr(separators[[2]], \(s) paste(s, collapse = " + "))
+
+vertex_connectivity(ring6)
+```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
+
+## Python
+
+```python
+# Numbering: 0 = s, 1 = a, 2 = b, 3 = t, 4 = c, 5 = d, with an extra tie between a (1) and c (4).
+ring6 = nx.Graph([(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 0), (1, 4)])
+print("fewest people separating s from t ", nx.node_connectivity(ring6, 0, 3))
+print("routes sharing no one in between  ", sorted(nx.node_disjoint_paths(ring6, 0, 3)))
+print("one smallest separating set       ", sorted(nx.minimum_node_cut(ring6, 0, 3)))
+print(f"whole network: vertex connectivity {nx.node_connectivity(ring6)}, edge connectivity {nx.edge_connectivity(ring6)}")
+```
+
+::: {.code-output}
+```text
+fewest people separating s from t  2
+routes sharing no one in between   [[0, 1, 2, 3], [0, 5, 4, 3]]
+one smallest separating set        [2, 4]
+whole network: vertex connectivity 2, edge connectivity 2
+```
+:::
+
+## Rust
+
+```rust
+use knappnet::metrics::connectivity::{
+    compute_local_node_connectivity, find_minimum_st_node_cut, find_node_disjoint_paths, CutConvention,
+};
+
+// Numbering: 0 = s, 1 = a, 2 = b, 3 = t, 4 = c, 5 = d, with an extra tie between a (1) and c (4).
+let ring6 = Graph::from_edges(6, &[0, 1, 2, 3, 4, 5, 1], &[1, 2, 3, 4, 5, 0, 4], None, false)?;
+println!("fewest people separating s from t  {}", compute_local_node_connectivity(&ring6, 0, 3)?);
+println!("routes sharing no one in between   {:?}", find_node_disjoint_paths(&ring6, 0, 3)?);
+println!("one smallest separating set        {:?}", find_minimum_st_node_cut(&ring6, 0, 3, CutConvention::Engine)?);
+println!(
+    "whole network: vertex connectivity {}, edge connectivity {}",
+    compute_node_connectivity(&ring6, 0)?,
+    compute_edge_connectivity(&ring6, 0)?
+);
+```
+
+::: {.code-output}
+```text
+fewest people separating s from t  2
+routes sharing no one in between   [[0, 1, 2, 3], [0, 5, 4, 3]]
+one smallest separating set        [1, 5]
+whole network: vertex connectivity 2, edge connectivity 2
+```
+:::
+
+:::
+
+R finds the separating sets by brute force: none of size one and three of size two (the list shows which). Python and Rust also print the two routes that share nobody in between and one smallest separating set, and all three agree that the whole six-person network has vertex connectivity 2 and edge connectivity 2.
+
+### What connectivity means in different settings
+
+| Setting | Connectivity of 2 or more | Connectivity of 1 | What it does not show |
+| --- | --- | --- | --- |
+| Marriage or alliance network among families | The network survives the loss of any single family | One family (a cut point) is the only link between parts, so on paper its loss splits the network | Whether that family chose to act as a link, or whether the tie was the channel that mattered |
+| Communication inside an organization | Information between any two people has independent routes, so it is hard to silence or bottleneck | A gatekeeper whose absence cuts teams apart | Whether people actually use the backup routes when the usual one is gone |
+| Supply or transport network | Redundancy: any single failure leaves everyone connected | A single point of failure | Capacity: a second route may be too small to carry the load. Connectivity counts routes, not what they can carry |
+| Online platform | A community stays linked after any single account leaves | A community held together by one account | How strong or active the ties are |
+
+In a directed network the same ideas apply with arrows: a route has to follow the arrows, and "separate" means that no arrow-following route is left. Directed connectivity can be much lower than the undirected number, because ignoring direction adds routes that nobody can actually use.
+
 ## Cohesion: how tightly knit, and where?
 
 So far we've summarized a network with a single number. But a network can be dense in one place and sparse in another. **Cohesion** measures try to find the tight places and say how tight.
@@ -663,17 +1433,540 @@ A different idea of tightness asks how hard a group is to *break*. Moody and Whi
 
 Applied here, the seven-person core needs at least three people removed to split, so its cohesion is 3. The whole friendship network has cohesion 1: removing Ivo or Hana cuts Jo off. That's the same vulnerable bridge we saw in @sec-centrality, from another angle.
 
+The connectivity section made this exact: the whole friendship network has vertex connectivity 1, and the seven-person core has 3. Two things are easy to mix up here. First, a k-core is defined by *degree* (everyone has at least $k$ ties inside the group), while structural cohesion is defined by *connectivity* (it takes $k$ removals to split the group). Every $k$-connected group sits inside the $k$-core, because $\kappa \le \delta$, but a $k$-core can be much weaker. Two separate groups of four friends, each tied to everyone in their own group, form a 3-core of eight people that isn't even connected. Second, a person's core number can never exceed their number of ties, and a high core number says nothing about betweenness, as Hana showed us.
+
+## Two classic networks, end to end
+
+The ideas above are easier to trust once they've been through real data and a little abuse. We use two networks you met in @sec-centrality and ask a different set of questions: how connected are they, where could they break, and are the distances more than the degrees explain?
+
+### The Florentine marriages: how connected, and where does it break?
+
+The setting is the one from @sec-centrality: fifteen leading Florentine families around 1430 and the marriages among them, studied by Padgett and Ansell [@padgett1993robust]. The first question is structural. Is it in one piece, how far apart are the families, and what holds it together?
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# Florentine families around 1430: a tie means two families were joined by marriage.
+rows <- read.csv("data/florentine/edges.csv")
+florence <- net_frame(rows, directed = FALSE)
+
+tibble(
+  families = nrow(florence$nodes),
+  marriages = nrow(florence$edges),
+  density = net_density(florence),
+  components = net_components(florence)$no,
+  radius = net_radius(florence),
+  diameter = net_diameter(florence),
+  mean_distance = net_mean_distance(florence),
+  harmonic_mean_distance = harmonic_mean_distance(florence)
+)
+
+# The center (smallest eccentricity) and the periphery (largest).
+as_tibble(florence$nodes) |>
+  mutate(eccentricity = net_eccentricity(florence)) |>
+  filter(eccentricity %in% range(eccentricity)) |>
+  arrange(eccentricity, id) |>
+  rename(family = id)
+
+net_cut_points(florence)
+florence$edges[net_bridges(florence), ]
+vertex_connectivity(florence)
+```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
+
+## Python
+
+```python
+import csv
+from itertools import combinations
+
+# Florentine families around 1430: a tie means two families were joined by marriage.
+with open("data/florentine/edges.csv") as f:
+    marriages = [tuple(r) for r in list(csv.reader(f))[1:]]
+florence = nx.Graph(marriages)
+
+mean, diameter, _ = reachable_stats(florence)
+print(f"{florence.number_of_nodes()} families, {len(marriages)} marriages, density {nx.density(florence):.3f}, "
+      f"components {nx.number_connected_components(florence)}")
+print(f"radius {nx.radius(florence)}  diameter {diameter}  mean distance {mean:.3f}  "
+      f"harmonic mean distance {1 / nx.global_efficiency(florence):.3f}")
+
+ecc = nx.eccentricity(florence)
+for label, value in [("center", min(ecc.values())), ("periphery", max(ecc.values()))]:
+    print(f"{label} (eccentricity {value}):", ", ".join(sorted(v for v in ecc if ecc[v] == value)))
+
+print("cut points", sorted(nx.articulation_points(florence)))
+print("bridges   ", sorted(tuple(sorted(e)) for e in nx.bridges(florence)))
+print("vertex connectivity", nx.node_connectivity(florence))
+```
+
+::: {.code-output}
+```text
+15 families, 20 marriages, density 0.190, components 1
+radius 3  diameter 5  mean distance 2.486  harmonic mean distance 1.999
+center (eccentricity 3): Albizzi, Medici, Ridolfi, Tornabuoni
+periphery (eccentricity 5): Bischeri, Lamberteschi, Pazzi, Peruzzi
+cut points ['Albizzi', 'Guadagni', 'Medici', 'Salviati']
+bridges    [('Acciaiuoli', 'Medici'), ('Albizzi', 'Ginori'), ('Guadagni', 'Lamberteschi'), ('Medici', 'Salviati'), ('Pazzi', 'Salviati')]
+vertex connectivity 1
+```
+:::
+
+## Rust
+
+```rust
+// Florentine families around 1430: a tie means two families were joined by marriage.
+let text = std::fs::read_to_string("data/florentine/edges.csv")?;
+let rows: Vec<(&str, &str)> = text.lines().skip(1).map(|line| line.split_once(',').unwrap()).collect();
+let mut families: Vec<&str> = Vec::new();
+for &(a, b) in &rows {
+    for family in [a, b] {
+        if !families.contains(&family) { families.push(family); }
+    }
+}
+let position = |family: &str| families.iter().position(|f| *f == family).unwrap() as i64;
+let marry_from: Vec<i64> = rows.iter().map(|row| position(row.0)).collect();
+let marry_to: Vec<i64> = rows.iter().map(|row| position(row.1)).collect();
+let florence = Graph::from_edges(families.len(), &marry_from, &marry_to, None, false)?;
+
+println!(
+    "{} families, {} marriages, density {:.3}, components {}",
+    families.len(),
+    rows.len(),
+    compute_density(&florence, false),
+    find_components(&florence, ComponentKind::Weak).count()
+);
+println!(
+    "radius {}  diameter {}  mean distance {:.3}  harmonic mean distance {:.3}",
+    compute_radius(&florence, paths)?,
+    compute_diameter(&florence, paths, true)?,
+    compute_mean_distance(&florence, paths, true)?,
+    compute_harmonic_diameter(&florence, paths)?
+);
+
+// The center (smallest eccentricity) and the periphery (largest).
+let ecc = compute_eccentricity(&florence, paths)?;
+let low = ecc.iter().cloned().fold(f64::MAX, f64::min);
+let high = ecc.iter().cloned().fold(0.0, f64::max);
+let named = |value: f64| {
+    let mut names: Vec<&str> = families.iter().zip(&ecc).filter(|(_, e)| **e == value).map(|(f, _)| *f).collect();
+    names.sort();
+    names.join(", ")
+};
+println!("center (eccentricity {low}): {}", named(low));
+println!("periphery (eccentricity {high}): {}", named(high));
+
+let cut_names: Vec<&str> = find_cut_points(&florence).iter().map(|&i| families[i as usize]).collect();
+let bridge_names: Vec<String> = find_bridges(&florence)
+    .iter()
+    .map(|&k| format!("{}-{}", families[marry_from[k] as usize], families[marry_to[k] as usize]))
+    .collect();
+println!("cut points  {cut_names:?}");
+println!("bridges     {bridge_names:?}");
+println!("vertex connectivity  {}", compute_node_connectivity(&florence, 0)?);
+```
+
+::: {.code-output}
+```text
+15 families, 20 marriages, density 0.190, components 1
+radius 3  diameter 5  mean distance 2.486  harmonic mean distance 1.999
+center (eccentricity 3): Albizzi, Medici, Ridolfi, Tornabuoni
+periphery (eccentricity 5): Bischeri, Lamberteschi, Pazzi, Peruzzi
+cut points  ["Medici", "Albizzi", "Guadagni", "Salviati"]
+bridges     ["Acciaiuoli-Medici", "Albizzi-Ginori", "Guadagni-Lamberteschi", "Medici-Salviati", "Pazzi-Salviati"]
+vertex connectivity  1
+```
+:::
+
+:::
+
+The network is one component with density 0.190. The radius is 3 and the diameter is 5: the Medici, Albizzi, Ridolfi and Tornabuoni are within three marriages of every other family, while Bischeri, Lamberteschi, Pazzi and Peruzzi are five marriages from at least one family. The mean distance is 2.486 and the harmonic mean distance 1.999, which agree closely because the network is connected. Four families are cut points (Medici, Albizzi, Guadagni and Salviati), five marriages are bridges, and the vertex connectivity is 1. @fig-cuts draws them.
+
+![The Florentine marriage network with its 4 cut points (orange squares) and 5 bridges (dashed marriages). Every bridge leads to a family with a single marriage or to a pair that hangs off one.](../figures/paths-florentine-cuts.svg){#fig-cuts fig-alt="The fifteen-family marriage network. Four families are drawn as orange squares: Medici, Albizzi, Guadagni, Salviati. Five marriages are drawn as thick dashed lines: Acciaiuoli–Medici; Albizzi–Ginori; Guadagni–Lamberteschi; Medici–Salviati; Pazzi–Salviati. All other families are blue circles and the other marriages are thin grey lines."}
+
+Look at which marriages are bridges: Acciaiuoli-Medici, Albizzi-Ginori, Guadagni-Lamberteschi, Medici-Salviati and Salviati-Pazzi. Four of the five lead to a family with a single marriage, which is why the bridges and the cut points sit next to each other. A bridge is a fact about the *pattern* of ties. It says nothing about whether the family at the far end matters.
+
+Two sentences you could write about this network. The defensible one: "In this marriage network of 15 families, four families (the Medici, Albizzi, Guadagni and Salviati) are cut points, so the network has vertex connectivity 1: removing any one of them leaves the remaining families in more than one piece." The over-claiming one: "The Medici held Florence together." Our numbers say that, on paper, the recorded marriages would fall into three pieces without the Medici. They don't say the Medici did anything with that position, that marriage was the channel that mattered, or that deleting a family from a diagram is the same as deleting it from history.
+
+### Stress check: take families and marriages away
+
+Cut points describe what happens when one family goes. A stress check asks more: what if two go, or a marriage is missing from the records?
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+ids <- florence$nodes$id
+
+# What is left after taking some families out: the number of pieces and the size of the biggest.
+after_removing <- function(drop) {
+  parts <- net_components(net_subnetwork(florence, setdiff(ids, drop)))
+  tibble(pieces = parts$no, largest = max(parts$csize))
+}
+
+# One family at a time. Only the families whose removal splits the network are shown.
+tibble(family = ids) |>
+  bind_cols(map(ids, after_removing) |> list_rbind()) |>
+  filter(pieces > 1)
+
+# Every pair of families.
+two <- combn(ids, 2, simplify = FALSE) |> map(after_removing) |> list_rbind()
+tibble(
+  pairs = nrow(two),
+  split = sum(two$pieces > 1),
+  share_split = mean(two$pieces > 1),
+  mean_largest = mean(two$largest)
+)
+
+# One marriage at a time.
+without_marriage <- function(i) {
+  g <- net_frame(florence$edges[-i, ], nodes = florence$nodes, directed = FALSE)
+  tibble(pieces = net_components(g)$no, diameter = net_diameter(g), mean_distance = net_mean_distance(g))
+}
+lost <- seq_len(nrow(florence$edges)) |> map(without_marriage) |> list_rbind()
+tibble(marriages = nrow(lost), splits = sum(lost$pieces > 1))
+lost |>
+  filter(pieces == 1) |>
+  summarise(across(c(diameter, mean_distance), list(min = min, max = max)))
+```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
+
+## Python
+
+```python
+def pieces_without(g, drop):
+    """Sizes of the connected pieces left after taking the people in `drop` out, largest first."""
+    rest = g.subgraph(set(g) - set(drop))
+    return sorted((len(c) for c in nx.connected_components(rest)), reverse=True)
+
+# One family at a time. Only the families whose removal splits the network are shown.
+for family in florence:
+    parts = pieces_without(florence, [family])
+    if len(parts) > 1:
+        print(f"{family:<9} leaves pieces of {parts}")
+
+# Every pair of families.
+pairs = list(combinations(florence, 2))
+after = [pieces_without(florence, p) for p in pairs]
+split = sum(1 for parts in after if len(parts) > 1)
+print(f"pairs {len(pairs)}, split {split} ({split / len(pairs):.3f}), "
+      f"mean size of the largest piece {sum(p[0] for p in after) / len(after):.2f}")
+
+# One marriage at a time.
+still_joined, splits = [], 0
+for tie in list(florence.edges):
+    g = florence.copy()
+    g.remove_edge(*tie)
+    if nx.is_connected(g):
+        still_joined.append((nx.diameter(g), nx.average_shortest_path_length(g)))
+    else:
+        splits += 1
+print(f"marriages {florence.number_of_edges()}, splits {splits}")
+print(f"the other {len(still_joined)}: diameter {min(d for d, _ in still_joined)} to {max(d for d, _ in still_joined)}, "
+      f"mean distance {min(m for _, m in still_joined):.3f} to {max(m for _, m in still_joined):.3f}")
+```
+
+::: {.code-output}
+```text
+Medici    leaves pieces of [11, 2, 1]
+Albizzi   leaves pieces of [13, 1]
+Guadagni  leaves pieces of [13, 1]
+Salviati  leaves pieces of [13, 1]
+pairs 105, split 47 (0.448), mean size of the largest piece 12.24
+marriages 20, splits 5
+the other 15: diameter 5 to 6, mean distance 2.505 to 2.762
+```
+:::
+
+## Rust
+
+```rust
+// What is left after taking some families out: the number of pieces and the size of the biggest.
+// The removed families stay in the list as one-person pieces, so we do not count them.
+let after_removing = |drop: &[usize]| -> Result<(usize, usize), knappnet::Error> {
+    let keep: Vec<usize> = (0..marry_from.len())
+        .filter(|&k| !drop.contains(&(marry_from[k] as usize)) && !drop.contains(&(marry_to[k] as usize)))
+        .collect();
+    let a: Vec<i64> = keep.iter().map(|&k| marry_from[k]).collect();
+    let b: Vec<i64> = keep.iter().map(|&k| marry_to[k]).collect();
+    let g = Graph::from_edges(families.len(), &a, &b, None, false)?;
+    let parts = find_components(&g, ComponentKind::Weak);
+    Ok((parts.count() - drop.len(), parts.sizes.iter().copied().max().unwrap()))
+};
+
+// One family at a time. Only the families whose removal splits the network are shown.
+for (i, family) in families.iter().enumerate() {
+    let (pieces, largest) = after_removing(&[i])?;
+    if pieces > 1 {
+        println!("{family:<9} leaves {pieces} pieces, the largest with {largest}");
+    }
+}
+
+// Every pair of families.
+let (mut pairs, mut split, mut largest_total) = (0, 0, 0);
+for i in 0..families.len() {
+    for j in (i + 1)..families.len() {
+        let (pieces, largest) = after_removing(&[i, j])?;
+        pairs += 1;
+        split += (pieces > 1) as usize;
+        largest_total += largest;
+    }
+}
+println!(
+    "pairs {pairs}, split {split} ({:.3}), mean size of the largest piece {:.2}",
+    split as f64 / pairs as f64,
+    largest_total as f64 / pairs as f64
+);
+
+// One marriage at a time.
+let (mut splits, mut diameters, mut means) = (0, Vec::new(), Vec::new());
+for lost in 0..marry_from.len() {
+    let a: Vec<i64> = (0..marry_from.len()).filter(|&k| k != lost).map(|k| marry_from[k]).collect();
+    let b: Vec<i64> = (0..marry_from.len()).filter(|&k| k != lost).map(|k| marry_to[k]).collect();
+    let g = Graph::from_edges(families.len(), &a, &b, None, false)?;
+    if find_components(&g, ComponentKind::Weak).count() > 1 {
+        splits += 1;
+    } else {
+        diameters.push(compute_diameter(&g, paths, true)?);
+        means.push(compute_mean_distance(&g, paths, true)?);
+    }
+}
+let lowest = |v: &Vec<f64>| v.iter().cloned().fold(f64::MAX, f64::min);
+let highest = |v: &Vec<f64>| v.iter().cloned().fold(0.0, f64::max);
+println!("marriages {}, splits {splits}", marry_from.len());
+println!(
+    "the other {}: diameter {} to {}, mean distance {:.3} to {:.3}",
+    diameters.len(), lowest(&diameters), highest(&diameters), lowest(&means), highest(&means)
+);
+```
+
+::: {.code-output}
+```text
+Medici    leaves 3 pieces, the largest with 11
+Albizzi   leaves 2 pieces, the largest with 13
+Guadagni  leaves 2 pieces, the largest with 13
+Salviati  leaves 2 pieces, the largest with 13
+pairs 105, split 47 (0.448), mean size of the largest piece 12.24
+marriages 20, splits 5
+the other 15: diameter 5 to 6, mean distance 2.505 to 2.762
+```
+:::
+
+:::
+
+Only four families split the network when removed alone. The Medici leave three pieces (11 families, 2 and 1); Albizzi, Guadagni and Salviati each cut off one family (Ginori, Lamberteschi and Pazzi). @fig-removal shows all fifteen.
+
+![Remove each family in turn and count the families in the largest piece that is left. Four families (orange) split the network; the Medici's removal leaves pieces of 11, 2 and 1.](../figures/paths-removal.svg){#fig-removal fig-alt="A bar for each of the fifteen families, sorted from shortest to longest. The shortest bar is for the Medici at 11. Albizzi, Guadagni and Salviati have bars of 13. All eleven other bars reach 14. The four shorter bars are orange and the rest blue."}
+
+Taking out *pairs* is harsher: 47 of the 105 pairs (45%) leave the network in pieces. Even so, the largest piece averages 12.2 of the 13 families left over all 105 pairs, so on average these splits shave a family or two off the edge rather than cut the network in half. Taking out one *marriage* at a time, 5 of the 20 are bridges. For the other 15, the network stays in one piece, with diameter 5 or 6 and mean distance between 2.505 and 2.762. The structure is not fragile everywhere: it is a well-knit part with a few thin attachments, and the thin attachments are what the stress check finds. Report it as a range, not a single value: "the diameter is 5, and 5 or 6 if one marriage is missing from the record" is more honest than "the diameter is 5".
+
+### Is the distance more than the degrees explain?
+
+One more check, from @sec-centrality: compare with random networks that keep every family's number of marriages (@sec-tests-and-null-models explains the method). @fig-null-distance does this for mean distance, using 1,000 shuffles.
+
+![Mean distance in 1,000 random networks that keep every node's number of ties, for the Florentine marriages and Krackhardt's friendships. In both, the real mean distance sits in the middle of the shuffled values, so it follows from the degrees. The draws behind this picture are not the ones in the code, so the counts differ slightly.](../figures/paths-null-distance.svg){#fig-null-distance fig-alt="Two histograms, one above the other. Top: Florentine marriages, with an orange line at the real mean distance 2.486 near the middle of a spread whose average is 2.52; 119 of 1,000 shuffles were disconnected. Bottom: Krackhardt friendships, with the real value 1.648 near the middle of a narrow spread whose average is 1.648; none of the shuffles was disconnected."}
+
+The real mean distance of the marriage network, 2.486, sits in the middle of the shuffled values, whose average is 2.520; 410 of the 1,000 shuffles are at or below it. So the typical distance follows from how many marriages each family has. It tells us nothing extra about *who* married whom. In 119 of the 1,000 shuffles some family was cut off entirely (the mean covers reachable pairs only), a reminder that a network with so many single-marriage families is always close to splitting, however the marriages are arranged. The bottom panel shows the same for Krackhardt's friendship network with its ties read as two-way: the real mean distance is 1.648, the shuffled average is also 1.648, and none of the shuffles was disconnected. (These shuffles come from a script in the book's repository, not from the code tabs, so a reader's own run will differ in the last digit or two.)
+
+A sentence you can defend: "The mean distance of 2.49 is ordinary for a network with these degrees." One you can't: "The Medici arranged marriages to keep Florence close." The check tells us the distances need no explanation beyond the degrees; it says nothing about intent.
+
+### Krackhardt's managers: three relations, one table
+
+For a directed example we return to Krackhardt's 21 managers [@krackhardt1987cognitive]: who goes to whom for advice, who names whom a friend, and who reports to whom. Directed ties raise two questions that undirected networks hide. Are ties returned? And can you actually follow the arrows from anyone to anyone?
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+library(tidyr)
+
+# Krackhardt's 21 managers: three relations among the same people, numbered 1 to 21.
+kr <- read.csv("data/krackhardt/edges.csv")
+managers <- tibble(id = as.character(1:21))
+
+layers <- c("advice", "friendship", "reports_to") |>
+  set_names() |>
+  map(\(r) kr |>
+        filter(relation == r) |>
+        transmute(source = as.character(from), target = as.character(to)) |>
+        net_frame(nodes = managers, directed = TRUE))
+
+# "Following arrows" respects who asked whom; "ignoring direction" treats every tie as two-way.
+layers |>
+  map(\(g) {
+    weak <- net_components(g, mode = "weak")
+    strong <- net_components(g, mode = "strong")
+    enframe(c(
+      arcs = nrow(g$edges),
+      density = net_density(g),
+      reciprocity = net_reciprocity(g),
+      weak_components = weak$no,
+      strong_components = strong$no,
+      largest_strong = max(strong$csize),
+      mean_distance_following = net_mean_distance(g),
+      diameter_following = net_diameter(g),
+      mean_distance_ignoring = net_mean_distance(g, mode = "all"),
+      diameter_ignoring = net_diameter(g, mode = "all")
+    ), name = "measure", value = "value")
+  }) |>
+  list_rbind(names_to = "relation") |>
+  pivot_wider(names_from = relation, values_from = value)
+```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
+
+## Python
+
+```python
+# Krackhardt's 21 managers: three relations among the same people, numbered 1 to 21.
+with open("data/krackhardt/edges.csv") as f:
+    kr_rows = list(csv.DictReader(f))
+
+def layer(relation):
+    g = nx.DiGraph()
+    g.add_nodes_from(range(1, 22))
+    g.add_edges_from((int(r["from"]), int(r["to"])) for r in kr_rows if r["relation"] == relation)
+    return g
+
+layers = {name: layer(name) for name in ["advice", "friendship", "reports_to"]}
+
+def summarize(g):
+    follow_mean, follow_diameter, _ = reachable_stats(g)
+    ignore_mean, ignore_diameter, _ = reachable_stats(g.to_undirected())
+    strong = [len(c) for c in nx.strongly_connected_components(g)]
+    return [g.number_of_edges(), f"{nx.density(g):.3f}", f"{nx.reciprocity(g):.3f}",
+            nx.number_weakly_connected_components(g), len(strong), max(strong),
+            f"{follow_mean:.3f}", follow_diameter, f"{ignore_mean:.3f}", ignore_diameter]
+
+names = ["arcs", "density", "reciprocity", "weak components", "strong components", "largest strong",
+         "mean distance, following", "diameter, following", "mean distance, ignoring", "diameter, ignoring"]
+table = {name: summarize(g) for name, g in layers.items()}
+print(f"{'':<26} {'advice':>8} {'friendship':>11} {'reports_to':>11}")
+for k, label in enumerate(names):
+    print(f"{label:<26} {table['advice'][k]:>8} {table['friendship'][k]:>11} {table['reports_to'][k]:>11}")
+```
+
+::: {.code-output}
+```text
+                             advice  friendship  reports_to
+arcs                            190         102          20
+density                       0.452       0.243       0.048
+reciprocity                   0.474       0.451       0.000
+weak components                   1           1           1
+strong components                 1           3          21
+largest strong                   21          19           1
+mean distance, following      1.640       2.103       1.444
+diameter, following               3           5           2
+mean distance, ignoring       1.310       1.648       2.981
+diameter, ignoring                2           3           4
+```
+:::
+
+## Rust
+
+```rust
+// Krackhardt's 21 managers: three relations among the same people, numbered 1 to 21.
+let kr_text = std::fs::read_to_string("data/krackhardt/edges.csv")?;
+let kr_ties: Vec<(i64, i64, &str)> = kr_text
+    .lines()
+    .skip(1)
+    .map(|line| {
+        let mut f = line.split(',');
+        let a: i64 = f.next().unwrap().parse().unwrap();
+        let b: i64 = f.next().unwrap().parse().unwrap();
+        (a - 1, b - 1, f.next().unwrap())
+    })
+    .collect();
+
+// "Following arrows" respects who asked whom; "ignoring" treats every tie as two-way.
+let ignoring = PathOptions { mode: DegreeMode::All, ..paths };
+let mut cells: Vec<Vec<String>> = Vec::new();
+for relation in ["advice", "friendship", "reports_to"] {
+    let ids: Vec<(i64, i64)> = kr_ties.iter().filter(|t| t.2 == relation).map(|t| (t.0, t.1)).collect();
+    let kr_from: Vec<i64> = ids.iter().map(|p| p.0).collect();
+    let kr_to: Vec<i64> = ids.iter().map(|p| p.1).collect();
+    let g = Graph::from_edges(21, &kr_from, &kr_to, None, true)?;
+    let strong = find_components(&g, ComponentKind::Strong);
+    cells.push(vec![
+        format!("{}", ids.len()),
+        format!("{:.3}", compute_density(&g, false)),
+        format!("{:.3}", compute_reciprocity(&g, ReciprocityMode::Default)),
+        format!("{}", find_components(&g, ComponentKind::Weak).count()),
+        format!("{}", strong.count()),
+        format!("{}", strong.sizes.iter().max().unwrap()),
+        format!("{:.3}", compute_mean_distance(&g, paths, true)?),
+        format!("{}", compute_diameter(&g, paths, true)?),
+        format!("{:.3}", compute_mean_distance(&g, ignoring, true)?),
+        format!("{}", compute_diameter(&g, ignoring, true)?),
+    ]);
+}
+let labels = ["arcs", "density", "reciprocity", "weak components", "strong components", "largest strong",
+    "mean distance, following", "diameter, following", "mean distance, ignoring", "diameter, ignoring"];
+println!("{:<26} {:>8} {:>11} {:>11}", "", "advice", "friendship", "reports_to");
+for (k, label) in labels.iter().enumerate() {
+    println!("{label:<26} {:>8} {:>11} {:>11}", cells[0][k], cells[1][k], cells[2][k]);
+}
+```
+
+::: {.code-output}
+```text
+                             advice  friendship  reports_to
+arcs                            190         102          20
+density                       0.452       0.243       0.048
+reciprocity                   0.474       0.451       0.000
+weak components                   1           1           1
+strong components                 1           3          21
+largest strong                   21          19           1
+mean distance, following      1.640       2.103       1.444
+diameter, following               3           5           2
+mean distance, ignoring       1.310       1.648       2.981
+diameter, ignoring                2           3           4
+```
+:::
+
+:::
+
+Read the table one column at a time.
+
+- **Advice** is dense (0.452) and strongly connected: following arrows, every manager can reach every other, in at most 3 steps (mean 1.640). Ignoring direction, the diameter is 2. Its reciprocity, 0.474, is almost exactly its density, so advice is returned about as often as chance would return it. That fits advice that flows toward people who know things, but the number alone doesn't prove it.
+- **Friendship** is sparser (0.243) and reciprocated far more often than chance would suggest: 0.451, nearly twice the density. It has three strong components, one of 19 managers and two single managers (7 and 9) who name nobody as a friend, so no friendship arrow leaves them. Following arrows, the mean distance is 2.103 and the diameter 5; ignoring direction they are 1.648 and 3. Which reading you choose changes the story, so say which one you used. A degree-preserving shuffle (@fig-null-distance, bottom) gives the same 1.648 on average, so even the shorter, direction-free figure follows from the degrees.
+- **Reports to** is the organization chart: 20 arrows, no reciprocity, one weak component and 21 strong components. Following arrows only ever goes up the hierarchy, so no manager can reach anyone who works for them. (The "following" distances in this column cover only the pairs where one can reach the other.)
+
+Two sentences you could write. The defensible one: "Among Krackhardt's 21 managers, friendship ties are reciprocated at 0.45, about twice the density of 0.24, so friendship in this firm tends to be mutual." The over-claiming one: "Managers 7 and 9 are socially isolated." They are not: they name nobody as a friend, but others name them. The strong-component count flags a pattern in *who names whom*, not a lack of friends.
+
 ## A cheat sheet
 
 | Measure | Question | Range | Watch out for |
 | --- | --- | --- | --- |
 | Distance, mean distance, diameter | How far apart are people? | From 1 upward | Undefined between components |
+| Eccentricity, radius, center | Who is closest to everyone, and who is farthest out? | Radius from 1 upward | Decided by one farthest person or pair |
+| Harmonic mean distance | How far apart is the typical pair, even when some can't reach each other? | At least 1 | Not the same as mean distance; say which |
 | Components | Is everyone in one piece? | 1 component upward | Data boundaries creating gaps |
 | Density | What share of possible ties exist? | 0 to 1 | Falls as networks grow |
-| Reciprocity | How many ties are returned? | 0 to 1 | Depends on what the tie means |
+| Reciprocity | How many ties are returned? | 0 to 1 | Compare with density; conventions differ |
 | Transitivity | Do friends of friends connect? | 0 to 1 | Global and average-local versions differ |
 | Core number | How deep inside a dense group? | 0 upward | Not the same as being influential |
 | Structural cohesion | How many people hold the group together? | 1 upward | Needs the whole network to be known |
+| Cut points and bridges | Which person or tie is a single point of failure? | Counts from 0 | A bridge can lead to someone unimportant |
+| Vertex and edge connectivity | How many people or ties must go before it splits? | 0 to $n-1$ | A worst-case number; one thin tail drives it |
 
 ## Reading these measures honestly
 
@@ -687,6 +1980,19 @@ Whole-network measures are tempting because they give one number per network. Th
 
 **Be careful with causal stories.** A network with a short diameter spreads things faster *if* things travel along its ties. Whether they do is a question about the process you care about, which these measures can't answer by themselves.
 
+**Common misconceptions.**
+
+- *"A small diameter means everyone is close."* The diameter is one pair. Look at the mean or harmonic mean for the typical pair.
+- *"Mean distance is comparable across networks."* It grows with size (the rings above) and depends on how unreachable pairs were treated.
+- *"Density measures how cohesive the group is."* It depends on size, and a dense group can be redundant rather than strong.
+- *"A bridge connects to someone important."* A bridge is a fact about the pattern of ties. In Florence, four of the five bridges lead to a family with one marriage.
+- *"Reciprocity shows trust."* It shows that ties point back. Compare it with density before saying whether that is a lot.
+- *"A high core number means a robust group."* Core numbers use degree; connectivity needs routes. Two separate cliques are both a 3-core and not connected.
+
+**Where tools disagree.** All of these showed up in this chapter. Mean distance on a disconnected network: NetworkX raises an error, while igraph and knappnet average over reachable pairs. Reciprocity: four conventions gave 0.286, 0.167, 0.500 and $-0.099$ for one network. Density: igraph and NetworkX count repeated ties and loops; sna and UCINET don't. Harmonic mean distance: NetworkX offers it only as its inverse, the global efficiency, and knappnet's R package leaves you to compute it from the distance table. Connectivity: the R package has no function yet, so the R tabs count by brute force, while NetworkX and the Rust engine compute it directly. Always state which convention you used.
+
+**A sentence you can adapt when reporting.** "In this {tie meaning} network of {n} {people or organizations}, there are {k} component(s) (sizes {sizes}). Among the pairs that can reach each other the mean distance is {L} and the diameter is {D}; {share} of pairs have no route. The density is {density}, which depends on the size of the network. There are {c} cut point(s) and {b} bridge(s), and the vertex connectivity is {kappa}. These describe the recorded ties, not what flows through them or how the people would behave if a tie or person were removed."
+
 ## Exercises
 
 1. **By hand.** In @fig-walks-paths, list every path (no repeated person) from Ana to Eli. Which are shortest? How many walks of exactly five steps are there from Ana to Eli (the walk in the figure is one of them)?
@@ -694,13 +2000,33 @@ Whole-network measures are tempting because they give one number per network. Th
 3. **By hand.** Peel the 3-core by hand from the friendship network. Whom do you remove first, and why does the order not change the answer?
 4. **Design.** You want to compare how tightly knit two companies are, one with 30 employees and one with 3,000. Which of the measures in the cheat sheet would you avoid comparing directly, and which would you use instead?
 5. **Interpretation.** A study of two hospital wards reports that Ward A has density 0.6 and Ward B has density 0.2, and concludes that Ward A has "better teamwork." Write a short list of the things you'd want to know before agreeing.
+6. **By hand.** Four people form a path: A is tied to B, B to C, C to D. Compute the mean distance $L$ and the harmonic mean distance $H$. Which is larger, and why must it be?
+7. **By hand.** In the six-person example (@fig-menger), replace the extra tie between $a$ and $c$ with an extra tie between $b$ and $d$. How many routes sharing nobody in between connect $s$ and $t$ now? List every set of two people whose removal separates them.
+8. **Coding.** In Krackhardt's *reports to* network, find the cut points and the bridges, treating the arrows as two-way ties. Why is every one of the 20 ties a bridge, and who are the cut points?
+9. **Coding.** In the Florentine network, remove all four cut points at once. How many pieces are left, and how big is each?
+10. **Interpretation.** A news story says "Network A has an average distance of 3.1 and Network B 4.6, so A is better connected." List four questions you would ask before accepting that, and say which of this chapter's ideas each one comes from.
+
+::: {.callout-note collapse="true"}
+## Answers
+
+1. The paths from Ana to Eli are Ana, Ben, Dev, Eli (3 steps, the shortest) and Ana, Ben, Cleo, Dev, Eli (4 steps). There are 5 walks of exactly five steps, found by counting the entries of the fifth power of the adjacency matrix; one of them is the walk drawn in the figure.
+2. Undirected: $38 / (20 \cdot 19 / 2) = 38/190 = 0.2$. Directed: $38 / (20 \cdot 19) = 38/380 = 0.1$. The same number of ties is half as dense when each pair can hold two.
+3. Jo has one tie, so Jo is peeled first; then Ivo has one tie left and goes; then Hana has two and goes. Everyone remaining has at least three ties inside the seven-person group. The order doesn't matter because removing people only ever lowers the degrees of the people who stay, so anyone who is removable at some moment is still removable later, and the final set is the same whatever order you peel in.
+4. Avoid comparing density directly (it falls with size) and be careful with mean distance (it grows with size). Compare mean degree, or compare each company with a random network of its own size and number of ties, or compare measures that are not driven by size, such as reciprocity against density.
+5. Useful questions: How many people are on each ward (density falls with size)? What counts as a tie (a conversation, a shared patient, a handover)? Were the ties measured the same way and over the same period? Does density measure teamwork, or just how many people have to talk? What are the outcomes? Is a dense ward redundant rather than efficient? Were any staff missing, so that the true density differs?
+6. The distances are 1, 1, 1, 2, 2, 3 for six pairs, so $L = 10/6 \approx 1.667$. The reciprocals add to $3 + 2/2 + 1/3 = 13/3$, their mean is $13/18$, and $H = 18/13 \approx 1.385$. $H$ is smaller, as it must be: a harmonic mean is never larger than the arithmetic mean of the same positive numbers.
+7. Still two: $s$ has only two ties, so there can't be more, and $s, a, b, t$ and $s, d, c, t$ still share nobody in between. The separating sets of two people are $\{a, d\}$, $\{b, c\}$ and $\{b, d\}$. The set $\{a, c\}$, which worked before, no longer does, because $s, d, b, t$ is a route around it.
+8. Cut points: 2, 7, 14, 18 and 21, which are the CEO (7) and the four vice presidents. The 20 arrows connect 21 managers into a tree, and a connected network with $n$ people and $n - 1$ ties has no cycle, so every tie is the only route between its two ends.
+9. Five pieces: one of 7 families and four single families (Acciaiuoli, Ginori, Lamberteschi and Pazzi).
+10. For example: How many people are in each network, since mean distance grows with size? Are both networks in one piece, and how were unreachable pairs treated? Are ties the same kind and equally well measured? Is mean distance the right notion of "connected" for the question (compare the diameter, the harmonic mean distance, or the vertex connectivity)? Does anyone use the routes the number counts?
+:::
 
 ## Summary
 
 ::: {.callout-tip appearance="simple"}
-Distance is the number of steps on a shortest path, and the diameter and mean distance summarize it for a whole network. Components tell you whether everyone is in one piece, and most measures need that checked first. Density is the share of possible ties present, and it shrinks as networks grow. Reciprocity and transitivity look at pairs and triples, and the triad census counts all the three-person patterns. Cores and structural cohesion find the tight places and say how hard they are to break. Each is one number summarizing a shape, so read it together with a picture and with what the ties mean.
+Distance is the number of steps on a shortest path, and the diameter and mean distance summarize it for a whole network. Components tell you whether everyone is in one piece, and most measures need that checked first. Density is the share of possible ties present, and it shrinks as networks grow. Reciprocity and transitivity look at pairs and triples, and the triad census counts all the three-person patterns. Connectivity counts how many people or ties must go before the network splits, and Menger's theorem says that equals the number of independent routes between a pair. Cores and structural cohesion find the tight places and say how hard they are to break. Each is one number summarizing a shape, so read it together with a picture, with a baseline, and with what the ties mean.
 :::
 
 ## Further reading
 
-For the experiment behind "six degrees," see @travers1969experimental, and for how short distances and local clustering fit together, @watts1998collective. For the triad census and local structure, see @holland1970method and @holland1976local. For k-cores and fast algorithms for them, see @seidman1983network and @batagelj2003algorithm, and for structural cohesion and its sociological meaning, @moody2003structural. For density and centralization in networks that hide on purpose, see @everton2015dark, @everton2012disrupting and @cunningham2016understanding. To practice in R, Phil Murphy's tutorials on global measures [@murphyrpubs308024] and on cohesive subgroups [@murphyrpubs977746; @murphyrpubs323120] are good companions.
+For the experiment behind "six degrees," see @travers1969experimental, and for how short distances and local clustering fit together, @watts1998collective. For the triad census and local structure, see @holland1970method and @holland1976local. For k-cores and fast algorithms for them, see @seidman1983network and @batagelj2003algorithm, and for structural cohesion and its sociological meaning, @moody2003structural. For density and centralization in networks that hide on purpose, see @everton2015dark, @everton2012disrupting and @cunningham2016understanding. For connectivity and the mathematics behind it, see @whitney1932congruent and @menger1927allgemeinen; for the harmonic mean distance and global efficiency, @latora2001efficient; and for reciprocity against a chance baseline, @garlaschelli2004patterns. For textbook treatments of all of this, see @wasserman1994social, @hanneman2005introduction and @newman2018networks. To practice in R, Phil Murphy's tutorials on global measures [@murphyrpubs308024] and on cohesive subgroups [@murphyrpubs977746; @murphyrpubs323120] are good companions.

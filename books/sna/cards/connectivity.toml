@@ -1,0 +1,60 @@
+id = "connectivity"
+title = "Cut points, bridges, vertex and edge connectivity"
+kind = "measure"
+chapter = "paths-and-cohesion"
+summary = "How many people (vertex connectivity) or ties (edge connectivity) must be removed to split the network, with cut points and bridges as the cases where one removal is enough."
+answers = "What are the single points of failure, and how many independent routes join each pair of people?"
+
+data_requirements = [
+  "Ties that stand for routes by which something can pass: information, goods, introductions. For similarity or co-membership ties, connectivity has no practical meaning.",
+  "A known boundary. People or ties missing from the data can create cut points that do not exist, or hide ones that do.",
+  "A decision on direction. In a directed network a route must follow the arrows, and directed connectivity can be much lower than the undirected number.",
+  "No weights are used; every tie is one route.",
+]
+
+assumptions = [
+  "A removed person or tie is gone for good and nobody builds a replacement.",
+  "All routes are equally usable. Connectivity counts independent routes, not their capacity.",
+  "The worst case is what matters. Connectivity is the smallest number of removals that splits the network, not an average.",
+  "Menger's theorem applies: the fewest people separating two non-adjacent nodes equals the most routes between them that share nobody in between.",
+]
+
+readings = [
+  { context = "Marriage or alliance network among families", high = "The network survives the loss of any single family; pairs have several independent chains of marriages.", low = "A cut point: one family is the only link between parts, so on paper its loss splits the network. It does not show that the family chose to act as a link." },
+  { context = "Communication inside an organization", high = "Information between any two people has independent routes, so it is hard to silence or bottleneck.", low = "A gatekeeper whose absence cuts teams apart. It does not show that people would not find another route." },
+  { context = "Supply or transport network", high = "Redundancy: a single failure leaves everyone connected.", low = "A single point of failure. A second route may still be too small to carry the load." },
+  { context = "Online platform", high = "A community stays linked after any single account leaves.", low = "A community held together by one account. Tie strength and activity are not shown." },
+]
+
+pitfalls = [
+  "Reading a bridge as a tie to an important person. In the Florentine marriages four of five bridges lead to a family with one marriage.",
+  "Quoting the whole-network connectivity when one thin tail sets it. The friendship network in the chapter has connectivity 1 because of a tail of three people; its seven-person core has 3.",
+  "Confusing k-cores with k-connectivity. A k-core is defined by degree and can be disconnected: two separate groups of four friends form a 3-core of eight people.",
+  "Using undirected connectivity for a directed process.",
+  "Assuming connectivity is stable when ties are missing from the data. One unrecorded tie can remove a cut point.",
+]
+
+checks = [
+  "Name the cut points and bridges, not just their number.",
+  "Remove each node, then each pair of nodes, and report how the largest component shrinks. In the Florentine marriages 47 of 105 pairs split the network, but the largest piece averages 12.2 of the 13 remaining families.",
+  "Remove each tie in turn and report how many are bridges and the range of the diameter for the rest.",
+  "Report the connectivity of the part you care about (for example a core) separately from the whole network.",
+  "For a pair of interest, list the independent routes, not only the number.",
+]
+
+do_not_claim = [
+  "That a cut point controls, benefits from or caused anything. Position is not behavior.",
+  "That deleting a node from the data predicts what would happen if the person left, because people and ties respond.",
+  "That high connectivity guarantees that things will flow after a failure. It counts routes, not capacity or willingness.",
+  "That a connectivity measured on a sampled network holds for the full network.",
+]
+
+report_template = "The {tie_meaning} network of {n} {node_type} has vertex connectivity {kappa} and edge connectivity {lambda}; the cut points are {cut_points} and there are {bridges} bridge(s). Removing {removed} leaves {pieces} piece(s). These describe the recorded ties and say nothing about what would flow or how people would respond to a loss."
+
+related = ["components", "geodesic-distance", "density", "betweenness"]
+sources = ["whitney1932congruent", "menger1927allgemeinen", "tarjan1972depth", "moody2003structural"]
+
+[knappnet]
+rust = "find_cut_points(&g); find_bridges(&g); compute_node_connectivity(&g, 0); compute_edge_connectivity(&g, 0); find_node_disjoint_paths(&g, s, t)"
+r = "net_cut_points(g); net_bridges(g)  # connectivity: no R function yet; count by brute force with net_subnetwork() and net_components()"
+python = "networkx.articulation_points, networkx.bridges, networkx.node_connectivity, networkx.edge_connectivity, networkx.node_disjoint_paths"

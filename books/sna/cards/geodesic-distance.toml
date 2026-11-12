@@ -1,0 +1,60 @@
+id = "geodesic-distance"
+title = "Geodesic distance, eccentricity, diameter and mean distance"
+kind = "measure"
+chapter = "paths-and-cohesion"
+summary = "The number of steps on a shortest route between two nodes, and its summaries: eccentricity per node, diameter and radius for the network, and mean or harmonic mean distance for the typical pair."
+answers = "How many steps separate people, and how far is the typical pair, the farthest pair and the farthest anyone has to go from a given person?"
+
+data_requirements = [
+  "Ties must stand for something that can be passed along a route. If they only record similarity or co-membership, steps along them have no meaning.",
+  "Distances exist only between nodes that can reach each other. Report the number of components and their sizes first, and say which pairs an average covers.",
+  "On a directed network a route follows the arrows, so the distance from i to j can differ from the distance from j to i, and one of them can be infinite.",
+  "Weights are read as lengths (larger means farther) by some tools. If your weights mean strength, convert them first or say that you did not.",
+]
+
+assumptions = [
+  "Things travel along shortest routes. Real flows often use longer routes, or the routes people happen to know.",
+  "Every tie counts as one step, unless weights were supplied as lengths. A step along a weak or rare tie is treated like a step along a strong one.",
+  "The network boundary is right. Cutting off part of a network lengthens distances and can split it.",
+  "Missing ties are rare. One missing tie in a sparse network can lengthen many distances.",
+]
+
+readings = [
+  { context = "Marriage or alliance network among families", high = "Families are reachable from each other only through long chains of marriages, so clusters may act separately.", low = "A deal or a rumor can reach most families in a few marriages. This does not show that anyone used those chains." },
+  { context = "Communication inside an organization", high = "Information passes through many hands or only along formal lines; more chances for delay or loss.", low = "A message needs few handoffs. It does not show that people pass messages on." },
+  { context = "Transport or supply network counted in stops", high = "Many transfers between places; delays add up.", low = "Few transfers. Real time or cost needs weights." },
+  { context = "Online platform", high = "Communities are sealed off or linked only locally.", low = "Almost anyone is a few connections from anyone, often through a few well connected accounts. What a tie is differs from platform to platform." },
+]
+
+pitfalls = [
+  "Averaging only over reachable pairs on a disconnected network. Adding a separate pair can lower the mean distance, as it does in the chapter's example (1.978 falls to 1.957).",
+  "Reading the diameter as the typical distance. It is one pair; in the chapter's friendship network five pairs, all involving one person, set it.",
+  "Comparing mean distance across networks of different sizes. It tends to grow with size, and in a ring where everyone knows four neighbors it grows in step with the ring.",
+  "Taking a tool's weighted distance without checking whether weights are lengths or strengths.",
+  "Quoting a distance without saying whether arrows were followed or ignored. On Krackhardt's friendship network the mean is 2.103 following arrows and 1.648 ignoring them.",
+]
+
+checks = [
+  "Count components and the share of ordered pairs with no route before reporting any mean or diameter.",
+  "Compute the harmonic mean distance as well. It stays defined when some pairs cannot reach each other and rises when pieces split off.",
+  "Compare with a degree-preserving random network. In the chapter's checks the real mean distances of the Florentine marriages and Krackhardt's friendships were ordinary for their degrees.",
+  "Recompute after leaving out each tie in turn. Report a range for the diameter if it changes.",
+  "For directed data, compute both following arrows and ignoring direction, and say which one answers the question.",
+]
+
+do_not_claim = [
+  "That things actually flow along shortest routes, or that short distances make spread fast, without evidence about the process.",
+  "That a short mean distance shows closeness, trust or cooperation between people.",
+  "That a distance from a sample holds for the full population. Sampling distorts routes.",
+  "That a mean computed over reachable pairs describes the whole network when some pairs cannot reach each other.",
+]
+
+report_template = "In this {tie_meaning} network of {n} {node_type} there are {components} component(s) (sizes {sizes}). Among the pairs that can reach each other, the mean distance is {mean} and the diameter is {diameter}; {share_unreachable} of ordered pairs have no route. The harmonic mean distance is {harmonic}. Arrows were {followed_or_ignored}. The mean distance is {ordinary_or_not} for a random network with the same degrees ({null_summary}). These describe the recorded ties, not what flows through them."
+
+related = ["components", "connectivity", "density", "betweenness"]
+sources = ["harary1969graph", "marchiori2000harmony", "latora2001efficient", "wasserman1994social", "newman2018networks"]
+
+[knappnet]
+rust = "compute_mean_distance(&g, PathOptions::default(), true); compute_diameter(...); compute_eccentricity(&g, paths); compute_radius(&g, paths); compute_harmonic_diameter(&g, paths)"
+r = "net_distances(g); net_mean_distance(g); net_diameter(g); net_eccentricity(g); net_radius(g)  # harmonic mean distance: 1 / mean(1 / d) over off-diagonal entries of net_distances(g)"
+python = "networkx.shortest_path_length, networkx.eccentricity, networkx.diameter, networkx.radius, networkx.average_shortest_path_length (connected only), 1 / networkx.global_efficiency(G)"

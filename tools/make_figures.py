@@ -1918,7 +1918,7 @@ FIGURES = {
 
 
 import importlib
-for _name in ["fig_classic", "fig_two_mode", "fig_multilayer", "fig_time", "fig_space", "fig_triads"]:
+for _name in ["fig_classic", "fig_two_mode", "fig_multilayer", "fig_time", "fig_space", "fig_paths", "fig_triads", "fig_signed"]:
     try:
         FIGURES.update(importlib.import_module(_name).FIGURES)
     except ImportError:
