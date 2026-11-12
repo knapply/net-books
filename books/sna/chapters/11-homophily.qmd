@@ -2,61 +2,1014 @@
 
 ::: {.callout-note appearance="simple"}
 ## Prerequisites
-Centrality and prestige.
+@sec-networks-as-data for node attributes, @sec-centrality for degree, and @sec-subgroups for the idea of a group. The karate club from @sec-subgroups comes back here. If you've read the E-I index in @sec-ego-networks, this chapter shows where it sits among its relatives.
 :::
 
-## Introduction
+## Birds of a feather
 
-Why similar people connect: mixing matrices, the E-I index, assortativity, and separating choice from opportunity, with the statistical models to come.
+Look at who your friends are. Chances are many of them are about your age, went to school where you did, work where you work, live near you, or vote the way you do. Social scientists have noticed this for a long time and given it a name: **homophily**, "love of the like". The word comes from Lazarsfeld and Merton's study of friendship [@lazarsfeld1954friendship], and the pattern is among the most replicated in the social sciences. McPherson, Smith-Lovin and Cook's review gathers decades of evidence for it across age, race, sex, education and many other traits, and across marriage, friendship, work and online ties [@mcpherson2001birds].
 
-TODO(prose, see docs/VOICE.md): motivating question, the idea in plain words, what the reader can
-do after this chapter.
+This chapter asks a plain question: **in this network, do ties join people who are alike more often than they would if nobody paid attention to likeness?** That's a question about a network and an attribute together. You need both. The network says who is tied to whom, and the attribute (a department, a faction, a floor of the building, an age) says who is alike. By the end you'll be able to
 
-## Who ties to whom
+- count ties by the attributes at their two ends (the **mixing matrix**),
+- turn that table into one number in four different ways, and say what each one answers,
+- judge whether a number is more than chance by shuffling the attribute labels, and
+- say, in a sentence you can defend, what homophily shows and what it doesn't.
 
-TODO(prose): concept, definition, a small worked example by hand.
+That last part matters most. Homophily is easy to measure and easy to over-read.
 
-Every code example uses this three-tab block, followed by its output. The tab text is placeholder until
-the library interface is final; the comment names the measure it will call.
+## Two stories, one pattern
+
+Suppose a company has two floors and the friendships on each floor stay on that floor. Why? There are at least two stories, and they predict the same table.
+
+**Choice.** People like people who are like them, so given the chance they pick them. Shared interests, shared language and shared experience make conversation easier and trust cheaper. This is **choice homophily**.
+
+**Opportunity.** People mostly meet people who are in the same place. You meet the people on your floor, in your class, on your street, and you can only befriend the people you meet. Even if nobody had any taste for similarity, ties would stay inside the groups that the setting creates. This is sometimes called **induced homophily**, because the setting induces it.
+
+McPherson and colleagues draw the same line differently. **Baseline homophily** is the amount you'd see if people met others at random from the pool available to them. **Inbreeding homophily** is the extra, over and above that baseline [@mcpherson2001birds]. Only the second is a candidate for "preference", and you can't find it without a baseline.
+
+That's the first real difficulty, and it's a counting problem before it's a social one. **Group sizes change what "expected" means.** If 90 percent of a school is in one group, then most ties will be inside that group even if everyone chose their friends by lottery, because most people available to choose are in it. A small group faces the opposite problem: its members can hardly avoid ties to outsiders. A number that doesn't account for this will hand you a "finding" about the sizes of the groups. We'll see that with numbers in a moment, and every measure in this chapter is partly a different answer to "expected compared to what?"
+
+## A six-person office, by hand
+
+Everything in this chapter can be checked on a network small enough to draw on a napkin. Six people work on two floors. Four sit on floor 1 (Ana, Ben, Chloe and Dev) and two on floor 2 (Eli and Fay). Seven pairs talk regularly.
+
+![Six people on two floors. Five of the seven ties stay within a floor; two cross.](../figures/homophily-six.svg){#fig-homophily-six fig-alt="Six labelled nodes. Ana, Ben, Chloe and Dev are blue circles; Eli and Fay are orange squares. Solid grey lines join Ana, Ben and Chloe in a triangle, Chloe to Dev, and Eli to Fay. Dashed red lines join Dev to Eli and Ben to Fay, the only two ties that cross between floors."}
+
+Five of the seven ties stay within a floor: Ana-Ben, Ana-Chloe, Ben-Chloe, Chloe-Dev and Eli-Fay. Two cross: Dev-Eli and Ben-Fay. Is that homophily? Five of seven *sounds* like a lot. Hold the thought; we'll make it precise.
+
+## The mixing matrix
+
+The raw material of every measure here is a table that counts ties by the groups of the two people they join. It's called the **mixing matrix**. Rows are the group at one end of a tie, columns the group at the other.
+
+For the office, count each tie from both of its ends, so a tie between two people on floor 1 adds 2 to the floor 1 by floor 1 cell, and a tie between floors adds 1 to each of the two off-diagonal cells:
+
+| | to floor 1 | to floor 2 | total |
+| --- | ---: | ---: | ---: |
+| **from floor 1** | 8 | 2 | 10 |
+| **from floor 2** | 2 | 2 | 4 |
+| **total** | 10 | 4 | 14 |
+
+The table sums to 14, twice the number of ties, because every tie was counted from both ends. The row totals (10 and 4) are the sums of the degrees on each floor: Ana 2, Ben 3, Chloe 3, Dev 2 make 10, and Eli 2 and Fay 2 make 4.
+
+Divide each cell by 14 and you get **proportions**, written $e_{ij}$: the share of tie-ends that run from group $i$ to group $j$. The row sums are $a_i = \sum_j e_{ij}$ and the column sums are $b_j = \sum_i e_{ij}$. Here $a = b = (10/14,\ 4/14)$. The diagonal $e_{11} = 8/14$ and $e_{22} = 2/14$ holds the within-group ties.
+
+Two details trip people up.
+
+**Undirected or directed.** In an undirected network a tie has no "from" and "to", so the table is symmetric (the cell for floor 1 to floor 2 equals the cell for floor 2 to floor 1). Some tools store it *folded*, with the lower triangle zero and the two off-diagonal cells added into one, which is why you'll see 4 where we wrote 2 and 2. In a directed network the table isn't symmetric. Rows are the group of the person who *sends* a tie (names a friend, asks for advice) and columns the group of the person who *receives* it. Each arc counts once, and the shape of the table tells you which group is chosen by which.
+
+**Counting.** If two tools disagree on a mixing matrix, check first whether one counts each tie once and the other twice.
+
+## One table, four numbers
+
+The mixing matrix has $k^2$ cells. People want one number, and there are four common ones. They're not interchangeable. Each answers a slightly different question, and each uses a different idea of "expected".
+
+### The E-I index: how many ties cross?
+
+The simplest idea: count ties that cross between groups ($E$ for external) and ties that stay inside ($I$ for internal), and take
+
+$$
+\text{E-I} = \frac{E - I}{E + I}.
+$$
+
+Krackhardt and Stern introduced it to study how groups in an organization tie to each other, especially in a crisis [@krackhardt1988informal]. It runs from $-1$ (every tie is inside a group) to $+1$ (every tie crosses). You met the person-level version in @sec-ego-networks. At the level of the whole network, each tie counts once.
+
+In the office, $E = 2$ and $I = 5$, so $\text{E-I} = (2 - 5)/7 = -0.429$. Negative, so more inside than across. But how negative *should* it be with no preference at all? If ties paid no attention to floors, a tie would be between two random distinct people. There are $\binom{6}{2} = 15$ possible pairs, $\binom{4}{2} + \binom{2}{2} = 7$ of them on the same floor and $4 \times 2 = 8$ across. So chance alone puts $8/15$ of ties across, and the expected index is $(8 - 7)/15 = +0.067$. Against that baseline, $-0.429$ is a long way toward the inside.
+
+Notice what the E-I index does *not* do. It treats the two groups' sizes as a fact about the world and doesn't correct for them, so you have to supply the baseline yourself.
+
+### Coleman's index: how much of the possible gap?
+
+James Coleman proposed an index that builds the baseline in [@coleman1958relational]. For a group, let $w$ be the share of its members' ties that stay inside the group, and let $x$ be the share of everyone *else available to them* who belongs to the group, $x = (n_g - 1)/(n - 1)$, the share you'd get by picking contacts at random. A common form of the index is
+
+$$
+H = \frac{w - x}{1 - x} \quad \text{if } w \ge x, \qquad H = \frac{w - x}{x} \quad \text{if } w < x.
+$$
+
+Read it as "how far from random toward perfect inbreeding", from $0$ (chance) to $1$ (every tie inside), and from $0$ toward $-1$ (no tie inside) when the group does worse than chance.
+
+For floor 1: its members' tie-ends are 10, of which 8 stay inside, so $w = 8/10 = 0.8$. Each person on floor 1 has 3 possible floor-mates among the other 5 people, so $x = 3/5 = 0.6$, and $H = (0.8 - 0.6)/(1 - 0.6) = 0.5$. For floor 2: $w = 2/4 = 0.5$, $x = 1/5 = 0.2$, and $H = (0.5 - 0.2)/(1 - 0.2) = 0.375$. Both floors are inbred beyond what group size alone gives, floor 1 a bit more.
+
+Coleman's index is one number *per group*. That's useful: it shows which groups are drawn inward and which aren't. A group of one has no possible group-mates ($x = 0$ and nothing inside), so its index doesn't exist.
+
+### Newman's assortativity: do alike nodes pair up more than the marginals imply?
+
+Mark Newman's assortativity coefficient [@newman2002assortative; @newman2003mixing] works directly from the mixing proportions. If ties paid no attention to groups, the share of tie-ends running from group $i$ to group $j$ would be the product of how often group $i$ sends and group $j$ receives: $a_i b_j$. So the share inside groups would be $\sum_i a_i b_i$. Newman compares what we see, $\sum_i e_{ii}$ (the trace of the table), with that, and rescales so that perfect mixing within groups is 1:
+
+$$
+r = \frac{\sum_i e_{ii} - \sum_i a_i b_i}{1 - \sum_i a_i b_i}.
+$$
+
+Here $e_{ii}$ is the share of tie-ends inside group $i$, and $a_i$ and $b_i$ are the row and column shares defined above. A value of $r = 1$ means every tie is inside a group, $r = 0$ means no more inside than the marginals imply, and a negative value means ties cross groups more than that. (The minimum is not always $-1$ and depends on the group shares.)
+
+For the office: $\sum_i e_{ii} = 8/14 + 2/14 = 10/14$, and $\sum_i a_i b_i = (10/14)^2 + (4/14)^2 = 116/196$. So
+
+$$
+r = \frac{140/196 - 116/196}{1 - 116/196} = \frac{24/196}{80/196} = 0.3.
+$$
+
+Different from E-I's story? Slightly. The baseline here comes from how many tie-ends each group has (its total degree), not from how many people it has. A group whose members have many ties looks, by chance, like it sends and receives more, and Newman's baseline expects more of its ties to land inside it. Coleman's and the E-I baselines count heads; Newman's counts tie-ends. In networks where all groups have similar degrees the two agree. In networks where they don't, they can disagree, and neither is wrong.
+
+For a *number* (age, tenure, degree) rather than a category, the same idea becomes a correlation. Pair up the two values at the ends of every tie (counting each tie both ways in an undirected network), and take the ordinary Pearson correlation between the two columns [@newman2002assortative]. A positive value means high goes with high and low with low. Applied to degree, it asks whether well-connected people tie to well-connected people (assortative) or to poorly connected ones (disassortative).
+
+For the office, the degrees are Ana 2, Ben 3, Chloe 3, Dev 2, Eli 2, Fay 2. The seven ties, read both ways, give 14 pairs of degrees. The average degree is $34/14 = 2.43$ (since $\sum d^2 = 34$), $\sum d^3 = 86$, so the variance of the degrees at the two ends is $86/14 - (34/14)^2 = 0.245$. The average product of the two ends is $82/14 = 5.857$ (twice $\sum_{\text{ties}} d_u d_v = 41$, over 14), so the covariance is $5.857 - 2.43^2 = -0.041$. The correlation is $-0.041/0.245 = -0.167$: a slightly negative value, the two degree-3 people (Ben and Chloe) hardly tie to each other's kind more than chance.
+
+### The odds ratio: how much more likely is a same-group tie?
+
+The last view comes from a different tradition, the statistics of tables. Look at every *pair* of people, whether tied or not, and sort the pairs into same-group and different-group. Then ask how much higher the *odds* of a tie are for same-group pairs.
+
+In the office, 7 pairs are on the same floor and 5 of them are tied, so 2 are not: odds of $5/2 = 2.5$. Of the 8 pairs on different floors, 2 are tied and 6 are not: odds of $2/6 = 1/3$. The **odds ratio** is $2.5 / (1/3) = 7.5$. Same-floor pairs have 7.5 times the odds of being tied.
+
+The odds ratio has two merits. It uses the *non*-ties too, so it's the only one of the four that knows how many ties were possible. And it's the number an ERGM reports for a same-group term (@sec-ergm): in a model with only an edges term and a same-group term, the fitted same-group coefficient *is* the log of this odds ratio. A coefficient of $\log 7.5 = 2.01$ means "7.5 times the odds". Its weakness is that it needs a clear answer to "which pairs could have been tied?"
+
+### Which one?
+
+| Measure | One number for | Baseline it uses | Range | Answers |
+| --- | --- | --- | --- | --- |
+| E-I index | the network, a group or a person | none: you supply it | $-1$ to $+1$ | Do ties stay inside or cross? |
+| Coleman's $H$ | each group | the group's share of the other people | $-1$ to $1$ | How far past chance is this group drawn inward? |
+| Newman's $r$ | the network | the groups' shares of tie-ends | up to 1 | Do alike people pair up more than the marginals imply? |
+| Odds ratio | the network, one same-or-not split | the number of possible pairs | 0 to $\infty$ | How much more likely is a tie within a group? |
+
+Let's check the hand numbers in code. In Rust and R, knappnet computes the mixing matrix, the E-I index, the group shares behind Coleman's index, and both assortativity coefficients. The odds ratio and Coleman's last step are a few lines we write ourselves.
 
 ::: {.panel-tabset group="language"}
 
 ## R
 
 ```r
-# TODO(code, R): build a mixing matrix and compute assortativity
+library(knappnet)
+library(dplyr)
+library(purrr)
+library(tidyr)
+
+# Six people on two floors; seven ties.
+people <- c("Ana", "Ben", "Chloe", "Dev", "Eli", "Fay")
+floors <- c(1, 1, 1, 1, 2, 2)
+office <- tibble(
+  source = c("Ana", "Ana", "Ben", "Chloe", "Dev", "Eli", "Ben"),
+  target = c("Ben", "Chloe", "Chloe", "Dev", "Eli", "Fay", "Fay")
+) |>
+  net_frame(nodes = tibble(id = people, floor = floors), directed = FALSE, quiet = TRUE)
+
+# The mixing matrix. For an undirected network knappnet folds it: the diagonal counts
+# tie-ends inside a floor, the upper-right cell counts ties between floors from both sides.
+net_mixing(office, "floor")
+
+# Coleman's index from the shares of each floor's ties that stay inside.
+coleman <- \(observed, expected) {
+  if_else(observed >= expected, (observed - expected) / (1 - expected), (observed - expected) / expected)
+}
+net_homophily(office, "floor") |>
+  as_tibble() |>
+  mutate(coleman = coleman(observed, expected))
+
+# The odds ratio: odds of a tie between two people in the same group, against two in different groups.
+odds_ratio <- \(frame, group) {
+  m <- net_mixing(frame, group)
+  within <- sum(diag(m)) / 2
+  across <- sum(m[upper.tri(m)]) / 2
+  pairs_within <- sum(choose(table(group), 2))
+  pairs_across <- choose(length(group), 2) - pairs_within
+  (within / (pairs_within - within)) / (across / (pairs_across - across))
+}
+
+tibble(
+  ei = as.vector(net_ei_index(office, "floor")),
+  assortativity = net_assort_nominal(office, "floor"),
+  degree_assortativity = net_assort_degree(office),
+  odds_ratio = odds_ratio(office, floors)
+) |>
+  mutate(across(everything(), \(x) round(x, 3)))
 ```
+
+::: {.code-output}
+```text
+TBD
+```
+:::
 
 ## Python
 
 ```python
-# TODO(code, Python): build a mixing matrix and compute assortativity
+import networkx as nx
+import numpy as np
+
+# Six people on two floors (group 0 is floor 1, group 1 is floor 2); seven ties.
+people = ["Ana", "Ben", "Chloe", "Dev", "Eli", "Fay"]
+floor = np.array([0, 0, 0, 0, 1, 1])
+ties = np.array([(0, 1), (0, 2), (1, 2), (2, 3), (3, 4), (4, 5), (1, 5)])
+src, dst = ties[:, 0], ties[:, 1]
+
+def mixing_counts(group, src, dst, k, directed=False):
+    """Count ties by the groups at their two ends; an undirected tie counts both ways."""
+    m = np.zeros((k, k))
+    np.add.at(m, (group[src], group[dst]), 1)
+    if not directed:
+        np.add.at(m, (group[dst], group[src]), 1)
+    return m
+
+def newman_r(m):
+    e = m / m.sum()
+    a, b = e.sum(axis=1), e.sum(axis=0)
+    return (np.trace(e) - a @ b) / (1 - a @ b)
+
+def ei_index(group, src, dst):
+    external = np.sum(group[src] != group[dst])
+    return (external - (len(src) - external)) / len(src)
+
+def coleman(group, src, dst, k, directed=False):
+    m = mixing_counts(group, src, dst, k, directed=directed)
+    observed = np.diag(m) / m.sum(axis=1)       # share of a group's tie-ends that stay inside
+    size = np.bincount(group, minlength=k)
+    expected = (size - 1) / (len(group) - 1)    # share of the other people who are in the group
+    h = np.where(observed >= expected, (observed - expected) / (1 - expected), (observed - expected) / expected)
+    return observed, expected, h
+
+def odds_ratio(group, src, dst):
+    size = np.bincount(group)
+    pairs_within = (size * (size - 1) // 2).sum()
+    pairs_across = len(group) * (len(group) - 1) // 2 - pairs_within
+    within = np.sum(group[src] == group[dst])
+    across = len(src) - within
+    return (within / (pairs_within - within)) / (across / (pairs_across - across))
+
+print(mixing_counts(floor, src, dst, 2).astype(int))
+observed, expected, h = coleman(floor, src, dst, 2)
+for g in range(2):
+    print(f"floor {g + 1}: inside {observed[g]:.3f}, expected {expected[g]:.3f}, Coleman {h[g]:.3f}")
+
+# Check the formulas against NetworkX.
+office = nx.Graph(ties.tolist())
+nx.set_node_attributes(office, dict(enumerate(floor)), "floor")
+print(f"E-I           {ei_index(floor, src, dst):+.3f}")
+print(f"assortativity {newman_r(mixing_counts(floor, src, dst, 2)):.3f} by the formula, "
+      f"{nx.attribute_assortativity_coefficient(office, 'floor'):.3f} in NetworkX")
+print(f"degree assort {nx.degree_assortativity_coefficient(office):.3f}")
+print(f"odds ratio    {odds_ratio(floor, src, dst):.3f}")
 ```
+
+::: {.code-output}
+```text
+[[8 2]
+ [2 2]]
+floor 1: inside 0.800, expected 0.600, Coleman 0.500
+floor 2: inside 0.500, expected 0.200, Coleman 0.375
+E-I           -0.429
+assortativity 0.300 by the formula, 0.300 in NetworkX
+degree assort -0.167
+odds ratio    7.500
+```
+:::
 
 ## Rust
 
 ```rust
-// TODO(code, Rust): build a mixing matrix and compute assortativity
+use knappnet::metrics::mixing::{
+    build_mixing_matrix, compute_assortativity_degree, compute_assortativity_nominal, compute_ei_index,
+    compute_group_shares, AssortOptions, EiCounting, EiScope,
+};
+use knappnet::{DegreeMode, Graph};
+
+// Six people on two floors (group 0 is floor 1, group 1 is floor 2); seven ties.
+let floor: [i64; 6] = [0, 0, 0, 0, 1, 1];
+let office = Graph::from_edges(6, &[0, 0, 1, 2, 3, 4, 1], &[1, 2, 2, 3, 4, 5, 5], None, false)?;
+
+// The mixing matrix. For an undirected network knappnet folds it: the diagonal counts
+// tie-ends inside a floor, the upper-right cell counts ties between floors from both sides.
+let m = build_mixing_matrix(&office, &floor, 2, &floor, 2, true, DegreeMode::All)?;
+println!("mixing matrix (folded): {:?}", m.counts);
+
+// Coleman's index from the shares of each floor's ties that stay inside.
+let coleman = |observed: f64, expected: f64| {
+    if observed >= expected { (observed - expected) / (1.0 - expected) } else { (observed - expected) / expected }
+};
+for (g, s) in compute_group_shares(&office, &floor, 2, DegreeMode::All)?.iter().enumerate() {
+    println!("floor {}: inside {:.3}, expected {:.3}, Coleman {:.3}", g + 1, s.observed, s.expected,
+             coleman(s.observed, s.expected));
+}
+
+// The odds ratio: odds of a tie between two people in the same group, against two in different groups.
+let odds_ratio = |graph: &Graph, group: &[i64], k: usize| -> Result<f64, knappnet::Error> {
+    let m = build_mixing_matrix(graph, group, k, group, k, true, DegreeMode::All)?;
+    let (mut within, mut across) = (0.0, 0.0);
+    for i in 0..k {
+        for j in i..k {
+            if i == j { within += m.counts[i * k + j] / 2.0 } else { across += m.counts[i * k + j] / 2.0 }
+        }
+    }
+    let size: Vec<f64> = (0..k).map(|g| group.iter().filter(|&&x| x as usize == g).count() as f64).collect();
+    let pairs_within: f64 = size.iter().map(|s| s * (s - 1.0) / 2.0).sum();
+    let n = group.len() as f64;
+    let pairs_across = n * (n - 1.0) / 2.0 - pairs_within;
+    Ok((within / (pairs_within - within)) / (across / (pairs_across - across)))
+};
+
+let opts = AssortOptions::default();
+println!("E-I           {:+.3}", compute_ei_index(&office, &floor, 2, EiScope::Global, DegreeMode::All, EiCounting::Standard)?[0]);
+println!("assortativity {:.3}", compute_assortativity_nominal(&office, &floor, 2, opts)?);
+println!("degree assort {:.3}", compute_assortativity_degree(&office, false, opts)?);
+println!("odds ratio    {:.3}", odds_ratio(&office, &floor, 2)?);
 ```
 
+::: {.code-output}
+```text
+TBD
+```
 :::
+
+:::
+
+## The trap: group sizes
+
+Before real data, here is the failure that every measure here must be protected from. Suppose ties pay *no* attention to groups at all. What would the measures say by chance alone? If a tie joins two random distinct people, the chance that it stays inside a group is the share of pairs that sit inside one, $\sum_g n_g (n_g - 1) / (n(n - 1))$ for groups of size $n_g$ among $n$ people. The E-I index then expects $1 - 2 \times$ that share.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# Ties that ignore groups completely: what does a raw count say by chance alone?
+tibble(big = c(10, 15, 18), small = c(10, 5, 2)) |>
+  mutate(
+    people = big + small,
+    inside = (big * (big - 1) + small * (small - 1)) / (people * (people - 1)),
+    ei = 1 - 2 * inside
+  ) |>
+  mutate(across(c(inside, ei), \(x) round(x, 3)))
+```
 
 ::: {.code-output}
-TODO(output): the printed result of the code above, once it runs.
+```text
+TBD
+```
 :::
 
-## Exercises
+## Python
 
-1. TODO(exercise): a by-hand exercise on a tiny network.
-2. TODO(exercise): a coding exercise on a dataset from the appendix.
-3. TODO(exercise): an interpretation exercise.
+```python
+# Ties that ignore groups completely: what does a raw count say by chance alone?
+for big, small in [(10, 10), (15, 5), (18, 2)]:
+    people = big + small
+    inside = (big * (big - 1) + small * (small - 1)) / (people * (people - 1))
+    print(f"groups of {big} and {small}: share of ties inside a group {inside:.3f}, E-I {1 - 2 * inside:+.3f}")
+```
 
-## Summary
-
-::: {.callout-tip appearance="simple"}
-TODO(summary): three to five sentences, then the one-line takeaway.
+::: {.code-output}
+```text
+groups of 10 and 10: share of ties inside a group 0.474, E-I +0.053
+groups of 15 and 5: share of ties inside a group 0.605, E-I -0.211
+groups of 18 and 2: share of ties inside a group 0.811, E-I -0.621
+```
 :::
 
-## Further reading
+## Rust
 
-TODO(refs): cite with `@key` from `shared/bib/references.bib`.
+```rust
+// Ties that ignore groups completely: what does a raw count say by chance alone?
+for (big, small) in [(10.0, 10.0), (15.0, 5.0), (18.0, 2.0)] {
+    let people = big + small;
+    let inside = (big * (big - 1.0) + small * (small - 1.0)) / (people * (people - 1.0));
+    println!("groups of {big} and {small}: share of ties inside a group {inside:.3}, E-I {:+.3}", 1.0 - 2.0 * inside);
+}
+```
+
+::: {.code-output}
+```text
+TBD
+```
+:::
+
+:::
+
+## The karate club
+
+@sec-subgroups introduced Zachary's karate club: 34 members, 78 friendships, and a split into two sides. Here the attribute is the side each member took, Mr. Hi's or the officer's, 17 members each. Equal group sizes make the baseline easy: a tie between two random members crosses sides 17 times 17 over 561 pairs, or 51.5 percent of the time.
+
+![The karate club coloured by the side each member took. Most ties stay on one side.](../figures/homophily-karate.svg){#fig-homophily-karate fig-alt="A network of 34 nodes in two loose clusters. One cluster of 17 blue circles and one of 17 orange squares. Grey lines run mostly inside each cluster; 11 dashed red lines run between the clusters."}
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+karate_nodes <- as_tibble(read.csv("data/karate/nodes.csv"))
+karate_edges <- as_tibble(read.csv("data/karate/edges.csv"))
+karate <- karate_edges |>
+  select(source, target) |>
+  net_frame(nodes = karate_nodes, directed = FALSE, quiet = TRUE)
+faction <- karate_nodes$faction
+
+net_mixing(karate, "faction")
+
+net_homophily(karate, "faction") |>
+  as_tibble() |>
+  mutate(coleman = coleman(observed, expected))
+
+tibble(
+  ei = as.vector(net_ei_index(karate, "faction")),
+  assortativity = net_assort_nominal(karate, "faction"),
+  degree_assortativity = net_assort_degree(karate),
+  odds_ratio = odds_ratio(karate, faction)
+) |>
+  mutate(across(everything(), \(x) round(x, 3)))
+```
+
+::: {.code-output}
+```text
+TBD
+```
+:::
+
+## Python
+
+```python
+import csv
+
+with open("data/karate/nodes.csv") as f:
+    faction = np.array([0 if row["faction"] == "Mr. Hi" else 1 for row in csv.DictReader(f)])
+with open("data/karate/edges.csv") as f:
+    edges = np.array([(int(r["source"]) - 1, int(r["target"]) - 1) for r in csv.DictReader(f)])
+src, dst = edges[:, 0], edges[:, 1]
+karate = nx.Graph(edges.tolist())
+nx.set_node_attributes(karate, dict(enumerate(faction)), "faction")
+
+print(mixing_counts(faction, src, dst, 2).astype(int))
+observed, expected, h = coleman(faction, src, dst, 2)
+for g, side in enumerate(["Mr. Hi", "Officer"]):
+    print(f"{side:<8} inside {observed[g]:.3f}, expected {expected[g]:.3f}, Coleman {h[g]:.3f}")
+print(f"E-I           {ei_index(faction, src, dst):+.3f}")
+print(f"assortativity {newman_r(mixing_counts(faction, src, dst, 2)):.3f} by the formula, "
+      f"{nx.attribute_assortativity_coefficient(karate, 'faction'):.3f} in NetworkX")
+print(f"degree assort {nx.degree_assortativity_coefficient(karate):.3f}")
+print(f"odds ratio    {odds_ratio(faction, src, dst):.3f}")
+```
+
+::: {.code-output}
+```text
+[[70 11]
+ [11 64]]
+Mr. Hi   inside 0.864, expected 0.485, Coleman 0.736
+Officer  inside 0.853, expected 0.485, Coleman 0.715
+E-I           -0.718
+assortativity 0.718 by the formula, 0.718 in NetworkX
+degree assort -0.476
+odds ratio    8.260
+```
+:::
+
+## Rust
+
+```rust
+let faction: Vec<i64> = std::fs::read_to_string("data/karate/nodes.csv")?
+    .lines().skip(1)
+    .map(|line| if line.ends_with("Mr. Hi") { 0 } else { 1 })
+    .collect();
+let edge_text = std::fs::read_to_string("data/karate/edges.csv")?;
+let ends: Vec<(i64, i64)> = edge_text.lines().skip(1).map(|line| {
+    let mut cells = line.split(',');
+    let mut next = || cells.next().unwrap().parse::<i64>().unwrap() - 1;
+    (next(), next())
+}).collect();
+let (from, to): (Vec<i64>, Vec<i64>) = ends.iter().cloned().unzip();
+let karate = Graph::from_edges(34, &from, &to, None, false)?;
+
+let m = build_mixing_matrix(&karate, &faction, 2, &faction, 2, true, DegreeMode::All)?;
+println!("mixing matrix (folded): {:?}", m.counts);
+for (g, s) in compute_group_shares(&karate, &faction, 2, DegreeMode::All)?.iter().enumerate() {
+    println!("{:<8} inside {:.3}, expected {:.3}, Coleman {:.3}", ["Mr. Hi", "Officer"][g], s.observed, s.expected,
+             coleman(s.observed, s.expected));
+}
+println!("E-I           {:+.3}", compute_ei_index(&karate, &faction, 2, EiScope::Global, DegreeMode::All, EiCounting::Standard)?[0]);
+println!("assortativity {:.3}", compute_assortativity_nominal(&karate, &faction, 2, opts)?);
+println!("degree assort {:.3}", compute_assortativity_degree(&karate, false, opts)?);
+println!("odds ratio    {:.3}", odds_ratio(&karate, &faction, 2)?);
+```
+
+::: {.code-output}
+```text
+TBD
+```
+:::
+
+:::
+
+## Is it more than chance? Shuffle the labels
+
+```text
+PROSE-PERM
+```
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+set.seed(1)
+observed <- net_assort_nominal(karate, "faction")
+# Shuffle who has which side, 5,000 times; the ties and the group sizes stay put.
+shuffled <- map_dbl(1:5000, \(i) net_assort_nominal(karate, sample(faction)))
+tibble(
+  observed = round(observed, 3),
+  shuffled_mean = round(mean(shuffled), 3),
+  shuffled_sd = round(sd(shuffled), 3),
+  largest_shuffled = round(max(shuffled), 3),
+  as_high = sum(shuffled >= observed),
+  p = (1 + sum(shuffled >= observed)) / (length(shuffled) + 1)
+)
+```
+
+::: {.code-output}
+```text
+TBD
+```
+:::
+
+## Python
+
+```python
+rng = np.random.default_rng(1)
+observed = newman_r(mixing_counts(faction, src, dst, 2))
+# Shuffle who has which side, 5,000 times; the ties and the group sizes stay put.
+shuffled = np.array([newman_r(mixing_counts(rng.permutation(faction), src, dst, 2)) for _ in range(5000)])
+as_high = np.sum(shuffled >= observed)
+print(f"observed {observed:.3f}")
+print(f"shuffled: mean {shuffled.mean():.3f}, sd {shuffled.std(ddof=1):.3f}, largest {shuffled.max():.3f}")
+print(f"{as_high} of 5000 shuffles are as high; p = {(1 + as_high) / (len(shuffled) + 1):.4f}")
+```
+
+::: {.code-output}
+```text
+observed 0.718
+shuffled: mean -0.052, sd 0.104, largest 0.430
+0 of 5000 shuffles are as high; p = 0.0002
+```
+:::
+
+## Rust
+
+```rust
+use knappnet::rng::Stream;
+
+let observed = compute_assortativity_nominal(&karate, &faction, 2, opts)?;
+let mut rng = Stream::new(1, 0);
+let mut order = vec![0usize; faction.len()];
+let mut shuffled = Vec::new();
+for _ in 0..5000 {
+    // Shuffle who has which side; the ties and the group sizes stay put.
+    rng.fill_permutation(&mut order);
+    let labels: Vec<i64> = order.iter().map(|&i| faction[i]).collect();
+    shuffled.push(compute_assortativity_nominal(&karate, &labels, 2, opts)?);
+}
+let mean = shuffled.iter().sum::<f64>() / shuffled.len() as f64;
+let sd = (shuffled.iter().map(|r| (r - mean).powi(2)).sum::<f64>() / (shuffled.len() - 1) as f64).sqrt();
+let as_high = shuffled.iter().filter(|&&r| r >= observed).count();
+println!("observed {observed:.3}");
+println!("shuffled: mean {mean:.3}, sd {sd:.3}, largest {:.3}", shuffled.iter().cloned().fold(f64::MIN, f64::max));
+println!("{as_high} of 5000 shuffles are as high; p = {:.4}", (1 + as_high) as f64 / (shuffled.len() + 1) as f64);
+```
+
+::: {.code-output}
+```text
+TBD
+```
+:::
+
+:::
+
+![Newman's assortativity for the karate sides, against 5,000 reshufflings of the side labels over the same ties.](../figures/homophily-null.svg){#fig-homophily-null fig-alt="A histogram centred a little below zero, running from about -0.3 to 0.4, with a peak near -0.05. A black vertical line at 0.718 sits far to the right of every bar. The shuffled values average -0.053 and the largest is 0.384."}
+
+```text
+PROSE-STRESS
+```
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+set.seed(1)
+# Stress check 1: leave out a random 8 of the 78 ties, 1,000 times.
+left_out <- map_dbl(1:1000, \(i) {
+  karate_edges |>
+    select(source, target) |>
+    slice_sample(n = 70) |>
+    net_frame(nodes = karate_nodes, directed = FALSE, quiet = TRUE) |>
+    net_assort_nominal("faction")
+})
+
+# Stress check 2: random networks in which everyone keeps their number of ties, with the
+# ties paired at random. The sides stay with the same people.
+paired <- net_random_config(net_degree(karate), reps = 2000, seed = 1) |>
+  map_dbl(\(g) net_assort_nominal(g, faction))
+
+tibble(
+  check = c("leave out 8 ties", "same degrees, ties paired at random"),
+  lowest = c(min(left_out), min(paired)),
+  average = c(mean(left_out), mean(paired)),
+  highest = c(max(left_out), max(paired))
+) |>
+  mutate(across(where(is.numeric), \(x) round(x, 3)))
+```
+
+::: {.code-output}
+```text
+TBD
+```
+:::
+
+## Python
+
+```python
+rng = np.random.default_rng(1)
+# Stress check 1: leave out a random 8 of the 78 ties, 1,000 times.
+left_out = np.array([
+    newman_r(mixing_counts(faction, *edges[rng.choice(78, 70, replace=False)].T, 2)) for _ in range(1000)
+])
+
+# Stress check 2: random networks in which everyone keeps their number of ties, with the
+# ties paired at random. The sides stay with the same people.
+stubs = np.repeat(np.arange(34), np.bincount(np.concatenate([src, dst]), minlength=34))
+def paired_r(stubs):
+    s = rng.permutation(stubs)
+    return newman_r(mixing_counts(faction, s[0::2], s[1::2], 2))
+
+paired = np.array([paired_r(stubs) for _ in range(2000)])
+for name, r in [("leave out 8 ties", left_out), ("same degrees, ties paired at random", paired)]:
+    print(f"{name:<36} lowest {r.min():.3f}, average {r.mean():.3f}, highest {r.max():.3f}")
+```
+
+::: {.code-output}
+```text
+leave out 8 ties                     lowest 0.678, average 0.717, highest 0.828
+same degrees, ties paired at random  lowest -0.361, average -0.008, highest 0.409
+```
+:::
+
+## Rust
+
+```rust
+use knappnet::generate::{sample_configuration, Degrees};
+use knappnet::metrics::degree::compute_degree;
+
+let mut rng = Stream::new(2, 0);
+// Stress check 1: leave out a random 8 of the 78 ties, 1,000 times.
+let mut edge_order = vec![0usize; from.len()];
+let mut left_out = Vec::new();
+for _ in 0..1000 {
+    rng.fill_permutation(&mut edge_order);
+    let kept = &edge_order[..70];
+    let f: Vec<i64> = kept.iter().map(|&e| from[e]).collect();
+    let t: Vec<i64> = kept.iter().map(|&e| to[e]).collect();
+    let g = Graph::from_edges(34, &f, &t, None, false)?;
+    left_out.push(compute_assortativity_nominal(&g, &faction, 2, opts)?);
+}
+
+// Stress check 2: random networks in which everyone keeps their number of ties, with the
+// ties paired at random. The sides stay with the same people.
+let degrees: Vec<u64> = compute_degree(&karate, DegreeMode::All, true).iter().map(|&d| d as u64).collect();
+let mut paired = Vec::new();
+for d in sample_configuration(&Degrees::Undirected(degrees), false, 1, 2000, 1, 0)? {
+    let f: Vec<i64> = d.from.iter().map(|&x| x as i64).collect();
+    let t: Vec<i64> = d.to.iter().map(|&x| x as i64).collect();
+    let g = Graph::from_edges(34, &f, &t, None, false)?;
+    paired.push(compute_assortativity_nominal(&g, &faction, 2, opts)?);
+}
+for (name, r) in [("leave out 8 ties", &left_out), ("same degrees, ties paired at random", &paired)] {
+    let mean = r.iter().sum::<f64>() / r.len() as f64;
+    println!("{name:<36} lowest {:.3}, average {mean:.3}, highest {:.3}",
+             r.iter().cloned().fold(f64::MAX, f64::min), r.iter().cloned().fold(f64::MIN, f64::max));
+}
+```
+
+::: {.code-output}
+```text
+TBD
+```
+:::
+
+:::
+
+## Krackhardt's managers: directed ties and four attributes
+
+PROSE-KRACK
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+managers <- as_tibble(read.csv("data/krackhardt/nodes.csv")) |> rename(id = name)
+arcs <- as_tibble(read.csv("data/krackhardt/edges.csv"))
+network_of <- \(which) {
+  arcs |>
+    filter(relation == which) |>
+    select(source = from, target = to) |>
+    net_frame(nodes = managers, directed = TRUE, quiet = TRUE)
+}
+
+set.seed(1)
+expand_grid(relation = c("advice", "friendship"), attribute = c("department", "level", "age", "tenure")) |>
+  mutate(
+    frame = map(relation, network_of),
+    values = map(attribute, \(a) managers[[a]]),
+    # Categories for department and level, numbers for age and tenure.
+    stat = map(attribute, \(a) if (a %in% c("age", "tenure")) net_assortativity else net_assort_nominal),
+    r = pmap_dbl(list(stat, frame, values), \(s, f, v) s(f, v)),
+    r_ignoring_direction = pmap_dbl(list(stat, frame, values), \(s, f, v) s(f, v, directed = FALSE)),
+    shuffled = pmap(list(stat, frame, values), \(s, f, v) map_dbl(1:2000, \(i) s(f, sample(v)))),
+    shuffled_mean = map_dbl(shuffled, mean),
+    p = map2_dbl(shuffled, r, \(null, r) (1 + sum(null >= r)) / (length(null) + 1))
+  ) |>
+  select(relation, attribute, r, r_ignoring_direction, shuffled_mean, p) |>
+  mutate(across(where(is.numeric), \(x) round(x, 3)))
+```
+
+::: {.code-output}
+```text
+TBD
+```
+:::
+
+## Python
+
+```python
+with open("data/krackhardt/nodes.csv") as f:
+    rows = list(csv.DictReader(f))
+attribute = {k: np.array([int(r[k]) for r in rows]) for k in ["department", "level", "age", "tenure"]}
+with open("data/krackhardt/edges.csv") as f:
+    arcs = [r for r in csv.DictReader(f)]
+
+def arcs_of(relation):
+    ends = np.array([(int(r["from"]) - 1, int(r["to"]) - 1) for r in arcs if r["relation"] == relation])
+    return ends[:, 0], ends[:, 1]
+
+def assortativity(values, src, dst, numeric, directed=True):
+    if numeric:        # correlation of the value at the sending end with the value at the receiving end
+        x, y = values[src], values[dst]
+        if not directed:
+            x, y = np.r_[x, y], np.r_[y, x]
+        return np.corrcoef(x, y)[0, 1]
+    return newman_r(mixing_counts(values, src, dst, values.max() + 1, directed=directed))
+
+rng = np.random.default_rng(1)
+print(f"{'relation':<11}{'attribute':<12}{'r':>7}{'ignoring direction':>20}{'shuffled mean':>15}{'p':>8}")
+for relation in ["advice", "friendship"]:
+    src, dst = arcs_of(relation)
+    for name, values in attribute.items():
+        numeric = name in ("age", "tenure")
+        r = assortativity(values, src, dst, numeric)
+        r_ignoring = assortativity(values, src, dst, numeric, directed=False)
+        null = np.array([assortativity(rng.permutation(values), src, dst, numeric) for _ in range(2000)])
+        print(f"{relation:<11}{name:<12}{r:>7.3f}{r_ignoring:>20.3f}{null.mean():>15.3f}{(1 + np.sum(null >= r)) / 2001:>8.4f}")
+
+# NetworkX's to_undirected() merges a mutual pair into one tie, which is a third meaning of "ignoring direction".
+friendship = nx.DiGraph(zip(*[a + 1 for a in arcs_of("friendship")]))
+nx.set_node_attributes(friendship, dict(enumerate(attribute["department"], start=1)), "department")
+print(f"friendship, department, mutual ties merged: "
+      f"{nx.attribute_assortativity_coefficient(friendship.to_undirected(), 'department'):.3f}")
+```
+
+::: {.code-output}
+```text
+relation   attribute         r  ignoring direction  shuffled mean       p
+advice     department    0.024              -0.010         -0.046  0.0055
+advice     level         0.008              -0.012         -0.045  0.0960
+advice     age           0.039               0.037         -0.046  0.0510
+advice     tenure        0.159               0.079         -0.045  0.0010
+friendship department    0.159               0.151         -0.053  0.0005
+friendship level         0.188               0.156         -0.051  0.0040
+friendship age           0.100               0.092         -0.048  0.0590
+friendship tenure       -0.095              -0.096         -0.053  0.6777
+friendship, department, mutual ties merged: 0.110
+```
+:::
+
+## Rust
+
+```rust
+use knappnet::metrics::mixing::compute_assortativity_values;
+
+let nodes_text = std::fs::read_to_string("data/krackhardt/nodes.csv")?;
+let table: Vec<Vec<i64>> = nodes_text.lines().skip(1)
+    .map(|line| line.split(',').map(|c| c.parse().unwrap()).collect())
+    .collect();
+// Columns of the table: name, age, tenure, level, department.
+let attribute = [("department", 4), ("level", 3), ("age", 1), ("tenure", 2)];
+let arc_text = std::fs::read_to_string("data/krackhardt/edges.csv")?;
+
+println!("{:<11}{:<12}{:>7}{:>20}{:>15}{:>8}", "relation", "attribute", "r", "ignoring direction", "shuffled mean", "p");
+let mut rng = Stream::new(3, 0);
+let mut order = vec![0usize; 21];
+for relation in ["advice", "friendship"] {
+    let (mut f, mut t) = (Vec::new(), Vec::new());
+    for line in arc_text.lines().skip(1).filter(|l| l.ends_with(relation)) {
+        let cells: Vec<&str> = line.split(',').collect();
+        f.push(cells[0].parse::<i64>().unwrap() - 1);
+        t.push(cells[1].parse::<i64>().unwrap() - 1);
+    }
+    let g = Graph::from_edges(21, &f, &t, None, true)?;
+    for (name, column) in attribute {
+        let values: Vec<f64> = table.iter().map(|row| row[column] as f64).collect();
+        let numeric = name == "age" || name == "tenure";
+        let stat = |v: &[f64], directed: bool| -> Result<f64, knappnet::Error> {
+            let o = AssortOptions { directed, ..opts };
+            if numeric {
+                compute_assortativity_values(&g, v, None, o)
+            } else {
+                let codes: Vec<i64> = v.iter().map(|&x| x as i64).collect();
+                compute_assortativity_nominal(&g, &codes, *codes.iter().max().unwrap() as usize + 1, o)
+            }
+        };
+        let r = stat(&values, true)?;
+        let mut null = Vec::new();
+        for _ in 0..2000 {
+            rng.fill_permutation(&mut order);
+            let shuffled: Vec<f64> = order.iter().map(|&i| values[i]).collect();
+            null.push(stat(&shuffled, true)?);
+        }
+        let as_high = null.iter().filter(|&&x| x >= r).count();
+        println!("{relation:<11}{name:<12}{r:>7.3}{:>20.3}{:>15.3}{:>8.4}", stat(&values, false)?,
+                 null.iter().sum::<f64>() / null.len() as f64, (1 + as_high) as f64 / 2001.0);
+    }
+}
+```
+
+::: {.code-output}
+```text
+TBD
+```
+:::
+
+:::
+
+## Sampson's novices: a relation that pushes groups apart
+
+PROSE-SAMPSON
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+sampson_nodes <- as_tibble(read.csv("data/sampson/nodes.csv")) |>
+  left_join(as_tibble(read.csv("data/sampson_groups/nodes.csv")), by = "name") |>
+  rename(id = name)
+sampson_arcs <- as_tibble(read.csv("data/sampson/edges.csv"))
+choice_net <- \(which, wave = 3) {
+  sampson_arcs |>
+    filter(relation == which, time == wave) |>
+    select(source = from, target = to) |>
+    net_frame(nodes = sampson_nodes, directed = TRUE, quiet = TRUE)
+}
+sizes <- table(sampson_nodes$group)
+by_chance <- sum(sizes * (sizes - 1)) / (18 * 17)
+
+set.seed(1)
+tibble(relation = c("liking", "esteem", "disliking")) |>
+  mutate(
+    frame = map(relation, choice_net),
+    choices = map_dbl(frame, \(f) nrow(f$edges)),
+    inside = map_dbl(frame, \(f) { m <- net_mixing(f, "group"); sum(diag(m)) / sum(m) }),
+    chance = by_chance,
+    r = map_dbl(frame, \(f) net_assort_nominal(f, "group")),
+    shuffled = map(frame, \(f) map_dbl(1:2000, \(i) net_assort_nominal(f, sample(sampson_nodes$group)))),
+    p_high = map2_dbl(shuffled, r, \(null, r) (1 + sum(null >= r)) / (length(null) + 1)),
+    p_low = map2_dbl(shuffled, r, \(null, r) (1 + sum(null <= r)) / (length(null) + 1))
+  ) |>
+  select(relation, choices, inside, chance, r, p_high, p_low) |>
+  mutate(across(where(is.numeric), \(x) round(x, 3)))
+
+# Coleman's index for each group, for the choices each group makes.
+bind_rows(
+  net_homophily(choice_net("liking"), "group", direction = "out") |> mutate(relation = "liking"),
+  net_homophily(choice_net("esteem"), "group", direction = "out") |> mutate(relation = "esteem")
+) |>
+  as_tibble() |>
+  mutate(coleman = coleman(observed, expected)) |>
+  select(relation, group, size, observed, expected, coleman) |>
+  mutate(across(where(is.numeric), \(x) round(x, 3)))
+```
+
+::: {.code-output}
+```text
+TBD
+```
+:::
+
+## Python
+
+```python
+with open("data/sampson/nodes.csv") as f:
+    names = [r["name"] for r in csv.DictReader(f)]
+with open("data/sampson_groups/nodes.csv") as f:
+    group_of = {r["name"]: r["group"] for r in csv.DictReader(f)}
+labels = sorted(set(group_of.values()))                      # Loyal, Outcasts, Turks, Waverers
+group = np.array([labels.index(group_of[n]) for n in names])
+with open("data/sampson/edges.csv") as f:
+    sampson = [r for r in csv.DictReader(f)]
+
+def choices(relation, wave="3"):
+    ends = np.array([(names.index(r["from"]), names.index(r["to"])) for r in sampson
+                     if r["relation"] == relation and r["time"] == wave])
+    return ends[:, 0], ends[:, 1]
+
+sizes = np.bincount(group)
+by_chance = (sizes * (sizes - 1)).sum() / (18 * 17)
+rng = np.random.default_rng(1)
+print(f"{'relation':<11}{'choices':>8}{'inside':>8}{'chance':>8}{'r':>8}{'p high':>8}{'p low':>8}")
+for relation in ["liking", "esteem", "disliking"]:
+    s, d = choices(relation)
+    m = mixing_counts(group, s, d, 4, directed=True)
+    r = newman_r(m)
+    null = np.array([newman_r(mixing_counts(rng.permutation(group), s, d, 4, directed=True)) for _ in range(2000)])
+    print(f"{relation:<11}{len(s):>8}{np.trace(m) / m.sum():>8.3f}{by_chance:>8.3f}{r:>8.3f}"
+          f"{(1 + np.sum(null >= r)) / 2001:>8.3f}{(1 + np.sum(null <= r)) / 2001:>8.3f}")
+
+# Coleman's index for each group, for the choices each group makes.
+for relation in ["liking", "esteem"]:
+    s, d = choices(relation)
+    observed, expected, h = coleman(group, s, d, 4, directed=True)
+    for g, label in enumerate(labels):
+        print(f"{relation:<8}{label:<10} size {sizes[g]}  inside {observed[g]:.3f}  expected {expected[g]:.3f}  Coleman {h[g]:.3f}")
+```
+
+::: {.code-output}
+```text
+relation    choices  inside  chance       r  p high   p low
+liking           56   0.286   0.242   0.005   0.209   0.791
+esteem           54   0.667   0.242   0.512   0.000   1.000
+disliking        47   0.043   0.242  -0.306   0.996   0.005
+liking  Loyal      size 5  inside 0.312  expected 0.235  Coleman 0.101
+liking  Outcasts   size 3  inside 0.222  expected 0.118  Coleman 0.119
+liking  Turks      size 7  inside 0.364  expected 0.353  Coleman 0.017
+liking  Waverers   size 3  inside 0.111  expected 0.118  Coleman -0.056
+esteem  Loyal      size 5  inside 0.769  expected 0.235  Coleman 0.698
+esteem  Outcasts   size 3  inside 0.545  expected 0.118  Coleman 0.485
+esteem  Turks      size 7  inside 0.833  expected 0.353  Coleman 0.742
+esteem  Waverers   size 3  inside 0.000  expected 0.118  Coleman -1.000
+```
+:::
+
+## Rust
+
+```rust
+let group_text = std::fs::read_to_string("data/sampson_groups/nodes.csv")?;
+let labels = ["Loyal", "Outcasts", "Turks", "Waverers"];
+let name_text = std::fs::read_to_string("data/sampson/nodes.csv")?;
+let names: Vec<&str> = name_text.lines().skip(1).map(|l| l.split(',').next().unwrap()).collect();
+let group: Vec<i64> = names.iter().map(|n| {
+    let line = group_text.lines().find(|l| l.starts_with(&format!("{n},"))).unwrap();
+    labels.iter().position(|l| line.ends_with(l)).unwrap() as i64
+}).collect();
+let arc_text = std::fs::read_to_string("data/sampson/edges.csv")?;
+let choices = |relation: &str| -> Result<Graph, knappnet::Error> {
+    let (mut f, mut t) = (Vec::new(), Vec::new());
+    for line in arc_text.lines().skip(1) {
+        let cells: Vec<&str> = line.split(',').collect();
+        if cells[2] == relation && cells[4] == "3" {
+            f.push(names.iter().position(|n| *n == cells[0]).unwrap() as i64);
+            t.push(names.iter().position(|n| *n == cells[1]).unwrap() as i64);
+        }
+    }
+    Graph::from_edges(18, &f, &t, None, true)
+};
+let sizes: Vec<f64> = (0..4).map(|g| group.iter().filter(|&&x| x == g).count() as f64).collect();
+let by_chance = sizes.iter().map(|s| s * (s - 1.0)).sum::<f64>() / (18.0 * 17.0);
+
+let mut rng = Stream::new(4, 0);
+let mut order = vec![0usize; 18];
+println!("{:<11}{:>8}{:>8}{:>8}{:>8}{:>8}{:>8}", "relation", "choices", "inside", "chance", "r", "p high", "p low");
+for relation in ["liking", "esteem", "disliking"] {
+    let g = choices(relation)?;
+    let m = build_mixing_matrix(&g, &group, 4, &group, 4, true, DegreeMode::All)?;
+    let inside = (0..4).map(|i| m.counts[i * 4 + i]).sum::<f64>() / m.counts.iter().sum::<f64>();
+    let r = compute_assortativity_nominal(&g, &group, 4, opts)?;
+    let (mut high, mut low) = (1, 1);
+    for _ in 0..2000 {
+        rng.fill_permutation(&mut order);
+        let shuffled: Vec<i64> = order.iter().map(|&i| group[i]).collect();
+        let x = compute_assortativity_nominal(&g, &shuffled, 4, opts)?;
+        if x >= r { high += 1 }
+        if x <= r { low += 1 }
+    }
+    println!("{relation:<11}{:>8}{inside:>8.3}{by_chance:>8.3}{r:>8.3}{:>8.3}{:>8.3}", g.edge_count(), high as f64 / 2001.0, low as f64 / 2001.0);
+}
+
+// Coleman's index for each group, for the choices each group makes.
+for relation in ["liking", "esteem"] {
+    let g = choices(relation)?;
+    for (i, s) in compute_group_shares(&g, &group, 4, DegreeMode::Out)?.iter().enumerate() {
+        println!("{relation:<8}{:<10} size {}  inside {:.3}  expected {:.3}  Coleman {:.3}", labels[i], s.size,
+                 s.observed, s.expected, coleman(s.observed, s.expected));
+    }
+}
+```
+
+::: {.code-output}
+```text
+TBD
+```
+:::
+
+:::

@@ -1,0 +1,61 @@
+id = "ei-index"
+title = "E-I index (external minus internal ties)"
+kind = "measure"
+chapter = "homophily"
+summary = "The share of ties that cross group lines minus the share that stay inside, for the whole network, one group or one person, from -1 (all inside) to +1 (all crossing)."
+answers = "How much of this network's, group's or person's tie activity stays inside the group and how much reaches outside it?"
+
+data_requirements = [
+  "One network and one grouping known for every node.",
+  "The grouping must be set before looking at the ties (departments, floors, declared sides), not found from the ties.",
+  "Binary ties. Weights are ignored; if many ties are repeated contacts, say so.",
+  "For a group or person index, enough ties to divide: a node or group with no ties has no index.",
+]
+
+assumptions = [
+  "A tie counts as external when its two ends are in different groups, whatever the groups are. All pairs of different groups are treated alike.",
+  "The raw index has no built-in baseline. Group sizes decide what value is expected when ties ignore groups, so you must compare with that value.",
+  "Network, group and person indices are counted differently: a tie between two groups counts once for the network, once for each group it touches, and once for each of its two people.",
+  "Directed networks: choose whether to count ties sent, received or both, and state it.",
+]
+
+readings = [
+  { context = "Whole network, groups are departments, floors or teams", high = "Much of the contact crosses boundaries. Compare with the baseline for the group sizes before calling it integration.", low = "Contact stays inside units (silos). Compatible with separate work, with physical separation, or with mutual preference." },
+  { context = "One group's index", high = "This group reaches outward more than it connects inward. A small group naturally scores high because few of its possible contacts are inside it.", low = "This group is inward-looking. A large group naturally scores low." },
+  { context = "One person's index (ego level)", high = "A person whose ties mostly cross groups: a candidate bridge, or someone who belongs to neither group. The index cannot tell them apart.", low = "A person whose ties are inside their own group. May be a core member, or someone known to few outside the group." },
+  { context = "Online platform with declared sides or communities", high = "Accounts connect across the label. Check how the label was assigned and what a tie is (reply, follow, mention).", low = "Accounts connect inside the label, as in an echo chamber, but the index cannot say whether the platform's recommendations or the users' choices produced it." },
+]
+
+pitfalls = [
+  "Reading the sign as the finding. With groups of 18 and 2, chance alone gives about -0.62; with groups of 10 and 10 it gives about +0.05.",
+  "Comparing indices across networks or groups of different sizes without a baseline.",
+  "Mixing up the levels. A group's index and the network's index count ties differently and cannot be averaged into each other.",
+  "Giving a person-level index for someone with very few ties. One tie gives exactly -1 or +1.",
+  "Treating an index near zero as balance. Two groups can each be inward and still give a middling network index if one group is large.",
+  "Using groups that came from a community-detection run, which makes the internal share high by design.",
+]
+
+checks = [
+  "Compute the value expected if ties ignored groups, one minus twice the share of possible pairs that are inside a group, and report it next to the observed index.",
+  "Shuffle the group labels many times over the same ties and compare the observed index with the shuffled ones.",
+  "Compare with a baseline-aware number such as Coleman's index for each group, or Newman's assortativity.",
+  "Leave out a random 5 to 10 percent of ties several times and check that the index stays in a narrow range.",
+  "For person-level indices, look at how many ties each person has before ranking anyone.",
+]
+
+do_not_claim = [
+  "That a negative index shows preference for the own group. It may be what the group sizes give by chance.",
+  "That a group with a high index is open or well integrated. It may be small, marginal, or a set of people with few ties.",
+  "That the pattern is caused by the groups, or would hold at another time or in another organization.",
+  "That an individual's index measures their intent. It describes where their observed ties go.",
+]
+
+report_template = "In the {relation} network of {n} {node_type} and {m} ties, grouped by {grouping} ({sizes}), {external} ties cross groups and {internal} stay inside, an E-I index of {ei}. If ties ignored the groups, the expected index for these group sizes would be {expected}. This describes where the observed ties go; it does not show that {node_type} prefer their own group or that the pattern would hold elsewhere."
+
+related = ["assortativity", "qap", "ergm"]
+sources = ["krackhardt1988informal", "mcpherson2001birds", "coleman1958relational"]
+
+[knappnet]
+rust = "knappnet::metrics::mixing::compute_ei_index(&g, &groups, k, EiScope::Global, DegreeMode::All, EiCounting::Standard)"
+r = "net_ei_index(g, \"group\", scope = \"global\")"
+python = "ei = lambda external, internal: (external - internal) / (external + internal)  # counts from the mixing table"

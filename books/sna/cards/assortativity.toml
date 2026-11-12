@@ -1,0 +1,65 @@
+id = "assortativity"
+title = "Assortativity coefficient (categories and numbers)"
+kind = "measure"
+chapter = "homophily"
+summary = "Whether ties join nodes with the same category or similar number more often than the group or value shares would give by chance, on a scale where 1 means every tie joins like with like."
+answers = "Do alike nodes tie to each other more than the overall pattern of who sends and receives ties implies, for a category such as department or for a number such as age or degree?"
+
+data_requirements = [
+  "One network and one node attribute known for every node. Missing values must be dropped or imputed first, and you should say which.",
+  "A category (nominal) or a number. For a category, groups of one or two nodes add almost no information; consider merging them or leaving them out and saying so.",
+  "Directed or undirected, stated. For a directed network decide whether to read arcs as directed, which asks whether senders in a group pick receivers in the same group, or to ignore direction.",
+  "Enough ties that the mixing table is not mostly empty. With a few dozen ties and many groups the coefficient is unstable.",
+]
+
+assumptions = [
+  "The baseline is the product of how often each group sends and receives ties. It is not group size. A group with many ties is expected to have more ties inside it, so the same table can give a different answer than a head-count baseline such as Coleman's index.",
+  "For numbers, the relationship between the two ends is summarized by one correlation, so it is dominated by a few extreme values and measures only a straight-line pattern.",
+  "Every tie counts equally. Weights are ignored by the category version.",
+  "The attribute was measured independently of the ties. If the groups were drawn from the ties (for example by community detection), the coefficient is high by construction.",
+]
+
+readings = [
+  { context = "Friendship, advice or support network with a social attribute (department, faction, age group)", high = "Ties stay among people who share the attribute. Compatible with preference, with shared settings that made meeting easy, or with both; the number cannot tell them apart.", low = "Near zero: ties mix across the attribute about as much as the marginals imply. Negative: ties cross groups more than that, as with ties of dislike or ties across a buyer and seller divide." },
+  { context = "Organization chart or reporting lines", high = "Ties follow the formal groups, as they are meant to. High by design, so a high value is not a finding.", low = "Ties cut across formal groups, which can mean cross-functional work or a chart that does not describe the real work." },
+  { context = "Transport, trade or supply network by region or sector", high = "Flows stay within a region or sector. Distance and cost usually explain much of this before any preference does.", low = "Flows cross regions or sectors; for example a hub-and-spoke system routes everything between groups." },
+  { context = "Online platform by declared interest, party or language", high = "Ties form mostly among accounts that share the label. Platform recommendations, search and who is shown to whom can produce this without anyone choosing it.", low = "Accounts connect across the label. Check how the label was assigned and whether ties include replies, follows or mentions, since they behave differently." },
+  { context = "Degree assortativity (numeric: the number of ties)", high = "Well-connected nodes tie to well-connected nodes, a core of hubs. Many social networks show this, though not all do.", low = "Hubs tie to poorly connected nodes (hub-and-spoke or star-like shapes). Many technological and biological networks show this. A single hub with many leaves forces a strongly negative value." },
+]
+
+pitfalls = [
+  "Reading a positive value as preference. Shared settings, group sizes and the way ties were collected produce the same table.",
+  "Comparing coefficients across networks with different group shares without noting that the baseline changed. Even the maximum possible value depends on the group shares.",
+  "Ignoring direction without saying so. Treating each arc as a pair of arcs, merging a mutual pair into one tie, and respecting direction give three different numbers on the same data.",
+  "Using a group of one (for example the head of an organization) as a category. It cannot have a tie inside its own group and pulls the coefficient down.",
+  "Treating a small p-value as a large effect. In the Krackhardt managers a department coefficient of 0.02 is statistically detectable and substantively tiny.",
+  "Computing a numeric coefficient on a skewed attribute and reading it as a general tendency. A few extreme values can set the sign.",
+  "Computing the coefficient for groups that were derived from the ties. It then measures the grouping method, not a social pattern.",
+]
+
+checks = [
+  "Print the mixing table beside the coefficient and look at the off-diagonal cells. A single coefficient can hide one group that is strongly inward and another that is not.",
+  "Shuffle the attribute labels over the nodes many times (keeping the ties) and compare. The shuffled values are centered slightly below zero in small networks, not at zero, so compare with that distribution rather than with 0.",
+  "Leave out a random 5 to 10 percent of ties several times. A stable value is defensible; a coefficient that swings from small to large is not.",
+  "Compare with random networks that keep every node's number of ties and the group labels, so that degree alone cannot explain the result.",
+  "Recompute with direction respected and ignored, and with each group merged or removed in turn. Report the range.",
+  "Compute a baseline-aware per-group number (Coleman's index) and the odds of a same-group tie, and see whether the story agrees.",
+]
+
+do_not_claim = [
+  "That people chose similar others. The coefficient cannot separate choice from opportunity or from group sizes.",
+  "That the attribute influenced who ties to whom, or that ties made people more alike. Selection and influence give the same pattern.",
+  "That the result holds for other networks or for a larger population than the one observed.",
+  "That a coefficient near zero means no preference. Preferences can be cancelled by opportunity, or hidden by a poor choice of attribute.",
+  "A precise comparison between two coefficients computed on different attributes, networks or ways of counting direction.",
+]
+
+report_template = "Nodes were grouped by {attribute} ({groups} groups, sizes {sizes}). Newman's assortativity coefficient for the {relation} network of {n} {node_type} and {m} ties, with direction {direction_choice}, is {r}. Shuffling the {attribute} labels {reps} times gives a mean of {null_mean} and a largest value of {null_max}, so {comparison}. This describes who is tied to whom in this network; it does not show that {node_type} chose similar others, nor that the pattern would appear in another network."
+
+related = ["ei-index", "ergm", "qap"]
+sources = ["newman2002assortative", "newman2003mixing", "mcpherson2001birds", "coleman1958relational", "shalizi2011homophily"]
+
+[knappnet]
+rust = "knappnet::metrics::mixing::{compute_assortativity_nominal, compute_assortativity_values, compute_assortativity_degree}"
+r = "net_assort_nominal(g, \"group\"); net_assortativity(g, \"age\"); net_assort_degree(g)"
+python = "networkx.attribute_assortativity_coefficient(g, \"group\"); networkx.numeric_assortativity_coefficient(g, \"age\"); networkx.degree_assortativity_coefficient(g)"
