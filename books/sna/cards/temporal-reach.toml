@@ -1,0 +1,61 @@
+id = "temporal-reach"
+title = "Temporal reach and earliest arrival"
+kind = "measure"
+chapter = "time"
+summary = "The number of other people a person can reach by a chain of contacts whose times never go backwards, and the earliest moment each of them can be reached."
+answers = "If this person had news at the start of the record, who could have heard it, and how soon, given who actually met whom and in what order?"
+
+data_requirements = [
+  "A log of contacts, each with the two people and a time (an event stream), or intervals with start and end times.",
+  "Timestamps fine enough to order contacts, or an explicit decision about contacts that share a timestamp.",
+  "A stated observation window: where the record starts and ends.",
+  "Directed contacts if the contact has a direction, such as who wrote to whom.",
+]
+
+assumptions = [
+  "Anything that moves can be passed on at every later contact (no waiting limit, no loss, no copying cost).",
+  "Contacts that share a timestamp either can chain or cannot, and the choice is stated.",
+  "The recorded contacts are all the contacts that matter; unrecorded channels are not in the picture.",
+  "The record is long enough that the end of the log is not what limits reach.",
+]
+
+readings = [
+  { context = "Office email or chat", high = "Someone whose message could have gone round the team within the window if each recipient had passed it on.", low = "Few later messages follow theirs, or they mostly receive; check the position of their messages in the log before reading it as isolation." },
+  { context = "Contacts in an outbreak", high = "One case could in principle have reached many people. Read it as an upper bound, since most contacts do not transmit.", low = "Few onward contacts, or a person recorded near the end of the study." },
+  { context = "Timetables, shipments or supply chains", high = "A stop or depot from which many others are reachable by connections that run in order.", low = "Served only early, or no onward connection after arrival; capacity and delay are not in the number." },
+  { context = "Online platform activity", high = "An account whose posts could have been seen and re-shared through accounts active soon after.", low = "Short isolated bursts of activity; what the feed showed is not in the data." },
+]
+
+pitfalls = [
+  "Reading the reach in the piled-up picture as the reach of the log: in the chapter's six-person example the picture says 30 of 30 pairs and time says 17.",
+  "Expecting reach to be symmetric; with order, A can reach B without B reaching A.",
+  "Comparing reach in windows of different widths, or near the end of the record, where fewer contacts remain.",
+  "Reading low reach at the end of a log as isolation.",
+  "Treating a possible path as a path that was used.",
+  "Mixing conventions for contacts that share a timestamp: in the chapter's day-stamped example the reach ratio is 0.80 if they chain and 0.30 if they do not.",
+]
+
+checks = [
+  "Move the window: shift it, halve it and double it, and report the range.",
+  "Compute with contacts that share a timestamp allowed to chain and forbidden to chain, and report both.",
+  "Drop the first and last tenth of the record and see whether the ranking of people changes.",
+  "Deal the timestamps out to the pairs in a different order (for example by circular shifts or full shuffles) and see whether the observed reach ratio sits inside the shifted spread.",
+  "Check how many contacts each person has late in the record before interpreting low reach.",
+]
+
+do_not_claim = [
+  "That news, infection or a resource did travel along these paths.",
+  "That a person with low reach is unimportant or isolated.",
+  "That two windows describe different teams when they are two views of one log.",
+  "That reach would be unchanged if unrecorded contacts were added.",
+]
+
+report_template = "In {window} of the log ({n_contacts} contacts among {n_people} {people}), {reach_ratio} of ordered pairs were joined by a time-respecting path, where {chaining_rule}. {top_person} could reach {top_reach} others, the most. With the window {changed_window} the figure was {range}; with timestamps shifted around a circle it was {shifted_range}. These are possible paths given the recorded contacts, not measured transmission."
+
+related = ["temporal-aggregation", "burstiness", "permutation-test", "contagion"]
+sources = ["kempe2002connectivity", "holme2005network", "holme2012temporal", "pan2011path", "kossinets2006effects"]
+
+[knappnet]
+rust = "knappnet::temporal::{TemporalNetwork, count_temporal_reach, find_temporal_paths, Criterion, PathOptions}: reach counts and earliest arrival with window, strict and waiting-time options"
+r = "net_temporal(), net_temporal_reach(g, start, end), net_reach_ratio(g, start, end, strict), net_temporal_distances(g, from)"
+python = "none in NetworkX; the chapter walks the contacts in time order (earliest_arrival) with a strict switch"

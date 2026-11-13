@@ -171,4 +171,89 @@ def sampson_waves():
     return c, meta
 
 
-FIGURES = {"time-four-ways": four_ways, "reach-static-vs-time": reach_matrices, "sampson-waves": sampson_waves}
+
+# The eighty invented messages of the chapter: hour sent, sender and receiver (people numbered 0 to 7).
+MSG_TIMES = [
+    0.3, 0.8, 3.3, 4.8, 6.8, 25.4, 28.4, 33.4, 35.2, 36.8,
+    37.0, 38.0, 43.6, 44.5, 46.3, 46.6, 48.2, 49.0, 49.3, 50.1,
+    50.4, 50.7, 52.4, 52.7, 53.3, 55.0, 56.0, 56.9, 57.8, 58.6,
+    58.8, 63.3, 64.5, 64.6, 65.6, 77.9, 78.0, 85.1, 98.6, 99.4,
+    99.7, 102.9, 105.4, 106.1, 107.1, 107.2, 108.0, 128.2, 128.6, 128.8,
+    129.2, 130.8, 134.5, 135.2, 148.1, 149.0, 149.3, 176.8, 182.2, 182.4,
+    182.6, 182.8, 183.1, 183.6, 184.6, 185.9, 193.0, 195.1, 196.2, 202.8,
+    203.2, 204.4, 204.7, 205.8, 206.1, 208.4, 208.5, 214.4, 215.2, 217.3,
+]
+MSG_SENDER = [
+    6, 2, 5, 7, 4, 4, 6, 5, 3, 4,
+    6, 0, 5, 6, 2, 3, 1, 5, 7, 2,
+    3, 7, 4, 3, 5, 0, 1, 7, 1, 0,
+    7, 5, 7, 5, 6, 2, 5, 1, 6, 5,
+    2, 1, 1, 6, 4, 2, 4, 5, 5, 7,
+    6, 3, 0, 2, 0, 6, 6, 2, 7, 3,
+    3, 4, 7, 7, 1, 6, 1, 6, 4, 1,
+    0, 7, 0, 1, 7, 4, 3, 3, 4, 3,
+]
+MSG_RECEIVER = [
+    4, 7, 4, 0, 7, 5, 1, 6, 6, 6,
+    3, 4, 2, 1, 5, 7, 6, 3, 5, 3,
+    5, 2, 2, 2, 3, 3, 3, 1, 5, 3,
+    3, 4, 4, 2, 7, 7, 6, 6, 5, 3,
+    0, 7, 6, 2, 6, 6, 7, 2, 1, 6,
+    4, 1, 4, 4, 7, 1, 1, 4, 3, 0,
+    5, 0, 6, 0, 2, 7, 6, 2, 5, 3,
+    4, 2, 1, 4, 4, 2, 7, 1, 0, 0,
+]
+
+
+def reach_ratio(log, n=8, start=0.0, end=float("inf")):
+    """Share of ordered pairs joined by a time-respecting path (same-time contacts may chain)."""
+    total = 0
+    for root in range(n):
+        have = {root}
+        for t in sorted({c[0] for c in log if start <= c[0] <= end}):
+            moved = True
+            while moved:
+                moved = False
+                for when, a, b in log:
+                    if when == t and a in have and b not in have:
+                        have.add(b)
+                        moved = True
+        total += len(have) - 1
+    return total / (n * (n - 1)), total
+
+
+def shift_null():
+    """Reach over the first 48 hours when the timestamps are shifted around a circle (79 shifts)."""
+    log = sorted(zip(MSG_TIMES, MSG_SENDER, MSG_RECEIVER))
+    observed = reach_ratio(log, end=48)[1]
+    counts = []
+    for s in range(1, 80):
+        shifted = [(MSG_TIMES[(i + s) % 80], MSG_SENDER[i], MSG_RECEIVER[i]) for i in range(80)]
+        counts.append(reach_ratio(shifted, end=48)[1])
+    lo, hi = min(counts + [observed]), max(counts + [observed])
+    freq = {k: counts.count(k) for k in range(lo, hi + 1)}
+    c = Canvas(900, 380, "Reach over the first 48 hours: observed against shifted timestamps",
+               "A bar chart of how many of 79 shifted-time versions of the message log reach each number of the 56 ordered pairs, with the real log marked.")
+    x0, x1, base, top = 70, 850, 300, 70
+    step = (x1 - x0) / (hi - lo + 1)
+    tall = max(freq.values())
+    c.text(450, 30, "Pairs able to reach each other in the first 48 hours, 79 shifted versions of the log", size=15, weight="700")
+    for k in range(lo, hi + 1):
+        h = freq[k] / tall * (base - top)
+        mine = k == observed
+        c.rect(x0 + (k - lo) * step + 3, base - h, step - 6, h, fill=ORANGE if mine else BLUE, stroke=PAPER, sw=1)
+        if freq[k]:
+            c.text(x0 + (k - lo) * step + step / 2, base - h - 6, str(freq[k]), size=11, fill=MUTED)
+        if (k - lo) % 2 == 0 or mine or k == hi:
+            c.text(x0 + (k - lo) * step + step / 2, base + 20, str(k), size=11.5, fill=MUTED)
+    c.text(450, base + 46, "pairs (out of 56) that can reach each other; the real log is the orange bar", size=12.5, fill=MUTED)
+    c.text(450, base + 68, "Bars count shifts; each shift keeps who wrote to whom and changes only when.", size=12.5, fill=MUTED)
+    at_least = sum(1 for v in counts if v >= observed)
+    meta = dict(chapter=17,
+                caption="How many of the 56 ordered pairs of coworkers can reach each other within the first 48 hours, for the real log (orange) and for 79 versions in which the same timestamps are dealt out to the pairs from a different starting point. The real log sits inside the spread.",
+                alt=f"A bar chart. The horizontal axis is the number of the 56 ordered pairs that can reach each other, from {lo} to {hi}. Bar heights count how many of 79 shifted logs give that number, with the tallest bar for {tall} shifts. The real log, at {observed} pairs, is drawn in orange; {at_least} of the 79 shifted logs reach {observed} pairs or more.",
+                data={"observed_pairs": observed, "shifted_counts": freq, "shifts_at_least_as_high": at_least})
+    return c, meta
+
+
+FIGURES = {"time-four-ways": four_ways, "reach-static-vs-time": reach_matrices, "sampson-waves": sampson_waves, "reach-shift-null": shift_null}

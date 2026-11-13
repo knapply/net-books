@@ -495,6 +495,72 @@ Popularity ranks are moderately stable, not locked: the Spearman correlation of 
 
 Now look at the last line. Piled together, the three waves hold 88 distinct choices, a density of 0.29, against about 0.18 for any single wave. Only 30 choices appear in all three. No novice's liking at any one moment looked like this network: it exists only as a summary. It says "these choices were named at some time", and it is the aggregation cost from the last section, in real data.
 
+### A stress check: how much carry-over is chance?
+
+That 35 of 55 choices carried over from wave 1 to wave 2 sounds like a lot, but "a lot" needs a yardstick. Here is one that needs no simulation. Suppose each novice, in each wave, picked his friends at random among the other 17. A novice who named $a$ people in one wave and $b$ in the next would be expected to repeat $a b / 17$ of them. Add that up over the novices.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# If each novice's choices in the next wave were drawn at random from the 17 others, how many would repeat?
+# A novice who named a choices in one wave and b in the next is expected to repeat a * b / 17 of them.
+named <- waves |> map(\(h) net_degree(h, mode = "out"))
+tibble(step = 1:2) |>
+  mutate(
+    kept = map_int(step, \(k) length(intersect(kept[[k]], kept[[k + 1]]))),
+    expected_if_random = map_dbl(step, \(k) sum(named[[k]] * named[[k + 1]]) / 17) |> round(1)
+  )
+```
+
+::: {.code-output}
+```text
+(pending)
+```
+:::
+
+## Python
+
+```python
+# If each novice's choices in the next wave were drawn at random from the 17 others, how many would repeat?
+# A novice who named a choices in one wave and b in the next is expected to repeat a * b / 17 of them.
+named = {k: dict(g.out_degree()) for k, g in waves.items()}
+for k in (1, 2):
+    expected = sum(named[k][n] * named[k + 1][n] for n in novices) / 17
+    print(f"wave {k} to {k + 1}: {len(ties[k] & ties[k + 1])} kept, {expected:.1f} expected if choices were random")
+```
+
+::: {.code-output}
+```text
+wave 1 to 2: 35 kept, 10.3 expected if choices were random
+wave 2 to 3: 40 kept, 10.4 expected if choices were random
+```
+:::
+
+## Rust
+
+```rust
+// If each novice's choices in the next wave were drawn at random from the 17 others, how many would repeat?
+// A novice who named a choices in one wave and b in the next is expected to repeat a * b / 17 of them.
+let named: Vec<Vec<f64>> = waves.iter().map(|g| compute_degree(g, DegreeMode::Out, true)).collect();
+for k in 0..2 {
+    let expected: f64 = named[k].iter().zip(&named[k + 1]).map(|(a, b)| a * b / 17.0).sum();
+    println!("wave {} to {}: {} kept, {:.1} expected if choices were random", k + 1, k + 2, ties[k].intersection(&ties[k + 1]).count(), expected);
+}
+```
+
+::: {.code-output}
+```text
+wave 1 to 2: 35 kept, 10.3 expected if choices were random
+wave 2 to 3: 40 kept, 10.4 expected if choices were random
+```
+:::
+
+:::
+
+About 10 repeats would be chance, and we see 35 and 40. So the carry-over is real: novices are not redrawing their top three from a hat. The yardstick is generous to chance in one way, because real friendship choices cluster (people choose the popular and the nearby), so some of the excess is plain popularity and not loyalty to a particular person. It is the right first check, and a poor last one.
+
 ### What these results do not show
 
 - They don't say *why* a tie changed. A novice who dropped out of someone's top three may have liked him less, or may have found someone else to add.
@@ -511,6 +577,22 @@ Ana tells Ben at time 1. Ben meets Cleo at time 3, so Cleo hears at time 3. But 
 Dev's story is different. Dev tells Cleo at time 2, who tells Ben at 3, who tells Ana at 5. Dev also tells Eli at 4, who tells Fay at 6. Dev reaches all five. That asymmetry is the point: **reachability depends on the order of events**, it doesn't have to be symmetric, and a static picture can't show it. A path that respects the order of contacts is called a **time-respecting path**, and the set of people it reaches is a person's **influence set** [@kempe2002connectivity; @holme2005network].
 
 ![The same six contacts, drawn with time running left to right. A bar joins the two people who meet at that moment. Highlighted bars are the contacts a message can use.](../figures/time-respecting.svg){#fig-time-respecting fig-alt="Two timelines side by side, with six horizontal lines for Ana, Ben, Cleo, Dev, Eli and Fay and vertical bars for six contacts at times 1 to 6. On the left, only the contacts at times 1 (Ana and Ben) and 3 (Ben and Cleo) are highlighted. On the right, all six contacts are highlighted and each person is labeled with the time Dev's message reaches them: Cleo 2, Ben 3, Eli 4, Ana 5, Fay 6."}
+
+### The definition, precisely
+
+Here is the idea in symbols. A **contact** is a triple $(u, v, t)$: $u$ and $v$ were in touch at time $t$ (for a directed log, $u$ to $v$). A **time-respecting path** from $s$ to $z$ is a chain of contacts $(u_1, v_1, t_1), \dots, (u_k, v_k, t_k)$ where $u_1 = s$, $v_k = z$, each contact starts where the last one ended ($v_i = u_{i+1}$), and the times never go backwards:
+
+$$
+t_1 \le t_2 \le \dots \le t_k .
+$$
+
+A **strict** path asks for $t_1 < t_2 < \dots < t_k$, so nobody can pass something on in the very instant they receive it. From these we define, for a person $s$ in a network of $n$ people:
+
+- the **influence set** $I(s)$, everyone $s$ can reach by a time-respecting path, and the **reach** $r(s) = |I(s)|$ not counting $s$ themself;
+- the **earliest arrival** $a_s(z)$, the smallest last time $t_k$ over all time-respecting paths from $s$ to $z$ (infinite if there is none);
+- the **reach ratio** $R = \sum_s r(s) \,/\, \bigl(n(n-1)\bigr)$, the share of ordered pairs that are connected.
+
+A four-person check you can do on paper. Ana meets Ben at time 1, Ben meets Cleo at time 1, and Cleo meets Dev at time 2. If same-time contacts may chain, Ana reaches Ben and Cleo at time 1 and Dev at time 2, so $r(\text{Ana}) = 3$. If they may not (strict), Ana reaches Ben and then is stuck, because Ben's meeting with Cleo is at the same instant Ben heard the news: $r(\text{Ana}) = 1$. Dev, in either version, reaches only Cleo, because Cleo's other contacts are earlier. The two rules give a different answer for the same data, and we come back to this in the section on clock time (it is exercise 10).
 
 ### Counting reach, and what time throws away
 
@@ -734,6 +816,19 @@ A reach count is a *possibility*. It says "given these recorded contacts, a mess
 
 And a note on reading *low* reach: a person at the end of the log, like Fay, has low reach simply because few contacts come after theirs. We'll come back to that when we discuss the edges of the observation window.
 
+### Reading reach in different settings
+
+The same reach number means different things in different places, and the right sentence changes with it.
+
+| Setting | High reach, early arrival | Low reach | What the number does not show |
+| --- | --- | --- | --- |
+| Office email | A person whose message could have gone round the team within a few days, if each recipient forwarded it. | Few later messages follow theirs, or they mostly receive and do not send. | Whether anyone read or passed anything on. |
+| Contacts in an outbreak | One case could, in principle, have reached many people. Treat it as an upper bound. | Contacts came early in the record, or the person was recorded at the end of the study. | Transmission. Most contacts do not transmit, and unrecorded contacts are missing. |
+| Timetabled transport or supply chain | A stop or depot from which many others are reachable by connections that actually run in order. | A stop served only early in the day, or one with no onward connection after arrivals. | Capacity, delays and transfer times, unless the data include them. |
+| Online platform | An account whose posts could be seen and re-shared through accounts active soon after. | Accounts that are active in short, isolated bursts. | What the platform's feed actually showed, which is not the same as who was active. |
+
+In every row the number is about what the recorded contacts allow, and the opposite of high reach is not "unimportant".
+
 ## Bursty contacts and waiting times
 
 Contact data has a second feature that static networks can't show: *when* events happen. People don't write emails like a metronome. They send a flurry, then go quiet. Goh and Barabási [@goh2008burstiness] gave a simple number for this. Take the waiting times between events, the *gaps* (also called inter-event times), and compare their spread to their average:
@@ -863,6 +958,68 @@ Our invented messages have $B = 0.27$, so they are bursty: gaps range from 0.1 h
 ![Eighty events in a perfectly regular rhythm (top) and in our message stream (bottom).](../figures/burst-ticks.svg){#fig-burst-ticks fig-alt="Two rows of vertical tick marks across a timeline. The top row, labeled a metronome with B of minus 1, has ticks at equal spacing. The bottom row, labeled the message stream with B of 0.27, has 80 ticks gathered into clumps separated by long empty stretches."}
 
 Burstiness matters for flow. Bursts can speed up spreading within a flurry and slow it down across the silences. Two cautions: with few events, $B$ is noisy, and it isn't corrected for the number of events [@kim2016measuring], so compare people or pairs with similar activity. And a log with a daily rhythm (nobody writes at night) will look bursty because of the clock, not because of the people. Before reading $B$ as a trait of a person, ask whether everyone shares the same quiet hours.
+
+### A failure with numbers: few events
+
+How much does $B$ depend on how long you watch? Keep only the first few gaps of our message log and compute it each time.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# How does B depend on how many events we watched? Use only the first k gaps of the log.
+sigma <- \(x) sqrt(mean((x - mean(x))^2))
+tibble(gaps_used = c(5, 10, 20, 40, 79)) |>
+  mutate(B = map_dbl(gaps_used, \(k) (sigma(gaps[1:k]) - mean(gaps[1:k])) / (sigma(gaps[1:k]) + mean(gaps[1:k]))) |> round(2))
+```
+
+::: {.code-output}
+```text
+(pending)
+```
+:::
+
+## Python
+
+```python
+# How does B depend on how many events we watched? Use only the first k gaps of the log.
+for k in (5, 10, 20, 40, 79):
+    print(f"first {k:>2} gaps: B = {burstiness_memory(gaps[:k])[0]:.2f}")
+```
+
+::: {.code-output}
+```text
+first  5 gaps: B = 0.15
+first 10 gaps: B = 0.17
+first 20 gaps: B = 0.23
+first 40 gaps: B = 0.22
+first 79 gaps: B = 0.27
+```
+:::
+
+## Rust
+
+```rust
+// How does B depend on how many events we watched? Use only the first k gaps of the log.
+for k in [5, 10, 20, 40, 79] {
+    println!("first {k:>2} gaps: B = {:.2}", compute_burstiness_memory(&gaps[..k]).0);
+}
+```
+
+::: {.code-output}
+```text
+first  5 gaps: B = 0.15
+first 10 gaps: B = 0.17
+first 20 gaps: B = 0.23
+first 40 gaps: B = 0.22
+first 79 gaps: B = 0.27
+```
+:::
+
+:::
+
+The same stream, read at five lengths, gives $B$ from 0.15 to 0.27. We can't say from these data whether the true value is the last one or higher still. This is the finite-size effect that Kim and Jo describe [@kim2016measuring]: with few events, $B$ cannot get near its upper limit of 1 and tends to read low even when the process is bursty, so a short record can make a bursty person look ordinary. A burstiness for a pair of coworkers with five messages is a very soft number.
 
 ## Reading temporal results honestly
 
@@ -1179,13 +1336,107 @@ days, no chaining: 0.304
 
 With the hours, half of all pairs can reach each other in the first two days. With the day-level record, the answer is anywhere from 30% to 80%, depending on a rule that the data don't settle. So the *resolution* of your clock puts a floor and a ceiling on what you can say. It also means that "event time", the order of events with no clock at all, is a different thing from clock time. Reachability depends only on the order (as long as you don't cap how long someone can wait before passing something on), but the moment you say "within a day" or "within a week", the clock enters.
 
+### Does the order matter at all? A shifted-time check
+
+So far, "50% of pairs can reach each other in the first 48 hours" has no yardstick. Would an office whose messages arrived in a different order have reached more or fewer? Here is a deterministic way to ask. Keep every sender-receiver pair as it is, and deal the 80 timestamps back out in the same order but starting from a different place: pair 1 gets the time of message 2, pair 2 the time of message 3, and so on around a circle. There are 79 such shifts. Each keeps the same pairs and the same times, and breaks only which pair happened when.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# Keep who wrote to whom, but deal the timestamps out in a different order: shift them around a circle by s places.
+shifted <- \(s) net_temporal(
+  tibble(source = as.character(sender), target = as.character(receiver), time = times[(seq_along(times) + s - 1) %% 80 + 1]),
+  nodes = coworkers, directed = TRUE
+)
+tibble(end = c(48, 108)) |>
+  mutate(
+    observed = map_dbl(end, \(e) net_reach_ratio(messages, start = 0, end = e)),
+    null = map(end, \(e) map_dbl(1:79, \(s) net_reach_ratio(shifted(s), start = 0, end = e))),
+    shifted_mean = map_dbl(null, mean),
+    shifted_min = map_dbl(null, min),
+    shifted_max = map_dbl(null, max),
+    at_least_as_high = map2_int(null, observed, \(v, o) sum(v >= o - 1e-12))
+  ) |>
+  select(-null) |>
+  mutate(across(observed:shifted_max, \(x) round(x, 3)))
+```
+
+::: {.code-output}
+```text
+(pending)
+```
+:::
+
+## Python
+
+```python
+# Keep who wrote to whom, but deal the timestamps out in a different order: shift them around a circle by s places.
+def shifted(s):
+    return sorted((float(times[(i + s) % 80]), int(sender[i]), int(receiver[i])) for i in range(80))
+
+for end in (48, 108):
+    observed = reach_ratio(messages, start=0, end=end)
+    null = np.array([reach_ratio(shifted(s), start=0, end=end) for s in range(1, 80)])
+    print(f"hours 0 to {end:>3}: observed {observed:.3f}, shifted mean {null.mean():.3f}, range {null.min():.3f} to {null.max():.3f}, "
+          f"{(null >= observed - 1e-12).sum()} of 79 shifts at least as high")
+```
+
+::: {.code-output}
+```text
+hours 0 to  48: observed 0.500, shifted mean 0.414, range 0.304 to 0.607, 8 of 79 shifts at least as high
+hours 0 to 108: observed 0.964, shifted mean 0.976, range 0.911 to 1.000, 65 of 79 shifts at least as high
+```
+:::
+
+## Rust
+
+```rust
+// Keep who wrote to whom, but deal the timestamps out in a different order: shift them around a circle by s places.
+let reach_after_shift = |s: usize, end: f64| -> Result<f64, knappnet::Error> {
+    let moved: Vec<f64> = (0..80).map(|i| times[(i + s) % 80]).collect();
+    reach_ratio(&TemporalNetwork::new(8, &sender, &receiver, &moved, None, true)?, 0.0, end)
+};
+for end in [48.0, 108.0] {
+    let observed = reach_ratio(&messages, 0.0, end)?;
+    let null: Vec<f64> = (1..80).map(|s| reach_after_shift(s, end)).collect::<Result<_, _>>()?;
+    println!("hours 0 to {end:>3}: observed {observed:.3}, shifted mean {:.3}, range {:.3} to {:.3}, {} of 79 shifts at least as high",
+        null.iter().sum::<f64>() / 79.0, null.iter().cloned().fold(f64::MAX, f64::min), null.iter().cloned().fold(0.0, f64::max),
+        null.iter().filter(|&&r| r >= observed - 1e-12).count());
+}
+```
+
+::: {.code-output}
+```text
+hours 0 to  48: observed 0.500, shifted mean 0.414, range 0.304 to 0.607, 8 of 79 shifts at least as high
+hours 0 to 108: observed 0.964, shifted mean 0.976, range 0.911 to 1.000, 65 of 79 shifts at least as high
+```
+:::
+
+:::
+
+@fig-reach-shift-null shows the spread for the first window. Over the first 48 hours the observed reach ratio, 0.50, is a little above the shifted average of 0.41, and 8 of 79 shifts do at least as well. Over 108 hours it is 0.96 against a shifted average of 0.98, and 65 shifts do at least as well. Neither says that the order of these messages is special: the same pairs, dealt different times, would do as well. Nothing in this log is claimed to tie the order of messages to who wrote them, so a result inside the spread is unsurprising. In real data, a reach ratio well above the shifted range would be evidence that something, such as replies or relays, links the order of messages. It would still not say what. This is a small, crude version of the null models in @sec-tests-and-null-models: it destroys the pairing of pairs with times and leaves everything else, including the busy hours, in place. Shifts are not independent of each other, so do not read "8 of 79" as a p-value.
+
+![The real log against 79 shifted-time versions of it.](../figures/reach-shift-null.svg){#fig-reach-shift-null fig-alt="A bar chart. The horizontal axis is the number of the 56 ordered pairs that can reach each other, from 17 to 34. Bar heights count how many of 79 shifted logs give that number, with the tallest bar for 17 shifts. The real log, at 28 pairs, is drawn in orange; 8 of the 79 shifted logs reach 28 pairs or more."}
+
 ### Three quick checks
 
 Before you report any temporal result, three checks are cheap and catch most trouble.
 
 1. **Move the window.** Rerun with the window shifted, halved and doubled. If the conclusion changes, report the range, not one number.
 2. **Change the rule for ties in time.** If your timestamps are coarse, compute the result both with simultaneous contacts allowed to chain and with them forbidden. Report both.
-3. **Trim the edges.** Drop the first and last tenth of the observation period and rerun. If the people or pairs at the top of your ranking change, they were edge effects. If you want to know whether the order of events matters at all, also shuffle the timestamps among the contacts and recompute; the logic of that comparison is the subject of @sec-tests-and-null-models.
+3. **Trim the edges.** Drop the first and last tenth of the observation period and rerun. If the people or pairs at the top of your ranking change, they were edge effects. If you want to know whether the order of events matters at all, also run the shifted-time check above, or a full shuffle of the timestamps among the contacts; the logic of that comparison is the subject of @sec-tests-and-null-models.
+
+### Common misconceptions, and where tools disagree
+
+- **"If the aggregated network is connected, everyone can reach everyone."** Our six people are one chain in the piled-up picture and a mix of five, two and one in time.
+- **"Reach is symmetric."** Dev reaches Ana, Ana does not reach Dev. Undirected contacts do not make time-respecting reach undirected.
+- **"The window I picked is neutral."** Density went from 0.07 to 0.80 as we widened it, and reach from 0.46 to 0.80 across three windows of the same width.
+- **"$B$ near 0 means the events are random."** It means the gaps have about the spread of a random process; a daily rhythm can still be present, and with few events $B$ is biased downward.
+- **"A time-respecting path is a path the message took."** It is a path the contacts would have allowed.
+
+On tools, we found this much ourselves. NetworkX has no time-respecting path function, so the Python tabs implement it by hand and need an explicit choice between chaining and not chaining contacts that share a timestamp. In knappnet that choice is `strict`, and it moved the reach ratio of the day-stamped log from 0.80 to 0.30. Reach here excludes the person themself; a package that counts them would add 1 to every person's count. We did not run other temporal packages for this chapter, so we cannot say which conventions they use; before comparing numbers across tools, check the rule for simultaneous contacts, the treatment of the window edges and whether self is counted.
 
 ### What a temporal result can and cannot show
 
@@ -1198,6 +1449,11 @@ Before you report any temporal result, three checks are cheap and catch most tro
 "In the first 48 hours of the log, 50% of ordered pairs among the eight coworkers were connected by a time-respecting path. Recorded to the day instead of the hour, that figure would be between 30% and 80%, depending on whether same-day messages can chain. Over the full 217 hours it was 100%. These are possibilities given the recorded messages, not measured transmission."
 :::
 
+::: {.callout-warning appearance="simple"}
+## A sentence you should not write
+"The team is poorly connected: only 46% of coworkers can reach each other." The 46% is one three-day window of a log that, seen whole, connects everyone, and it counts possible paths, not communication that happened.
+:::
+
 ## Exercises
 
 1. **By hand.** Add a seventh contact to the six-person example: Cleo meets Dev again at time 7. Who can Ana reach now? Who can Eli reach? Does Dev's reach change?
@@ -1207,6 +1463,24 @@ Before you report any temporal result, three checks are cheap and catch most tro
 5. **Coding.** On the eighty messages, compute the mean density for windows of 6 and 48 hours. Where do they fall between the values we found, and why?
 6. **Interpretation.** A report says: "The density of the monastery network stayed at 0.18 across three waves, so its social structure was stable." Reply kindly: what is the number really measuring here, and what else would you look at?
 7. **Interpretation.** A colleague computes reach on the first week of a six-month log and writes: "Only 46% of people can reach each other, so the team is poorly connected." Which of the three checks would you ask for first, and what would you say about the sentence?
+8. **Coding.** Run the shifted-time check on the eighty messages for the window hours 72 to 144. Is the observed reach ratio (0.46) unusually low or high among the 79 shifts?
+9. **Interpretation.** A dashboard shows "burstiness 0.27" for a team of eight and "burstiness 0.60" for a pair of people who exchanged seven messages, and ranks the pair as "more bursty". What would you ask before accepting that?
+10. **By hand.** For the four-person example in the section on the definition (Ana-Ben at time 1, Ben-Cleo at time 1, Cleo-Dev at time 2), write each person's reach with chaining allowed and with it forbidden, and the reach ratio both ways.
+
+::: {.callout-note collapse="true" appearance="simple"}
+## Worked answers
+
+1. With Cleo-Dev at 7, Ana reaches Ben at 1, Cleo at 3 and now Dev at 7: three people. Eli reaches Dev at 4 and Fay at 6, and now Cleo at 7: three people. Dev already reached all five and still does.
+2. No in either direction. Cleo and Dev meet at time 2, before Cleo can have heard anything from Ana (Ben hears at 1, Cleo at 3). From Dev: Cleo at 2, Ben at 3, and Ben's next meeting with Ana is at 5, outside the wave. The snapshot, one connected piece, claims both directions.
+3. $\mu = 12/6 = 2$. The variance is $(5 \cdot 1 + 25)/6 = 5$, so $\sigma = \sqrt 5 \approx 2.236$, and $B = (2.236 - 2)/(2.236 + 2) \approx 0.06$. One long gap among regular ones still gives a $B$ near 0, so $B$ is a poor detector of a single outage.
+4. Five of the 18 novices change in-degree by two or more between time 1 and time 3 (Albert 6 to 2, Boniface 1 to 6, John Bosco 2 to 4, Romuald 9 to 4, Winfrid 4 to 2). That is movement for more than a quarter of the novices, but a single correlation (0.45) cannot say whether it is drift or noise: at time 1 six novices share an in-degree of 2 and five share 1, so the ranks have many ties, and with only 18 people the correlation itself is uncertain. Look at the carried-over choices (35 of 55 against 10 expected by chance) and at who moves.
+5. Windows of 6 hours have a mean density of 0.037 (37 windows) and windows of 48 hours 0.268 (5 windows). They fall below and above our values of 0.072 (12 hours), 0.136 (24 hours) and 0.321 (72 hours), in order: wider windows hold more of the log, so more pairs show up.
+6. The density is fixed in large part by the questionnaire, which asked everyone for three names. It could not have moved much. Look at carry-over (35 of 55 and 40 of 57), at changes in who is most chosen, and at the rank correlation of in-degree.
+7. Start with moving the window: the first week is one window. Say that the sentence describes one week, that the whole log may look different, that missing contacts and the start of the log both lower reach, and that "poorly connected" needs a yardstick, such as the shifted-time check.
+8. Ask the same question with `start = 72, end = 144` and shifts of 1 to 79. The shifted values average 0.51 and range from 0.36 to 0.73, and 21 of the 79 shifts are as low as 0.46 or lower. So 0.46 is on the low side but not unusual: the dip in the middle window is within what the timing alone can produce.
+9. Ask how many events each is based on (seven messages gives six gaps, and $B$ is biased low and very noisy with so few), whether they share a daily rhythm, and whether the measure was computed the same way. A fair comparison uses similar event counts or a null with the same number of events.
+10. Chaining allowed: Ana 3, Ben 3, Cleo 3, Dev 1, so $R = 10/12 = 0.83$. Chaining forbidden: Ana 1 (Ben only), Ben 3 (Ana and Cleo at time 1, then Dev at 2), Cleo 2 (Ben at 1, Dev at 2), Dev 1, so $R = 7/12 = 0.58$.
+:::
 
 ## Summary
 
