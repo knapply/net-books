@@ -141,8 +141,8 @@ friends <- data.frame(
 g <- net_frame(friends, nodes = data.frame(id = people), directed = FALSE)
 g
 
-# A measure comes back as a vector named by person.
-net_degree(g)
+# A measure comes back as a plain vector, in the order of the node table; name it by person.
+setNames(net_degree(g), g$nodes$id)
 ```
 
 ::: {.code-output}
@@ -290,7 +290,7 @@ The code below scores everyone in the friendship network on closeness. Look for 
 ## R
 
 ```r
-net_closeness(g, normalized = TRUE) |> round(3)
+setNames(net_closeness(g, normalized = TRUE), g$nodes$id) |> round(3)
 ```
 
 ::: {.code-output}
@@ -422,7 +422,8 @@ split_net <- net_frame(
 data.frame(
   ignore = net_closeness(split_net, normalized = TRUE),
   wasserman_faust = net_closeness(split_net, normalized = TRUE, convention = "networkx"),
-  harmonic = net_harmonic(split_net, normalized = TRUE)
+  harmonic = net_harmonic(split_net, normalized = TRUE),
+  row.names = split_net$nodes$id
 ) |> round(3)
 ```
 
@@ -525,7 +526,7 @@ The code below counts, for every person in the friendship network, the shortest 
 ## R
 
 ```r
-net_betweenness(g) |> round(1)
+setNames(net_betweenness(g), g$nodes$id) |> round(1)
 ```
 
 ::: {.code-output}
@@ -689,7 +690,9 @@ karate$target <- as.character(karate$target)
 club <- net_frame(karate, directed = FALSE, weight = "contexts", weight_type = "strength")
 
 # Three readings of the same weights: ignore them, call them distances, call them strengths.
-top_five <- function(scores) round(head(sort(net_value(scores), decreasing = TRUE), 5), 1)
+top_five <- function(scores) {
+  round(head(sort(setNames(net_value(scores), club$nodes$id), decreasing = TRUE), 5), 1)
+}
 list(
   unweighted = top_five(net_betweenness(club, weighted = FALSE)),
   `as distances` = top_five(net_betweenness(club, weighted = TRUE, weights_as = "distance")),
@@ -833,7 +836,7 @@ The code below finds the eigenvector score for everyone in the friendship networ
 
 ```r
 # Scaled so the largest score is 1 (the default).
-net_eigen(g) |> round(3)
+setNames(net_eigen(g), g$nodes$id) |> round(3)
 ```
 
 ::: {.code-output}
@@ -1023,7 +1026,8 @@ bargain <- net_frame(
 data.frame(
   plus = net_bonacich(bargain, exponent = 0.3),
   zero = net_bonacich(bargain, exponent = 0),
-  minus = net_bonacich(bargain, exponent = -0.3)
+  minus = net_bonacich(bargain, exponent = -0.3),
+  row.names = bargain$nodes$id
 ) |> round(2)
 ```
 
@@ -1122,7 +1126,8 @@ data.frame(
   between = net_betweenness(five),
   eigen = net_eigen(five),
   katz = net_katz(five, alpha = 0.1),
-  pagerank = net_pagerank(five)
+  pagerank = net_pagerank(five),
+  row.names = five$nodes$id
 ) |> round(3)
 ```
 
@@ -1355,7 +1360,8 @@ position_table <- function(network, h, who) {
     degree = net_degree(h) / (nrow(h$nodes) - 1),
     closeness = net_closeness(h, normalized = TRUE),
     betweenness = net_betweenness(h),
-    eigenvector = net_eigen(h)
+    eigenvector = net_eigen(h),
+    row.names = h$nodes$id
   )
   data.frame(network = network, role = names(who), round(scores[who, ], 3), row.names = NULL)
 }
@@ -1524,7 +1530,8 @@ n <- nrow(florence$nodes)
 scores <- data.frame(
   ties = net_degree(florence),
   closeness = net_closeness(florence, normalized = TRUE),
-  betweenness = net_betweenness(florence)
+  betweenness = net_betweenness(florence),
+  row.names = florence$nodes$id
 )
 scores$share <- scores$betweenness / choose(n - 1, 2)
 head(scores[order(-scores$betweenness), ], 4) |> round(3)
@@ -1689,7 +1696,7 @@ graphs <- lapply(split(kr, kr$relation), function(e) {
 sapply(graphs, function(h) nrow(h$edges))
 
 # Prestige: how many people name each manager. The top three for each relation.
-received <- lapply(graphs, function(h) net_value(net_degree(h, mode = "in")))
+received <- lapply(graphs, function(h) setNames(net_value(net_degree(h, mode = "in")), h$nodes$id))
 lapply(received, function(s) head(sort(s, decreasing = TRUE), 3))
 
 # Where does the CEO, manager 7, rank for advice?
