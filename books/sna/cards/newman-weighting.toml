@@ -1,0 +1,52 @@
+id = "newman-weighting"
+title = "Newman weighting of a projection"
+kind = "measure"
+chapter = "two-mode"
+summary = "Weight each shared event by one over the event's size minus one, so that pairs who share small events count for more than pairs who share crowded ones."
+answers = "Among the pairs who share events, which pairs shared occasions small enough that interaction is plausible?"
+
+data_requirements = [
+  "A two-mode incidence matrix. Every event needs at least two members, or the weight is undefined.",
+  "Event sizes that mean what you think: the number of people who could have interacted there.",
+]
+
+assumptions = [
+  "People at a small event are more likely to have interacted than people at a big one. This is an assumption about the world; for a lecture hall or a mailing list it may be wrong.",
+  "The weight 1/(k-1) is one convenient choice. Other decay rules exist and may rank pairs differently.",
+  "All events are otherwise interchangeable. Differences in kind of event are ignored.",
+]
+
+readings = [
+  { context = "Co-authorship", high = "Wrote papers together that had few authors. Plausibly closer collaboration.", low = "Only shared papers with many authors." },
+  { context = "Women and social events", high = "Shared small gatherings. In the southern women data this moves the strongest pair from the first group of women to the second.", low = "Shared only the biggest events." },
+  { context = "Accounts and hashtags (online platform)", high = "Shared tags that few accounts use. A niche signal.", low = "Shared only trending tags." },
+]
+
+pitfalls = [
+  "Treating Newman weights as probabilities or as counts of interactions. They are a score.",
+  "Comparing weights across networks with very different event sizes.",
+  "Not saying which weighting was used.",
+  "Forgetting that summed over every other person, a person's Newman weights equal their number of events, so the weighting removes big-event inflation only for that total.",
+]
+
+checks = [
+  "Compute plain counts and Newman weights and see which pairs enter or leave the top.",
+  "Leave out the largest event, project again with both weightings, and compare.",
+  "Check that each person's Newman strength equals their number of events (a test that the weights were computed as defined).",
+]
+
+do_not_claim = [
+  "That a high Newman weight means a close relationship.",
+  "That Newman weighting is correct for every kind of event.",
+  "That the ranking it gives is the true ranking of closeness.",
+]
+
+report_template = "Projected ties among {n} {first_mode} were weighted by Newman's rule, so a shared {second_mode_singular} of size k counts 1/(k-1). The strongest pair is {pair} (weight {weight}; {count} shared {second_mode}), whereas by plain count it is {pair_count} ({count_max}). The two rankings answer different questions: who shared the most occasions, and who shared occasions small enough to allow contact."
+
+related = ["projection", "projection-backbone"]
+sources = ["newman2001scientific"]
+
+[knappnet]
+rust = "knappnet::metrics::bipartite::project(&graph, &is_event, ProjectionOptions { second: false, weight: ProjectionWeight::Newman, ..Default::default() })"
+r = "net_project(club, which = \"first\", method = \"newman\")"
+python = "(attend / (event_sizes - 1)) @ attend.T; networkx.bipartite.collaboration_weighted_projected_graph(G, nodes)"

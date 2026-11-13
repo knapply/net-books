@@ -1,0 +1,58 @@
+id = "projection"
+title = "One-mode projection of a two-mode network"
+kind = "procedure"
+chapter = "two-mode"
+summary = "Tie two nodes of one mode when they share a partner in the other mode, with weight the number of shared partners (or a weighted version of it)."
+answers = "If I want a network of people (or of events) only, which pairs share an event (or a person), and how much?"
+
+data_requirements = [
+  "A two-mode incidence matrix with a clear record of which node is which mode.",
+  "A reason to think that sharing a partner is evidence of something between the nodes. State it before projecting.",
+  "Event sizes. Without them you cannot judge which shared ties are likely to be coincidence.",
+]
+
+assumptions = [
+  "Sharing an event is a meaningful tie. For a meeting of three, plausibly; for a stadium of 40,000, no.",
+  "All events count the same (plain count), or small events count more (Newman weighting). Each is an assumption about the world.",
+  "The projected network is a summary that cannot be undone: many different two-mode networks give the same projection.",
+]
+
+readings = [
+  { context = "Women and social events", high = "Attended many events together. A large share can come from a few big events.", low = "Shared few or no events. Zero is informative; one shared event may be coincidence." },
+  { context = "Authors and papers", high = "Wrote several papers together, a decent trace of collaboration. Weighted by Newman's rule, small author teams count for more.", low = "Co-authored once. A single large-team paper ties every pair of its authors." },
+  { context = "Accounts and hashtags (online platform)", high = "Used many of the same tags. May reflect a campaign, a bot or a trending tag, not contact.", low = "Few shared tags." },
+  { context = "Customers and products", high = "Bought many of the same products. Bestsellers produce this for almost everyone.", low = "Shared few purchases." },
+]
+
+pitfalls = [
+  "Reading projected ties as observed relationships. They are made out of co-presence.",
+  "Ignoring that an event of k people makes k(k-1)/2 ties. In the southern women data two events produce about half of all shared-event counts, and one invented town hall makes every pair tied.",
+  "Computing clustering, triangles or transitivity on a projection built from large events: they are inflated by construction.",
+  "Not saying which weighting was used. Plain counts and Newman weights rank pairs differently.",
+  "Projecting onto one mode and forgetting the other. The dual projection tells the other half.",
+]
+
+checks = [
+  "Leave out the largest event and project again; see whether the conclusion survives.",
+  "Try both plain counts and Newman weights, and report both if the top pairs change.",
+  "Compare each projected measure with its two-mode counterpart (for example, projected degree against events attended).",
+  "Compare shared counts with a null that keeps both modes' degrees, or test pairs with the hypergeometric test.",
+  "Report how many of the possible pairs are tied: a projection that is nearly complete carries almost no structure.",
+]
+
+do_not_claim = [
+  "That two nodes tied in the projection knew or contacted each other.",
+  "That a thicker projected tie means a closer relationship.",
+  "That the projection contains the information of the two-mode data.",
+  "That structure found in a projection (communities, centrality) exists in the original network without checking it there.",
+]
+
+report_template = "The {n_second} {second_mode} were projected onto the {n_first} {first_mode}: two {first_mode} are tied when they share at least one {second_mode_singular}, with weight {weighting}. This gives {tied} tied pairs out of {possible} possible ({share}). Leaving out the largest {second_mode_singular} gives {tied_without}. A tie shows shared {second_mode}, not that the pair interacted."
+
+related = ["newman-weighting", "projection-backbone", "bipartite-clustering", "twomode-degree-density"]
+sources = ["breiger1974duality", "newman2001scientific", "everett2013dual", "borgatti2011analyzing"]
+
+[knappnet]
+rust = "knappnet::metrics::bipartite::project(&graph, &is_event, ProjectionOptions { second, weight: ProjectionWeight::Count, ..Default::default() })"
+r = "net_project(club, which = \"first\", method = \"count\")"
+python = "attend @ attend.T for the people-by-people matrix (networkx.bipartite.projected_graph and weighted_projected_graph for graphs)"

@@ -1,0 +1,56 @@
+id = "bipartite-clustering"
+title = "Four-cycles and two-mode clustering (Robins-Alexander)"
+kind = "measure"
+chapter = "two-mode"
+summary = "The share of three-step paths (person, event, person, event) that close into a four-cycle, the two-mode counterpart of a triangle-based clustering."
+answers = "When two people share an event, how often do they also share another one, compared with how often they could?"
+
+data_requirements = [
+  "A two-mode network with ties only between modes; one-mode clustering is zero on such data by construction.",
+  "A binary incidence matrix. Weighted ties need a different definition.",
+  "Enough size for three-step paths to exist: every four-cycle needs two people sharing two events.",
+]
+
+assumptions = [
+  "Sharing two events is what closure means here. Whether that reflects a tie between the people depends on what the events are.",
+  "The coefficient depends on degrees and event sizes, so a value means little without a null model with the same degrees.",
+  "A global value summarizes the whole network and can hide very different parts.",
+]
+
+readings = [
+  { context = "Women and social events", high = "Pairs who meet at one event tend to meet at others too, more than their degrees alone predict (check with a null).", low = "Overlaps are scattered, with few repeated pairs." },
+  { context = "Authors and papers", high = "Repeat collaboration: pairs of authors write several papers together.", low = "Mostly one-off collaboration." },
+  { context = "Directors and boards", high = "Pairs of directors sit on several boards together, a dense interlock.", low = "Directors share boards once and scatter." },
+  { context = "Accounts and hashtags (online platform)", high = "Pairs of accounts repeatedly use the same tags. Can reflect coordination, a shared interest, or one trending topic.", low = "Overlaps without repetition." },
+]
+
+pitfalls = [
+  "Reading a value as high or low without a comparison. The southern women's 0.468 is only somewhat above what degree-preserving shuffles give (about 0.42).",
+  "Comparing values across networks with different degrees or event sizes.",
+  "Using one-mode clustering or transitivity on two-mode data. It is exactly zero.",
+  "Confusing this global coefficient with the per-node clustering of Latapy, Magnien and Del Vecchio. NetworkX and the engine offer both.",
+  "Quoting the raw four-cycle count. It is dominated by the largest events: leaving out one event cut it by more than 40 percent while the ratio barely moved.",
+]
+
+checks = [
+  "Compare with many degree-preserving swaps of the incidence matrix (see projection-backbone and null-models-choice). Report draws and seed.",
+  "Leave out each event in turn and see how much the count and the ratio move.",
+  "Verify the formula on a tiny case by hand: three people, two events, one four-cycle, six three-step paths, 4/6.",
+  "Run two chains with different seeds and check the p-values agree up to Monte Carlo noise.",
+]
+
+do_not_claim = [
+  "That the people formed cliques or chose events together.",
+  "That a value above the null shows a tendency to attend with the same people; it shows more repeated overlap than the degrees alone give.",
+  "That values are comparable across networks without a common null.",
+]
+
+report_template = "The two-mode clustering of Robins and Alexander is {value} for this network of {n} {first_mode} and {m} {second_mode} ({cycles} four-cycles). Across {draws} shuffles that keep every degree it averages {null_mean} (highest {null_max}), so the clustering is {above_or_within} what degrees alone produce (p about {p}). This describes repeated co-attendance, not relationships."
+
+related = ["clustering", "projection", "twomode-modularity", "null-models-choice"]
+sources = ["robins2004small", "latapy2008basic", "lind2005cycles"]
+
+[knappnet]
+rust = "knappnet::metrics::bipartite_extra::{count_butterflies(&graph), count_three_paths(&graph)}; clustering = 4 * four_cycles / three_paths"
+r = "no function; from the incidence matrix B: sum(choose(B %*% t(B), 2)) over off-diagonal pairs, divided by three-step paths (written by hand in the chapter)"
+python = "networkx.bipartite.robins_alexander_clustering(G); networkx.bipartite.clustering(G) is the per-node version"

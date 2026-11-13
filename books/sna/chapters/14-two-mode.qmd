@@ -34,6 +34,10 @@ Three things follow from the shape, and each will matter later.
 - **Some ties are impossible.** A woman can't be tied to another woman, so only $18 \times 14 = 252$ of the node pairs could ever be tied.
 - **Each mode has a different maximum.** A woman can attend at most 14 events. An event can draw at most 18 women.
 
+## Where the idea comes from
+
+The southern women data were collected for a study of class in a town, not for network analysis [@davis1941deep], and it has been reanalyzed many times since because it can be read so many ways. The idea that turned a table of memberships into a network problem is Breiger's: people and groups define each other, so the same table can be read from either side [@breiger1974duality]. Textbook treatments such as @wasserman1994social gave affiliation data its standard notation, the incidence matrix and its two products. @borgatti1997network carried degree, closeness and betweenness over to two modes, with normalizations that respect the two sizes. Newman's weighting came out of co-authorship data, on the thought that the authors of a short paper probably know each other better than the authors of a huge one [@newman2001scientific]. And Robins and Alexander built their clustering coefficient for bipartite graphs because triangles cannot occur there [@robins2004small]. Each answers a complaint about the one before it, and we'll meet them in that order.
+
 ## The incidence matrix
 
 A two-mode network is usually stored as an **incidence matrix**: one row for each node of the first mode, one column for each node of the second, and a 1 where the two are tied. A tiny example: Ana attends Choir and Chess, Ben attends Choir, and Cleo attends Chess.
@@ -1041,7 +1045,7 @@ clustering 0.468
 
 :::
 
-There are 341 four-cycles, and a clustering coefficient of 0.468: close to half of the three-step paths close into a four-cycle. That sounds high, but a number like 0.468 means little on its own: how high it looks depends on how many events people attend and how big those events are. It only means something against a comparison. @sec-tests-and-null-models shows how to build one, by shuffling the network while keeping every woman's and every event's degree. NetworkX and knappnet's Rust engine also offer a per-node version of two-mode clustering, from Latapy, Magnien and Del Vecchio [@latapy2008basic], which asks, for each node, how much of its list of partners it has in common with the nodes two steps away. Cycles in two-mode data are studied in more depth by @lind2005cycles.
+There are 341 four-cycles, and a clustering coefficient of 0.468: close to half of the three-step paths close into a four-cycle. That sounds high, but a number like 0.468 means little on its own: how high it looks depends on how many events people attend and how big those events are. It only means something against a comparison, and the next section builds one by shuffling the network while keeping every woman's and every event's degree. NetworkX and knappnet's Rust engine also offer a per-node version of two-mode clustering, from Latapy, Magnien and Del Vecchio [@latapy2008basic], which asks, for each node, how much of its list of partners it has in common with the nodes two steps away. Cycles in two-mode data are studied in more depth by @lind2005cycles.
 
 ### Are there two groups?
 
@@ -1142,6 +1146,462 @@ two-mode modularity of this split: 0.318
 Events 1 to 8 go with the first group of women and events 9 to 14 with the second. The modularity of this split is 0.318. A caution: this number isn't on the same footing as one-mode modularity, and you shouldn't compare it with the values from @sec-subgroups. For two-mode data the maximum possible value, and what counts as a high one, depend on the sizes and degrees of both modes. Use it to compare *groupings of the same two-mode network*, such as this split against a different one, not to rank networks against each other.
 
 We chose the split ("first nine and last nine") by looking at the picture. That is fine for illustration, but a split chosen by eye will always look good on the data it was chosen from. Treat 0.318 as a description of this grouping, not as evidence that the groups are real.
+
+## Is it more than chance?
+
+A clustering of 0.468 has no scale. High compared with what? A **null model** answers: draw many random two-mode networks that keep something of yours fixed, compute the same number on each, and see where the real one falls. @sec-tests-and-null-models makes the full argument; here we need one recipe. We keep every woman's number of events and every event's number of women, and shuffle who went to what.
+
+The shuffling move is a **swap**. Pick two women and two events. If the first woman went to the first event and the second to the second, and neither went to the other's event, exchange them: now the first woman went to the second event and the second to the first. Every woman and every event has the same degree as before, so the same swaps that scramble the network leave both margins alone. The chain of swaps is a Markov chain, so we throw away a long stretch at the start and keep one network every so often, as @sec-tests-and-null-models does for one-mode networks. knappnet has no two-mode swap yet, so all three tabs write it by hand, with the same Park-Miller random numbers as that chapter, which is why they print the same digits.
+
+Before the real data, the smallest case you can check on paper. Ana and Ben attended both Choir and Chess, and Cleo attended only Choir. There is one four-cycle, Ana-Choir-Ben-Chess. There are six three-step paths (woman, event, woman, event): each attendance contributes (the woman's other events) times (the event's other women), which is $1 \times 2$ for Ana at Choir, $1 \times 1$ for Ana at Chess, the same two for Ben, and $0 \times 2$ for Cleo. Four of the six close, so the clustering is $4 / 6 = 0.667$. The first lines of the block check this, then the real network gets the same function.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# Four-cycles, three-step paths and their ratio, for any incidence matrix (rows people, columns events).
+cycles <- \(m) {
+  s <- m %*% t(m)
+  diag(s) <- 0
+  four <- sum(choose(s, 2)) / 2
+  paths <- sum(m * outer(rowSums(m) - 1, colSums(m) - 1))
+  tibble(four_cycles = four, three_paths = paths, clustering = four * 4 / paths)
+}
+
+# By hand: Ana and Ben attended both events, Cleo only the first.
+tiny <- rbind(Ana = c(1, 1), Ben = c(1, 1), Cleo = c(1, 0))
+list(`tiny example` = tiny, `southern women` = B) |>
+  map(cycles) |>
+  list_rbind(names_to = "network") |>
+  mutate(clustering = round(clustering, 3))
+
+# Park-Miller pseudo-random numbers, identical in every language.
+stream <- \(seed, k) accumulate(seq_len(k), \(s, i) (16807 * s) %% 2147483647, .init = seed)[-1] / 2147483647
+
+# One try: two women and two events from four random numbers. A 2-by-2 block that reads 10/01 or 01/10 is flipped.
+swap_step <- \(m, u) {
+  r <- floor(u[1:2] * 18) + 1
+  k <- floor(u[3:4] * 14) + 1
+  block <- m[r, k]
+  swappable <- r[1] != r[2] && k[1] != k[2] && block[1, 1] == block[2, 2] && block[1, 2] == block[2, 1] && block[1, 1] != block[1, 2]
+  if (swappable) m[r, k] <- 1 - block
+  m
+}
+
+# Burn in, then keep a network every `gap` tries and measure it.
+null_chain <- \(seed, burn = 5000, gap = 2000, draws = 200) {
+  u <- matrix(stream(seed, 4 * (burn + gap * draws)), ncol = 4, byrow = TRUE)
+  tries <- \(m, rows) reduce(rows, \(m, i) swap_step(m, u[i, ]), .init = m)
+  states <- split(burn + seq_len(gap * draws), rep(seq_len(draws), each = gap)) |>
+    accumulate(tries, .init = tries(B, seq_len(burn)))
+  map(states[-1], cycles) |> list_rbind()
+}
+
+# Two chains from different seeds. The p-value is (1 + draws at least as high) / (draws + 1).
+observed <- cycles(B) |> select(four_cycles, clustering) |> unlist()
+c(14, 15) |>
+  set_names() |>
+  map(\(seed) null_chain(seed) |> select(four_cycles, clustering) |> pivot_longer(everything(), names_to = "statistic")) |>
+  list_rbind(names_to = "seed") |>
+  summarise(
+    mean = mean(value), low = min(value), high = max(value),
+    p = (1 + sum(value >= observed[[statistic[1]]] - 1e-9)) / (n() + 1),
+    .by = c(seed, statistic)
+  ) |>
+  mutate(across(mean:p, \(x) round(x, 3)))
+```
+
+::: {.code-output}
+```text
+```
+:::
+
+## Python
+
+```python
+def cycles(m):
+    """Four-cycles, three-step paths and their ratio for an incidence matrix (rows people, columns events)."""
+    s = m @ m.T
+    np.fill_diagonal(s, 0)
+    four = int((s * (s - 1) // 2).sum() // 2)
+    paths = int((m * np.outer(m.sum(axis=1) - 1, m.sum(axis=0) - 1)).sum())
+    return four, paths, 4 * four / paths
+
+# By hand: Ana and Ben attended both events, Cleo only the first.
+tiny = np.array([[1, 1], [1, 1], [1, 0]])
+print("tiny example: %d four-cycle, %d three-step paths, clustering %.3f" % cycles(tiny))
+print("southern women: %d four-cycles, %d three-step paths, clustering %.3f" % cycles(attend))
+
+def stream(seed, k):
+    """k pseudo-random numbers in (0, 1): Park-Miller, identical in every language."""
+    out, s = np.empty(k), seed
+    for i in range(k):
+        s = 16807 * s % 2147483647
+        out[i] = s / 2147483647
+    return out
+
+def swap_step(m, u):
+    """One try: two women and two events from four random numbers. A 2-by-2 block that reads 10/01 or 01/10 is flipped."""
+    r, c = (u[:2] * 18).astype(int), (u[2:] * 14).astype(int)
+    if r[0] != r[1] and c[0] != c[1]:
+        block = m[np.ix_(r, c)]
+        if block[0, 0] == block[1, 1] and block[0, 1] == block[1, 0] and block[0, 0] != block[0, 1]:
+            m[np.ix_(r, c)] = 1 - block
+
+def null_chain(seed, burn=5000, gap=2000, draws=200):
+    """Burn in, then keep a network every `gap` tries and measure it: (four-cycles, clustering) per draw."""
+    u = stream(seed, 4 * (burn + gap * draws)).reshape(-1, 4)
+    m, kept = attend.copy(), []
+    for k, row in enumerate(u, start=1):
+        swap_step(m, row)
+        if k > burn and (k - burn) % gap == 0:
+            four, _, clustering = cycles(m)
+            kept.append((four, clustering))
+    return np.array(kept)
+
+# Two chains from different seeds. The p-value is (1 + draws at least as high) / (draws + 1).
+observed = {"four-cycles": cycles(attend)[0], "clustering": cycles(attend)[2]}
+for seed in (14, 15):
+    kept = null_chain(seed)
+    for column, (name, value) in enumerate(observed.items()):
+        v = kept[:, column]
+        p = (1 + (v >= value - 1e-9).sum()) / (len(v) + 1)
+        print(f"seed {seed}  {name:11} mean {v.mean():8.3f}  low {v.min():8.3f}  high {v.max():8.3f}  p {p:.3f}")
+```
+
+::: {.code-output}
+```text
+tiny example: 1 four-cycle, 6 three-step paths, clustering 0.667
+southern women: 341 four-cycles, 2916 three-step paths, clustering 0.468
+seed 14  four-cycles mean  313.555  low  272.000  high  360.000  p 0.065
+seed 14  clustering  mean    0.420  low    0.382  high    0.469  p 0.010
+seed 15  four-cycles mean  310.000  low  264.000  high  359.000  p 0.030
+seed 15  clustering  mean    0.416  low    0.368  high    0.464  p 0.005
+```
+:::
+
+## Rust
+
+```rust
+// The southern women as a plain 18 by 14 matrix, and one function for four-cycles, three-step paths and their ratio.
+let incidence: Vec<Vec<u8>> = attended.iter().map(|events| (0..14).map(|e| events.contains(&e) as u8).collect()).collect();
+let cycles = |m: &Vec<Vec<u8>>| -> (f64, f64, f64) {
+    let (rows, cols) = (m.len(), m[0].len());
+    let women_at: Vec<f64> = (0..cols).map(|e| (0..rows).filter(|&a| m[a][e] == 1).count() as f64).collect();
+    let events_of: Vec<f64> = m.iter().map(|row| row.iter().filter(|&&x| x == 1).count() as f64).collect();
+    let mut four = 0.0;
+    for a in 0..rows {
+        for b in a + 1..rows {
+            let s = (0..cols).filter(|&e| m[a][e] == 1 && m[b][e] == 1).count() as f64;
+            four += s * (s - 1.0) / 2.0;
+        }
+    }
+    let mut paths = 0.0;
+    for a in 0..rows {
+        for e in (0..cols).filter(|&e| m[a][e] == 1) {
+            paths += (events_of[a] - 1.0) * (women_at[e] - 1.0);
+        }
+    }
+    (four, paths, 4.0 * four / paths)
+};
+
+// By hand: Ana and Ben attended both events, Cleo only the first.
+let tiny = cycles(&vec![vec![1u8, 1], vec![1, 1], vec![1, 0]]);
+println!("tiny example: {} four-cycle, {} three-step paths, clustering {:.3}", tiny.0, tiny.1, tiny.2);
+let real = cycles(&incidence);
+println!("southern women: {} four-cycles, {} three-step paths, clustering {:.3}", real.0, real.1, real.2);
+
+// The same Park-Miller stream as the other tabs, so all three print the same numbers.
+let pm_stream = |seed: u64, k: usize| -> Vec<f64> {
+    let mut s = seed;
+    (0..k).map(|_| { s = 16807 * s % 2147483647; s as f64 / 2147483647.0 }).collect()
+};
+
+// Burn in, then keep a network every `gap` tries and measure it: (four-cycles, clustering) per draw.
+let null_chain = |seed: u64| -> Vec<(f64, f64)> {
+    let (burn, gap, draws) = (5000usize, 2000usize, 200usize);
+    let u = pm_stream(seed, 4 * (burn + gap * draws));
+    let mut m = incidence.clone();
+    let mut kept = Vec::new();
+    for k in 1..=burn + gap * draws {
+        let r = [(u[4 * k - 4] * 18.0) as usize, (u[4 * k - 3] * 18.0) as usize];
+        let c = [(u[4 * k - 2] * 14.0) as usize, (u[4 * k - 1] * 14.0) as usize];
+        // One try: a 2-by-2 block that reads 10/01 or 01/10 is flipped.
+        if r[0] != r[1] && c[0] != c[1] {
+            let (p, q, s, t) = (m[r[0]][c[0]], m[r[0]][c[1]], m[r[1]][c[0]], m[r[1]][c[1]]);
+            if p == t && q == s && p != q {
+                m[r[0]][c[0]] = q;
+                m[r[0]][c[1]] = p;
+                m[r[1]][c[0]] = t;
+                m[r[1]][c[1]] = s;
+            }
+        }
+        if k > burn && (k - burn) % gap == 0 {
+            let now = cycles(&m);
+            kept.push((now.0, now.2));
+        }
+    }
+    kept
+};
+
+// Two chains from different seeds. The p-value is (1 + draws at least as high) / (draws + 1).
+for seed in [14u64, 15] {
+    let kept = null_chain(seed);
+    for (name, v, value) in [("four-cycles", kept.iter().map(|d| d.0).collect::<Vec<f64>>(), real.0), ("clustering", kept.iter().map(|d| d.1).collect(), real.2)] {
+        let mean = v.iter().sum::<f64>() / v.len() as f64;
+        let low = v.iter().cloned().fold(f64::MAX, f64::min);
+        let high = v.iter().cloned().fold(f64::MIN, f64::max);
+        let hits = v.iter().filter(|&&x| x >= value - 1e-9).count();
+        println!("seed {seed}  {name:11} mean {mean:8.3}  low {low:8.3}  high {high:8.3}  p {:.3}", (1 + hits) as f64 / (v.len() + 1) as f64);
+    }
+}
+```
+
+::: {.code-output}
+```text
+tiny example: 1 four-cycle, 6 three-step paths, clustering 0.667
+southern women: 341 four-cycles, 2916 three-step paths, clustering 0.468
+seed 14  four-cycles mean  313.555  low  272.000  high  360.000  p 0.065
+seed 14  clustering  mean    0.420  low    0.382  high    0.469  p 0.010
+seed 15  four-cycles mean  310.000  low  264.000  high  359.000  p 0.030
+seed 15  clustering  mean    0.416  low    0.368  high    0.464  p 0.005
+```
+:::
+
+:::
+
+The real network has 341 four-cycles. Across 200 shuffled networks with the same degrees, the count averaged about 313 (it ranged from 264 to 360 over the two chains), and the real 341 gets a p-value of 0.065 from one chain and 0.030 from the other. The clustering of 0.468 sits further out: the shuffles averaged about 0.42, the highest value in either chain was 0.469, and the p-values are 0.010 and 0.005, the smallest that 200 draws can give.
+
+Three things to take from this. First, the count and the ratio disagree about how surprising the network is. The ratio also divides by the three-step paths, which the shuffles do not hold fixed, so choose your statistic before you look, not after. Second, the two chains give p-values for the count that differ by a factor of two. That is the Monte Carlo noise @sec-tests-and-null-models describes, and it is why you say "about 5 percent" and not "0.03". Third, the effect is modest: 0.468 against a typical 0.42. These women's attendance is somewhat more clustered than their degrees alone would produce, not wildly so. And the null only says "more than these degrees produce". It says nothing about why.
+
+### One event at a time
+
+A null model asks about chance. A second stress check asks about fragility: if one event had been missing from the records, would the story change? Leave each of the 14 events out in turn and recompute the four-cycles, the clustering, and whether Sylvia and Nora (the strongest pair by Newman weight) are still the strongest. We print the extremes, and event 8.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# Leave each event out in turn.
+versions <- map(1:14, \(e) {
+  kept <- B[, -e]
+  weights <- sweep(kept, 2, colSums(kept) - 1, "/") %*% t(kept)
+  diag(weights) <- 0
+  top <- weights[match("Sylvia", women), match("Nora", women)] >= max(weights) - 1e-9
+  cycles(kept) |> mutate(without = e, sylvia_nora_top = top)
+}) |>
+  list_rbind() |>
+  select(without, four_cycles, clustering, sylvia_nora_top)
+
+# The extremes, and event 8; then every version in which Sylvia and Nora are still on top.
+versions |>
+  filter(four_cycles %in% range(four_cycles) | clustering %in% range(clustering) | without == 8) |>
+  mutate(clustering = round(clustering, 3))
+versions |> summarise(strongest_without_events = toString(without[sylvia_nora_top]))
+```
+
+::: {.code-output}
+```text
+```
+:::
+
+## Python
+
+```python
+# Leave each event out in turn.
+sylvia, nora = women.index("Sylvia"), women.index("Nora")
+versions = []
+for e in range(14):
+    kept = np.delete(attend, e, axis=1)
+    four, _, clustering = cycles(kept)
+    weights = (kept / (kept.sum(axis=0) - 1)) @ kept.T
+    np.fill_diagonal(weights, 0)
+    versions.append((e + 1, four, clustering, weights[sylvia, nora] >= weights.max() - 1e-9))
+
+# The extremes, and event 8; then every version in which Sylvia and Nora are still on top.
+fours, ratios = [v[1] for v in versions], [v[2] for v in versions]
+print("without  four-cycles  clustering  Sylvia and Nora strongest")
+for e, four, clustering, top in versions:
+    if four in (min(fours), max(fours)) or clustering in (min(ratios), max(ratios)) or e == 8:
+        print(f"{e:7} {four:12} {clustering:11.3f}  {top}")
+print("Sylvia and Nora are the strongest pair without events", ", ".join(str(v[0]) for v in versions if v[3]))
+```
+
+::: {.code-output}
+```text
+without  four-cycles  clustering  Sylvia and Nora strongest
+      5          260       0.438  True
+      8          198       0.444  True
+      9          258       0.488  False
+     11          335       0.481  True
+Sylvia and Nora are the strongest pair without events 1, 2, 3, 4, 5, 6, 8, 11
+```
+:::
+
+## Rust
+
+```rust
+// Leave each event out in turn.
+let (sylvia, nora) = (women.iter().position(|&x| x == "Sylvia").unwrap(), women.iter().position(|&x| x == "Nora").unwrap());
+let mut versions = Vec::new();
+for e in 0..14 {
+    let kept: Vec<Vec<u8>> = incidence.iter().map(|row| (0..14).filter(|&c| c != e).map(|c| row[c]).collect()).collect();
+    let now = cycles(&kept);
+    let sizes: Vec<f64> = (0..13).map(|c| kept.iter().map(|row| row[c] as f64).sum()).collect();
+    let weight = |a: usize, b: usize| -> f64 { (0..13).filter(|&c| kept[a][c] == 1 && kept[b][c] == 1).map(|c| 1.0 / (sizes[c] - 1.0)).sum() };
+    let strongest = (0..18).flat_map(|a| (a + 1..18).map(move |b| (a, b))).map(|(a, b)| weight(a, b)).fold(0.0, f64::max);
+    versions.push((e + 1, now.0, now.2, weight(sylvia, nora) >= strongest - 1e-9));
+}
+
+// The extremes, and event 8; then every version in which Sylvia and Nora are still on top.
+let fours: Vec<f64> = versions.iter().map(|v| v.1).collect();
+let ratios: Vec<f64> = versions.iter().map(|v| v.2).collect();
+let (min_four, max_four) = (fours.iter().cloned().fold(f64::MAX, f64::min), fours.iter().cloned().fold(0.0, f64::max));
+let (min_ratio, max_ratio) = (ratios.iter().cloned().fold(f64::MAX, f64::min), ratios.iter().cloned().fold(0.0, f64::max));
+println!("without  four-cycles  clustering  Sylvia and Nora strongest");
+for &(e, four, clustering, top) in &versions {
+    if four == min_four || four == max_four || clustering == min_ratio || clustering == max_ratio || e == 8 {
+        println!("{:7} {:12} {:11.3}  {}", e, four, clustering, top);
+    }
+}
+let still: Vec<String> = versions.iter().filter(|v| v.3).map(|v| v.0.to_string()).collect();
+println!("Sylvia and Nora are the strongest pair without events {}", still.join(", "));
+```
+
+::: {.code-output}
+```text
+without  four-cycles  clustering  Sylvia and Nora strongest
+      5          260       0.438  true
+      8          198       0.444  true
+      9          258       0.488  false
+     11          335       0.481  true
+Sylvia and Nora are the strongest pair without events 1, 2, 3, 4, 5, 6, 8, 11
+```
+:::
+
+:::
+
+Leaving out event 8, the biggest, cuts the four-cycles from 341 to 198, a drop of more than 40 percent, while the clustering hardly moves (0.444 against 0.468). Over the 14 versions the count ranges from 198 to 335 and the clustering from 0.438 to 0.488. The ratio is the steadier summary, so if you doubt that your list of events is complete, it is the safer one to report. The strongest Newman pair is less steady: Sylvia and Nora stay on top in 8 of the 14 versions and lose the top spot when event 7, 9, 10, 12, 13 or 14 is left out. A claim about one "closest pair" is fragile. Report it as one of several close pairs, not as the winner.
+
+### Which projected ties beat coincidence?
+
+The same logic can be applied one pair at a time. Two women who each attended 8 of the 14 events will share about $8 \times 8 / 14 = 4.6$ events by luck alone, so Evelyn and Theresa sharing 7 is less surprising than it sounds. Fix the number of events $a$ for one woman and $b$ for the other. If the second woman's $b$ events were a random choice among the 14, the chance that she shares at least $s$ of the first woman's is
+
+$$
+P(\text{shared} \ge s) = \sum_{x \ge s} \frac{\binom{a}{x} \binom{14 - a}{b - x}}{\binom{14}{b}},
+$$
+
+where $\binom{n}{k}$ is "$n$ choose $k$", the number of ways to pick $k$ things from $n$. This is the hypergeometric distribution, and it is the idea behind "backbone" extraction from projections [@tumminello2011statistically; @neal2014backbone]. By hand: two women with 2 events each out of 4 share both with probability $\binom{2}{2}\binom{2}{0} / \binom{4}{2} = 1/6$. With 139 pairs tested, some will look unlikely by luck, so we compare the number of small p-values with what luck predicts, and with a Bonferroni cutoff (divide 0.05 by the 153 possible pairs; see @sec-tests-and-null-models).
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# Chance of sharing at least s events, if the second woman's b events were a random draw from the 14.
+chance <- \(s, a, b, n_events = 14) phyper(s - 1, a, n_events - a, b, lower.tail = FALSE)
+chance(2, 2, 2, n_events = 4)
+
+events_of <- set_names(rowSums(B), women)
+pair_p <- shared |>
+  mutate(
+    a = unname(events_of[source]), b = unname(events_of[target]),
+    expected = a * b / 14, p = chance(weight, a, b),
+    same_group = group_w[match(source, women)] == group_w[match(target, women)]
+  )
+pair_p |>
+  summarise(tested = n(), below_05 = sum(p < 0.05), below_bonferroni = sum(p < 0.05 / 153), of_those_same_group = sum(p < 0.05 & same_group))
+
+# The three smallest p-values, and the pair with the most shared events.
+bind_rows(slice_min(pair_p, p, n = 3), filter(pair_p, source == "Evelyn", target == "Theresa")) |>
+  select(source, target, shared = weight, expected, p) |>
+  mutate(expected = round(expected, 1), p = round(p, 4))
+```
+
+::: {.code-output}
+```text
+```
+:::
+
+## Python
+
+```python
+from math import comb
+
+def chance(s, a, b, n_events=14):
+    """Chance of sharing at least s events, if the second woman's b events were a random draw from the 14."""
+    return sum(comb(a, x) * comb(n_events - a, b - x) for x in range(s, min(a, b) + 1)) / comb(n_events, b)
+
+print(f"by hand: {chance(2, 2, 2, 4):.3f}")
+pair_p = {(i, j): chance(together[i, j], w_count[i], w_count[j]) for i, j in pairs}
+below = [pair for pair, p in pair_p.items() if p < 0.05]
+print(f"{len(pair_p)} pairs tested, {len(below)} with p below 0.05, {sum(p < 0.05 / 153 for p in pair_p.values())} below the Bonferroni cutoff")
+print(f"of the {len(below)}, {sum(group_w[i] == group_w[j] for i, j in below)} are inside one of the two groups")
+
+# The three smallest p-values, and the pair with the most shared events.
+for i, j in sorted(pair_p, key=pair_p.get)[:3] + [(women.index("Evelyn"), women.index("Theresa"))]:
+    print(f"{women[i]} and {women[j]}: shared {together[i, j]}, expected {w_count[i] * w_count[j] / 14:.1f}, p {pair_p[i, j]:.4f}")
+```
+
+::: {.code-output}
+```text
+by hand: 0.167
+139 pairs tested, 17 with p below 0.05, 0 below the Bonferroni cutoff
+of the 17, 15 are inside one of the two groups
+Katherine and Sylvia: shared 6, expected 3.0, p 0.0023
+Olive and Flora: shared 2, expected 0.3, p 0.0110
+Laura and Brenda: shared 6, expected 3.5, p 0.0146
+Evelyn and Theresa: shared 7, expected 4.6, p 0.0163
+```
+:::
+
+## Rust
+
+```rust
+// Chance of sharing at least s events, if the second woman's b events were a random draw from the 14.
+let choose = |n: u32, k: u32| -> f64 { if k > n { 0.0 } else { (0..k).fold(1.0, |acc, i| acc * (n - i) as f64 / (i + 1) as f64) } };
+let chance = |s: u32, a: u32, b: u32, n_events: u32| -> f64 {
+    (s..=a.min(b)).map(|x| choose(a, x) * choose(n_events - a, b - x)).sum::<f64>() / choose(n_events, b)
+};
+println!("by hand: {:.3}", chance(2, 2, 2, 4));
+let mut pair_p: Vec<(f64, usize, usize, f64)> = (0..shared.from.len())
+    .map(|k| {
+        let (i, j) = (shared.from[k] as usize, shared.to[k] as usize);
+        (chance(shared.weights[k] as u32, counts[i] as u32, counts[j] as u32, 14), i, j, shared.weights[k])
+    })
+    .collect();
+let below: Vec<&(f64, usize, usize, f64)> = pair_p.iter().filter(|p| p.0 < 0.05).collect();
+println!("{} pairs tested, {} with p below 0.05, {} below the Bonferroni cutoff", pair_p.len(), below.len(), pair_p.iter().filter(|p| p.0 < 0.05 / 153.0).count());
+println!("of the {}, {} are inside one of the two groups", below.len(), below.iter().filter(|p| group[p.1] == group[p.2]).count());
+
+// The three smallest p-values, and the pair with the most shared events.
+pair_p.sort_by(|x, y| x.0.partial_cmp(&y.0).unwrap());
+let most = pair_p.iter().position(|p| women[p.1] == "Evelyn" && women[p.2] == "Theresa").unwrap();
+for k in [0, 1, 2, most] {
+    let (p, i, j, s) = pair_p[k];
+    println!("{} and {}: shared {}, expected {:.1}, p {:.4}", women[i], women[j], s, counts[i] * counts[j] / 14.0, p);
+}
+```
+
+::: {.code-output}
+```text
+by hand: 0.167
+139 pairs tested, 17 with p below 0.05, 0 below the Bonferroni cutoff
+of the 17, 15 are inside one of the two groups
+Katherine and Sylvia: shared 6, expected 3.0, p 0.0023
+Olive and Flora: shared 2, expected 0.3, p 0.0110
+Laura and Brenda: shared 6, expected 3.5, p 0.0146
+Evelyn and Theresa: shared 7, expected 4.6, p 0.0163
+```
+:::
+
+:::
+
+Of the 139 tied pairs, 17 have a p-value below 0.05. If nothing but each woman's number of events mattered, and the tests were independent, we would expect about 7 (5 percent of 139). None clears the Bonferroni cutoff of $0.05 / 153 = 0.00033$. The smallest p-value belongs to Katherine and Sylvia, who shared 6 events where 3.0 are expected (p of 0.0023). Evelyn and Theresa, the pair with the most shared events, shared 7 against 4.6 expected (p of 0.016). Of the 17 pairs, 15 lie inside one of the two groups, which fits what we saw earlier.
+
+So most of the projection's 139 ties are about what each woman's own number of events would give, and only a thin set of pairs stand out at conventional levels. Two caveats. This null keeps only the two women's degrees and gives every event the same chance of being chosen, but popular events like 8 and 9 make overlaps more likely than that. So these p-values are, if anything, too small, and a null that keeps both margins (the swaps above, applied pair by pair) is the fairer one [@neal2014backbone]. And the 139 tests are not independent, so "about 7" is a rough guide. Beating coincidence is still not the same as knowing each other.
 
 ## Reading two-mode results honestly
 
@@ -1250,17 +1710,40 @@ Dorothy attended 2 events and Charlotte attended 4. In the two-mode data, Charlo
 
 The curiosity at the end is no accident. Each event a woman attended gives her $k - 1$ co-attendees at weight $1/(k-1)$ apiece, which adds to exactly 1 per event, whatever its size. So a woman's Newman strength is her two-mode degree. Newman's weighting, in other words, quietly undoes the big-event inflation in the one measure where it can.
 
-### Three quick checks
+### Misconceptions, and where tools differ
 
-Before you report anything from a projection, run these three. Each takes a few lines.
+- **"A projection is just a friendlier view of the same data."** It is a summary with a cost: which event, the other mode and the size of each event are all folded into one number.
+- **"A thicker projected tie is a closer relationship."** It is a larger overlap in attendance, which big events inflate.
+- **"A clustering of zero means nothing closes."** On two-mode data it is zero by construction, as we saw. Use four-cycles.
+- **"Two-mode degrees can be ranked across modes."** A woman's share of events and an event's share of women are fractions of different totals.
+- **"Bipartite clustering" names two things.** Robins and Alexander's coefficient (above) is one global number from four-cycles. Latapy, Magnien and Del Vecchio's is a value for each node. NetworkX offers both, under different function names, so check which one a tool means before comparing numbers.
+- **Ties at the top are broken arbitrarily.** The tabs of this chapter report the same busiest woman only because we fixed a rule (the first listed). Another tool may name Theresa or Nora, and all three are right.
+
+### The same numbers in other settings
+
+The southern women are one setting. The same measures read differently elsewhere, and so does the projected tie.
+
+| Setting | A person's degree | An event's degree | A projected tie | What it does not show |
+| --- | --- | --- | --- | --- |
+| Authors and papers | Papers written | Authors on the paper | Wrote a paper together (count, or Newman weight) | Whether they worked closely. One 50-author paper ties 1,225 pairs |
+| Directors and boards | Boards served on | Board size | Sit on a board together (an "interlock") | Any contact outside meetings, or who invited whom |
+| Accounts and hashtags | Hashtags used | Accounts using the hashtag | Used the same hashtag | That they saw each other's posts. A trending tag ties thousands by coincidence, and by automation |
+| Customers and products | Products bought | Buyers of a product | Bought the same product | Shared taste. A bestseller ties almost everyone |
+
+A shared paper is a fair, if rough, trace of working together. A shared hashtag usually is not. The data have the same shape and the evidence is of very different quality, so say what the event *is* before you interpret a projected tie.
+
+### Four quick checks
+
+Before you report anything from a projection, run these four. Each takes a few lines.
 
 1. **Leave out the biggest event.** Re-project without it, as we did above, and see whether your conclusion survives. If one event moves it, say so.
 2. **Try both weightings.** Compute plain counts and Newman weights. If your top results change (as ours did, from Evelyn and Theresa to Sylvia and Nora), report both, or say why one fits your question better.
 3. **Compare with the two-mode measure.** Pair a projected number with its two-mode counterpart, as we did for Dorothy and Charlotte. A disagreement is a finding about the projection, not about the people.
+4. **Shuffle with the degrees fixed.** Compare your statistic with the swap null of the previous section, and say how many draws and which seed. For single projected ties, compare the shared count with its hypergeometric p-value.
 
 ### What these data cannot show
 
-Even a clean two-mode analysis can't tell you whether the women knew each other, whether an event's attendance list is complete, or whether the 14 events are a fair sample of the town's social life. Two small notes on the invented town as well: its eight people and five events were chosen to make a point, and no real town was measured. When your own data come from logs or membership lists, ask how someone ended up on the list, and who is missing from it.
+Even a clean two-mode analysis can't tell you whether the women knew each other, whether an event's attendance list is complete, or whether the 14 events are a fair sample of the town's social life. One defensible sentence about the shuffles: "The clustering of the attendance pattern is 0.468. Across 200 shuffles that keep every woman's and every event's degree it averages about 0.42, and at most one shuffle in 200 reaches 0.468, so these women's attendance is somewhat more clustered than their degrees alone produce; the four-cycle count (341) is within the range of the shuffles." One that over-claims: "The women formed tight cliques who chose their events together." Choice, cliques and togetherness are not in the data, only who was at which event. Two small notes on the invented town as well: its eight people and five events were chosen to make a point, and no real town was measured. When your own data come from logs or membership lists, ask how someone ended up on the list, and who is missing from it.
 
 ## A cheat sheet
 
@@ -1274,6 +1757,8 @@ Even a clean two-mode analysis can't tell you whether the women knew each other,
 | Dual projection | Ties events that share people | Tells the other half of the story |
 | Four-cycles | Pairs of people sharing two events | Compare with a null model before calling it high |
 | Two-mode modularity | Groups in a two-mode network | Not comparable with one-mode modularity |
+| Swap null | Shuffles attendance, keeping every degree | Needs a burn-in and many draws; report both and the seed |
+| Pairwise hypergeometric test | Is a shared-event count more than chance given both degrees? | Ignores event sizes; 139 tests need a correction |
 
 ## Exercises
 
@@ -1285,13 +1770,30 @@ Even a clean two-mode analysis can't tell you whether the women knew each other,
 6. **Coding.** Move Nora from the second group to the first and recompute the two-mode modularity. Does it go up or down?
 7. **Coding.** In the invented town, drop the Town hall and add one new event attended by Ana, Cleo, Esi and Gus. How many pairs are tied now, and do the two clusters survive?
 8. **Interpretation.** A paper projects a network of authors and papers onto the authors and reports that the most central author is the one with the most co-authors. Write a short, kind reply about what the projection might be hiding, using what Dorothy and Charlotte taught us.
+9. **Coding.** Rerun the shuffling block with seed 16, a burn-in of 10,000 tries, 6,000 tries between kept networks and 100 draws. Do the two p-values change much?
+10. **Interpretation.** Write one defensible and one over-claiming sentence about the pairwise test: 17 of the 139 tied pairs have p below 0.05, 15 of them inside one group, and none passes the Bonferroni cutoff.
+
+::: {.callout-note collapse="true"}
+## Worked answers
+
+1. The rows of the incidence matrix are Ana (1, 1, 0), Ben (1, 0, 0), Cleo (0, 1, 1) and Dev (0, 0, 1), with columns Choir, Chess, Quiz. Projected onto the people: Ana and Ben share Choir, Ana and Cleo share Chess, Cleo and Dev share Quiz, each with weight 1, and every other pair is 0. That is a path, Ben - Ana - Cleo - Dev. Projected onto the events: Choir and Chess share Ana, Chess and Quiz share Cleo, and Choir and Quiz share nobody, another path.
+2. An event of 10 women ties $10 \times 9 / 2 = 45$ pairs. It adds a new pair only when both women of a pair that shares nothing are among the ten. There are $153 - 139 = 14$ such pairs, so it adds at most 14, and at least 31 of its 45 pairs were already tied.
+3. For the small events, $1/2 + 1/2 + 1/3 = 1.33$. For the big ones, $1/11 + 1/11 + 1/13 = 0.26$. The first pair looks about five times closer, though both share three events.
+4. In the one-meeting version all three people attend one event, so every pair shares one event. In the three-meeting version each pair shares exactly one meeting. Both projections are a triangle of weight-1 ties. The two-mode data tell them apart: one event of size 3 against three events of size 2, and the event projections (a single node against a triangle). Newman weights differ too: $1/(3-1) = 0.5$ per pair against $1/(2-1) = 1$.
+5. By plain count the strongest pair of events is 8 and 9 (9 women), then 7 and 8 (8 women). By Newman weight, with a woman's number of events as $k$, events 8 and 9 are first again (3.15), but the second pair is 9 and 11 (2.14), then 7 and 8 (1.89).
+6. With the event groups unchanged, moving Nora to the first group lowers the modularity from 0.318 to 0.250. Most of her events (6, 7, 9, 10, 11, 12, 13 and 14) belong to the second group, so more of her ties now cross groups.
+7. Twelve pairs are tied (the eight from before and four new ones), and the network is now one connected piece. The new event ties Ana and Cleo, from the first cluster, to Esi and Gus, from the second, so the two clusters no longer separate.
+8. A reply might run: "Counting co-authors is a degree in the projection, and it grows with the size of the papers, not only with the number of papers. One 50-author paper gives each author 49 co-authors. Could you report the number of papers (the two-mode degree) next to it, or the Newman strength, which equals the number of papers, and show that the ranking survives leaving out the biggest paper?"
+9. With those settings the p-values are about 0.07 for the four-cycle count and 0.02 for the clustering, close to the chapter's, which is the check you want: the answer does not depend on the seed or on how long the chain ran. (Each p-value still wobbles by a couple of hundredths with 100 draws.)
+10. Defensible: "Of the 139 pairs of women who shared at least one event, 17 shared more than a random draw of each woman's events would give at the 5 percent level, against about 7 expected by chance, and none passes a Bonferroni correction; 15 of the 17 lie inside one of the two groups." Over-claiming: "Seventeen pairs of women were close friends." The test compares counts with a null that ignores event sizes. It says nothing about friendship, and it would not survive a stricter null.
+:::
 
 ## Summary
 
 ::: {.callout-tip appearance="simple"}
-A two-mode network ties one kind of node to another, such as women to the events they attend, and is stored as an incidence matrix. Treating it as one-mode gives a density that is too low, an average degree that describes nobody and a clustering of exactly zero. Projecting it onto one mode ties two nodes when they share a partner, which makes every one-mode tool available but turns coincidence into ties: in the southern women data, 35 percent of possible woman-event ties become 91 percent of possible woman-woman ties, and two events alone account for almost half of the shared-event counts. Leaving out the biggest events shrinks the projection fast. Weighting by Newman's $1/(k-1)$ changes which pairs look strongest, so the weighting is a choice to state. Two-mode degree, centrality, four-cycles and modularity need their own normalizations, and each should be compared with something (the other mode, a null model, a rival grouping) before it's reported. Attendance is co-presence, not interaction. Several kinds of tie among the same people are the subject of @sec-multilayer, and ties that change over time of @sec-time.
+A two-mode network ties one kind of node to another, such as women to the events they attend, and is stored as an incidence matrix. Treating it as one-mode gives a density that is too low, an average degree that describes nobody and a clustering of exactly zero. Projecting it onto one mode ties two nodes when they share a partner, which makes every one-mode tool available but turns coincidence into ties: in the southern women data, 35 percent of possible woman-event ties become 91 percent of possible woman-woman ties, and two events alone account for almost half of the shared-event counts. Leaving out the biggest events shrinks the projection fast. Weighting by Newman's $1/(k-1)$ changes which pairs look strongest, so the weighting is a choice to state. Two-mode degree, centrality, four-cycles and modularity need their own normalizations, and each should be compared with something (the other mode, a null model, a rival grouping) before it's reported. Attendance is co-presence, not interaction. Shuffling the attendance while keeping every degree shows that the clustering of 0.468 is somewhat above chance (the shuffles average 0.42), that the raw four-cycle count is not clearly so, and a pairwise test shows that most projected ties are what each woman's number of events would give. Several kinds of tie among the same people are the subject of @sec-multilayer, and ties that change over time of @sec-time.
 :::
 
 ## Further reading
 
-For the duality of persons and groups, @breiger1974duality, and for the data, @davis1941deep. For two-mode centrality and its normalization, @borgatti1997network and @borgatti2011analyzing, and for weighted projections, @newman2001scientific. For analyzing both projections together, @everett2013dual, and for two-mode modularity, @barber2007modularity. For two-mode clustering, @robins2004small, @latapy2008basic and @lind2005cycles. In R, Phil Murphy's notes on two-mode networks in igraph and statnet are a good place to practice [@murphyrpubs317838; @murphyrpubs542335].
+For the duality of persons and groups, @breiger1974duality, and for the data, @davis1941deep. For two-mode centrality and its normalization, @borgatti1997network and @borgatti2011analyzing, and for weighted projections, @newman2001scientific. For analyzing both projections together, @everett2013dual, and for two-mode modularity, @barber2007modularity. For two-mode clustering, @robins2004small, @latapy2008basic and @lind2005cycles, and for testing projected ties against chance, @tumminello2011statistically and @neal2014backbone. In R, Phil Murphy's notes on two-mode networks in igraph and statnet are a good place to practice [@murphyrpubs317838; @murphyrpubs542335].

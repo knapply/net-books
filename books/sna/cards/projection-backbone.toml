@@ -1,0 +1,55 @@
+id = "projection-backbone"
+title = "Testing projected ties against chance (backbone)"
+kind = "procedure"
+chapter = "two-mode"
+summary = "For each pair in a projection, ask whether the number of shared partners is larger than a random assignment with the same degrees would give, and keep only the pairs that pass."
+answers = "Which projected ties are more than what each node's own number of partners would produce by luck?"
+
+data_requirements = [
+  "A two-mode incidence matrix, binary, with every node's degree known.",
+  "Enough partners per node that shared counts can vary. With very few events nothing can be significant.",
+  "A decision, made in advance, about the null (degrees of one mode only, or both) and the correction for many tests.",
+]
+
+assumptions = [
+  "The hypergeometric version holds only the two nodes' degrees and treats every event as equally likely to be chosen. Popular events make overlaps more likely than it assumes, so its p-values tend to be too small.",
+  "A null that fixes both margins (random bipartite graphs with the same degrees, by swaps) is fairer but needs simulation.",
+  "The tests are not independent (pairs share nodes), so corrections are approximate.",
+]
+
+readings = [
+  { context = "Women and social events", high = "More shared events than the two women's attendance rates would give. In the southern women data 17 of 139 pairs pass at 0.05, none after a Bonferroni correction.", low = "Overlap consistent with luck given each woman's number of events." },
+  { context = "Authors and papers", high = "Collaborated more than their output alone predicts.", low = "Co-authorship consistent with both authors publishing a lot." },
+  { context = "Accounts and hashtags (online platform)", high = "Overlap beyond what each account's tag use predicts. Still possible through coordination or a shared trending topic.", low = "Overlap explained by heavy tag use." },
+]
+
+pitfalls = [
+  "Calling a surviving tie a relationship. It is excess overlap, not interaction.",
+  "Skipping the correction for many pairs. With 139 tests about 7 pass at 0.05 by luck.",
+  "Using a null that ignores event sizes and reporting the result as exact.",
+  "Treating a pair that does not pass as unrelated. Power is low with few events.",
+  "Choosing the cutoff after seeing how many pairs survive.",
+]
+
+checks = [
+  "Count how many pairs pass at 0.05 and compare with 5 percent of the number tested.",
+  "Repeat with a null that fixes both degrees (swaps) and see whether the surviving set shrinks.",
+  "Report the number of pairs before and after, and the correction used.",
+  "Leave out the largest event and see which survivors remain.",
+]
+
+do_not_claim = [
+  "That surviving ties show acquaintance, friendship or influence.",
+  "That ties that fail to pass are absent from the world.",
+  "That the p-values are exact when the null ignores event sizes.",
+]
+
+report_template = "Of {tested} projected pairs, {below} had a hypergeometric p-value below {alpha} (about {expected} expected by chance if the tests were independent), and {corrected} passed a {correction} correction. The null keeps {kept}. These ties show attendance beyond what each node's number of partners predicts; they do not show that the pair interacted."
+
+related = ["projection", "newman-weighting", "null-models-choice", "permutation-test"]
+sources = ["tumminello2011statistically", "neal2014backbone", "maslov2002specificity"]
+
+[knappnet]
+rust = "not in the engine; written by hand from binomial coefficients, using knappnet::metrics::bipartite::project for the shared counts"
+r = "phyper(s - 1, a, n_events - a, b, lower.tail = FALSE) on the counts from net_project(club, method = \"count\")"
+python = "math.comb for the hypergeometric tail (scipy.stats.hypergeom.sf is equivalent), on attend @ attend.T"
