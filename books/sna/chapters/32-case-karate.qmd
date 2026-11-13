@@ -1094,7 +1094,7 @@ Leave out 8 of the 78 ties at random, 200 times, and rerun two methods each time
 set.seed(1)
 louvain_dropped <- lapply(1:200, function(d) {
   kept <- edges[sort(sample.int(nrow(edges), nrow(edges) - 8)), c("source", "target")]
-  thinned <- net_frame(kept, nodes = data.frame(id = 1:34), directed = FALSE)
+  thinned <- net_frame(kept, nodes = data.frame(id = 1:34), directed = FALSE, quiet = TRUE)
   as.integer(net_louvain(thinned, seed = d))
 })
 
@@ -1181,7 +1181,7 @@ The thought experiment from the newspaper version of this story: what's left whe
 # Take both leaders out and look at the other 32 members.
 others <- setdiff(1:34, c(1, 34))
 kept <- edges[!edges$source %in% c(1, 34) & !edges$target %in% c(1, 34), c("source", "target")]
-rest <- net_frame(kept, nodes = data.frame(id = others), directed = FALSE)
+rest <- net_frame(kept, nodes = data.frame(id = others), directed = FALSE, quiet = TRUE)
 
 # The pieces the club falls into without them.
 piece <- net_components(rest)$membership
@@ -1285,22 +1285,14 @@ set.seed(1)
 real_q <- net_modularity(club, side)
 shuffled <- sapply(1:2000, function(i) net_modularity(club, sample(side)))
 
-# Null 2: keep every member's number of ties, rewire who is tied to whom. The R package has no
-# tie-swapping function yet, so these are configuration-model draws with the same degrees.
-rewired <- net_random_config(net_degree(club), simple = TRUE, max_tries = 100000, reps = 200, seed = 1)
-rewired_q <- sapply(rewired, function(g) net_modularity(g, side))
-best_q <- function(g) attr(net_louvain(g, seed = 1), "modularity")
-rewired_best <- sapply(rewired, best_q)
-observed_best <- best_q(club)
-
 round(data.frame(
-  observed = c(real_q, real_q, observed_best),
-  null_mean = c(mean(shuffled), mean(rewired_q), mean(rewired_best)),
-  null_highest = c(max(shuffled), max(rewired_q), max(rewired_best)),
-  share_as_high = c(mean(shuffled >= real_q - 1e-9), mean(rewired_q >= real_q - 1e-9),
-                    mean(rewired_best >= observed_best - 1e-9)),
-  row.names = c("shuffle sides", "rewire ties", "rewire ties, best Louvain")
+  observed = real_q, null_mean = mean(shuffled), null_highest = max(shuffled),
+  share_as_high = mean(shuffled >= real_q - 1e-9), row.names = "shuffle sides"
 ), 3)
+
+# TODO(code, R): null 2 (keep every member's number of ties, rewire who is tied to whom) needs a
+# tie-swapping function, net_swap_edges(). net_random_config() cannot do it here: with a hub of 17 ties
+# in a network of 78, it finds no simple graph in 100,000 tries.
 ```
 
 ::: {.code-output}
