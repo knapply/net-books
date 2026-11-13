@@ -1,0 +1,56 @@
+id = "tie-deletion-stress-test"
+title = "Stress test by deleting ties"
+kind = "procedure"
+chapter = "getting-started"
+summary = "Delete a small share of ties at random many times, recompute, and report how often the conclusion survives."
+answers = "If a few ties were missing or wrong, would the ranking or conclusion I am about to report change?"
+
+data_requirements = [
+  "A network and a computation that can be repeated on a thinned copy.",
+  "A source of random numbers that can be seeded, so the draws can be repeated.",
+  "A statement of what the claim is, for example the three highest-scoring nodes.",
+]
+
+assumptions = [
+  "Ties are missing at random. Real surveys lose ties for reasons (distance, shame, boundary), and a random deletion understates those effects.",
+  "The drop rate is realistic. Use the plausible loss in your own data collection, and report the rate.",
+  "The claim can be stated so that a thinned network either supports it or does not.",
+]
+
+readings = [
+  { context = "Survey of a small organization", high = "A top three that survives most draws is a defensible top three; one that survives half the draws is a statement about the full data, not about the organization.", low = "A top that changes in most draws is not a top." },
+  { context = "Network built from a log or platform export", high = "Deletion approximates a sample of the log; a result that survives is robust to sampling.", low = "Deletion does not approximate systematic gaps such as a missing time period." },
+  { context = "Measures that depend on routes", high = "Route-based scores such as betweenness can be more stable than counts when the leaders are far ahead (managers 18 and 21 on routes were never displaced in 200 draws at 10 percent).", low = "Route-based scores can also change a lot when one bridge tie goes missing." },
+  { context = "Ties in the top three of a degree ranking", high = "A gap of several ties between the third and fourth keeps the top three stable.", low = "A tie at the boundary (two managers at 15, the next at 13) lets small deletions reorder the third place." },
+]
+
+pitfalls = [
+  "Reporting only the share of draws in which the whole top set survived; also report how often each member stayed.",
+  "Using a single drop rate. Try several (5, 10 and 20 percent gave 0.715, 0.500 and 0.285 for the three most asked managers).",
+  "Forgetting to seed the generator or to record the seed.",
+  "Deleting nodes when the concern is missing ties, or the reverse.",
+  "Reading survival under random deletion as survival under any missingness.",
+]
+
+checks = [
+  "Repeat at several drop rates and report the largest rate at which the claim still holds.",
+  "Report the stay count for each member of the claimed set (for the managers: manager 2 stayed in the top three 198 times in 200, managers 18 and 21 157 and 143 times).",
+  "Break ties by a stated rule (smaller id) so that the result does not depend on the order of rows.",
+  "Compare the instability of two measures; they often differ.",
+]
+
+do_not_claim = [
+  "That a ranking is correct because it survives deletion; it may be stable and wrong.",
+  "That deleting ties imitates non-response, which removes whole rows of reports.",
+  "That the survival share is a probability that the claim is true.",
+]
+
+report_template = "Deleting {drop_share} of the ties at random {draws} times, the {claim} survived in {share} of draws ({average} of {k} members on average); {member} stayed in {member_count} of {draws} draws. The claim is therefore {strong_or_weak} at this level of loss."
+
+related = ["first-analysis", "reading-a-result", "missing-data-checks", "permutation-test"]
+sources = ["kossinets2006effects", "borgatti2006robustness"]
+
+[knappnet]
+rust = "Draw a seeded uniform per tie, keep ties above the drop rate, rebuild with Graph::from_edges and recompute"
+r = "net_frame(edges[draws >= p, ], nodes = roster) inside purrr::map(), then recompute the measure"
+python = "H = nx.DiGraph(); H.add_nodes_from(roster); H.add_edges_from(kept), then recompute the measure"
