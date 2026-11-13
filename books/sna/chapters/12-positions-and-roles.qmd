@@ -55,18 +55,16 @@ I drew the picture in rows because I already knew the answer, which is cheating 
 
 ```r
 library(knappnet)
-library(dplyr)
-library(purrr)
-library(tibble)
-
-options(pillar.sigfig = 4)
 
 people <- c("Ada", "Ben", "Cy", "Dee", "Eve", "Flo", "Gus", "Hal", "Ivy", "Jay")
 # One position in each list is one tie: from[i] goes to to[i] for advice.
 from <- c(0, 1, 2, 2, 3, 3, 4, 4, 5, 6, 7, 8, 9)
 to <- c(1, 0, 0, 1, 0, 1, 0, 1, 2, 2, 3, 4, 4)
-office <- tibble(source = people[from + 1], target = people[to + 1]) |>
-  net_frame(nodes = tibble(id = people), directed = TRUE)
+office <- net_frame(
+  data.frame(source = people[from + 1], target = people[to + 1]),
+  nodes = data.frame(id = people),
+  directed = TRUE
+)
 office
 ```
 
@@ -96,7 +94,6 @@ office
 
 ```python
 import networkx as nx
-import numpy as np
 
 # People are numbered from zero in Rust; here the ties are written as pairs of numbers
 # and the names stay in a list on the side.
@@ -174,11 +171,11 @@ The code below measures every pair of people in the office. Look for zeros, whic
 # net_struct_equiv() compares tie profiles by Euclidean distance by default.
 dists <- net_struct_equiv(office)
 
-tibble(
+pairs <- cbind(
   a = c("Flo", "Ivy", "Ada", "Flo", "Cy", "Cy"),
   b = c("Gus", "Jay", "Ben", "Hal", "Dee", "Eve")
-) |>
-  mutate(distance = map2_dbl(a, b, \(x, y) dists[x, y]))
+)
+data.frame(pairs, distance = round(dists[pairs], 3))
 ```
 
 ::: {.code-output}
@@ -198,28 +195,12 @@ tibble(
 ## Python
 
 ```python
-# The adjacency matrix: a[i, k] is 1 when person i goes to person k.
-a = nx.to_numpy_array(office, nodelist=range(len(names)))
-
-def distance(i, j):
-    # Skip i and j themselves, so their ties to each other are not held against them.
-    keep = [k for k in range(len(names)) if k not in (i, j)]
-    out_diff = a[i, keep] - a[j, keep]
-    in_diff = a[keep, i] - a[keep, j]
-    return np.sqrt((out_diff ** 2).sum() + (in_diff ** 2).sum())
-
-for x, y in [(5, 6), (8, 9), (0, 1), (5, 7), (2, 3), (2, 4)]:
-    print(f"{names[x]:<4} and {names[y]:<4} {distance(x, y):.3f}")
+# TODO(code, Python): needs structural-equivalence distances (the knappnet Python backend runs NetworkX functions only, and NetworkX has none); net_struct_equiv() is in the R and Rust packages only.
 ```
 
 ::: {.code-output}
 ```text
-Flo  and Gus  0.000
-Ivy  and Jay  0.000
-Ada  and Ben  0.000
-Flo  and Hal  1.414
-Cy   and Dee  1.732
-Cy   and Eve  2.000
+TODO(output)
 ```
 :::
 
@@ -291,20 +272,25 @@ Compare $d$ and $e$. Skip them and look at $a$, $b$, $c$, $f$. Both go to $f$. B
 ```r
 # Six people. a, b and c each go to d or e (or both), and d and e both go to f.
 six_names <- c("a", "b", "c", "d", "e", "f")
-six <- tibble(
-  source = c("a", "a", "b", "b", "c", "d", "e"),
-  target = c("d", "e", "d", "e", "d", "f", "f")
-) |>
-  net_frame(nodes = tibble(id = six_names), directed = TRUE, quiet = TRUE)
+six <- net_frame(
+  data.frame(
+    source = c("a", "a", "b", "b", "c", "d", "e"),
+    target = c("d", "e", "d", "e", "d", "f", "f")
+  ),
+  nodes = data.frame(id = six_names),
+  directed = TRUE,
+  quiet = TRUE
+)
 
 six_euclid <- net_struct_equiv(six)
 six_cor <- net_struct_equiv(six, method = "correlation")
 
-tibble(x = c("a", "a", "d", "a", "c"), y = c("b", "c", "e", "d", "d")) |>
-  mutate(
-    distance = map2_dbl(x, y, \(p, q) six_euclid[p, q]),
-    correlation = map2_dbl(x, y, \(p, q) six_cor[p, q])
-  )
+pairs <- cbind(x = c("a", "a", "d", "a", "c"), y = c("b", "c", "e", "d", "d"))
+data.frame(
+  pairs,
+  distance = round(six_euclid[pairs], 3),
+  correlation = round(six_cor[pairs], 3)
+)
 ```
 
 ::: {.code-output}
@@ -323,31 +309,12 @@ tibble(x = c("a", "a", "d", "a", "c"), y = c("b", "c", "e", "d", "d")) |>
 ## Python
 
 ```python
-# Six people, numbered 0 to 5 and called a to f. a, b and c each go to d or e, and d and e go to f.
-six_names = list("abcdef")
-six = np.zeros((6, 6))
-for i, j in [(0, 3), (0, 4), (1, 3), (1, 4), (2, 3), (3, 5), (4, 5)]:
-    six[i, j] = 1
-
-def profiles(m, i, j):
-    # Everyone except i and j; then who each of the two goes to, and who goes to each of the two.
-    keep = [k for k in range(len(m)) if k not in (i, j)]
-    return np.concatenate([m[i, keep], m[keep, i]]), np.concatenate([m[j, keep], m[keep, j]])
-
-for x, y in [(0, 1), (0, 2), (3, 4), (0, 3), (2, 3)]:
-    p, q = profiles(six, x, y)
-    # A profile with no variation has no correlation; report 0, as the book's engine does.
-    r = np.corrcoef(p, q)[0, 1] if p.std() > 0 and q.std() > 0 else 0.0
-    print(f"{six_names[x]} and {six_names[y]}  distance {np.sqrt(((p - q) ** 2).sum()):.3f}  correlation {r:.3f}")
+# TODO(code, Python): needs structural-equivalence distances and correlations (the knappnet Python backend runs NetworkX functions only, and NetworkX has none); net_struct_equiv() is in the R and Rust packages only.
 ```
 
 ::: {.code-output}
 ```text
-a and b  distance 0.000  correlation 1.000
-a and c  distance 1.000  correlation 0.655
-d and e  distance 1.000  correlation 0.775
-a and d  distance 2.000  correlation -0.293
-c and d  distance 1.732  correlation 0.000
+TODO(output)
 ```
 :::
 
@@ -401,45 +368,25 @@ A table of distances is not a set of positions. To get positions you have to cut
 
 **CONCOR.** Breiger, Boorman and Arabie [@breiger1975algorithm] noticed something odd. Take the matrix of profile correlations and correlate its columns with each other. Do it again, and again. Every entry drifts toward $+1$ or $-1$. When they get there, the signs split the people in two. Then you do the same inside each half, which gives up to $2^{\text{depth}}$ blocks (two after the first split, up to four after the second). It needs no distance and no choice of linkage, and it always splits, whether or not there is anything to find.
 
-The code runs both on the six-person network (where we know the answer should be $\{a, b, c\}$, $\{d, e\}$, $\{f\}$) and on the office. For the office we make three groups, the number of positions we know are there, with two linkages, and we run CONCOR to depths one and two. R and Rust use the engine's CONCOR; the Python tab writes it out. The R and Python tabs also write a shortcut for the distances (compare the full profiles, then take back the two terms we skip), and the first line of output checks that it agrees with the engine, so we can use it later in loops.
+The code runs both on the six-person network (where we know the answer should be $\{a, b, c\}$, $\{d, e\}$, $\{f\}$) and on the office. For the office we make three groups, the number of positions we know are there, with two linkages, and we run CONCOR to depths one and two. R and Rust use the engine's CONCOR, and R cuts the tree with base R's `hclust()`. The Python tab is a stub: NetworkX has no structural equivalence and no CONCOR, so there is nothing for the Python backend to run yet. The Rust tab also writes a shortcut for the distances (compare the full profiles, then take back the two terms we skip), and the first line of its output checks that it agrees with the engine, so we can use it later in loops.
 
 ::: {.panel-tabset group="language"}
 
 ## R
 
 ```r
-library(tidyr)
-
-# Cut a clustering tree into k groups, numbered from 0 in the order the people appear.
-cut_tree <- \(d, k, method = "average") unname(cutree(hclust(as.dist(d), method), k)) - 1L
-
-# The distances without the engine: compare every row-and-column profile in full, then take back
-# the two terms we skip (each person's tie to the other, in both directions). It takes a list of
-# tie tables, so that several relations can be stacked later.
-se_dist <- \(layers) {
-  profile <- do.call(cbind, c(layers, map(layers, t)))
-  skipped <- 2 * rowSums(simplify2array(map(layers, \(m) m^2 + t(m)^2)), dims = 2)
-  sqrt(pmax(as.matrix(dist(profile))^2 - skipped, 0))
-}
-
-# The office as a table of 0s and 1s, to feed the shortcut. Row i goes to column j.
-adj_office <- matrix(0, 10, 10)
-adj_office[cbind(from + 1, to + 1)] <- 1
 d_office <- net_struct_equiv(office)
-all(abs(se_dist(list(adj_office)) - d_office) < 1e-9)
 
-# Six people first: three groups from the average-linkage tree.
-tibble(person = six_names, group = cut_tree(six_euclid, 3))
+# Six people first: three groups from the average-linkage tree, numbered from 0.
+setNames(cutree(hclust(as.dist(six_euclid), "average"), 3) - 1L, six_names)
 
 # The office: average and complete linkage, and CONCOR at depth 1 and depth 2.
-office$nodes |>
-  transmute(
-    person = id,
-    average = cut_tree(d_office, 3),
-    complete = cut_tree(d_office, 3, "complete"),
-    concor_1 = net_concor(office, depth = 1) - 1L,
-    concor_2 = net_concor(office, depth = 2) - 1L
-  )
+data.frame(
+  average = cutree(hclust(as.dist(d_office), "average"), 3) - 1L,
+  complete = cutree(hclust(as.dist(d_office), "complete"), 3) - 1L,
+  concor_1 = net_concor(office, depth = 1) - 1L,
+  concor_2 = net_concor(office, depth = 2) - 1L
+)
 ```
 
 ::: {.code-output}
@@ -473,89 +420,12 @@ office$nodes |>
 ## Python
 
 ```python
-from scipy.cluster.hierarchy import fcluster, linkage
-from scipy.spatial.distance import squareform
-
-def first_seen(labels):
-    # Number the groups from 0 in the order they first appear.
-    order = {}
-    return [order.setdefault(v, len(order)) for v in labels]
-
-def cut_tree(d, k, method="average"):
-    # Cluster a distance matrix and cut the tree into k groups.
-    return first_seen(fcluster(linkage(squareform(d, checks=False), method), k, "maxclust"))
-
-def se_dist(layers):
-    # The distances without the engine: compare every row-and-column profile in full, then take back
-    # the two terms we skip (each person's tie to the other, in both directions). It takes a list of
-    # tie tables, so that several relations can be stacked later.
-    profile = np.hstack(layers + [m.T for m in layers])
-    full = ((profile[:, None, :] - profile[None, :, :]) ** 2).sum(axis=2)
-    skipped = 2 * sum(m ** 2 + m.T ** 2 for m in layers)
-    return np.sqrt(np.maximum(full - skipped, 0))
-
-def profile_correlations(m):
-    # The correlation between every two people's profiles (0 when a profile has no variation).
-    n = len(m)
-    out = np.eye(n)
-    for i in range(n):
-        for j in range(i + 1, n):
-            p, q = profiles(m, i, j)
-            out[i, j] = out[j, i] = np.corrcoef(p, q)[0, 1] if p.std() > 0 and q.std() > 0 else 0
-    return out
-
-def concor(m, depth):
-    # CONCOR: start from the profile correlations, correlate the columns of that matrix again and
-    # again until every entry is +1 or -1, and split the people by sign. Then split each half the same way.
-    n = len(m)
-    start = profile_correlations(m)
-    def split(members):
-        c = start[np.ix_(members, members)]
-        for _ in range(100):
-            c = np.nan_to_num(np.corrcoef(c))
-            if np.abs(np.abs(c) - 1).max() < 1e-7:
-                break
-        with_first = c[0] > 0
-        return [half for half in (members[with_first], members[~with_first]) if len(half)]
-    blocks = [np.arange(n)]
-    for _ in range(depth):
-        blocks = [half for b in blocks for half in (split(b) if len(b) > 1 else [b])]
-    label = np.zeros(n, dtype=int)
-    for k, b in enumerate(blocks):
-        label[b] = k
-    return label
-
-d_office = se_dist([a])
-print("shortcut agrees with the pair-by-pair formula:",
-      all(np.isclose(d_office[i, j], distance(i, j)) for i in range(10) for j in range(10) if i != j))
-print("six people, average linkage, 3 groups:", cut_tree(se_dist([six]), 3))
-
-methods = {
-    "average": cut_tree(d_office, 3),
-    "complete": cut_tree(d_office, 3, "complete"),
-    "CONCOR 1": concor(a, 1),
-    "CONCOR 2": concor(a, 2),
-}
-print(f"{'':<5}" + "".join(f"{name:>10}" for name in methods))
-for i in range(10):
-    print(f"{names[i]:<5}" + "".join(f"{labels[i]:>10}" for labels in methods.values()))
+# TODO(code, Python): needs net_struct_equiv() and net_concor() (the knappnet Python backend runs NetworkX functions only, and NetworkX has none), plus a cut of the clustering tree.
 ```
 
 ::: {.code-output}
 ```text
-shortcut agrees with the pair-by-pair formula: True
-six people, average linkage, 3 groups: [0, 0, 0, 1, 1, 2]
-        average  complete  CONCOR 1  CONCOR 2
-Ada           0         0         0         0
-Ben           0         0         0         0
-Cy            1         1         0         1
-Dee           1         2         0         1
-Eve           2         1         0         1
-Flo           1         2         1         2
-Gus           1         2         1         2
-Hal           1         2         1         2
-Ivy           1         2         1         3
-Jay           1         2         1         3
+TODO(output)
 ```
 :::
 
@@ -647,7 +517,7 @@ Jay           1         2         1         3
 
 :::
 
-The first line says the shortcut and the engine agree, so we can use the shortcut in loops. On the six-person network, average linkage gives $\{a, b, c\}$, $\{d, e\}$ and $\{f\}$: the three positions in @fig-positions-six. The office is less kind.
+The first line of the Rust output says the shortcut and the engine agree, so we can use the shortcut in loops. On the six-person network, average linkage gives $\{a, b, c\}$, $\{d, e\}$ and $\{f\}$: the three positions in @fig-positions-six. The office is less kind.
 
 Average linkage with three groups puts Ada and Ben together, which is right, and then leaves Eve by herself and lumps Cy, Dee and all five staff into one big group. Complete linkage, with the same three groups, puts Cy and Eve together and Dee with the staff. Neither is "the leaders, the managers and the staff". CONCOR at depth one splits Ada, Ben, Cy, Dee and Eve from the five staff, a good first cut between upper and lower. At depth two it gives Ada and Ben, then the three managers, then the staff in two pieces, Flo, Gus and Hal against Ivy and Jay. The first three groups are the positions we know. The staff split follows who they go to.
 
@@ -671,10 +541,8 @@ An algorithm for finding the regular equivalence classes is CATREGE [@borgatti19
 
 ```r
 # net_regular_equiv() numbers the classes from 1; the book counts from 0.
-office$nodes |>
-  mutate(class = net_regular_equiv(office) - 1L) |>
-  group_by(class) |>
-  summarise(members = paste(id, collapse = ", "))
+regular_office <- as.vector(net_regular_equiv(office)) - 1L
+tapply(people, regular_office, paste, collapse = ", ")
 ```
 
 ::: {.code-output}
@@ -691,33 +559,12 @@ office$nodes |>
 ## Python
 
 ```python
-# NetworkX has no regular equivalence, so here is the splitting rule in a few lines.
-# Start with everyone in one class. Describe each person by their own class and the
-# classes of the people they go to and who go to them. Split on that, and repeat.
-n = len(names)
-out_nbrs = [set(office.successors(i)) for i in range(n)]
-in_nbrs = [set(office.predecessors(i)) for i in range(n)]
-cls = [0] * n
-while True:
-    seen = {}
-    new = [seen.setdefault((cls[i],
-                            frozenset(cls[j] for j in out_nbrs[i]),
-                            frozenset(cls[j] for j in in_nbrs[i])), len(seen))
-           for i in range(n)]
-    if len(seen) == len(set(cls)):
-        break
-    cls = new
-
-for k in range(max(cls) + 1):
-    members = ", ".join(f'"{names[i]}"' for i in range(n) if cls[i] == k)
-    print(f"class {k}  [{members}]")
+# TODO(code, Python): needs regular equivalence (the knappnet Python backend runs NetworkX functions only, and NetworkX has none); net_regular_equiv() is in the R and Rust packages only.
 ```
 
 ::: {.code-output}
 ```text
-class 0  ["Ada", "Ben"]
-class 1  ["Cy", "Dee", "Eve"]
-class 2  ["Flo", "Gus", "Hal", "Ivy", "Jay"]
+TODO(output)
 ```
 :::
 
@@ -791,7 +638,7 @@ A path of five people in a row is the standard tiny example. The two ends are al
 
 The practical meaning: "the same part, with different people in the supporting cast." The head of a two-person team is like the head of another two-person team, whoever is on the teams. It is a stronger idea than regular equivalence (above) and a weaker one than structural equivalence, and it is what you want when "plays the same part" should include "has the same number of followers".
 
-The engine finds the classes exactly, by a search that tries relabelings; it can be slow on highly symmetric networks (a long ring, say), so it has a step limit and stops with an error instead of running forever. Python's NetworkX can list every relabeling that keeps the ties, which for ten people is cheap, so the Python tab does that and also counts them.
+The engine finds the classes exactly, by a search that tries relabelings; it can be slow on highly symmetric networks (a long ring, say), so it has a step limit and stops with an error instead of running forever. Python's NetworkX can list every relabeling that keeps the ties, which for ten people is cheap, but it does not turn them into classes, and the Python backend has no automorphic or regular equivalence yet, so that tab is a stub.
 
 The code puts three notions side by side for the office: structural classes (people at distance 0), automorphic classes, and the regular classes from the section before this one. Then it checks the ladder, from the strict notion to the loose one, and runs the path of five.
 
@@ -801,24 +648,29 @@ The code puts three notions side by side for the office: structural classes (peo
 
 ```r
 auto_office <- net_auto_equiv(office) - 1L
-regular_office <- net_regular_equiv(office) - 1L
 # Structural classes: people at distance 0 from each other, numbered from 0 by first member.
-first_zero <- map_int(1:10, \(i) min(which(d_office[i, ] < 1e-9)))
-structural_office <- match(first_zero, unique(first_zero)) - 1L
+structural_office <- cutree(hclust(as.dist(d_office)), h = 1e-9) - 1L
 
-tibble(person = office$nodes$id, structural = structural_office, automorphic = auto_office, regular = regular_office)
+data.frame(structural = structural_office, automorphic = auto_office, regular = regular_office)
 
 # Does every class of the first kind sit inside one class of the second kind?
-refines <- \(p, q) all(outer(p, p, "==") <= outer(q, q, "=="))
-tibble(
-  claim = c("structural classes sit inside automorphic classes", "automorphic classes sit inside regular classes"),
-  holds = c(refines(structural_office, auto_office), refines(auto_office, regular_office))
+c(
+  structural_inside_automorphic = all(rowSums(table(structural_office, auto_office) > 0) == 1),
+  automorphic_inside_regular = all(rowSums(table(auto_office, regular_office) > 0) == 1)
 )
 
 # A path of five people: 1 - 2 - 3 - 4 - 5.
-path5 <- tibble(source = as.character(1:4), target = as.character(2:5)) |>
-  net_frame(nodes = tibble(id = as.character(1:5)), directed = FALSE, quiet = TRUE)
-tibble(node = path5$nodes$id, automorphic = net_auto_equiv(path5) - 1L, regular = net_regular_equiv(path5) - 1L)
+path5 <- net_frame(
+  data.frame(source = as.character(1:4), target = as.character(2:5)),
+  nodes = data.frame(id = as.character(1:5)),
+  directed = FALSE,
+  quiet = TRUE
+)
+data.frame(
+  automorphic = net_auto_equiv(path5) - 1L,
+  regular = as.vector(net_regular_equiv(path5)) - 1L,
+  row.names = path5$nodes$id
+)
 ```
 
 ::: {.code-output}
@@ -855,75 +707,12 @@ tibble(node = path5$nodes$id, automorphic = net_auto_equiv(path5) - 1L, regular 
 ## Python
 
 ```python
-from networkx.algorithms.isomorphism import DiGraphMatcher, GraphMatcher
-
-def automorphic_classes(g):
-    # Put two people in one class when some relabeling of the people keeps every tie and swaps them.
-    matcher = DiGraphMatcher(g, g) if g.is_directed() else GraphMatcher(g, g)
-    parent = list(range(g.number_of_nodes()))
-    def find(v):
-        while parent[v] != v:
-            v = parent[v]
-        return v
-    count = 0
-    for mapping in matcher.isomorphisms_iter():
-        count += 1
-        for v, w in mapping.items():
-            parent[find(v)] = find(w)
-    return first_seen([find(v) for v in range(len(parent))]), count
-
-def catrege(g):
-    # The splitting rule from before, now with the tie type: a tie to someone, from someone, or both.
-    n = g.number_of_nodes()
-    arcs = set(g.edges)
-    if not g.is_directed():
-        arcs |= {(j, i) for i, j in arcs}
-    cls = [0] * n
-    while True:
-        seen = {}
-        def signature(i):
-            return frozenset((int((i, j) in arcs), int((j, i) in arcs), cls[j])
-                             for j in range(n) if j != i and ((i, j) in arcs or (j, i) in arcs))
-        new = [seen.setdefault((cls[i], signature(i)), len(seen)) for i in range(n)]
-        if len(seen) == len(set(cls)):
-            return cls
-        cls = new
-
-def refines(p, q):
-    # Does every pair that p puts together get put together by q as well?
-    return all(q[i] == q[j] for i in range(len(p)) for j in range(len(p)) if p[i] == p[j])
-
-structural = first_seen([int(np.where(d_office[i] < 1e-9)[0].min()) for i in range(10)])
-automorphic, count = automorphic_classes(office)
-regular = catrege(office)
-print(f"relabelings of the office that keep every arrow: {count}")
-print(f"{'':<5}{'structural':>11}{'automorphic':>13}{'regular':>9}")
-for i in range(10):
-    print(f"{names[i]:<5}{structural[i]:>11}{automorphic[i]:>13}{regular[i]:>9}")
-print("structural classes sit inside automorphic classes:", refines(structural, automorphic))
-print("automorphic classes sit inside regular classes:", refines(automorphic, regular))
-
-path = nx.path_graph(5)
-print("path of five, automorphic:", automorphic_classes(path)[0], " regular:", catrege(path))
+# TODO(code, Python): needs automorphic and regular equivalence classes (the knappnet Python backend runs NetworkX functions only, and NetworkX has none; it can only list the relabelings that keep every tie); net_auto_equiv() and net_regular_equiv() are in R and Rust.
 ```
 
 ::: {.code-output}
 ```text
-relabelings of the office that keep every arrow: 16
-      structural  automorphic  regular
-Ada            0            0        0
-Ben            0            0        0
-Cy             1            1        1
-Dee            2            2        1
-Eve            3            1        1
-Flo            4            3        2
-Gus            4            3        2
-Hal            5            4        2
-Ivy            6            3        2
-Jay            6            3        2
-structural classes sit inside automorphic classes: True
-automorphic classes sit inside regular classes: True
-path of five, automorphic: [0, 1, 2, 1, 0]  regular: [0, 0, 0, 0, 0]
+TODO(output)
 ```
 :::
 
@@ -1011,12 +800,11 @@ model <- net_blockmodel(office, membership = positions)
 
 # One row per ordered pair of positions: the density of ties from the row's block to the column's block,
 # and the image (1 when the block is denser than the whole network).
-net_block_summary(model) |>
-  as_tibble() |>
-  select(from, to, density, image) |>
-  mutate(density = round(density, 3))
+blocks <- net_block_summary(model)[c("from", "to", "density", "image")]
+blocks$density <- round(blocks$density, 3)
+blocks
 
-tibble(overall_density = model$overall_density, r_squared = model$r_squared)
+round(unlist(model[c("overall_density", "r_squared")]), 4)
 ```
 
 ::: {.code-output}
@@ -1043,49 +831,12 @@ tibble(overall_density = model$overall_density, r_squared = model$r_squared)
 ## Python
 
 ```python
-# Position of each person: 0 = leaders, 1 = managers, 2 = staff.
-positions = np.array([0, 0, 1, 1, 1, 2, 2, 2, 2, 2])
-k = positions.max() + 1
-density = np.zeros((k, k))
-for r in range(k):
-    for c in range(k):
-        rows, cols = np.where(positions == r)[0], np.where(positions == c)[0]
-        ties = a[np.ix_(rows, cols)].sum()
-        # Within a block, a person cannot tie to themselves.
-        pairs = len(rows) * len(cols) - (len(rows) if r == c else 0)
-        density[r, c] = ties / pairs
-n = len(names)
-overall = a.sum() / (n * (n - 1))
-image = (density >= overall).astype(float)
-
-# Share of variation in the ties explained by the block densities (squared correlation).
-off = ~np.eye(n, dtype=bool)
-fitted = density[positions[:, None], positions[None, :]]
-r_squared = np.corrcoef(a[off], fitted[off])[0, 1] ** 2
-
-def show(label, m):
-    print(f"{label} (rows ask, columns are asked)")
-    for row in m:
-        print("  " + "  ".join(f"{v:.2f}" for v in row))
-
-print(f"whole-network density {overall:.3f}")
-show("block densities", density)
-show("image", image)
-print(f"share of tie variation explained {r_squared:.3f}")
+# TODO(code, Python): needs a blockmodel of a partition (the knappnet Python backend runs NetworkX functions only, and NetworkX has none); net_blockmodel() is in the R and Rust packages only.
 ```
 
 ::: {.code-output}
 ```text
-whole-network density 0.144
-block densities (rows ask, columns are asked)
-  1.00  0.00  0.00
-  1.00  0.00  0.00
-  0.00  0.33  0.00
-image (rows ask, columns are asked)
-  1.00  0.00  0.00
-  1.00  0.00  0.00
-  0.00  1.00  0.00
-share of tie variation explained 0.700
+TODO(output)
 ```
 :::
 
@@ -1154,143 +905,31 @@ A split is a regular equivalence exactly when every block is null or regular (a 
 ## R
 
 ```r
-# One row per pair of positions: how many ties, how many possible pairs, and what kind of block.
-block_row <- \(m, pos, r, s) {
-  sub <- m[pos == r, pos == s, drop = FALSE]
-  n_pairs <- nrow(sub) * ncol(sub) - if (r == s) nrow(sub) else 0
-  ties <- sum(sub)
-  rows_ok <- all(rowSums(sub) > 0)
-  cols_ok <- all(colSums(sub) > 0)
-  tibble(
-    from = r, to = s, ties = ties, pairs = n_pairs,
-    kind = case_when(
-      ties == 0 ~ "null",
-      ties == n_pairs ~ "complete",
-      rows_ok && cols_ok ~ "regular",
-      rows_ok ~ "row-regular",
-      cols_ok ~ "column-regular",
-      .default = "irregular"
-    )
-  )
-}
-blocks_of <- \(m, pos) {
-  k <- max(pos) + 1
-  expand_grid(r = seq_len(k) - 1, s = seq_len(k) - 1) |>
-    pmap(\(r, s) block_row(m, pos, r, s)) |>
-    list_rbind()
-}
-is_regular <- \(m, pos) all(blocks_of(m, pos)$kind %in% c("null", "complete", "regular"))
-
-blocks_of(adj_office, positions) |>
-  mutate(errors = pmin(ties, pairs - ties))
-
-tibble(
-  split = c("leaders, managers, staff", "everyone in one block", "Flo moved in with the managers",
-            "structural classes (7)", "automorphic classes (5)"),
-  regular = c(
-    is_regular(adj_office, positions),
-    is_regular(adj_office, rep(0, 10)),
-    is_regular(adj_office, c(0, 0, 1, 1, 1, 1, 2, 2, 2, 2)),
-    is_regular(adj_office, structural_office),
-    is_regular(adj_office, auto_office)
-  )
-)
+# TODO(code, R): needs block types (null, complete, regular, row-regular, column-regular) as a column of net_block_summary(), and a check that a partition is a regular equivalence, e.g. net_block_types() and net_is_regular().
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 9 × 6
-   from    to  ties pairs kind     errors
-  <dbl> <dbl> <dbl> <dbl> <chr>     <dbl>
-1     0     0     2     2 complete      0
-2     0     1     0     6 null          0
-3     0     2     0    10 null          0
-4     1     0     6     6 complete      0
-5     1     1     0     6 null          0
-6     1     2     0    15 null          0
-7     2     0     0    10 null          0
-8     2     1     5    15 regular       5
-9     2     2     0    20 null          0
-# A tibble: 5 × 2
-  split                          regular
-  <chr>                          <lgl>  
-1 leaders, managers, staff       TRUE   
-2 everyone in one block          FALSE  
-3 Flo moved in with the managers FALSE  
-4 structural classes (7)         TRUE   
-5 automorphic classes (5)        TRUE   
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-def block_kind(m, pos, r, s):
-    # How many ties are in the block from position r to position s, how many could be, and what kind is it?
-    rows, cols = np.where(pos == r)[0], np.where(pos == s)[0]
-    sub = m[np.ix_(rows, cols)]
-    pairs = len(rows) * len(cols) - (len(rows) if r == s else 0)
-    ties = sub.sum()
-    rows_ok, cols_ok = (sub.sum(axis=1) > 0).all(), (sub.sum(axis=0) > 0).all()
-    if ties == 0:
-        kind = "null"
-    elif ties == pairs:
-        kind = "complete"
-    elif rows_ok and cols_ok:
-        kind = "regular"
-    elif rows_ok:
-        kind = "row-regular"
-    elif cols_ok:
-        kind = "column-regular"
-    else:
-        kind = "irregular"
-    return int(ties), pairs, kind
-
-def is_regular(m, pos):
-    k = pos.max() + 1
-    return all(block_kind(m, pos, r, s)[2] in ("null", "complete", "regular") for r in range(k) for s in range(k))
-
-print(f"{'from':<5}{'to':<4}{'ties':>5}{'pairs':>6}  {'kind':<15}{'errors':>6}")
-for r in range(3):
-    for s in range(3):
-        ties, pairs, kind = block_kind(a, positions, r, s)
-        print(f"{r:<5}{s:<4}{ties:>5}{pairs:>6}  {kind:<15}{min(ties, pairs - ties):>6}")
-
-splits = {
-    "leaders, managers, staff": positions,
-    "everyone in one block": np.zeros(10, dtype=int),
-    "Flo moved in with the managers": np.array([0, 0, 1, 1, 1, 1, 2, 2, 2, 2]),
-    "structural classes (7)": np.array(structural),
-    "automorphic classes (5)": np.array(automorphic),
-}
-for label, split in splits.items():
-    print(f"regular? {label:<32}{is_regular(a, split)}")
+# TODO(code, Python): needs block types and a regular-equivalence check on a blockmodel (the knappnet Python backend runs NetworkX functions only, and NetworkX has none).
 ```
 
 ::: {.code-output}
 ```text
-from to   ties pairs  kind           errors
-0    0       2     2  complete            0
-0    1       0     6  null                0
-0    2       0    10  null                0
-1    0       6     6  complete            0
-1    1       0     6  null                0
-1    2       0    15  null                0
-2    0       0    10  null                0
-2    1       5    15  regular             5
-2    2       0    20  null                0
-regular? leaders, managers, staff        True
-regular? everyone in one block           False
-regular? Flo moved in with the managers  False
-regular? structural classes (7)          True
-regular? automorphic classes (5)         True
+TODO(output)
 ```
 :::
 
 ## Rust
 
 ```rust
-// Same block test as in R and Python, on tables of 0s and 1s.
+// Block test on tables of 0s and 1s.
 let block_kind = |m: &Vec<Vec<f64>>, pos: &[i64], r: i64, s: i64| -> (f64, f64, &'static str) {
     let rows: Vec<usize> = (0..pos.len()).filter(|&i| pos[i] == r).collect();
     let cols: Vec<usize> = (0..pos.len()).filter(|&j| pos[j] == s).collect();
@@ -1380,108 +1019,24 @@ The likelihood asks: if every pair in a block were tied by the same coin flip, h
 ## R
 
 ```r
-# Tie and pair counts for every block, from an indicator matrix of the positions.
-block_counts <- \(m, pos) {
-  z <- outer(pos, sort(unique(pos)), "==") * 1
-  size <- colSums(z)
-  list(ties = t(z) %*% m %*% z, pairs = outer(size, size) - diag(size, length(size)))
-}
-# Mistakes against the best all-0 or all-1 image, and the log-likelihood of the block densities.
-block_errors <- \(m, pos) {
-  bc <- block_counts(m, pos)
-  sum(pmin(bc$ties, bc$pairs - bc$ties))
-}
-log_lik <- \(m, pos) {
-  bc <- block_counts(m, pos)
-  p <- ifelse(bc$pairs > 0, bc$ties / bc$pairs, 0)
-  sum(ifelse(bc$ties > 0, bc$ties * log(p), 0) + ifelse(bc$pairs - bc$ties > 0, (bc$pairs - bc$ties) * log(1 - p), 0))
-}
-
-# Every way to deal ten people into positions of size 2 (leaders), 3 (managers) and 5 (staff).
-labelings <- combn(10, 2, simplify = FALSE) |>
-  map(\(lead) {
-    rest <- setdiff(1:10, lead)
-    map(combn(rest, 3, simplify = FALSE), \(mid) replace(replace(rep(2, 10), lead, 0), mid, 1))
-  }) |>
-  list_flatten()
-null_errors <- map_dbl(labelings, \(pos) block_errors(adj_office, pos))
-observed <- block_errors(adj_office, positions)
-
-tibble(
-  what = c("mistakes, three positions", "mistakes, empty image", "ways to deal the people", "dealings at least as good",
-           "average mistakes over all dealings", "log-likelihood, three positions", "log-likelihood, one block"),
-  value = c(observed, sum(adj_office), length(labelings), sum(null_errors <= observed),
-            mean(null_errors), log_lik(adj_office, positions), log_lik(adj_office, rep(0, 10)))
-)
+# TODO(code, R): needs fit measures for a blockmodel (mistakes against the best image, log-likelihood) and a null that deals the people into positions of the same sizes again, e.g. net_blockmodel_fit() and net_permute_labels().
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 7 × 2
-  what                                  value
-  <chr>                                 <dbl>
-1 mistakes, three positions             5    
-2 mistakes, empty image                13    
-3 ways to deal the people            2520    
-4 dealings at least as good             1    
-5 average mistakes over all dealings   12.87 
-6 log-likelihood, three positions      -9.548
-7 log-likelihood, one block           -37.17 
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-from itertools import combinations
-
-def block_counts(m, pos):
-    # Tie and pair counts for every block, from an indicator matrix of the positions.
-    z = (pos[:, None] == np.arange(pos.max() + 1)[None, :]).astype(float)
-    size = z.sum(axis=0)
-    return z.T @ m @ z, np.outer(size, size) - np.diag(size)
-
-def block_errors(m, pos):
-    # Mistakes against the best all-0 or all-1 image.
-    ties, pairs = block_counts(m, pos)
-    return np.minimum(ties, pairs - ties).sum()
-
-def log_lik(m, pos):
-    # Log-likelihood of the network when every block has its own tie probability (its density).
-    ties, pairs = block_counts(m, pos)
-    p = np.divide(ties, pairs, out=np.zeros_like(ties), where=pairs > 0)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        return (np.where(ties > 0, ties * np.log(p), 0) + np.where(pairs - ties > 0, (pairs - ties) * np.log(1 - p), 0)).sum()
-
-# Every way to deal ten people into positions of size 2 (leaders), 3 (managers) and 5 (staff).
-labelings = []
-for lead in combinations(range(10), 2):
-    rest = [i for i in range(10) if i not in lead]
-    for mid in combinations(rest, 3):
-        pos = np.full(10, 2)
-        pos[list(lead)], pos[list(mid)] = 0, 1
-        labelings.append(pos)
-null_errors = np.array([block_errors(a, pos) for pos in labelings])
-observed = block_errors(a, positions)
-
-print(f"mistakes, three positions            {observed:.0f}")
-print(f"mistakes, empty image                {a.sum():.0f}")
-print(f"ways to deal the people              {len(labelings)}")
-print(f"dealings at least as good            {(null_errors <= observed).sum()}")
-print(f"average mistakes over all dealings   {null_errors.mean():.2f}")
-print(f"log-likelihood, three positions      {log_lik(a, positions):.2f}")
-print(f"log-likelihood, one block            {log_lik(a, np.zeros(10, dtype=int)):.2f}")
+# TODO(code, Python): needs blockmodel fit measures and a label-permutation null (the knappnet Python backend runs NetworkX functions only, and NetworkX has none).
 ```
 
 ::: {.code-output}
 ```text
-mistakes, three positions            5
-mistakes, empty image                13
-ways to deal the people              2520
-dealings at least as good            1
-average mistakes over all dealings   12.87
-log-likelihood, three positions      -9.55
-log-likelihood, one block            -37.17
+TODO(output)
 ```
 :::
 
@@ -1577,15 +1132,16 @@ Trying every split is out of reach for big networks (there are over a thousand f
 friend_names <- c("Ana", "Ben", "Cleo", "Dev", "Eli", "Fay", "Gus", "Hana", "Ivo", "Jo")
 ffrom <- c(0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 4, 5, 5, 6, 7, 8)
 fto <- c(1, 2, 3, 5, 3, 4, 6, 3, 5, 4, 5, 6, 6, 6, 7, 7, 8, 9)
-friends <- tibble(source = friend_names[ffrom + 1], target = friend_names[fto + 1]) |>
-  net_frame(nodes = tibble(id = friend_names), directed = FALSE)
+friends <- net_frame(
+  data.frame(source = friend_names[ffrom + 1], target = friend_names[fto + 1]),
+  nodes = data.frame(id = friend_names),
+  directed = FALSE
+)
 friends
 
 fitted <- net_core_periphery(friends, method = "discrete", seed = 1)
-friends$nodes |>
-  mutate(in_core = fitted$core)
-
-tibble(correlation = fitted$correlation)
+data.frame(in_core = fitted$core, row.names = friend_names)
+c(correlation = fitted$correlation)
 ```
 
 ::: {.code-output}
@@ -1630,42 +1186,12 @@ tibble(correlation = fitted$correlation)
 ## Python
 
 ```python
-# The friendship network from the centrality chapter.
-friend_names = ["Ana", "Ben", "Cleo", "Dev", "Eli", "Fay", "Gus", "Hana", "Ivo", "Jo"]
-ffrom = [0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 4, 5, 5, 6, 7, 8]
-fto = [1, 2, 3, 5, 3, 4, 6, 3, 5, 4, 5, 6, 6, 6, 7, 7, 8, 9]
-friends = nx.Graph()
-friends.add_nodes_from(range(len(friend_names)))
-friends.add_edges_from(zip(ffrom, fto))
-
-# NetworkX has no core-periphery model. With ten people there are only 1,022 splits,
-# so try them all and keep the one whose ideal pattern correlates best with the ties.
-# Core-to-periphery pairs are left out of the comparison.
-m = len(friend_names)
-adj = nx.to_numpy_array(friends, nodelist=range(m))
-iu, ju = np.triu_indices(m, 1)
-best_r, best_core = -2, None
-for mask in range(1, 2 ** m - 1):
-    core = np.array([(mask >> i) & 1 for i in range(m)], dtype=bool)
-    both = core[iu] & core[ju]
-    neither = ~core[iu] & ~core[ju]
-    use = both | neither
-    ideal, observed = both[use].astype(float), adj[iu, ju][use]
-    if ideal.std() == 0 or observed.std() == 0:
-        continue
-    r = np.corrcoef(ideal, observed)[0, 1]
-    if r > best_r + 1e-12:
-        best_r, best_core = r, core
-
-members = ", ".join(f'"{friend_names[i]}"' for i in range(m) if best_core[i])
-print(f"core  [{members}]")
-print(f"correlation with the ideal pattern  {best_r:.3f}")
+# TODO(code, Python): needs a core-periphery fit (the knappnet Python backend runs NetworkX functions only, and NetworkX has none); net_core_periphery() is in the R and Rust packages only.
 ```
 
 ::: {.code-output}
 ```text
-core  ["Ana", "Ben", "Dev", "Fay", "Gus"]
-correlation with the ideal pattern  0.600
+TODO(output)
 ```
 :::
 
@@ -1720,35 +1246,35 @@ The plan (we compare groupings with the **adjusted Rand index**, where 1 means i
 ## R
 
 ```r
-nodes_k <- read.csv("data/krackhardt/nodes.csv") |> as_tibble()
-edges_k <- read.csv("data/krackhardt/edges.csv") |> as_tibble()
-advice_ties <- filter(edges_k, relation == "advice")
+nodes_k <- read.csv("data/krackhardt/nodes.csv")
+edges_k <- read.csv("data/krackhardt/edges.csv")
+advice_ties <- edges_k[edges_k$relation == "advice", ]
 advice <- matrix(0, 21, 21)
 advice[cbind(advice_ties$from, advice_ties$to)] <- 1
 dimnames(advice) <- list(1:21, 1:21)
 advice_net <- as_net_frame(advice, directed = TRUE, quiet = TRUE)
-tibble(managers = nrow(advice), ties = sum(advice), density = round(sum(advice) / (21 * 20), 3))
+c(managers = nrow(advice), ties = sum(advice), density = round(sum(advice) / (21 * 20), 3))
 
 d_advice <- net_struct_equiv(advice_net)
-positions_k <- cut_tree(d_advice, 4)
+positions_k <- cutree(hclust(as.dist(d_advice), "average"), 4) - 1L
 table(position = positions_k, level = nodes_k$level)
 table(position = positions_k, department = nodes_k$department)
-tibble(
-  compared_with = c("level", "department"),
-  adjusted_rand = round(c(
-    net_compare_partitions(positions_k, nodes_k$level, "adjusted_rand"),
-    net_compare_partitions(positions_k, nodes_k$department, "adjusted_rand")
-  ), 3)
-)
+c(
+  level = net_compare_partitions(positions_k, nodes_k$level, "adjusted_rand"),
+  department = net_compare_partitions(positions_k, nodes_k$department, "adjusted_rand")
+) |> round(3)
 
 # The blockmodel of the four positions, and a second opinion from CONCOR (depth 2, four blocks).
 bm_k <- net_blockmodel(advice_net, membership = positions_k)
 round(bm_k$density, 2)
 concor_k <- net_concor(advice_net, depth = 2) - 1L
-tibble(
-  split = c("average linkage, 4 positions", "CONCOR, 4 blocks"),
-  mistakes = c(block_errors(advice, positions_k), block_errors(advice, concor_k)),
-  adjusted_rand_with_the_other = round(net_compare_partitions(positions_k, concor_k, "adjusted_rand"), 3)
+bm_concor <- net_blockmodel(advice_net, membership = concor_k)
+
+# Mistakes: ties that sit in sparse blocks or gaps that sit in dense ones, whichever is fewer.
+c(
+  mistakes_average_linkage = sum(pmin(bm_k$ties, bm_k$pairs - bm_k$ties)),
+  mistakes_concor = sum(pmin(bm_concor$ties, bm_concor$pairs - bm_concor$ties)),
+  adjusted_rand_between = round(net_compare_partitions(positions_k, concor_k, "adjusted_rand"), 3)
 )
 ```
 
@@ -1791,77 +1317,12 @@ position 0 1 2 3 4
 ## Python
 
 ```python
-import csv
-from math import comb
-
-with open("data/krackhardt/nodes.csv") as f:
-    nodes_k = list(csv.DictReader(f))
-with open("data/krackhardt/edges.csv") as f:
-    edges_k = list(csv.DictReader(f))
-level_k = np.array([int(r["level"]) for r in nodes_k])
-dept_k = np.array([int(r["department"]) for r in nodes_k])
-advice = np.zeros((21, 21))
-for r in edges_k:
-    if r["relation"] == "advice":
-        advice[int(r["from"]) - 1, int(r["to"]) - 1] = 1
-print(f"managers 21, ties {advice.sum():.0f}, density {advice.sum() / (21 * 20):.3f}")
-
-def adjusted_rand(p, q):
-    # Agreement of two partitions, corrected for chance: 1 is identical, about 0 is no better than chance.
-    table = np.zeros((max(p) + 1, max(q) + 1), dtype=int)
-    for x, y in zip(p, q):
-        table[x, y] += 1
-    index = sum(comb(int(v), 2) for v in table.ravel())
-    rows = sum(comb(int(v), 2) for v in table.sum(axis=1))
-    cols = sum(comb(int(v), 2) for v in table.sum(axis=0))
-    expected = rows * cols / comb(len(p), 2)
-    return (index - expected) / ((rows + cols) / 2 - expected)
-
-def crosstab(p, q, heading):
-    print(f"position, by {heading}")
-    values = sorted(set(q))
-    print("          " + "".join(f"{v:>4}" for v in values))
-    for g in sorted(set(p)):
-        print(f"{g:>10}" + "".join(f"{sum(1 for x, y in zip(p, q) if x == g and y == v):>4}" for v in values))
-
-d_advice = se_dist([advice])
-positions_k = cut_tree(d_advice, 4)
-crosstab(positions_k, level_k, "level")
-crosstab(positions_k, dept_k, "department")
-print(f"adjusted Rand with level {adjusted_rand(positions_k, level_k):.3f}, with department {adjusted_rand(positions_k, dept_k):.3f}")
-
-ties_k, pairs_k = block_counts(advice, np.array(positions_k))
-print("block densities (rows ask, columns are asked)")
-for row in ties_k / pairs_k:
-    print("  " + "  ".join(f"{v:.2f}" for v in row))
-concor_k = concor(advice, 2)
-print(f"mistakes: average linkage {block_errors(advice, np.array(positions_k)):.0f}, CONCOR {block_errors(advice, concor_k):.0f}")
-print(f"adjusted Rand between the two splits {adjusted_rand(positions_k, list(concor_k)):.3f}")
+# TODO(code, Python): needs structural-equivalence distances, a blockmodel and an adjusted Rand score (the knappnet Python backend runs NetworkX functions only, and NetworkX has none).
 ```
 
 ::: {.code-output}
 ```text
-managers 21, ties 190, density 0.452
-position, by level
-             1   2   3
-         0   0   2   7
-         1   0   0   8
-         2   1   1   0
-         3   0   1   1
-position, by department
-             0   1   2   3   4
-         0   0   4   1   1   3
-         1   0   0   7   0   1
-         2   1   1   0   0   0
-         3   0   0   0   2   0
-adjusted Rand with level 0.184, with department 0.389
-block densities (rows ask, columns are asked)
-  0.19  0.04  0.72  0.33
-  0.81  0.38  0.69  0.88
-  0.67  0.19  1.00  0.50
-  0.67  0.94  0.50  1.00
-mistakes: average linkage 90, CONCOR 100
-adjusted Rand between the two splits 0.470
+TODO(output)
 ```
 :::
 
@@ -1979,97 +1440,24 @@ The table below gives, for 1 to 6 positions, the mistakes of the real tree cut, 
 ## R
 
 ```r
-tree_k <- hclust(as.dist(d_advice), "average")
-set.seed(1)
-
-# A random network that keeps every manager's out-degree: each row's entries are dealt out again at random.
-shuffle_rows <- \(m) {
-  n <- nrow(m)
-  cells <- map(1:n, \(i) {
-    j <- setdiff(1:n, i)
-    tibble(row = i, col = j, value = sample(m[i, j]))
-  }) |>
-    list_rbind()
-  out <- matrix(0, n, n)
-  out[cbind(cells$row, cells$col)] <- cells$value
-  out
-}
-
-ks <- 1:6
-real_errors <- map_dbl(ks, \(k) block_errors(advice, cutree(tree_k, k) - 1L))
-label_errors <- map_dbl(ks, \(k) {
-  pos <- cutree(tree_k, k) - 1L
-  mean(map_dbl(1:1000, \(b) block_errors(advice, sample(pos))))
-})
-refits <- map(1:300, \(b) {
-  m <- shuffle_rows(advice)
-  tree <- hclust(as.dist(se_dist(list(m))), "average")
-  map_dbl(ks, \(k) block_errors(m, cutree(tree, k) - 1L))
-}) |>
-  list_transpose()
-
-tibble(
-  positions = ks,
-  mistakes = real_errors,
-  labels_shuffled = round(label_errors, 1),
-  refit_mean = round(map_dbl(refits, mean), 1),
-  refit_best = map_dbl(refits, min)
-)
+# TODO(code, R): needs a degree-preserving randomizer for directed ties (deal each row of the tie table out again, keeping every out-degree) and a way to refit positions on each draw, e.g. net_random_rewire(preserve = "out") with net_struct_equiv().
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 6 × 5
-  positions mistakes labels_shuffled refit_mean refit_best
-      <int>    <dbl>           <dbl>      <dbl>      <dbl>
-1         1      190           190        190          190
-2         2      120           180.1      117.9        110
-3         3      106           171.1      112.8        104
-4         4       90           162.8      108.9         95
-5         5       84           155        104.1         89
-6         6       76           145.8       99.4         83
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-rng = np.random.default_rng(1)
-
-def shuffle_rows(m):
-    # A random network that keeps every manager's out-degree: each row's entries are dealt out again at random.
-    out = np.zeros_like(m)
-    for i in range(len(m)):
-        others = [j for j in range(len(m)) if j != i]
-        out[i, others] = rng.permutation(m[i, others])
-    return out
-
-ks = range(1, 7)
-tree_k = linkage(squareform(d_advice, checks=False), "average")
-split = lambda k: np.array(first_seen(fcluster(tree_k, k, "maxclust")))
-real_errors = [block_errors(advice, split(k)) for k in ks]
-label_errors = [np.mean([block_errors(advice, rng.permutation(split(k))) for _ in range(1000)]) for k in ks]
-refits = []
-for _ in range(300):
-    m = shuffle_rows(advice)
-    tree = linkage(squareform(se_dist([m]), checks=False), "average")
-    refits.append([block_errors(m, np.array(first_seen(fcluster(tree, k, "maxclust")))) for k in ks])
-refits = np.array(refits)
-
-print(f"{'positions':>9}{'mistakes':>10}{'labels shuffled':>17}{'refit mean':>12}{'refit best':>12}")
-for n_pos, real, shuffled, mean, best in zip(ks, real_errors, label_errors, refits.mean(axis=0), refits.min(axis=0)):
-    print(f"{n_pos:>9}{real:>10.0f}{shuffled:>17.1f}{mean:>12.1f}{best:>12.0f}")
+# TODO(code, Python): needs a degree-preserving randomizer for directed ties and a refit of positions on each draw (the knappnet Python backend runs NetworkX functions only, and NetworkX has none).
 ```
 
 ::: {.code-output}
 ```text
-positions  mistakes  labels shuffled  refit mean  refit best
-        1       190            190.0       190.0         190
-        2       120            179.3       118.1         110
-        3       106            171.6       113.1         100
-        4        90            163.0       109.2          95
-        5        84            155.2       104.4          91
-        6        76            146.3        99.3          88
+TODO(output)
 ```
 :::
 
@@ -2131,7 +1519,7 @@ positions  mistakes  labels shuffled  refit mean  refit best
 
 :::
 
-The real mistakes (190, 120, 106, 90, 84, 76) are the same in all three tabs, because nothing random goes into them. Shuffled labels (average between about 180 for two positions and 146 for six) sit far above them at every size, so by that baseline every split looks good. The fair baseline is the refit. Its average falls to about 118 mistakes at two positions and about 99 at six, and the best of the 300 refits makes 110 mistakes at two positions and about 95 to 97 at four (the tabs differ by a few mistakes, since each shuffles its own way). @fig-positions-blocks-curve draws the same comparison from the figure code's own shuffles.
+The real mistakes (190, 120, 106, 90, 84, 76) are the same however you count them, because nothing random goes into them. Shuffled labels (average between about 180 for two positions and 146 for six) sit far above them at every size, so by that baseline every split looks good. The fair baseline is the refit. Its average falls to about 118 mistakes at two positions and about 99 at six, and the best of the 300 refits makes 110 mistakes at two positions and about 95 to 97 at four (the Rust tab shows the shuffled baselines; another random draw would differ by a few mistakes). @fig-positions-blocks-curve draws the same comparison from the figure code's own shuffles.
 
 ![Mistakes fall as positions are added, for the real network and for every baseline, so falling alone proves nothing. Shuffling labels (grey) is an easy baseline. Redoing the whole procedure on networks that keep each manager's out-degree (orange and red) is a fair one: the real curve is below its best only from four positions on.](../figures/positions-blocks-curve.svg){#fig-positions-blocks-curve fig-alt="A line chart of mistakes against one to six positions. The real network, a solid blue line, falls from 190 with one position to 120 with two, 90 with four and 76 with six. A grey dashed line for shuffled labels stays well above it. Two lines for networks that keep each manager's out-degree and are clustered again, one for the mean and one for the best of 100 draws, run close to the real line at two and three positions. From four positions on the real line is below the best of the redone draws."}
 
@@ -2157,92 +1545,24 @@ We do it for Sampson's monastery, the 18 novices of @sec-case-sampson, at the th
 ## R
 
 ```r
-sampson_edges <- read.csv("data/sampson/edges.csv") |> as_tibble()
-novices <- read.csv("data/sampson/nodes.csv")$name
-group_file <- read.csv("data/sampson_groups/nodes.csv")
-sampson_group <- match(group_file$group[match(novices, group_file$name)], c("Turks", "Loyal", "Outcasts", "Waverers")) - 1L
-
-# One 18 x 18 table of 0s and 1s for a relation at a given wave (the choices a novice named).
-layer_s <- \(rel, wave = 3) {
-  e <- filter(sampson_edges, relation == rel, time == wave)
-  m <- matrix(0, 18, 18)
-  m[cbind(match(e$from, novices), match(e$to, novices))] <- 1
-  m
-}
-relation_sets <- list(
-  "liking only" = "liking",
-  "four positive relations" = c("liking", "esteem", "positive_influence", "praise"),
-  "all eight relations" = c("liking", "esteem", "positive_influence", "praise",
-                            "disliking", "disesteem", "negative_influence", "blame")
-)
-
-expand_grid(relations = names(relation_sets), positions = 3:4) |>
-  mutate(
-    split = map2(relations, positions, \(s, k) cut_tree(se_dist(map(relation_sets[[s]], layer_s)), k)),
-    sizes = map_chr(split, \(g) paste(tabulate(g + 1), collapse = " ")),
-    adjusted_rand = map_dbl(split, \(g) round(net_compare_partitions(g, sampson_group, "adjusted_rand"), 3))
-  ) |>
-  select(relations, positions, sizes, adjusted_rand)
+# TODO(code, R): needs net_struct_equiv() to take several relations at once (stacked tie tables, or a multilayer net_frame) and a way to pick one wave of one relation.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 6 × 4
-  relations               positions sizes    adjusted_rand
-  <chr>                       <int> <chr>            <dbl>
-1 liking only                     3 7 4 7            0.077
-2 liking only                     4 2 5 4 7          0.064
-3 four positive relations         3 8 3 7            0.577
-4 four positive relations         4 8 3 5 2          0.37 
-5 all eight relations             3 12 3 3           0.366
-6 all eight relations             4 10 3 2 3         0.264
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-with open("data/sampson/nodes.csv") as f:
-    novices = [r["name"] for r in csv.DictReader(f)]
-with open("data/sampson_groups/nodes.csv") as f:
-    group_of = {r["name"]: r["group"] for r in csv.DictReader(f)}
-group_names = ["Turks", "Loyal", "Outcasts", "Waverers"]
-sampson_group = [group_names.index(group_of[name]) for name in novices]
-with open("data/sampson/edges.csv") as f:
-    sampson_rows = list(csv.DictReader(f))
-
-def layer_s(rel, wave=3):
-    # An 18 x 18 table of 0s and 1s for a relation at a given wave (the choices a novice named).
-    m = np.zeros((18, 18))
-    for r in sampson_rows:
-        if r["relation"] == rel and int(r["time"]) == wave:
-            m[novices.index(r["from"]), novices.index(r["to"])] = 1
-    return m
-
-positive = ["liking", "esteem", "positive_influence", "praise"]
-relation_sets = {
-    "liking only": ["liking"],
-    "four positive relations": positive,
-    "all eight relations": positive + ["disliking", "disesteem", "negative_influence", "blame"],
-}
-print(f"{'relations':<25}{'positions':>10}  {'sizes':<12}{'adjusted Rand':>14}")
-for label, rels in relation_sets.items():
-    d = se_dist([layer_s(rel) for rel in rels])
-    for k in (3, 4):
-        split = cut_tree(d, k)
-        sizes = " ".join(str(split.count(g)) for g in range(k))
-        print(f"{label:<25}{k:>10}  {sizes:<12}{adjusted_rand(split, sampson_group):>14.3f}")
+# TODO(code, Python): needs structural equivalence over several relations at once (the knappnet Python backend runs NetworkX functions only, and NetworkX has none).
 ```
 
 ::: {.code-output}
 ```text
-relations                 positions  sizes        adjusted Rand
-liking only                       3  7 4 7                0.077
-liking only                       4  2 5 4 7              0.064
-four positive relations           3  8 3 7                0.577
-four positive relations           4  8 3 5 2              0.370
-all eight relations               3  12 3 3               0.366
-all eight relations               4  10 3 2 3             0.264
+TODO(output)
 ```
 :::
 
@@ -2329,58 +1649,59 @@ Positions are fragile in ways that centrality scores usually aren't, so it is wo
 
 ```r
 # One forgotten tie: remove Flo -> Cy.
-office_missing <- office$edges |>
-  filter(!(source == "Flo" & target == "Cy")) |>
-  net_frame(nodes = office$nodes, directed = TRUE, quiet = TRUE)
-tibble(
-  person = office$nodes$id,
-  regular_before = regular_office,
-  regular_after = net_regular_equiv(office_missing) - 1L
+office_missing <- net_frame(
+  subset(office$edges, !(source == "Flo" & target == "Cy")),
+  nodes = office$nodes,
+  directed = TRUE,
+  quiet = TRUE
 )
-tibble(
-  pair = "Flo and Gus",
+data.frame(
+  regular_before = regular_office,
+  regular_after = as.vector(net_regular_equiv(office_missing)) - 1L,
+  row.names = people
+)
+c(
   distance_before = d_office["Flo", "Gus"],
   distance_after = net_struct_equiv(office_missing)["Flo", "Gus"]
 )
 
 # Take away the direction: one undirected tie for every pair that has an arrow either way.
-office_undirected <- office$edges |>
-  mutate(lo = pmin(source, target), hi = pmax(source, target)) |>
-  select(source = lo, target = hi) |>
-  distinct() |>
-  net_frame(nodes = office$nodes, directed = FALSE, quiet = TRUE)
-tibble(
-  person = office$nodes$id,
-  regular = net_regular_equiv(office_undirected) - 1L,
-  automorphic = net_auto_equiv(office_undirected) - 1L
+office_undirected <- net_frame(
+  unique(data.frame(
+    source = pmin(office$edges$source, office$edges$target),
+    target = pmax(office$edges$source, office$edges$target)
+  )),
+  nodes = office$nodes,
+  directed = FALSE,
+  quiet = TRUE
+)
+data.frame(
+  regular = as.vector(net_regular_equiv(office_undirected)) - 1L,
+  automorphic = net_auto_equiv(office_undirected) - 1L,
+  row.names = people
 )
 
-# Drop each advice tie in turn, redo the four-position split, and compare with the original.
-leave_one_out <- as_tibble(which(advice == 1, arr.ind = TRUE)) |>
-  mutate(ari = map2_dbl(row, col, \(i, j) {
-    m <- advice
-    m[i, j] <- 0
-    net_compare_partitions(cut_tree(se_dist(list(m)), 4), positions_k, "adjusted_rand")
-  }))
-leave_one_out |>
-  summarise(ties_dropped = n(), positions_unchanged = sum(ari > 1 - 1e-9), lowest_adjusted_rand = round(min(ari), 3))
+# TODO(code, R): leaving each of the 190 advice ties out in turn and refitting needs a leave-one-tie-out helper (net_stability()) and net_struct_equiv() on a tie table
 
 # Two distances on the first liking wave.
-liking_1 <- layer_s("liking", 1)
-dimnames(liking_1) <- list(novices, novices)
-liking_net <- as_net_frame(liking_1, directed = TRUE, quiet = TRUE)
+sampson_edges <- read.csv("data/sampson/edges.csv")
+novices <- read.csv("data/sampson/nodes.csv")$name
+liking_1 <- sampson_edges[sampson_edges$relation == "liking" & sampson_edges$time == 1, ]
+liking_net <- net_frame(
+  data.frame(source = liking_1$from, target = liking_1$to),
+  nodes = data.frame(id = novices),
+  directed = TRUE,
+  quiet = TRUE
+)
 by_distance <- list(
-  euclidean = cut_tree(net_struct_equiv(liking_net), 3),
-  correlation = cut_tree(1 - net_struct_equiv(liking_net, method = "correlation"), 3)
+  euclidean = cutree(hclust(as.dist(net_struct_equiv(liking_net)), "average"), 3) - 1L,
+  correlation = cutree(hclust(as.dist(1 - net_struct_equiv(liking_net, method = "correlation")), "average"), 3) - 1L
 )
-tibble(
-  distance = names(by_distance),
-  sizes = map_chr(by_distance, \(g) paste(tabulate(g + 1), collapse = " "))
-)
+lapply(by_distance, table)
 net_compare_partitions(by_distance$euclidean, by_distance$correlation, "adjusted_rand")
 
 # The same comparison for the managers' advice, with four positions.
-advice_by_correlation <- cut_tree(1 - net_struct_equiv(advice_net, method = "correlation"), 4)
+advice_by_correlation <- cutree(hclust(as.dist(1 - net_struct_equiv(advice_net, method = "correlation")), "average"), 4) - 1L
 net_compare_partitions(positions_k, advice_by_correlation, "adjusted_rand")
 ```
 
@@ -2433,51 +1754,12 @@ net_compare_partitions(positions_k, advice_by_correlation, "adjusted_rand")
 ## Python
 
 ```python
-# One forgotten tie: remove Flo -> Cy (Flo is person 5, Cy is person 2).
-missing = office.copy()
-missing.remove_edge(5, 2)
-print(f"Flo and Gus: distance {d_office[5, 6]:.3f} before, {se_dist([nx.to_numpy_array(missing, nodelist=range(10))])[5, 6]:.3f} after")
-print("regular classes before:", catrege(office))
-print("regular classes after: ", catrege(missing))
-
-# Take away the direction: one undirected tie for every pair that has an arrow either way.
-undirected = nx.Graph(office)
-print("undirected, regular:   ", catrege(undirected))
-print("undirected, automorphic:", automorphic_classes(undirected)[0])
-
-# Drop each advice tie in turn, redo the four-position split, and compare with the original.
-dropped = []
-for i, j in zip(*np.nonzero(advice)):
-    m = advice.copy()
-    m[i, j] = 0
-    dropped.append(adjusted_rand(cut_tree(se_dist([m]), 4), positions_k))
-dropped = np.array(dropped)
-print(f"ties dropped {len(dropped)}, positions unchanged {(dropped > 1 - 1e-9).sum()}, lowest adjusted Rand {dropped.min():.3f}")
-
-# Two distances on the first liking wave.
-liking_1 = layer_s("liking", 1)
-by_distance = {"euclidean": cut_tree(se_dist([liking_1]), 3), "correlation": cut_tree(1 - profile_correlations(liking_1), 3)}
-for name, g in by_distance.items():
-    print(f"{name:<12}sizes {' '.join(str(g.count(k)) for k in range(3))}")
-print(f"adjusted Rand between them {adjusted_rand(by_distance['euclidean'], by_distance['correlation']):.3f}")
-
-# The same comparison for the managers' advice, with four positions.
-by_correlation = cut_tree(1 - profile_correlations(advice), 4)
-print(f"managers' advice, four positions: adjusted Rand between the two distances {adjusted_rand(positions_k, by_correlation):.3f}")
+# TODO(code, Python): needs regular equivalence and structural-equivalence distances after a tie is removed (the knappnet Python backend runs NetworkX functions only, and NetworkX has none).
 ```
 
 ::: {.code-output}
 ```text
-Flo and Gus: distance 0.000 before, 1.000 after
-regular classes before: [0, 0, 1, 1, 1, 2, 2, 2, 2, 2]
-regular classes after:  [0, 0, 1, 1, 1, 2, 3, 3, 3, 3]
-undirected, regular:    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-undirected, automorphic: [0, 0, 1, 2, 1, 3, 3, 4, 3, 3]
-ties dropped 190, positions unchanged 182, lowest adjusted Rand 0.671
-euclidean   sizes 2 15 1
-correlation sizes 10 5 3
-adjusted Rand between them -0.124
-managers' advice, four positions: adjusted Rand between the two distances 1.000
+TODO(output)
 ```
 :::
 
@@ -2632,8 +1914,8 @@ Everything below was seen in the chapter's own code.
 - **Linkage.** On the office with three groups, average linkage leaves Eve alone, and complete linkage puts Cy and Eve together. The linkage is a choice, not a detail.
 - **Classical routes.** On the managers, CONCOR with four blocks and average linkage with four positions agree only moderately (adjusted Rand 0.47) and make 100 and 90 mistakes.
 - **The three equivalences.** On the office they give 7, 5 and 3 classes. They are not three estimates of one thing. They are three different definitions, nested.
-- **Randomness.** The shuffled baselines in the three tabs differ by a few mistakes (the best of 300 refits at four positions is 95 in R and Python and 97 in Rust, say) because each language draws its own random numbers. The conclusions don't change, and the third decimal of anything random is noise.
-- **Ties in distances.** The chapter's networks have many exactly equal distances, and when two merges are tied, a clustering routine has to pick one. We checked that the Python (SciPy) and Rust (hand-written) clusterings agree on all the cuts we show. A different routine can break ties differently.
+- **Randomness.** The shuffled baselines differ by a few mistakes from one random draw to the next (the best of 300 refits at four positions was 95 in earlier R and Python runs and 97 in Rust, say), because each language draws its own random numbers; only the Rust tab shows them now. The conclusions don't change, and the third decimal of anything random is noise.
+- **Ties in distances.** The chapter's networks have many exactly equal distances, and when two merges are tied, a clustering routine has to pick one. We checked, in earlier runs, that the SciPy and hand-written Rust clusterings agree on all the cuts we show. A different routine can break ties differently.
 - **Conventions.** Programs differ in whether the two people's own ties count, whether a profile is the row only or the row and column, and whether they cluster distances or correlations. Read the documentation of whatever you run, and report which you used.
 
 ## Reporting a blockmodel

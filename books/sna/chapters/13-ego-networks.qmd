@@ -52,26 +52,26 @@ The code below builds the ten-person friendship network and prints these five nu
 
 ```r
 library(knappnet)
-library(dplyr)
-library(purrr)
 
 # The ten-person friendship network. People are numbered from zero in Rust; here the
 # ties are written as those numbers and turned into names.
 people <- c("Ana", "Ben", "Cleo", "Dev", "Eli", "Fay", "Gus", "Hana", "Ivo", "Jo")
-friends <- tibble(
-  source = c(0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 4, 5, 5, 6, 7, 8),
-  target = c(1, 2, 3, 5, 3, 4, 6, 3, 5, 4, 5, 6, 6, 6, 7, 7, 8, 9)
-) |>
-  mutate(across(everything(), \(i) people[i + 1])) |>
-  net_frame(nodes = tibble(id = people), directed = FALSE)
+from <- c(0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 4, 5, 5, 6, 7, 8)
+to <- c(1, 2, 3, 5, 3, 4, 6, 3, 5, 4, 5, 6, 6, 6, 7, 7, 8, 9)
+friends <- net_frame(
+  data.frame(source = people[from + 1], target = people[to + 1]),
+  nodes = data.frame(id = people),
+  directed = FALSE
+)
 friends
 
 # Alters are the people within one step of ego, the default.
-net_ego_summary(friends) |>
-  as_tibble() |>
-  select(person = node, contacts = size, ties, density, pieces = components,
-         betweenness = ego_betweenness) |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
+ego <- net_ego_summary(friends)
+round(data.frame(
+  contacts = ego$size, ties = ego$ties, density = ego$density,
+  pieces = ego$components, betweenness = ego$ego_betweenness,
+  row.names = ego$node
+), 3)
 ```
 
 ::: {.code-output}
@@ -113,7 +113,6 @@ net_ego_summary(friends) |>
 
 ```python
 import networkx as nx
-
 # The ten-person friendship network, people numbered from zero as in Rust.
 names = ["Ana", "Ben", "Cleo", "Dev", "Eli", "Fay", "Gus", "Hana", "Ivo", "Jo"]
 src = [0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 4, 5, 5, 6, 7, 8]
@@ -121,33 +120,13 @@ dst = [1, 2, 3, 5, 3, 4, 6, 3, 5, 4, 5, 6, 6, 6, 7, 7, 8, 9]
 friends = nx.Graph()
 friends.add_nodes_from(range(len(names)))
 friends.add_edges_from(zip(src, dst))
-
-print(f"{'':<5} {'contacts':>8} {'ties':>5} {'density':>8} {'pieces':>7} {'betweenness':>11}")
-for i, name in enumerate(names):
-    ego = nx.ego_graph(friends, i)          # ego, its alters, and the ties among them
-    alters = friends.subgraph(n for n in ego if n != i)
-    size, ties = alters.number_of_nodes(), alters.number_of_edges()
-    density = ties / (size * (size - 1) / 2) if size > 1 else float("nan")
-    density_text = "NaN" if size < 2 else f"{density:.3f}"
-    pieces = nx.number_connected_components(alters)
-    # Ego betweenness is ordinary betweenness inside the ego network.
-    ego_between = nx.betweenness_centrality(ego, normalized=False)[i]
-    print(f"{name:<5} {size:>8} {ties:>5} {density_text:>8} {pieces:>7} {ego_between:>11.3f}")
+print(friends)
+# TODO(code, Python): the ego summary table (contacts, ties among them, density, pieces, ego betweenness) needs net_ego_summary(); NetworkX only has ego_graph() to build each ego network.
 ```
 
 ::: {.code-output}
 ```text
-      contacts  ties  density  pieces betweenness
-Ana          4     4    0.667       1       1.000
-Ben          4     4    0.667       1       1.000
-Cleo         3     3    1.000       1       0.000
-Dev          6     8    0.533       1       3.667
-Eli          3     3    1.000       1       0.000
-Fay          5     5    0.500       1       3.500
-Gus          5     5    0.500       1       3.500
-Hana         3     1    0.333       2       2.000
-Ivo          2     0    0.000       2       1.000
-Jo           1     0      NaN       1       0.000
+Graph with 10 nodes and 18 edges
 ```
 :::
 
@@ -250,13 +229,12 @@ Ego betweenness counts how often ego is the go-between for two of their own cont
 # The 1.5-step network is what net_ego_summary() measures by default; order = 2 gives the 2-step network.
 one <- net_ego_summary(friends, betweenness = FALSE)
 two <- net_ego_summary(friends, order = 2, betweenness = FALSE)
-tibble(
-  person = people,
+round(data.frame(
   alters = one$size, ties = one$ties, density = one$density,
   density_with_ego = (one$ties + one$size) / choose(one$size + 1, 2),
-  alters_2step = two$size, ties_2step = two$ties, density_2step = two$density
-) |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
+  alters_2step = two$size, ties_2step = two$ties, density_2step = two$density,
+  row.names = people
+), 3)
 ```
 
 ::: {.code-output}
@@ -281,35 +259,12 @@ tibble(
 ## Python
 
 ```python
-# The 1.5-step network is the ego graph of the first block; radius 2 gives the 2-step network.
-def width(i, radius):
-    ego = nx.ego_graph(friends, i, radius=radius)
-    alters = friends.subgraph(v for v in ego if v != i)
-    s, t = alters.number_of_nodes(), alters.number_of_edges()
-    return s, t, (t / (s * (s - 1) / 2) if s > 1 else float("nan"))
-
-shown = lambda x: "NaN" if x != x else f"{x:.3f}"
-print(f"{'':<5} {'alters':>6} {'ties':>5} {'density':>8} {'with ego':>9} | {'alters':>6} {'ties':>5} {'density':>8}")
-for i, name in enumerate(names):
-    s1, t1, d1 = width(i, 1)
-    s2, t2, d2 = width(i, 2)
-    with_ego = (t1 + s1) / ((s1 + 1) * s1 / 2)
-    print(f"{name:<5} {s1:>6} {t1:>5} {shown(d1):>8} {with_ego:>9.3f} | {s2:>6} {t2:>5} {shown(d2):>8}")
+# TODO(code, Python): needs the 1.5-step and 2-step ego summaries (net_ego_summary(order = 2)); NetworkX only has ego_graph() to build each ego network.
 ```
 
 ::: {.code-output}
 ```text
-      alters  ties  density  with ego | alters  ties  density
-Ana        4     4    0.667     0.800 |      7    12    0.571
-Ben        4     4    0.667     0.800 |      7    12    0.571
-Cleo       3     3    1.000     1.000 |      7    13    0.619
-Dev        6     8    0.533     0.667 |      7    10    0.476
-Eli        3     3    1.000     1.000 |      7    13    0.619
-Fay        5     5    0.500     0.667 |      8    12    0.429
-Gus        5     5    0.500     0.667 |      8    12    0.429
-Hana       3     1    0.333     0.667 |      9    15    0.417
-Ivo        2     0    0.000     0.667 |      4     3    0.500
-Jo         1     0      NaN     1.000 |      2     1    1.000
+TODO(output)
 ```
 :::
 
@@ -390,12 +345,11 @@ Start with the number of contacts, $n$, and take away a penalty for redundancy. 
 ## R
 
 ```r
-tibble(
-  person = people,
+round(data.frame(
   effective_size = net_effective_size(friends),
-  efficiency = net_efficiency(friends)
-) |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
+  efficiency = net_efficiency(friends),
+  row.names = people
+), 3)
 ```
 
 ::: {.code-output}
@@ -478,7 +432,7 @@ Dev has the largest effective size, 3.333 contacts' worth out of six. Hana's 2.3
 Effective size counts. **Constraint** weighs. It asks how much of a person's network is tied up in a few contacts who are themselves tied up with each other. Burt's measure starts from the share of a person's time and energy invested in each contact, $p_{ij}$, which in a network without tie strengths is just one divided by the number of contacts. A person is constrained by a contact $j$ directly, through $p_{ij}$, and indirectly, through any of their other contacts $q$ who also tie to $j$:
 
 ::: {.callout-tip title="In plain words"}
-Constraint adds up, over all your contacts, how much you depend on each one. The number $p_{ij}$ is the share of your attention that goes to contact $j$, which is 1/3 for each of Hana's three contacts. A contact matters directly (the $p_{ij}$ part) and also through the friends you share with them (the sum, which multiplies your share for a shared friend $q$ by $q$'s share for $j$). Add the two, square the total so that one big dependence counts for extra, and you have $c_{ij}$. Then $C_i$ is the total over all contacts $j$. For Hana's contact Ivo, nobody links him to anyone else in her circle, so his term is just $(1/3)^2 = 0.111$, as the hand calculation below shows. This is the hardest formula in the chapter. On a first read you can skip to the hand calculation and still keep the idea: low constraint means freedom, high constraint means your options run through a few people who talk among themselves.
+Constraint adds up, over all your contacts, how much you depend on each one. The number $p_{ij}$ is the share of your attention that goes to contact $j$, which is 1/3 for each of Hana's three contacts. A contact matters directly (the $p_{ij}$ part) and also through the friends you share with them (the sum, which multiplies your share for a shared friend $q$ by $q$'s share for $j$). Add the two, square the total so that one big dependence counts for extra, and you have $c_{ij}$. Then $C_i$ is the total over all contacts $j$. For Hana's contact Ivo, nobody links him to anyone else in her circle, so his term is just $(1/3)^2 = 0.111$, as the hand calculation in the Rust tab below shows. This is the hardest formula in the chapter. On a first read you can skip to the hand calculation and still keep the idea: low constraint means freedom, high constraint means your options run through a few people who talk among themselves.
 :::
 
 $$
@@ -492,7 +446,7 @@ In words: for each contact, add the direct share to the shares routed through yo
 ## R
 
 ```r
-tibble(person = people, constraint = round(net_constraint(friends), 3))
+setNames(round(net_constraint(friends), 3), people)
 ```
 
 ::: {.code-output}
@@ -603,41 +557,24 @@ Every number above came from a function. Here is the same work done from the def
 ## R
 
 ```r
-adj <- as.matrix(friends)
-rs <- \(M) unname(rowSums(M))
-
-by_hand <- \(A) {
-  n <- rs(A)
-  P <- A / n                                       # p_ij: the share of i's attention that goes to j
-  C <- (P + P %*% P)^2 * (A > 0)                   # c_ij, for the contacts j of i
-  r <- C / (rs(C) / n)                             # each contact's share relative to an even split
-  list(C = C, table = tibble(
-    constraint = rs(C),
-    effective_size = n - rs((A %*% A) * A) / n,    # n - 2t/n: the row sums count each tie among contacts twice
-    hierarchy = rs(ifelse(C > 0, r * log(r), 0)) / (n * log(n))
-  ))
-}
-
-hand <- by_hand(adj)
-engine <- list(constraint = net_constraint(friends), effective_size = net_effective_size(friends),
-               hierarchy = net_hierarchy(friends))
-map_lgl(names(engine), \(k) isTRUE(all.equal(hand$table[[k]], engine[[k]], check.attributes = FALSE))) |>
-  set_names(names(engine))
-round(max(hand$table$hierarchy, na.rm = TRUE), 3)
-
 # The kite: E is tied to A, B and C, and A is also tied to B and C.
-kite_ids <- c("E", "A", "B", "C")
-kite_adj <- matrix(c(0, 1, 1, 1,  1, 0, 1, 1,  1, 1, 0, 0,  1, 1, 0, 0), 4, 4, byrow = TRUE,
-                   dimnames = list(kite_ids, kite_ids))
-kite <- as_net_frame(kite_adj, directed = FALSE, quiet = TRUE)
-kite_hand <- by_hand(kite_adj)
-first <- \(x) unname(x[1])
-list(
-  from_each_contact = round(kite_hand$C["E", ], 3),
-  by_hand = round(unlist(kite_hand$table[1, ]), 3),
-  engine = round(c(constraint = first(net_constraint(kite)), effective_size = first(net_effective_size(kite)),
-                   hierarchy = first(net_hierarchy(kite))), 3)
+kite <- net_frame(
+  data.frame(source = c("E", "E", "E", "A", "A"), target = c("A", "B", "C", "B", "C")),
+  nodes = data.frame(id = c("E", "A", "B", "C")),
+  directed = FALSE,
+  quiet = TRUE
 )
+round(data.frame(
+  constraint = net_constraint(kite),
+  effective_size = net_effective_size(kite),
+  hierarchy = net_hierarchy(kite),
+  row.names = c("E", "A", "B", "C")
+), 3)
+
+# The largest hierarchy among the ten friends.
+round(max(net_hierarchy(friends), na.rm = TRUE), 3)
+
+# TODO(code, R): the hand calculation (each contact's share p, the squared terms c_ij, the ratios r_j) needs net_constraint(detail = TRUE) to return the contact-by-contact pieces
 ```
 
 ::: {.code-output}
@@ -662,42 +599,16 @@ $engine
 ## Python
 
 ```python
-import numpy as np
-
-def by_hand(G):
-    """Constraint, effective size and hierarchy from their definitions, in list(G) order."""
-    A = nx.to_numpy_array(G, nodelist=list(G))      # A[i, j] is 1 when i and j are tied
-    n = A.sum(axis=1)                               # contacts of each person
-    P = A / n[:, None]                              # p_ij: the share of i's attention that goes to j
-    C = (P + P @ P) ** 2 * (A > 0)                  # c_ij, for the contacts j of i
-    t = ((A @ A) * A).sum(axis=1) / 2               # ties among each person's contacts
-    with np.errstate(all="ignore"):
-        r = C / (C.sum(axis=1) / n)[:, None]        # each contact's share relative to an even split
-        hierarchy = np.where(C > 0, r * np.log(r), 0).sum(axis=1) / (n * np.log(n))
-    return C, C.sum(axis=1), n - 2 * t / n, hierarchy
-
-C, cons, eff, hier = by_hand(friends)
-agree = lambda a, b: bool(np.allclose(a, b))
-print("hand and NetworkX agree: constraint", agree(cons, list(nx.constraint(friends).values())),
-      ", effective size", agree(eff, list(nx.effective_size(friends).values())))
-print(f"largest hierarchy among the ten people: {np.nanmax(hier):.3f}")
-
 # The kite: E is tied to A, B and C, and A is also tied to B and C.
 kite = nx.Graph()
 kite.add_nodes_from(["E", "A", "B", "C"])
 kite.add_edges_from([("E", "A"), ("E", "B"), ("E", "C"), ("A", "B"), ("A", "C")])
-C, cons, eff, hier = by_hand(kite)
-print("E's constraint from each contact:", {v: round(float(C[0, j]), 3) for j, v in enumerate(kite) if C[0, j] > 0})
-print(f"E by hand: constraint {cons[0]:.3f}, effective size {eff[0]:.3f}, hierarchy {hier[0]:.3f}")
 print(f"E in NetworkX: constraint {nx.constraint(kite)['E']:.3f}, effective size {nx.effective_size(kite)['E']:.3f}")
+# TODO(code, Python): hierarchy needs net_hierarchy(); NetworkX has no function for it.
 ```
 
 ::: {.code-output}
 ```text
-hand and NetworkX agree: constraint True , effective size True
-largest hierarchy among the ten people: 0.034
-E's constraint from each contact: {'A': 0.444, 'B': 0.198, 'C': 0.198}
-E by hand: constraint 0.840, effective size 1.667, hierarchy 0.074
 E in NetworkX: constraint 0.840, effective size 1.667
 ```
 :::
@@ -765,7 +676,7 @@ E in the engine: constraint 0.840, effective size 1.667, hierarchy 0.074
 
 :::
 
-The hand calculation and the functions agree on every person. In the friendship network no hierarchy is above about 0.03, because every ego network is small and its constraint is spread fairly evenly. In the kite, E's hierarchy is 0.074 and its constraint 0.840, with A carrying the largest share. Hierarchy is the least used of Burt's measures, and with so few contacts a value of a few hundredths shouldn't be read as a finding.
+In the Rust tab the hand calculation and the functions agree on every person (the R and Python tabs show only the function calls, and Python has no hierarchy). In the friendship network no hierarchy is above about 0.03, because every ego network is small and its constraint is spread fairly evenly. In the kite, E's hierarchy is 0.074 and its constraint 0.840, with A carrying the largest share. Hierarchy is the least used of Burt's measures, and with so few contacts a value of a few hundredths shouldn't be read as a finding.
 
 ### Weak ties and structural holes: what is claimed, and what has been found
 
@@ -810,19 +721,18 @@ Here is a small example: nine people in three teams, Design, Build and Sales, an
 ```r
 # Design: Ada, Ben, Cy.  Build: Dee, Eve, Flo.  Sales: Gus, Hal, Ivy.
 team_names <- c("Ada", "Ben", "Cy", "Dee", "Eve", "Flo", "Gus", "Hal", "Ivy")
-team <- rep(0:2, each = 3)
 # An arrow means: passes work to.
-work <- tibble(
-  source = c(0, 1, 2, 3, 4, 5, 3, 3, 6, 7),
-  target = c(1, 2, 3, 4, 5, 6, 0, 6, 7, 8)
-) |>
-  mutate(across(everything(), \(i) team_names[i + 1])) |>
-  net_frame(nodes = tibble(id = team_names, team = team), directed = TRUE)
+from <- c(0, 1, 2, 3, 4, 5, 3, 3, 6, 7)
+to <- c(1, 2, 3, 4, 5, 6, 0, 6, 7, 8)
+work <- net_frame(
+  data.frame(source = team_names[from + 1], target = team_names[to + 1]),
+  nodes = data.frame(id = team_names, team = rep(0:2, each = 3)),
+  directed = TRUE
+)
 work
 
 # Counts of each brokerage role per person, using the team column as the groups.
-net_brokerage(work, "team") |>
-  as_tibble()
+net_brokerage(work, "team")
 ```
 
 ::: {.code-output}
@@ -862,57 +772,12 @@ net_brokerage(work, "team") |>
 ## Python
 
 ```python
-# Design: Ada, Ben, Cy.  Build: Dee, Eve, Flo.  Sales: Gus, Hal, Ivy.
-team_names = ["Ada", "Ben", "Cy", "Dee", "Eve", "Flo", "Gus", "Hal", "Ivy"]
-team = [0, 0, 0, 1, 1, 1, 2, 2, 2]
-# An arrow means: passes work to.
-wsrc = [0, 1, 2, 3, 4, 5, 3, 3, 6, 7]
-wdst = [1, 2, 3, 4, 5, 6, 0, 6, 7, 8]
-work = nx.DiGraph()
-work.add_nodes_from(range(len(team_names)))
-work.add_edges_from(zip(wsrc, wdst))
-
-# NetworkX has no brokerage roles. Person j brokers (i, k) when i -> j -> k and
-# i does not go to k directly; the groups of the three people give the role.
-roles = ["coordinator", "itinerant", "representative", "gatekeeper", "liaison"]
-counts = {j: dict.fromkeys(roles, 0) for j in work}
-for j in work:
-    for i in work.predecessors(j):
-        for k in work.successors(j):
-            if i == k or work.has_edge(i, k):
-                continue
-            gi, gj, gk = team[i], team[j], team[k]
-            if gi == gj == gk:
-                role = "coordinator"
-            elif gi == gk:
-                role = "itinerant"
-            elif gi == gj:
-                role = "representative"
-            elif gj == gk:
-                role = "gatekeeper"
-            else:
-                role = "liaison"
-            counts[j][role] += 1
-
-heads = " ".join(f"{r[:5]:>5}" for r in roles + ["total"])
-print(f"{'':<4} {heads}")
-for j, name in enumerate(team_names):
-    row = [counts[j][r] for r in roles]
-    print(f"{name:<4} " + " ".join(f"{v:>5}" for v in row + [sum(row)]))
+# TODO(code, Python): needs brokerage roles (net_brokerage()); NetworkX has none.
 ```
 
 ::: {.code-output}
 ```text
-     coord itine repre gatek liais total
-Ada      0     0     0     1     0     1
-Ben      1     0     0     0     0     1
-Cy       0     0     1     0     0     1
-Dee      0     1     0     1     1     3
-Eve      1     0     0     0     0     1
-Flo      0     0     1     0     0     1
-Gus      0     0     0     2     0     2
-Hal      1     0     0     0     0     1
-Ivy      0     0     0     0     0     0
+TODO(output)
 ```
 :::
 
@@ -1011,12 +876,15 @@ For the friendship network, call the first five people (Ana through Eli) one gro
 ```r
 # Group 0 is the first five people, group 1 the other five.
 group <- rep(0:1, each = 5)
-bind_rows(
-  tibble(scope = "whole network", ei = as.vector(net_ei_index(friends, group, scope = "global"))),
-  tibble(scope = paste("group", 0:1), ei = as.vector(net_ei_index(friends, group, scope = "group"))),
-  tibble(scope = people, ei = as.vector(net_ei_index(friends, group, scope = "node")))
-) |>
-  mutate(ei = round(ei, 3))
+ei <- c(
+  net_ei_index(friends, group, scope = "global"),
+  net_ei_index(friends, group, scope = "group"),
+  net_ei_index(friends, group, scope = "node")
+)
+data.frame(
+  scope = c("whole network", "group 0", "group 1", people),
+  ei = round(as.vector(ei), 3)
+)
 ```
 
 ::: {.code-output}
@@ -1043,43 +911,12 @@ bind_rows(
 ## Python
 
 ```python
-# Group 0 is the first five people, group 1 the other five.
-group = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
-
-def ei(external, internal):
-    return (external - internal) / (external + internal)
-
-# Whole network: each tie counts once, as external or internal.
-ext = sum(group[u] != group[v] for u, v in friends.edges)
-print(f"whole network  {ei(ext, friends.number_of_edges() - ext):+.3f}")
-
-# A group: ties with one end in the group, split by where the other end is.
-for g in (0, 1):
-    inside = sum(group[u] == group[v] == g for u, v in friends.edges)
-    outside = sum(group[u] != group[v] and g in (group[u], group[v]) for u, v in friends.edges)
-    print(f"group {g}        {ei(outside, inside):+.3f}")
-
-# A person: their own ties, split the same way.
-for i, name in enumerate(names):
-    outside = sum(group[j] != group[i] for j in friends[i])
-    print(f"{name:<5}          {ei(outside, friends.degree(i) - outside):+.3f}")
+# TODO(code, Python): needs the E-I index (net_ei_index()) by whole network, group and person; NetworkX has none.
 ```
 
 ::: {.code-output}
 ```text
-whole network  -0.333
-group 0        -0.077
-group 1        +0.091
-Ana            -0.500
-Ben            -0.500
-Cleo           -0.333
-Dev            -0.333
-Eli            -0.333
-Fay            +0.200
-Gus            +0.200
-Hana           -1.000
-Ivo            -1.000
-Jo             -1.000
+TODO(output)
 ```
 :::
 
@@ -1143,72 +980,24 @@ They answer different questions. The share in own group looks only at ego's own 
 ## R
 
 ```r
-# Groups as in the E-I block: the first five people and the other five.
-indicator <- outer(group, 0:1, \(g, k) as.numeric(g == k)) # one column per group
-counts <- adj %*% indicator                                 # how many alters each person has in each group
-p <- counts / rowSums(counts)
-tibble(
-  person = people,
-  alters = as.vector(rowSums(counts)),
-  blau = as.vector(1 - rowSums(p^2)),
-  iqv = blau / (1 - 1 / 2),
-  own_group = p[cbind(seq_along(group), group + 1)]
-) |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
-
-# Share in own group if contacts were drawn at random from everyone else: (5 - 1) / (10 - 1).
-round((5 - 1) / (length(people) - 1), 3)
+# TODO(code, R): needs the diversity of an ego's alters by group (Blau index, IQV, share in own group), e.g. net_ego_diversity(x, groups).
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 10 × 5
-   person alters  blau   iqv own_group
-   <chr>   <dbl> <dbl> <dbl>     <dbl>
- 1 Ana         4 0.375 0.75      0.75 
- 2 Ben         4 0.375 0.75      0.75 
- 3 Cleo        3 0.444 0.889     0.667
- 4 Dev         6 0.444 0.889     0.667
- 5 Eli         3 0.444 0.889     0.667
- 6 Fay         5 0.48  0.96      0.4  
- 7 Gus         5 0.48  0.96      0.4  
- 8 Hana        3 0     0         1    
- 9 Ivo         2 0     0         1    
-10 Jo          1 0     0         1    
-[1] 0.444
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# Groups as in the E-I block: the first five people and the other five.
-k = 2
-print(f"{'':<5} {'alters':>6} {'Blau':>6} {'IQV':>6} {'own group':>9}")
-for i, name in enumerate(names):
-    alters = list(friends[i])
-    p = np.bincount([group[j] for j in alters], minlength=k) / len(alters)
-    blau = 1 - (p ** 2).sum()
-    print(f"{name:<5} {len(alters):>6} {blau:>6.3f} {blau / (1 - 1 / k):>6.3f} {p[group[i]]:>9.3f}")
-
-# Share in own group if contacts were drawn at random from everyone else: (5 - 1) / (10 - 1).
-print(f"expected share in own group at random: {(5 - 1) / (len(names) - 1):.3f}")
+# TODO(code, Python): needs the diversity of an ego's alters by group (Blau index, IQV, share in own group); NetworkX has none.
 ```
 
 ::: {.code-output}
 ```text
-      alters   Blau    IQV own group
-Ana        4  0.375  0.750     0.750
-Ben        4  0.375  0.750     0.750
-Cleo       3  0.444  0.889     0.667
-Dev        6  0.444  0.889     0.667
-Eli        3  0.444  0.889     0.667
-Fay        5  0.480  0.960     0.400
-Gus        5  0.480  0.960     0.400
-Hana       3  0.000  0.000     1.000
-Ivo        2  0.000  0.000     1.000
-Jo         1  0.000  0.000     1.000
-expected share in own group at random: 0.444
+TODO(output)
 ```
 :::
 
@@ -1273,30 +1062,26 @@ There are three common ways to simplify a directed network, and they give three 
 
 ```r
 # Krackhardt's friendship relation: row i, column j is 1 when manager i names manager j as a friend.
-named <- read.csv("data/krackhardt/edges.csv") |>
-  filter(relation == "friendship") |>
-  with({
-    m <- matrix(0, 21, 21)
-    m[cbind(from, to)] <- 1
-    m
-  })
+edges_k <- read.csv("data/krackhardt/edges.csv")
+friendship <- edges_k[edges_k$relation == "friendship", ]
+named <- matrix(0, 21, 21)
+named[cbind(friendship$from, friendship$to)] <- 1
 either <- pmax(named, t(named)) # a tie if either manager names the other
 both <- named * t(named)        # a tie only if both name each other
 
-as_graph <- \(m, directed) as_net_frame(m, directed = directed, quiet = TRUE)
-c_arcs <- net_constraint(as_graph(named, TRUE))
-c_either <- net_constraint(as_graph(either, FALSE))
-c_both <- net_constraint(as_graph(both, FALSE))
-least <- \(x, k = 3) order(x)[seq_len(k)] # not-a-number sorts last
+c_arcs <- net_constraint(as_net_frame(named, directed = TRUE, quiet = TRUE))
+c_either <- net_constraint(as_net_frame(either, directed = FALSE, quiet = TRUE))
+c_both <- net_constraint(as_net_frame(both, directed = FALSE, quiet = TRUE))
 
-tibble(
+round(c(
   arcs = sum(named), pairs_either = sum(either) / 2, pairs_both = sum(both) / 2,
   rank_cor_arcs_vs_either = cor(c_arcs, c_either, method = "spearman"),
   mean_gap = mean(abs(c_arcs - c_either)), largest_gap = max(abs(c_arcs - c_either)),
   no_mutual_friend = sum(is.na(c_both))
-) |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
-list(arcs = least(c_arcs), either = least(c_either), both = least(c_both))
+), 3)
+
+# The three least constrained managers (not-a-number sorts last).
+data.frame(arcs = order(c_arcs)[1:3], either = order(c_either)[1:3], both = order(c_both)[1:3])
 ```
 
 ::: {.code-output}
@@ -1321,6 +1106,8 @@ $both
 
 ```python
 import csv
+import numpy as np
+from scipy.stats import spearmanr
 
 # Krackhardt's friendship relation: an arc i -> j means manager i names manager j as a friend.
 with open("data/krackhardt/edges.csv") as f:
@@ -1332,19 +1119,11 @@ either = named.to_undirected()   # a tie if either manager names the other
 both = nx.Graph()
 both.add_nodes_from(range(21))
 both.add_edges_from((u, v) for u, v in arcs if named.has_edge(v, u))   # a tie only if both name each other
-
-def ranks(x):
-    # 1 for the smallest; tied values share the average of their ranks
-    x = np.asarray(x)
-    return np.array([(x < v).sum() + ((x == v).sum() + 1) / 2 for v in x])
-
-def spearman(x, y):
-    return np.corrcoef(ranks(x), ranks(y))[0, 1]
-
 c_arcs, c_either, c_both = (np.array(list(nx.constraint(g).values())) for g in (named, either, both))
-least = lambda x, k=3: [i + 1 for i in sorted((i for i in range(len(x)) if x[i] == x[i]), key=lambda i: (x[i], i))[:k]]
+# Managers numbered from 1, smallest first; not-a-number sorts last.
+least = lambda x, k=3: [int(i) + 1 for i in np.argsort(x, kind="stable")[:k]]
 print(f"{named.number_of_edges()} arcs; {either.number_of_edges()} pairs tied by either manager, {both.number_of_edges()} by both")
-print(f"rank correlation of constraint, arcs vs either: {spearman(c_arcs, c_either):.3f}")
+print(f"rank correlation of constraint, arcs vs either: {spearmanr(c_arcs, c_either)[0]:.3f}")
 print(f"gap between the two: mean {np.abs(c_arcs - c_either).mean():.3f}, largest {np.abs(c_arcs - c_either).max():.3f}")
 print(f"managers with no mutual friend, so no constraint: {int(np.isnan(c_both).sum())}")
 print(f"three least constrained managers: arcs {least(c_arcs)}, either {least(c_either)}, both {least(c_both)}")
@@ -1446,13 +1225,13 @@ club <- as_net_frame(strength, directed = FALSE, weighted = TRUE, quiet = TRUE)
 c_plain <- net_constraint(club, weighted = FALSE) # every tie counts as 1
 c_valued <- net_constraint(club, weighted = TRUE) # ties weighted by contexts
 
-list(
-  ties = nrow(contexts), contexts = range(contexts$contexts),
-  rank_cor = round(cor(c_plain, c_valued, method = "spearman"), 3),
-  four_least_constrained = list(plain = least(c_plain, 4), valued = least(c_valued, 4))
+c(
+  ties = nrow(contexts), fewest_contexts = min(contexts$contexts), most_contexts = max(contexts$contexts),
+  rank_cor = round(cor(c_plain, c_valued, method = "spearman"), 3)
 )
-tibble(member = c(1, 34, 3), plain = c_plain[member], valued = c_valued[member]) |>
-  mutate(across(c(plain, valued), \(x) round(x, 3)))
+data.frame(plain = order(c_plain)[1:4], valued = order(c_valued)[1:4]) # the four least constrained
+member <- c(1, 34, 3)
+round(data.frame(plain = c_plain[member], valued = c_valued[member], row.names = paste("member", member)), 3)
 ```
 
 ::: {.code-output}
@@ -1494,9 +1273,8 @@ club.add_nodes_from(range(34))
 club.add_weighted_edges_from(contexts)
 c_plain = np.array(list(nx.constraint(club).values()))                    # every tie counts as 1
 c_valued = np.array(list(nx.constraint(club, weight="weight").values()))  # ties weighted by contexts
-
 print(f"{len(contexts)} ties, contexts from {min(c[2] for c in contexts):.0f} to {max(c[2] for c in contexts):.0f}")
-print(f"rank correlation of constraint, plain vs valued: {spearman(c_plain, c_valued):.3f}")
+print(f"rank correlation of constraint, plain vs valued: {spearmanr(c_plain, c_valued)[0]:.3f}")
 print(f"four least constrained members: plain {least(c_plain, 4)}, valued {least(c_valued, 4)}")
 for member in (1, 34, 3):
     print(f"member {member}: constraint {c_plain[member - 1]:.3f} plain, {c_valued[member - 1]:.3f} valued")
@@ -1548,7 +1326,7 @@ member 3: constraint 0.185 plain, 0.256 valued
 
 Strengths change levels more than order: the rank correlation is 0.970, and three of the four least constrained members are the same, although member 32 gives way to member 33. The levels move because shares are squared. When a few ties are heavy, a person's attention piles onto them, the shares are uneven, and the sum of squares goes up, so members 1, 34 and 3 all get a higher constraint once strengths count (member 3 goes from 0.185 to 0.256). Whether strengths *should* count depends on the question. If "a tie" means "a pair who ever met", count ties. If it means "how much of their time", count the strengths, and say which.
 
-**Where tools differ.** What I observed: NetworkX and knappnet give the same constraint on the directed friendship network and on the valued karate club (compare the Python and Rust tabs), and both read weights as strengths. NetworkX has no function for hierarchy, so the hand calculation earlier was the only check there. Past what I ran, knappnet's documentation lists two places where programs disagree. One is self-loops, which NetworkX counts in the row sums and knappnet and igraph ignore. The other is nodes without contacts, where knappnet returns NaN and igraph returns 0 for a node with only loops. I did not run igraph, the R sna package or UCINET for this chapter, so I can't say how they differ here. Before you compare numbers across programs, run each on the ten-person network, whose values are all printed above, and write down the convention you used.
+**Where tools differ.** What I observed: NetworkX and knappnet give the same constraint on the directed friendship network and on the valued karate club (compare the Python and Rust tabs), and both read weights as strengths. NetworkX has no function for hierarchy, so the hand calculation in the Rust tab earlier was the only check there. Past what I ran, knappnet's documentation lists two places where programs disagree. One is self-loops, which NetworkX counts in the row sums and knappnet and igraph ignore. The other is nodes without contacts, where knappnet returns NaN and igraph returns 0 for a node with only loops. I did not run igraph, the R sna package or UCINET for this chapter, so I can't say how they differ here. Before you compare numbers across programs, run each on the ten-person network, whose values are all printed above, and write down the convention you used.
 
 ## Seen through a sample of egos
 
@@ -1571,135 +1349,24 @@ The two networks are small enough to see all of it, so the numbers below are exa
 ## R
 
 ```r
-# The Florentine families: a tie means a marriage.
-florence <- read.csv("data/florentine/edges.csv")
-ids <- sort(unique(c(florence$source, florence$target)))
-marriages <- matrix(0, length(ids), length(ids), dimnames = list(ids, ids))
-marriages[cbind(florence$source, florence$target)] <- 1
-marriages <- pmax(marriages, t(marriages))
-
-# What an ego-network study can compute for every person, next to the whole-network value.
-seen_from_egos <- \(adj, m = 5) {
-  n <- nrow(adj)
-  whole <- as_net_frame(adj, directed = FALSE, quiet = TRUE)
-  # A measure computed on the ego network alone: ego, its alters, and the ties among the alters.
-  ego_only <- \(measure) map_dbl(seq_len(n), \(i) {
-    keep <- which(adj[i, ] > 0 | seq_len(n) == i)
-    sub <- as_net_frame(adj[keep, keep, drop = FALSE], directed = FALSE, quiet = TRUE)
-    unname(measure(sub)[match(i, keep)])
-  })
-  degree <- unname(rowSums(adj))
-  w <- map(list(constraint = net_constraint(whole), size = net_effective_size(whole),
-                betweenness = net_betweenness(whole)), unname)
-  e <- list(constraint = ego_only(net_constraint), size = ego_only(net_effective_size),
-            betweenness = unname(net_ego_betweenness(whole)))
-  c(
-    n,
-    mean(degree),
-    sum(degree^2) / sum(degree),
-    mean(degree > 5),
-    max(abs(e$size - w$size)),
-    mean(w$constraint),
-    mean(e$constraint),
-    mean(e$constraint > w$constraint + 1e-12),
-    cor(e$constraint, w$constraint, method = "spearman"),
-    cor(e$betweenness, w$betweenness, method = "spearman"),
-    mean(w$size),
-    sd(w$size) * sqrt((1 - m / n) / m)
-  )
-}
-
-tibble(
-  quantity = c("people", "mean contacts", "mean contacts, person reached by a tie", "share with more than 5 contacts",
-               "eff. size, largest gap ego vs whole", "constraint, mean, whole network",
-               "constraint, mean, ego networks alone", "constraint, share higher from ego alone",
-               "constraint, rank cor. ego alone vs whole", "ego betweenness vs betweenness, rank cor.",
-               "effective size, mean", "effective size, SE of mean of 5 people"),
-  krackhardt = seen_from_egos(either),
-  florentine = seen_from_egos(marriages)
-) |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
+# TODO(code, R): needs ego-network versions of constraint, effective size and betweenness (each measure computed on a person's own ego network alone), e.g. net_ego_measures(x, measure) or net_egos() with a measure argument.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 12 × 3
-   quantity                                  krackhardt florentine
-   <chr>                                          <dbl>      <dbl>
- 1 people                                        21         15    
- 2 mean contacts                                  7.52       2.67 
- 3 mean contacts, person reached by a tie         9.22       3.35 
- 4 share with more than 5 contacts                0.714      0.067
- 5 eff. size, largest gap ego vs whole            0          0    
- 6 constraint, mean, whole network                0.292      0.586
- 7 constraint, mean, ego networks alone           0.499      0.643
- 8 constraint, share higher from ego alone        1          0.467
- 9 constraint, rank cor. ego alone vs whole       0.917      0.864
-10 ego betweenness vs betweenness, rank cor.      0.977      0.871
-11 effective size, mean                           4.19       2.31 
-12 effective size, SE of mean of 5 people         1.00       0.463
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# The Florentine families: a tie means a marriage.
-with open("data/florentine/edges.csv") as f:
-    marriages = nx.Graph([tuple(r) for r in list(csv.reader(f))[1:]])
-
-def seen_from_egos(G, m=5):
-    """What an ego-network study can compute for every person, next to the whole-network value."""
-    nodes = list(G)
-    n = len(nodes)
-    degree = np.array([G.degree(v) for v in nodes], dtype=float)
-    whole = {"constraint": nx.constraint(G), "size": nx.effective_size(G), "betweenness": nx.betweenness_centrality(G, normalized=False)}
-    w = {k: np.array([whole[k][v] for v in nodes]) for k in whole}
-    # Each measure computed on the ego network alone: ego, its alters, and the ties among the alters.
-    egos = [nx.ego_graph(G, v) for v in nodes]
-    e = {"constraint": np.array([nx.constraint(g)[v] for g, v in zip(egos, nodes)]),
-         "size": np.array([nx.effective_size(g)[v] for g, v in zip(egos, nodes)]),
-         "betweenness": np.array([nx.betweenness_centrality(g, normalized=False)[v] for g, v in zip(egos, nodes)])}
-    return [
-        n,
-        degree.mean(),
-        (degree ** 2).sum() / degree.sum(),
-        (degree > 5).mean(),
-        np.abs(e["size"] - w["size"]).max(),
-        w["constraint"].mean(),
-        e["constraint"].mean(),
-        (e["constraint"] > w["constraint"] + 1e-12).mean(),
-        spearman(e["constraint"], w["constraint"]),
-        spearman(e["betweenness"], w["betweenness"]),
-        w["size"].mean(),
-        w["size"].std(ddof=1) * np.sqrt((1 - m / n) / m),
-    ]
-
-quantities = ["people", "mean contacts", "mean contacts, person reached by a tie", "share with more than 5 contacts",
-              "eff. size, largest gap ego vs whole", "constraint, mean, whole network",
-              "constraint, mean, ego networks alone", "constraint, share higher from ego alone",
-              "constraint, rank cor. ego alone vs whole", "ego betweenness vs betweenness, rank cor.",
-              "effective size, mean", "effective size, SE of mean of 5 people"]
-print(f"{'':<42} {'Krackhardt':>10} {'Florentine':>10}")
-for q, a, b in zip(quantities, seen_from_egos(either), seen_from_egos(marriages)):
-    print(f"{q:<42} {a:>10.0f} {b:>10.0f}" if q == "people" else f"{q:<42} {a:>10.3f} {b:>10.3f}")
+# TODO(code, Python): needs ego-network versions of constraint, effective size and betweenness (each measure computed on a person's own ego network alone); NetworkX only has ego_graph().
 ```
 
 ::: {.code-output}
 ```text
-                                           Krackhardt Florentine
-people                                             21         15
-mean contacts                                   7.524      2.667
-mean contacts, person reached by a tie          9.215      3.350
-share with more than 5 contacts                 0.714      0.067
-eff. size, largest gap ego vs whole             0.000      0.000
-constraint, mean, whole network                 0.292      0.586
-constraint, mean, ego networks alone            0.499      0.643
-constraint, share higher from ego alone         1.000      0.467
-constraint, rank cor. ego alone vs whole        0.917      0.864
-ego betweenness vs betweenness, rank cor.       0.977      0.871
-effective size, mean                            4.194      2.311
-effective size, SE of mean of 5 people          1.005      0.463
+TODO(output)
 ```
 :::
 
@@ -1822,41 +1489,25 @@ Before you report that a person is a broker, try to break the result. Three chec
 ## R
 
 ```r
-# The Medici's constraint and effective size in a marriage table, and the family with the lowest constraint.
-medici_profile <- \(adj) {
-  g <- as_net_frame(adj, directed = FALSE, quiet = TRUE)
-  tibble(constraint = unname(net_constraint(g))[rownames(adj) == "Medici"],
-         effective_size = unname(net_effective_size(g))[rownames(adj) == "Medici"],
-         least_constrained = rownames(adj)[which.min(net_constraint(g))])
-}
-least_family <- \(adj) medici_profile(adj)$least_constrained
+# The Florentine families: a tie means a marriage.
+florence <- read.csv("data/florentine/edges.csv")
+ids <- sort(unique(c(florence$source, florence$target)))
+marriages <- matrix(0, length(ids), length(ids), dimnames = list(ids, ids))
+marriages[cbind(florence$source, florence$target)] <- 1
+marriages <- pmax(marriages, t(marriages))
+families <- as_net_frame(marriages, directed = FALSE, quiet = TRUE)
+medici <- which(ids == "Medici")
 
-# 1. Drop one alter at a time.
-partners <- sort(names(which(marriages["Medici", ] > 0)))
-bind_rows(
-  medici_profile(marriages) |> mutate(removed = "(nobody)", .before = 1),
-  map(partners, \(a) medici_profile(marriages[rownames(marriages) != a, colnames(marriages) != a]) |>
-        mutate(removed = a, .before = 1)) |> list_rbind()
-) |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
-
-# 2. Drop one marriage at a time.
-map_chr(seq_len(nrow(florence)), \(k) {
-  m <- marriages
-  m[florence$source[k], florence$target[k]] <- 0
-  m[florence$target[k], florence$source[k]] <- 0
-  least_family(m)
-}) |>
-  table()
+# TODO(code, R): 1. dropping one alter at a time and 2. dropping one marriage at a time need a leave-one-out helper (net_stability()) that refits a measure after each removal
 
 # 3. Random networks with every family's degree, and the Medici's constraint in each.
-medici <- which(rownames(marriages) == "Medici")
-observed <- medici_profile(marriages)$constraint
-null <- net_random_config(unname(rowSums(marriages)), simple = TRUE, max_tries = 100000, reps = 500, seed = 1) |>
-  map_dbl(\(h) net_constraint(h)[medici])
-tibble(draws = length(null), observed = observed, null_mean = mean(null),
-       share_at_or_below_observed = mean(null <= observed + 1e-12)) |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
+observed <- unname(net_constraint(families))[medici]
+draws <- net_random_config(unname(rowSums(marriages)), simple = TRUE, max_tries = 100000, reps = 500, seed = 1)
+null <- sapply(draws, \(h) unname(net_constraint(h))[medici])
+round(c(
+  draws = length(null), observed = observed, null_mean = mean(null),
+  share_at_or_below_observed = mean(null <= observed + 1e-12)
+), 3)
 ```
 
 ::: {.code-output}
@@ -1884,28 +1535,10 @@ Guadagni   Medici
 ## Python
 
 ```python
-# The family with the lowest constraint (ignoring families left with no marriage, whose constraint is undefined).
-def least(G):
-    c = nx.constraint(G)
-    return min((v for v in G if c[v] == c[v]), key=lambda v: c[v])
-
-# 1. Drop one alter at a time.
-print(f"{'removed':<13} {'constraint':>10} {'eff. size':>9}  least constrained")
-print(f"{'(nobody)':<13} {nx.constraint(marriages)['Medici']:>10.3f} {nx.effective_size(marriages)['Medici']:>9.3f}  {least(marriages)}")
-for a in sorted(marriages["Medici"]):
-    h = marriages.copy()
-    h.remove_node(a)
-    print(f"{a:<13} {nx.constraint(h)['Medici']:>10.3f} {nx.effective_size(h)['Medici']:>9.3f}  {least(h)}")
-
-# 2. Drop one marriage at a time.
-winners = {}
-for u, v in list(marriages.edges):
-    h = marriages.copy()
-    h.remove_edge(u, v)
-    top = least(h)
-    winners[top] = winners.get(top, 0) + 1
-print("least constrained after dropping each marriage in turn:", ", ".join(f"{k} {n}" for k, n in sorted(winners.items(), key=lambda kv: -kv[1])))
-
+# The Florentine families: a tie means a marriage.
+with open("data/florentine/edges.csv") as f:
+    marriages = nx.Graph([tuple(r) for r in list(csv.reader(f))[1:]])
+# TODO(code, Python): 1. dropping one alter at a time and 2. dropping one marriage at a time need a leave-one-out helper (net_stability()) that refits a measure after each removal.
 # 3. Random networks with every family's degree (ten accepted swaps per marriage), and the Medici's constraint in each.
 observed = nx.constraint(marriages)["Medici"]
 null = []
@@ -1919,15 +1552,6 @@ print(f"{len(null)} random networks with the same degrees: mean {np.mean(null):.
 
 ::: {.code-output}
 ```text
-removed       constraint eff. size  least constrained
-(nobody)           0.210     5.667  Medici
-Acciaiuoli         0.262     4.600  Guadagni
-Albizzi            0.262     4.600  Medici
-Barbadori          0.262     4.600  Guadagni
-Ridolfi            0.200     5.000  Medici
-Salviati           0.262     4.600  Guadagni
-Tornabuoni         0.200     5.000  Medici
-least constrained after dropping each marriage in turn: Medici 16, Guadagni 4
 500 random networks with the same degrees: mean 0.244; share at or below the observed 0.210: 0.344
 ```
 :::
