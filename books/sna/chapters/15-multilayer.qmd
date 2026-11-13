@@ -155,6 +155,21 @@ A tiny example you can check by hand. Three people, Ana, Ben and Cleo, and two l
 
 Two pairs are tied in advice, one pair in lunch, and one pair (Ana and Ben) in both. Three words from this chapter fit on that table. The *overlap* is the count of pairs in both layers, here 1. The **Jaccard index** divides the overlap by the number of pairs tied in either layer, here 1 out of 2, so 0.5. And a *conditional probability* asks about one layer given the other: of the two advice pairs, one is also a lunch pair, so the chance of lunch given advice is 1 in 2, while of the one lunch pair, every one is an advice pair, so the chance of advice given lunch is 1.
 
+Now the same ideas with symbols, so they still work when the layers are big. Write $a_{ij}$ for 1 when person $i$ names person $j$ in the first layer and 0 otherwise, and $b_{ij}$ for the same in the second. Let $N$ be the number of pairs that could be tied: $n(n-1)$ ordered pairs, or $n(n-1)/2$ when direction doesn't matter. Then
+
+$$
+m_A = \sum_{i \ne j} a_{ij}, \qquad
+o = \sum_{i \ne j} a_{ij}\, b_{ij}, \qquad
+J = \frac{o}{m_A + m_B - o}, \qquad
+P(B \mid A) = \frac{o}{m_A}.
+$$
+
+Here $m_A$ and $m_B$ count the ties in each layer, $o$ is the overlap, $J$ is the Jaccard index and $P(B \mid A)$ is the share of the first layer's ties that are also in the second. Three more quantities will earn their keep. The *base rate* of the second layer is $m_B / N$. The **lift** is $P(B \mid A)$ divided by that base rate: how many times more likely a second tie is where a first one sits than at a random pair. And if the ties of the two layers were scattered independently, the overlap you'd *expect* is $m_A m_B / N$.
+
+Check them on the table. Here $N = 3$, $m_A = 2$, $m_B = 1$ and $o = 1$, so $J = 1/2$, $P(\text{lunch} \mid \text{advice}) = 1/2$, the base rate of lunch is $1/3$ and the lift is $1.5$. The overlap expected by luck is $2 \times 1 / 3 = 0.67$, so the observed 1 is a little more than luck, though with three pairs nothing could be called surprising. One more fact, which matters later: two layers with $m_A$ and $m_B$ ties can share at most $\min(m_A, m_B)$ of them, so $J$ can never be higher than $\min(m_A, m_B) / \max(m_A, m_B)$, a **ceiling**. Here the ceiling is $1/2$, and Ana, Ben and Cleo sit right at it.
+
+Comparing several relations among the same people has a long history in sociology. White, Boorman and Breiger built their blockmodels of roles and positions from several networks at once [@white1976social], and Breiger and Pattison studied compound relations such as "friend of a boss" as the building blocks of roles [@breiger1986cumulated]. The newer network-science literature added the vocabulary of layers and measures such as edge overlap [@battiston2014structural], inside a general framework [@kivela2014multilayer]. The arithmetic above is the common core.
+
 Is the knappnet code for this a multilayer object? It can be. In R a multiplex network with a `relation` role is split into layers with `net_split_relations()`, and `net_as_multilayer()` adds the coupling ties for the general case. Below we mostly use plain tables, one per layer, because each step is then visible.
 
 ## Overlap and redundancy
@@ -319,6 +334,113 @@ Reporting is the outlier. Of the 20 reporting arcs, 19 are advice arcs: a manage
 :::
 
 **Redundancy** is the idea behind this arithmetic. Two layers are redundant when one tells you what the other would. If advice and friendship were identical, you'd only need to ask one question. The overlap numbers say they're neither identical nor independent. Whether the overlap is high enough to treat the layers as one is not a statistical question. It depends on what you're about to do with the answer.
+
+### Two yardsticks for an overlap number
+
+A Jaccard of 0.26 sounds low, and 0.10 sounds lower. But how high *could* it be, and how high would it be by luck? Both answers come from the symbols above and need no simulation. The code prints, for every pair of layers, the two layer sizes, the overlap, the overlap expected by luck ($m_A m_B / N$), the lift, the Jaccard index, its ceiling and the share of the smaller layer found in the larger one ($o / \min(m_A, m_B)$).
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+off <- \(m) m[row(m) != col(m)]
+budget <- \(x, y) {
+  x <- off(x)
+  y <- off(y)
+  both <- sum(x * y)
+  expected <- sum(x) * sum(y) / length(x)
+  tibble(
+    in_a = sum(x), in_b = sum(y), both,
+    expected = round(expected, 1),
+    lift = round(both / expected, 2),
+    jaccard = round(both / (sum(x) + sum(y) - both), 2),
+    ceiling = round(min(sum(x), sum(y)) / max(sum(x), sum(y)), 2),
+    share_of_smaller = round(both / min(sum(x), sum(y)), 2)
+  )
+}
+
+pairs |>
+  bind_cols(map2(pairs$a, pairs$b, \(x, y) budget(layer[[x]], layer[[y]])) |> list_rbind())
+```
+
+::: {.code-output}
+```text
+```
+:::
+
+## Python
+
+```python
+off = ~np.eye(21, dtype=bool)
+head = "layers                      in A  in B  both  expected  lift  Jaccard  ceiling  share of smaller"
+
+def budget(name, x, y):
+    # x and y hold a 0 or 1 for every ordered pair of people
+    mx, my, both = x.sum(), y.sum(), (x & y).sum()
+    expected = mx * my / len(x)
+    print(f"{name:<27} {mx:>4} {my:>5} {both:>5} {expected:>9.1f} {both / expected:>5.2f} "
+          f"{both / (mx + my - both):>8.2f} {min(mx, my) / max(mx, my):>8.2f} {both / min(mx, my):>9.2f}")
+
+print(head)
+for a, b in pairs:
+    budget(f"{a} & {b}", layer[a][off], layer[b][off])
+```
+
+::: {.code-output}
+```text
+layers                      in A  in B  both  expected  lift  Jaccard  ceiling  share of smaller
+advice & friendship          190   102    60      46.1  1.30     0.26     0.54      0.59
+advice & reports_to          190    20    19       9.0  2.10     0.10     0.11      0.95
+friendship & reports_to      102    20    12       4.9  2.47     0.11     0.20      0.60
+```
+:::
+
+## Rust
+
+```rust
+// Every ordered pair of managers, 1 if tied in the layer.
+let flat = |k: usize| -> Vec<f64> {
+    (0..21).flat_map(|i| (0..21).map(move |j| (i, j))).filter(|&(i, j)| i != j).map(|(i, j)| layer[k][i][j] as f64).collect()
+};
+let head = "layers                      in A  in B  both  expected  lift  Jaccard  ceiling  share of smaller";
+let budget = |name: String, x: &[f64], y: &[f64]| {
+    let (mx, my) = (x.iter().sum::<f64>(), y.iter().sum::<f64>());
+    let both: f64 = x.iter().zip(y).map(|(a, b)| a * b).sum();
+    let expected = mx * my / x.len() as f64;
+    println!("{:<27} {:>4} {:>5} {:>5} {:>9.1} {:>5.2} {:>8.2} {:>8.2} {:>9.2}", name, mx, my, both, expected, both / expected,
+             both / (mx + my - both), mx.min(my) / mx.max(my), both / mx.min(my));
+};
+
+println!("{head}");
+for (a, b) in pairs {
+    budget(format!("{} & {}", names[a], names[b]), &flat(a), &flat(b));
+}
+```
+
+::: {.code-output}
+```text
+```
+:::
+
+:::
+
+Read the ceiling column first. Advice and reporting have a Jaccard of 0.10, which sounds like almost no overlap. But reporting has only 20 arcs, so no layer of 190 arcs could share more than 20 of them with it, and the highest Jaccard possible is 0.11. The observed 0.10 is within a hair of that. The last column says the same thing in a way that survives unequal sizes: 95 percent of the reporting arcs are advice arcs. When one layer is much smaller than the other, the Jaccard index is bound to look small, and the share of the smaller layer found in the larger is the more honest number. Advice and friendship are the opposite case: a ceiling of 0.54 and an observed 0.26, so about half the room is used.
+
+Now the luck column. If advice and friendship were scattered independently over the 420 ordered pairs, they would share about 46 arcs. They share 60, the lift of 1.3 we met before. Advice and reporting would share about 9 and share 19; friendship and reporting would share about 5 and share 12. Notice what the lift does and doesn't do: it is large for the two pairs involving reporting, but that is partly because reporting is a small layer, where a handful of extra shared arcs moves the ratio a lot. Big lifts on small layers are easy to get and hard to interpret. The QAP test later in the chapter asks the better question, of whether the overlap beats what relabeling the people gives.
+
+### What overlap means in different settings
+
+The same number can mean different things depending on what the layers are. Here are four settings, with what a high and a low overlap would suggest and what neither one shows.
+
+| Setting | High overlap | Low overlap | What it does not show |
+| --- | --- | --- | --- |
+| Families bound by marriage and by business (the kind of setting studied in @padgett1993robust) | The same pairs are bound in more than one way, so one kind of tie may reinforce the other. | Each kind of tie links different pairs, so together they reach more of the network. | Which tie came first, or whether either was chosen for the sake of the other. |
+| An office: advice, friendship and reporting lines (this chapter) | The formal chart and the informal routes coincide, as with advice and reporting here. | Informal routes run around the chart. | Whether the overlap is choice or design: a boss is the person you are meant to ask. |
+| Transport or supply: rail and road links between towns, or two kinds of contract between firms | Redundancy. If the layers fail independently, one can cover for the other. | The layers complement each other, and losing one loses connections the other doesn't have. | Whether the layers share a weak point such as the same bridge or the same supplier. Redundancy is a claim to test, not to assume. |
+| An online platform: following, replying, sharing | Accounts that follow each other also interact, so the follow ties carry real contact. | Following is mostly one-way broadcast, with little interaction behind it. | What the ties mean to people. The interface, which suggests who to follow and who to reply to, shapes the overlap. |
+
+In every row, compare the number with the ceiling and with what luck gives before reading it.
 
 ## Flattening: union and sum
 
@@ -680,13 +802,121 @@ Why does this matter? Pick any one layer to ask "who is the key person?" and you
 
 What does it say about manager 17? Not much by itself. He names 18 friends, the most of anyone, and is named by six. Because we ignore direction, all 18 count as ties, so it's fair to ask whether his position rests on friendships nobody returned. The last line of the output is that check: keep only friendships both managers name, and he is still first. That makes the finding sturdier. It still describes a position in one layer. It does not say that he is influential, liked or trusted.
 
+### Does the finding survive losing someone?
+
+A ranking from one survey of 21 people could change a good deal if one person's answers were different. Here is a cheap stress test that needs no random numbers. Take each manager out in turn, so that none of their ties count in any layer, and rerun the analysis. If a conclusion rests on one person, it will show here. (@sec-tests-and-null-models covers the random stress tests.)
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# Take each manager out in turn: none of their ties count, in any layer.
+without <- \(i) map(layer, \(m) {
+  m[i, ] <- 0
+  m[, i] <- 0
+  m
+})
+
+stability <- tibble(dropped = 1:21) |>
+  mutate(
+    kept = map(dropped, without),
+    top_friendship = map_int(kept, \(k) which.max(between(k$friendship))),
+    top_advice = map_int(kept, \(k) which.max(between(k$advice))),
+    jaccard = map_dbl(kept, \(k) sum(k$advice * k$friendship) / sum(pmax(k$advice, k$friendship)))
+  )
+
+# Who has the highest betweenness once someone else is out? (Manager 17 and 15 are skipped in their own tables.)
+stability |> filter(dropped != 17) |> count(top_friendship)
+stability |> filter(dropped != 15) |> count(top_advice)
+stability |> filter(dropped != 15, top_advice != 15) |> select(dropped, top_advice)
+stability |> summarise(lowest_jaccard = round(min(jaccard), 3), highest_jaccard = round(max(jaccard), 3))
+```
+
+::: {.code-output}
+```text
+```
+:::
+
+## Python
+
+```python
+def without(i):
+    # take manager i out: none of their ties count, in any layer
+    kept = {k: m.copy() for k, m in layer.items()}
+    for m in kept.values():
+        m[i, :] = 0
+        m[:, i] = 0
+    return kept
+
+runs = []
+for i in range(21):
+    kept = without(i)
+    both = (kept["advice"] & kept["friendship"]).sum()
+    runs.append((i + 1, int(between(kept["friendship"]).argmax()) + 1, int(between(kept["advice"]).argmax()) + 1,
+                 both / (kept["advice"] | kept["friendship"]).sum()))
+
+friendship = [top for out, top, _, _ in runs if out != 17]
+advice = [(out, top) for out, _, top, _ in runs if out != 15]
+print(f"friendship: manager 17 has the highest betweenness in {friendship.count(17)} of {len(friendship)} drops")
+print(f"advice: manager 15 has it in {sum(t == 15 for _, t in advice)} of {len(advice)} drops; others (dropped, leader): {[a for a in advice if a[1] != 15]}")
+print(f"Jaccard of advice and friendship: lowest {min(r[3] for r in runs):.3f}, highest {max(r[3] for r in runs):.3f}")
+```
+
+::: {.code-output}
+```text
+friendship: manager 17 has the highest betweenness in 20 of 20 drops
+advice: manager 15 has it in 19 of 20 drops; others (dropped, leader): [(12, 2)]
+Jaccard of advice and friendship: lowest 0.235, highest 0.288
+```
+:::
+
+## Rust
+
+```rust
+// Take each manager out in turn: none of their ties count, in any layer.
+let argmax = |v: &[f64]| (0..v.len()).fold(0, |best, i| if v[i] > v[best] { i } else { best });
+let mut runs: Vec<(usize, usize, usize, f64)> = vec![];
+for out in 0..21 {
+    let mut kept = layer;
+    for m in kept.iter_mut() {
+        for i in 0..21 {
+            m[out][i] = 0;
+            m[i][out] = 0;
+        }
+    }
+    let cells: Vec<(usize, usize)> = (0..21).flat_map(|i| (0..21).map(move |j| (i, j))).collect();
+    let both = cells.iter().filter(|&&(i, j)| kept[0][i][j] == 1 && kept[1][i][j] == 1).count();
+    let either = cells.iter().filter(|&&(i, j)| kept[0][i][j] == 1 || kept[1][i][j] == 1).count();
+    runs.push((out + 1, argmax(&between(&kept[1])?) + 1, argmax(&between(&kept[0])?) + 1, both as f64 / either as f64));
+}
+
+let friendship: Vec<usize> = runs.iter().filter(|r| r.0 != 17).map(|r| r.1).collect();
+let advice: Vec<(usize, usize)> = runs.iter().filter(|r| r.0 != 15).map(|r| (r.0, r.2)).collect();
+println!("friendship: manager 17 has the highest betweenness in {} of {} drops", friendship.iter().filter(|&&t| t == 17).count(), friendship.len());
+println!("advice: manager 15 has it in {} of {} drops; others (dropped, leader): {:?}", advice.iter().filter(|a| a.1 == 15).count(), advice.len(),
+         advice.iter().filter(|a| a.1 != 15).collect::<Vec<_>>());
+println!("Jaccard of advice and friendship: lowest {:.3}, highest {:.3}", runs.iter().map(|r| r.3).fold(f64::INFINITY, f64::min), runs.iter().map(|r| r.3).fold(0.0, f64::max));
+```
+
+::: {.code-output}
+```text
+```
+:::
+
+:::
+
+Manager 17 keeps the highest friendship betweenness whichever of the other 20 managers is removed, so that finding doesn't hang on one other person's answers. The advice finding is slightly softer: manager 15 leads in 19 of 20 drops, and when manager 12 is removed manager 2 takes the lead, so the advice layer's "most between" person is a close call between two. The advice and friendship Jaccard index moves between 0.235 and 0.288 around its full-data value of 0.259, a modest range. Removing one manager is a blunt probe, since it takes out all of that person's ties at once, and it says nothing about errors in the ties themselves.
+
+Here are two sentences about manager 17, one defensible and one not. *Defensible:* "In the friendships the 21 managers reported, manager 17 has the highest betweenness whichever one other manager is left out, and when only mutually named friendships are kept; in the advice ties he ranks 16th." *Over-claiming:* "Manager 17 is the key person in the firm." The data show a position in one layer, and the other layer disagrees. What "key" means is a question about your purpose, not a number.
+
 ## Layer-aware paths
 
 Everything so far looked at layers one at a time, or after merging them. A method that treats the layers as *one* structure is a different kind of tool. The usual approach is a **supra-adjacency matrix**: stack the layers into one big table, with each layer's adjacency table on the diagonal and, off the diagonal, couplings that link each person to their own copy in the other layers [@kivela2014multilayer; @dedomenico2013mathematical].
 
 A hand-checkable case. Take Ana, Ben and Cleo again, with advice tying Ana and Ben, and lunch tying Ben and Cleo. The supra network has six nodes: each person once in each layer. The couplings join Ana-in-advice to Ana-in-lunch, and likewise for Ben and Cleo. Now ask how far Ana is from Cleo. In the merged network, two steps: Ana to Ben to Cleo. In the supra network, if switching layers costs a step, it takes three: Ana to Ben within advice, Ben from advice to lunch, Ben to Cleo within lunch. That extra step is the price of changing the *kind* of tie, which is sometimes exactly the thing you want to measure. Passing a work request along an advice chain and then having to switch to a social tie to pass on a favour are different acts.
 
-This book doesn't compute layer-aware paths. In R, knappnet can hold a multilayer network and adds the coupling ties for you (`net_as_multilayer()`), but I haven't verified a ready-made layer-aware path measure in any of the three tools used here, so I explain the idea in words and print no number for it. If you need these measures, look at tools built for the job: @magnani2021analysis describes an R package for multiplex social networks and @nurmi2024pymnet a Python library for multilayer networks. For community detection that spans layers, see @mucha2010community. Check what each one assumes about the couplings before you trust its output.
+As far as I have checked, none of the three tools used here has a ready-made layer-aware path measure. (In R, knappnet can hold a multilayer network and adds the coupling ties for you with `net_as_multilayer()`, but I haven't verified a path measure that uses them.) So we build the supra network by hand, for two layers at a time, after the Sampson data, where the layers are sparser and the comparison has more to show. If you need these measures for larger problems, look at tools built for the job: @magnani2021analysis describes an R package for multiplex social networks and @nurmi2024pymnet a Python library for multilayer networks. For community detection that spans layers, see @mucha2010community. Check what each one assumes about the couplings before you trust its output.
 
 ## A second set of layers: Sampson's novices
 
@@ -895,6 +1125,209 @@ Third, **the negative layers are not the absence of the positive ones.** Esteem 
 
 Now look at the first printout. Every novice named three or four people in each of the three liking layers, and no one named more than four or five in any layer, because each question asked for a ranking of the top three (with a few ties). That is a feature of how the data were collected. It means out-degree in these layers is set by the questionnaire and not by the novices, and it means correlations between layers are partly shaped by the same cap. We come back to this below.
 
+### How much of the overlap is luck?
+
+The correlations say the waves go together. The yardsticks from earlier say how much. Each novice named only three or four people, so a layer has 55 to 57 ties among 306 ordered pairs, and two such layers would share only about ten by luck. Here is the same table as for Krackhardt's managers, for the first two liking waves, the second and third, and then liking at time 3 against esteem and against disliking.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+waves <- tribble(
+  ~a, ~b,
+  "liking_t1", "liking_t2",
+  "liking_t2", "liking_t3",
+  "liking_t3", "esteem",
+  "liking_t3", "disliking"
+)
+waves |>
+  bind_cols(map2(waves$a, waves$b, \(x, y) budget(sampson[[x]], sampson[[y]])) |> list_rbind())
+```
+
+::: {.code-output}
+```text
+```
+:::
+
+## Python
+
+```python
+print(head)
+for a, b in [("liking_t1", "liking_t2"), ("liking_t2", "liking_t3"), ("liking_t3", "esteem"), ("liking_t3", "disliking")]:
+    budget(f"{a} & {b}", sampson[a][off], sampson[b][off])
+```
+
+::: {.code-output}
+```text
+layers                      in A  in B  both  expected  lift  Jaccard  ceiling  share of smaller
+liking_t1 & liking_t2         55    57    35      10.2  3.42     0.45     0.96      0.64
+liking_t2 & liking_t3         57    56    40      10.4  3.83     0.55     0.98      0.71
+liking_t3 & esteem            56    54    13       9.9  1.32     0.13     0.96      0.24
+liking_t3 & disliking         56    47    10       8.6  1.16     0.11     0.84      0.21
+```
+:::
+
+## Rust
+
+```rust
+println!("{head}");
+for (a, b) in [(0, 1), (1, 2), (2, 3), (2, 6)] {
+    budget(format!("{} & {}", order[a], order[b]), &cells[a], &cells[b]);
+}
+```
+
+::: {.code-output}
+```text
+```
+:::
+
+:::
+
+Of the 55 ties in the first wave, 35 are repeated in the second, about two thirds, where luck would give about ten. Waves two and three share 40 of 57 and 56. The lifts of 3.4 and 3.8 are far larger than anything between Krackhardt's advice and friendship, and the waves are the same question asked of the same people, so that is what you'd hope to see. In contrast, liking at time 3 shares 13 ties with esteem and 10 with disliking, against about 10 and 9 expected: close to what scattering the ties independently would give, which agrees with the correlations near zero. The questionnaire's cap of about three ties per person matters here: it is why the expected overlap is so small, and why a few shared ties show up as a sizeable lift.
+
+![Seven pairs of layers, three from Krackhardt's managers and four from Sampson's novices. The blue bar is the Jaccard index, the dashed box is the highest it could be for those layer sizes and the orange tick is the value if ties were scattered independently. Advice and reporting sit almost at their ceiling; liking at time 3 with esteem or disliking sits close to the orange tick.](../figures/multilayer-ceiling.svg){#fig-multilayer-ceiling fig-alt="Seven rows, each with a blue bar, a dashed box and an orange tick. advice & friendship: observed 0.26, ceiling 0.54, by luck 0.19. advice & reports to: observed 0.10, ceiling 0.11, by luck 0.05. friendship & reports to: observed 0.11, ceiling 0.20, by luck 0.04. liking t1 & liking t2: observed 0.45, ceiling 0.96, by luck 0.10. liking t2 & liking t3: observed 0.55, ceiling 0.98, by luck 0.10. liking t3 & esteem: observed 0.13, ceiling 0.96, by luck 0.10. liking t3 & disliking: observed 0.11, ceiling 0.84, by luck 0.09."}
+
+@fig-multilayer-ceiling puts all seven pairs on one picture. A Jaccard index is only readable against the two yardsticks: how far it is from the dashed ceiling, and how far above the orange tick.
+
+### Layer-aware paths, on real layers
+
+Now the supra network, built by hand for two layers at a time. It has $2n$ nodes, one copy of each person per layer. The two layers' ties sit on the diagonal blocks, and each person is tied to their own copy in the other layer, so that changing layers costs one step, the same as one tie. A person-to-person distance is the shortest path from either copy of $i$ to either copy of $j$, so you can start and finish in whichever layer suits. Compare it with the flattened network, where changing layers is free. The flat distance can never be longer than the supra distance. We try the Ana, Ben and Cleo case first (advice ties Ana and Ben, lunch ties Ben and Cleo), then Krackhardt's advice and friendship and Sampson's liking at time 3 and esteem, ignoring direction in each.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+supra_vs_flat <- \(x, y) {
+  n <- nrow(x)
+  flat <- net_distances(as_net_frame(pmax(x, y), directed = FALSE))
+  # The supra network: the layers side by side, each person tied to their own copy.
+  d <- net_distances(as_net_frame(rbind(cbind(x, diag(n)), cbind(diag(n), y)), directed = FALSE))
+  # A person-to-person distance may start and end in whichever copy is quickest.
+  supra <- pmin(d[1:n, 1:n], d[1:n, n + 1:n], d[n + 1:n, 1:n], d[n + 1:n, n + 1:n])
+  between_people <- row(flat) != col(flat)
+  tibble(
+    mean_flat = round(mean(flat[between_people]), 3),
+    mean_supra = round(mean(supra[between_people]), 3),
+    farther = round(mean(supra[between_people] > flat[between_people]), 3),
+    diameter_flat = max(flat),
+    diameter_supra = max(supra)
+  )
+}
+
+list(
+  "Ana, Ben, Cleo" = list(rbind(c(0, 1, 0), c(1, 0, 0), c(0, 0, 0)), rbind(c(0, 0, 0), c(0, 0, 1), c(0, 1, 0))),
+  "managers: advice, friendship" = list(sym(layer$advice), sym(layer$friendship)),
+  "novices: liking 3, esteem" = list(sym(sampson$liking_t3), sym(sampson$esteem))
+) |>
+  map(\(l) supra_vs_flat(l[[1]], l[[2]])) |>
+  list_rbind(names_to = "layers")
+```
+
+::: {.code-output}
+```text
+```
+:::
+
+## Python
+
+```python
+def distances(m):
+    d = dict(nx.all_pairs_shortest_path_length(nx.from_numpy_array(m)))
+    return np.array([[d[i][j] for j in range(len(m))] for i in range(len(m))])
+
+def supra_vs_flat(x, y):
+    n = len(x)
+    flat = distances(x | y)
+    # The supra network: the layers side by side, each person tied to their own copy.
+    supra = distances(np.block([[x, np.eye(n, dtype=int)], [np.eye(n, dtype=int), y]]))
+    # A person-to-person distance may start and end in whichever copy is quickest.
+    person = np.minimum.reduce([supra[:n, :n], supra[:n, n:], supra[n:, :n], supra[n:, n:]])
+    between_people = ~np.eye(n, dtype=bool)
+    return (flat[between_people].mean(), person[between_people].mean(),
+            (person[between_people] > flat[between_people]).mean(), flat.max(), person.max())
+
+either = lambda m: m | m.T
+cases = {
+    "Ana, Ben, Cleo": (np.array([[0, 1, 0], [1, 0, 0], [0, 0, 0]]), np.array([[0, 0, 0], [0, 0, 1], [0, 1, 0]])),
+    "managers: advice, friendship": (either(layer["advice"]), either(layer["friendship"])),
+    "novices: liking 3, esteem": (either(sampson["liking_t3"]), either(sampson["esteem"])),
+}
+print("layers                       mean flat  mean supra  share farther  diameter flat  diameter supra")
+for name, (x, y) in cases.items():
+    mean_flat, mean_supra, farther, diameter_flat, diameter_supra = supra_vs_flat(x, y)
+    print(f"{name:<28} {mean_flat:>9.3f} {mean_supra:>11.3f} {farther:>14.3f} {diameter_flat:>14} {diameter_supra:>15}")
+```
+
+::: {.code-output}
+```text
+layers                       mean flat  mean supra  share farther  diameter flat  diameter supra
+Ana, Ben, Cleo                   1.333       1.667          0.333              2               3
+managers: advice, friendship     1.243       1.243          0.000              2               2
+novices: liking 3, esteem        1.523       1.588          0.065              2               3
+```
+:::
+
+## Rust
+
+```rust
+use knappnet::metrics::descriptive::{compute_distances, PathOptions};
+
+// x and y say whether two people are tied in each layer. Returns the mean and the largest distance
+// between people in the flattened network and in the supra network, and the share of pairs that are farther in the supra one.
+let supra_vs_flat = |n: usize, x: &dyn Fn(usize, usize) -> bool, y: &dyn Fn(usize, usize) -> bool| -> Result<[f64; 5], knappnet::Error> {
+    let distances = |edges: &[(i64, i64)], nodes: usize| -> Result<knappnet::matrix::Dense, knappnet::Error> {
+        let (from, to): (Vec<i64>, Vec<i64>) = edges.iter().cloned().unzip();
+        compute_distances(&Graph::from_edges(nodes, &from, &to, None, false)?, None, PathOptions::default())
+    };
+    let mut flat_edges: Vec<(i64, i64)> = vec![];
+    // The supra network: the layers side by side, each person tied to their own copy.
+    let mut supra_edges: Vec<(i64, i64)> = (0..n).map(|i| (i as i64, (n + i) as i64)).collect();
+    for i in 0..n {
+        for j in (i + 1)..n {
+            if x(i, j) { supra_edges.push((i as i64, j as i64)); }
+            if y(i, j) { supra_edges.push(((n + i) as i64, (n + j) as i64)); }
+            if x(i, j) || y(i, j) { flat_edges.push((i as i64, j as i64)); }
+        }
+    }
+    let (flat, supra) = (distances(&flat_edges, n)?, distances(&supra_edges, 2 * n)?);
+    // A person-to-person distance may start and end in whichever copy is quickest.
+    let person = |i: usize, j: usize| [(0, 0), (0, n), (n, 0), (n, n)].iter().map(|&(a, b)| supra.get(i + a, j + b)).fold(f64::INFINITY, f64::min);
+    let ordered: Vec<(usize, usize)> = (0..n).flat_map(|i| (0..n).map(move |j| (i, j))).filter(|&(i, j)| i != j).collect();
+    let count = ordered.len() as f64;
+    Ok([
+        ordered.iter().map(|&(i, j)| flat.get(i, j)).sum::<f64>() / count,
+        ordered.iter().map(|&(i, j)| person(i, j)).sum::<f64>() / count,
+        ordered.iter().filter(|&&(i, j)| person(i, j) > flat.get(i, j)).count() as f64 / count,
+        ordered.iter().map(|&(i, j)| flat.get(i, j)).fold(0.0, f64::max),
+        ordered.iter().map(|&(i, j)| person(i, j)).fold(0.0, f64::max),
+    ])
+};
+
+let head = "layers                       mean flat  mean supra  share farther  diameter flat  diameter supra";
+let show = |name: &str, r: [f64; 5]| println!("{:<28} {:>9.3} {:>11.3} {:>14.3} {:>14} {:>15}", name, r[0], r[1], r[2], r[3], r[4]);
+let managers = |k: usize| move |i: usize, j: usize| layer[k][i][j] == 1 || layer[k][j][i] == 1;
+let novices = |k: usize| { let m = sampson[k]; move |i: usize, j: usize| m[i][j] == 1 || m[j][i] == 1 };
+
+println!("{head}");
+show("Ana, Ben, Cleo", supra_vs_flat(3, &|i, j| i + j == 1, &|i, j| i + j == 3)?); // advice: Ana-Ben; lunch: Ben-Cleo
+show("managers: advice, friendship", supra_vs_flat(21, &managers(0), &managers(1))?);
+show("novices: liking 3, esteem", supra_vs_flat(18, &novices(2), &novices(3))?);
+```
+
+::: {.code-output}
+```text
+```
+:::
+
+:::
+
+
+The tiny case reproduces the hand count: Ana is 2 steps from Cleo in the flat network and 3 in the supra network, so the mean distance goes from 1.333 to 1.667, a third of the ordered pairs get farther, and the diameter goes from 2 to 3. Krackhardt's managers show no change at all: the flat and supra means are both 1.243 and no pair is farther. Every pair of managers who are two steps apart in the merged network has a two-step route inside a single layer, so nobody needs to switch. For distance questions, flattening those two layers costs nothing.
+
+Sampson's novices are different. Liking at time 3 and esteem are sparser and tie different people, and the supra mean distance is 1.588 against 1.523 flat. About 6.5 percent of ordered pairs are farther, and the diameter grows from 2 to 3. In the merged network a novice liked by one person who esteems another is two steps from that other, though no single kind of tie gets there in two. The effect is small here, and it comes from a choice you make, not from the data: a coupling cost of one step. Set it to zero and you get the flat network back, so report the cost with the number. Nothing here shows that anything actually travels along these routes.
+
 ## Reading multilayer results honestly
 
 A layer-by-layer analysis produces many numbers. It is easy to say too much about them. A few rules.
@@ -1005,19 +1438,68 @@ Notice that the correlations are small (0.155 to 0.224) while the Jaccard indice
 
 **Report with the question attached.** "Advice and friendship overlap" is not a result. A defensible sentence names the layers, the unit (ordered pairs or pairs), the statistic, the number, what it is compared against and what it leaves out, for example: "Of the 190 advice arcs among the 21 managers, 60 (32 percent) are also friendship arcs, against 24 percent of all ordered pairs; this describes the managers' own reports at one moment and does not show that one tie leads to the other."
 
+## Misconceptions, and where the tools disagree
+
+**"A high Jaccard means the layers are the same, and a low one means they're unrelated."** Neither. The Jaccard index has a ceiling set by the layer sizes. Advice and reporting score 0.10 and are almost as close to each other as their sizes allow (see the yardsticks above: a ceiling of 0.11). Use the share of the smaller layer, the lift and a chance comparison alongside it.
+
+**"If the same people are busy in two layers, the same pairs are tied."** These are different claims. The overlap counts shared *pairs*. The inter-layer degree correlation says whether the same *people* have many ties in both. In Krackhardt's data advice and friendship share pairs at 1.3 times chance, while the rank correlation of the managers' in-degrees is 0.14. People and pairs can line up differently, so say which one you measured.
+
+**"The union is the neutral choice."** It isn't. It treats a tie in any layer as the same kind of tie, so the dense layer decides the answer. On Krackhardt's managers the union's betweenness ranking resembles the advice layer's and buries manager 17.
+
+**"The negative layer is the opposite of the positive one."** In Sampson's data liking at time 3 and disliking are not related at all (0.03), and they share 10 ties against 8.6 expected by luck. Leaving someone out of your top three is not naming them as disliked.
+
+**"A significant overlap is an important one."** The QAP result for advice and reporting is as strong as it gets (essentially no relabeling matches it), and it is also the least informative, because reporting lines define who you ask. A test says whether, not how much or why.
+
+**"Betweenness in two layers can be compared directly."** Raw values can't be: a sparse layer has longer routes and bigger values. We compared ranks, and even ranks compare positions in different networks.
+
+Tools also disagree, and it is worth knowing where we saw it.
+
+- *What counts as the pairs.* Counting ordered arcs gave a Jaccard of 0.26 for advice and friendship; counting a pair as tied if either manager names the other gave 0.41. Both are right. They answer different questions, and each tool will do the one you ask for.
+- *Random relabelings.* R and Rust gave the same QAP shares here (0.0186, 0.0000 and 0.0002 for the three pairs), since the R package calls the same engine and draws the same relabelings. Python draws its own, and its share for advice and friendship was 0.0192. The correlation (0.155) was identical in all three. Differences in the third decimal of a Monte Carlo share are noise; if a decision hangs on them, run more relabelings.
+- *Ties in ranks.* We compute ranks with tied values sharing their average, and the three tabs agreed on every correlation printed. We did not test a tool that breaks ties by position, but it would give different rank correlations whenever many scores tie, as in-degrees do, so check which rule yours uses.
+- *Layer-aware measures.* None of the tools here has a ready-made one that I checked, which is why the supra distances above were written by hand. Packages built for multilayer networks [@magnani2021analysis; @nurmi2024pymnet] are the place to look. Check how each treats couplings, and report the coupling cost you used.
+
+## A checklist before you report
+
+1. Say what each layer is, who reported it, and whether a tie has a direction.
+2. Name the unit (ordered pairs or pairs) and the statistic.
+3. Put the overlap next to its ceiling and what luck gives, and run a QAP test if you want to say "more than chance".
+4. Check that your key finding survives leaving each person out, and keeping only mutual ties.
+5. Say what a merged network would have hidden, and which layer answers your actual question.
+6. Say what the data cannot show: why the layers overlap, and which came first.
+
 ## Exercises
 
 1. **By hand.** Ana, Ben, Cleo and Dev have two layers. Advice ties Ana-Ben, Ben-Cleo and Cleo-Dev. Lunch ties Ana-Ben and Cleo-Dev. Work out the overlap, the Jaccard index, the chance of lunch given advice and the chance of advice given lunch. Which of the last two is larger, and why?
-2. **By hand.** In the Ana-Ben-Cleo example, add a third person, Dev, who is tied to Cleo in the lunch layer. How many steps is Ana from Dev in the merged network, and how many in a supra network where switching layers costs one step?
+2. **By hand.** Take the supra example (advice ties Ana and Ben, lunch ties Ben and Cleo) and add Dev, tied to Cleo in the lunch layer. How many steps is Ana from Dev in the merged network, and how many in a supra network where switching layers costs one step?
 3. **Coding.** Using the Krackhardt layers, compute the chance that a friendship arc is also a reporting arc, and the base rate it should be compared with. Is friendship more likely between a manager and their boss than between a random pair?
-4. **Coding.** For Sampson's novices, compute the Jaccard index of liking at time 1 and liking at time 3. What share of the first wave's ties are repeated in the third? What does that say about whether layers that are waves are "the same" network?
+4. **Coding.** For Sampson's novices, compute the Jaccard index of liking at time 1 and liking at time 3, the share of the first wave's ties repeated in the third, and the overlap luck would give. What does that say about whether layers that are waves are "the same" network?
 5. **Interpretation.** A consultant writes: "Advice and friendship overlap at 0.41, so you only need to survey friendship." Write a short, kind reply. Which Jaccard did they use, what does it leave out, and what would you check before agreeing?
 6. **Design.** A company has an email network, a chat network and an org chart. Which of the three layers have a direction? Which would you call comparable in density? How would you decide whether to merge them for a question about "who can get a message across the company quickly"?
+7. **By hand.** Two layers on 4 people, counting unordered pairs ($N = 6$), have $m_A = 4$ and $m_B = 2$ ties and share both of the second layer's ties. Work out $J$, its ceiling, $P(B \mid A)$, the base rate, the lift and the overlap luck would give. Is $J$ low because the layers differ or because of their sizes?
+8. **Coding.** Redo the overlap table for Krackhardt's advice and friendship counting a pair as tied if either manager names the other ($N = 210$ pairs). How do the lift and the share of the smaller layer change from the arc version, and what should you take from that?
+9. **Coding.** Compare flat and supra distances for Sampson's liking at time 3 and praise. Is the effect bigger or smaller than for liking and esteem, and what does the number of ties in each layer suggest about why?
+10. **Interpretation.** A colleague says: "Advice and the org chart overlap at 0.10, so the chart tells us nothing about how advice flows." Reply in three sentences, using the ceiling.
+
+::: {.callout-note collapse="true"}
+## Worked answers
+
+1. The advice pairs are Ana-Ben, Ben-Cleo and Cleo-Dev (three), the lunch pairs are Ana-Ben and Cleo-Dev (two). The overlap is 2, the pairs in either layer are 3, so $J = 2/3$. The chance of lunch given advice is $2/3$; the chance of advice given lunch is $2/2 = 1$. The second is larger because every lunch pair is also an advice pair: the smaller layer sits inside the bigger one. The Jaccard index is the same from both directions; conditional probabilities are not.
+2. In the merged network Ana, Ben, Cleo, Dev form a path, so Ana is 3 steps from Dev. In the supra network she goes from Ana to Ben in advice (1), switches to lunch at Ben (2), then Ben to Cleo (3) and Cleo to Dev (4): 4 steps.
+3. From the budget table, 12 of the 102 friendship arcs are reporting arcs, a chance of 0.118, against a base rate of $20/420 = 0.048$. The lift is 2.5, so a friendship arc is about two and a half times as likely to be a reporting arc as a random ordered pair is. Equivalently, 12 of the 20 reporting arcs (60 percent) are also friendship arcs. Both are descriptions of one firm at one moment.
+4. The two waves share 35 ties and 55 + 56 - 35 = 76 are in either, so $J = 0.46$. Of the 55 ties in the first wave, 35 (64 percent) are repeated in the third. Luck would give about 10, so the lift is about 3.5. Waves are neither the same network nor independent: roughly two thirds of the choices persist, and a third change.
+5. A reply might run: "Thanks. The 0.41 counts a pair as tied if either manager names the other; counting who names whom it is 0.26, and only 60 of the 190 advice arcs are friendship arcs, so most advice goes to people who are not named as friends. Friendship also puts different managers at the centre: manager 17 is the friendship hub and ranks 16th for advice. Before agreeing I'd check what the survey is for, how the layers compare with chance, and whether the same people matter in both."
+6. Email is directed (sender to receiver). Chat could be directed by who messages whom, or undirected if it is a shared channel. The org chart is directed by design and has $n - 1$ ties. Email and chat might be comparable in density, but the org chart is a sparse tree and will be drowned by either in a union. For the question about getting a message across quickly, merging can be defensible if a message can really move by any of the three channels. Then compare distances in the union and in the supra network: if they agree, as for Krackhardt's layers, flattening costs nothing for that question; if not, switching channels has a cost you should model.
+7. $J = 2/(4 + 2 - 2) = 0.5$, the ceiling is $2/4 = 0.5$, so $J$ is at its ceiling. $P(B \mid A) = 2/4 = 0.5$, the base rate is $2/6 = 0.33$, the lift is 1.5 and the overlap luck would give is $4 \times 2 / 6 = 1.33$. $J$ is only 0.5 because the layers are different sizes; every tie of the smaller layer is in the larger.
+8. Counting pairs, there are 145 advice pairs and 79 friendship pairs, 65 in both, against 54.5 expected. $J = 0.41$ (ceiling 0.54) and the share of the smaller layer is 0.82, against a base rate of 79/210 = 0.38, a lift of 2.2. That is more than the 1.3 for arcs: whether direction counts changes how strongly the layers seem to go together. Decide from your question which one to report, and say which.
+9. The flat mean distance is 1.627 and the supra one 1.765, with 13.7 percent of pairs farther, against 1.523, 1.588 and 6.5 percent for liking and esteem. The diameter is 3 in both flat and supra for these two layers. The effect is larger. Praise has only 39 ties against esteem's 54, so these two layers are sparser, and sparser layers leave fewer same-layer routes. That is a likely reason, not something this computation tests.
+10. A reply might run: "The Jaccard index can't be high here. The chart has only 20 ties, and no layer of 190 advice arcs could share more than 20 with it, so the highest possible Jaccard is 0.11 and we got 0.10. Of the 20 reporting arcs, 19 are also advice arcs. But 90 percent of the advice arcs are not reporting lines, so the chart covers who people ask upward, and says little about the rest."
+:::
 
 ## Summary
 
 ::: {.callout-tip appearance="simple"}
-Many networks have more than one kind of tie among the same people. Keeping the kinds apart as layers lets you ask whether the same pairs appear in each (overlap and Jaccard), how likely one tie is given another (conditional probability against a base rate), and whether the same people are central in each (layer-by-layer degree and betweenness). Merging layers into a union or a sum is easy and hides which layer a tie came from; a sparse layer disappears beside a dense one. On Krackhardt's managers, advice and friendship overlap modestly, reporting lines nearly always carry advice, and manager 17 is the friendship hub but nowhere near the top for advice. On Sampson's novices, liking, esteem and the negative relations form separate blocks, and the questionnaire itself shapes how many ties anyone can name. Layers are only comparable when they measure similar things in similar ways, and overlap shows that layers go together, never why.
+Many networks have more than one kind of tie among the same people. Keeping the kinds apart as layers lets you ask whether the same pairs appear in each (overlap and Jaccard), how likely one tie is given another (conditional probability against a base rate), and whether the same people are central in each (layer-by-layer degree and betweenness). Merging layers into a union or a sum is easy and hides which layer a tie came from; a sparse layer disappears beside a dense one. On Krackhardt's managers, advice and friendship overlap modestly, reporting lines nearly always carry advice, and manager 17 is the friendship hub but nowhere near the top for advice. On Sampson's novices, liking, esteem and the negative relations form separate blocks, and the questionnaire itself shapes how many ties anyone can name. An overlap number needs two yardsticks: its ceiling, which the layer sizes set, and what luck would give. Leaving each manager out in turn shows that manager 17's friendship position does not rest on anyone else, while the advice leader is a closer call. Building the supra network by hand shows that flattening costs nothing for distances among Krackhardt's dense layers but a little for Sampson's liking and esteem. Layers are only comparable when they measure similar things in similar ways, and overlap shows that layers go together, never why.
 :::
 
 ## Further reading

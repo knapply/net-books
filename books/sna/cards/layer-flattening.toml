@@ -1,0 +1,55 @@
+id = "layer-flattening"
+title = "Flattening layers: union and sum"
+kind = "procedure"
+chapter = "multilayer"
+summary = "Merging several layers into one network, either as a union (tied if tied in any layer) or as a sum (weight equal to the number of layers that tie the pair), and checking what the merge hides."
+answers = "Can this question about several kinds of tie be answered on a single merged network, and what does merging cost?"
+
+data_requirements = [
+  "Layers on the same people with comparable meaning of a tie and the same treatment of direction.",
+  "A question that is really about being connected in any way, not about one kind of tie.",
+  "Knowledge of how dense each layer is, since the densest layer will dominate a union.",
+]
+
+assumptions = [
+  "A tie in one layer is worth the same as a tie in another. A sum also assumes that a pair tied twice is twice as strongly tied, which has to be argued.",
+  "Switching between layers along a route costs nothing, which is what flattening assumes about paths. If a route that changes kind of tie is not equivalent, flattening can shorten distances.",
+  "Directions can be combined sensibly. A reporting line and a friendship nomination are different directional things.",
+]
+
+readings = [
+  { context = "Office: advice, friendship and reporting merged", high = "A merged tie count is mostly advice, since advice is the densest layer. In Krackhardt's firm 163 of 232 merged arcs came from exactly one layer.", low = "A sparse layer (reporting) disappears in the merge and its pattern cannot be recovered." },
+  { context = "Communication channels (email, chat, phone) merged for a spread question", high = "If a message can really move by any channel, the union answers how far it can reach.", low = "If channels differ in cost or audience, the union overstates how easily a message crosses the organization." },
+  { context = "Transport or supply layers merged for connectivity", high = "The union shows what is reachable by any means.", low = "A union hides that a route may need transfers between systems." },
+  { context = "Platform interactions (follow, reply, share) merged", high = "The union shows who has any contact at all.", low = "It mixes attention, conversation and endorsement, which are different things." },
+]
+
+pitfalls = [
+  "Reading a merged tie as a particular kind of tie.",
+  "Reading a union centrality ranking as if it described every layer. Here the union's most between managers resembled the advice layer's and buried manager 17, the friendship hub.",
+  "Comparing raw betweenness across layers or between a layer and the union. Sparser networks have longer routes and larger values, so compare ranks.",
+  "Merging directed and undirected layers without saying how.",
+]
+
+checks = [
+  "Count how many merged ties come from exactly one layer, from two, and from all.",
+  "Compute your measure in each layer and in the merge and compare ranks, not raw values.",
+  "Compare union distances with distances in a layer-aware (supra) network at a stated coupling cost.",
+  "Report which layer dominates the merge.",
+]
+
+do_not_claim = [
+  "That the merged network describes any one kind of tie.",
+  "That a person central in the merge is central in each layer.",
+  "That a weight of 3 means a stronger tie than a weight of 1 without a reason to add layers.",
+]
+
+report_template = "Merging the {k} layers among {n} {node_type} gives {union_arcs} ties, of which {in_one} come from exactly one layer and {in_two_or_more} from two or more. The {dominant} layer is the largest and dominates the union. The analysis below describes pairs connected in any way and does not distinguish the kinds of tie."
+
+related = ["layer-overlap", "supra-distance", "betweenness"]
+sources = ["kivela2014multilayer", "battiston2014structural", "krackhardt1987cognitive"]
+
+[knappnet]
+rust = "build the union or sum from the layer tables, then use the single-network measure, for example knappnet::compute_betweenness(&g, BetweennessOptions::default())"
+r = "pmin(a + b + c, 1) for the union and a + b + c for the sum, then net_betweenness(as_net_frame(m, directed = FALSE))"
+python = "union = a | b | c; nx.betweenness_centrality(nx.from_numpy_array(union | union.T), normalized=False)"

@@ -1,0 +1,59 @@
+id = "layer-overlap"
+title = "Layer overlap: shared ties, Jaccard index, conditional probability and lift"
+kind = "measure"
+chapter = "multilayer"
+summary = "How many of the same pairs are tied in two layers, as a count, as a share of the pairs tied in either (Jaccard), as a share of one layer found in the other, and as a multiple of what independent scattering would give (lift)."
+answers = "Do the same pairs of people show up in two kinds of tie, and is that more or less than the layer sizes alone would produce?"
+
+data_requirements = [
+  "Two or more layers on the same set of people, each a table of ties among those people.",
+  "A stated unit: ordered pairs (who names whom) or unordered pairs (tied if either names the other). The two give different numbers.",
+  "Layers that were measured comparably enough to compare. A survey question, a company record and a ranked top-three choice are different kinds of thing.",
+]
+
+assumptions = [
+  "The base rate is the share of all possible pairs tied in the second layer, and the lift compares with it. This treats every pair as equally likely to be tied, which is false when some people are far more active than others.",
+  "The Jaccard index cannot exceed the smaller layer's size divided by the larger's, so it understates how well a small layer sits inside a large one.",
+  "Absent ties are read as true absences. In reported data a missing tie may be one nobody named.",
+  "Overlap is a fact about this data at one time. Nothing here says why the layers overlap or which tie came first.",
+]
+
+readings = [
+  { context = "Office: advice, friendship and reporting lines among managers", high = "The informal and formal structures coincide, or one tie type is partly defined by another (a boss is the person you are meant to ask).", low = "Informal routes run around the chart, or the layers reach different people. Check the ceiling before calling it low." },
+  { context = "Marriage and business ties among families", high = "The same pairs are bound in more than one way. One kind of tie may reinforce the other.", low = "Each kind of tie links different pairs, so together they reach more of the network. A rare kind of tie cannot overlap much with a common one." },
+  { context = "Transport or supply: two kinds of link between the same places or firms", high = "Redundancy if the layers fail independently. They may share a weak point such as the same bridge or supplier.", low = "The layers complement each other and losing one loses connections the other does not carry." },
+  { context = "Online platform: follow, reply and share ties among accounts", high = "Following comes with interaction, so follow ties carry contact. The interface may be producing the overlap by suggesting both.", low = "Following is mostly broadcast, with little interaction behind it." },
+]
+
+pitfalls = [
+  "Reading a low Jaccard index as 'unrelated' when the layers differ a lot in size. In Krackhardt's data advice and reporting score 0.10 against a ceiling of 0.11.",
+  "Comparing overlap numbers across datasets with different densities or different ways of collecting ties.",
+  "Mixing ordered and unordered pairs. Advice and friendship score 0.26 counting arcs and 0.41 counting pairs tied in either direction.",
+  "Treating a large lift on a small layer as strong evidence. With few ties a handful of shared ones moves the ratio a lot.",
+  "Reading overlap as cause, redundancy or substitutability.",
+]
+
+checks = [
+  "Put the overlap next to its ceiling (smaller layer divided by larger) and the overlap luck would give (product of the layer sizes over the number of pairs).",
+  "Run a QAP test (relabel the people in one layer, rows and columns together) rather than shuffling single ties.",
+  "Repeat with direction ignored and with direction kept, and say which one answers your question.",
+  "Leave each person out in turn and see whether the overlap changes much.",
+  "Say which layer is more completely observed.",
+]
+
+do_not_claim = [
+  "That one kind of tie leads to, causes or replaces another.",
+  "That a high Jaccard index makes two layers interchangeable, or that a low one makes them unrelated.",
+  "That an overlap is more than chance without a test that respects the structure of the layers.",
+  "That the overlap would hold at another time or in another organization.",
+]
+
+report_template = "Of the {m_a} {layer_a} ties among {n} {node_type}, {both} ({share_of_a} percent) are also {layer_b} ties, against {base_rate} percent of all {unit}. If the layers were scattered independently about {expected} would overlap; the largest possible Jaccard index for these sizes is {ceiling} and the observed one is {jaccard}. This describes {source} at one moment and does not show that either tie leads to the other."
+
+related = ["qap", "layer-flattening", "interlayer-degree-correlation", "null-models-choice"]
+sources = ["white1976social", "battiston2014structural", "kivela2014multilayer", "krackhardt1987cognitive", "hubert1976quadratic", "krackhardt1987qap"]
+
+[knappnet]
+rust = "no dedicated function; count shared ties from the two tables (see the chapter). For the chance test, knappnet::qap::compute_qap_cor(&a, &b, options)"
+r = "no dedicated function; sum(x * y) over off-diagonal cells (see the chapter). For the chance test, net_qap_cor(a, b, mode = \"digraph\")"
+python = "both = (x & y).sum(); jaccard = both / (x | y).sum()  # x and y: 0/1 arrays over all ordered pairs"

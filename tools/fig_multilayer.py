@@ -201,9 +201,50 @@ def sampson_heat():
     return c, meta
 
 
+def overlap_ceiling():
+    """For seven pairs of layers: the Jaccard index, its ceiling and its value if ties were scattered independently."""
+    arcs, _ = krackhardt()
+    mats = sampson_matrices()
+    sets = {k: arcs[k] for k in RELATIONS}
+    sets.update({k: {(i, j) for i in range(18) for j in range(18) if mats[k][i][j]} for k in mats})
+    pairs = [("advice", "friendship", 21), ("advice", "reports_to", 21), ("friendship", "reports_to", 21),
+             ("liking_t1", "liking_t2", 18), ("liking_t2", "liking_t3", 18), ("liking_t3", "esteem", 18),
+             ("liking_t3", "disliking", 18)]
+    rows = []
+    for a, b, n in pairs:
+        big_n = n * (n - 1)
+        ma, mb, both = len(sets[a]), len(sets[b]), len(sets[a] & sets[b])
+        expected = ma * mb / big_n
+        rows.append((f"{a} & {b}".replace("_", " "), both / (ma + mb - both), min(ma, mb) / max(ma, mb),
+                     expected / (ma + mb - expected)))
+    c = Canvas(780, 360, "Jaccard index against its ceiling and against luck",
+               "For seven pairs of layers, the observed Jaccard index, the highest it could be for those layer sizes, and the value luck would give.")
+    x0, w, y0, step = 250, 460, 62, 36
+    c.text(390, 26, "Observed Jaccard index, its ceiling and its value by luck", size=15, weight="600")
+    for k, (label, jac, ceiling, chance) in enumerate(rows):
+        y = y0 + k * step
+        c.text(x0 - 12, y + 19, label, size=12.5, anchor="end")
+        c.rect(x0, y + 4, w * ceiling, 22, fill="none", stroke=MUTED, sw=1, dash="4 3")
+        c.rect(x0, y + 8, w * jac, 14, fill=BLUE, stroke=INK, sw=1)
+        c.add(f'<line x1="{x0 + w * chance:.1f}" y1="{y}" x2="{x0 + w * chance:.1f}" y2="{y + 30}" stroke="{ORANGE}" stroke-width="3"/>')
+    for v in (0, 0.25, 0.5, 0.75, 1.0):
+        c.text(x0 + w * v, y0 + len(rows) * step + 14, f"{v:g}", size=12)
+    c.text(390, y0 + len(rows) * step + 38,
+           "Blue bar: observed. Dashed box: ceiling for those layer sizes. Orange tick: expected if ties were scattered independently.",
+           size=12.5, fill=MUTED)
+    f = lambda v: f"{v:.2f}"
+    desc = " ".join(f"{r[0]}: observed {f(r[1])}, ceiling {f(r[2])}, by luck {f(r[3])}." for r in rows)
+    meta = dict(chapter=15,
+                caption="Seven pairs of layers, three from Krackhardt's managers and four from Sampson's novices. The blue bar is the Jaccard index, the dashed box is the highest it could be for those layer sizes and the orange tick is the value if ties were scattered independently. Advice and reporting sit almost at their ceiling; liking at time 3 with esteem or disliking sits close to the orange tick.",
+                alt="Seven rows, each with a blue bar, a dashed box and an orange tick. " + desc,
+                data={"rows": [[r[0], round(r[1], 3), round(r[2], 3), round(r[3], 3)] for r in rows]})
+    return c, meta
+
+
 FIGURES = {
     "multilayer-layers": layers_side_by_side,
     "multilayer-overlap": overlap_bars,
     "multilayer-ranks": rank_scatter,
     "multilayer-sampson": sampson_heat,
+    "multilayer-ceiling": overlap_ceiling,
 }

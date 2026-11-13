@@ -1,0 +1,56 @@
+id = "supra-distance"
+title = "Layer-aware (supra) distance"
+kind = "measure"
+chapter = "multilayer"
+summary = "The shortest route between two people in a network that holds every layer at once, with a stated cost for changing from one layer to another, compared with the same distance in the flattened network."
+answers = "How far apart are two people if a route has to pay for switching from one kind of tie to another?"
+
+data_requirements = [
+  "Layers on the same people, each a network of its own.",
+  "A coupling cost for moving between a person's copies in different layers. Zero reproduces the flattened network, and the chapter uses one step.",
+  "A statement of whether a route may start and finish in any layer.",
+]
+
+assumptions = [
+  "The coupling cost is a modelling choice. The data do not provide it.",
+  "Shortest routes are a model of how things flow. Many real flows do not use shortest routes.",
+  "People are tied to their own copy in every other layer, so every person is present in every layer. Layers where someone is missing need more care.",
+  "Layers are treated as undirected in the chapter's worked example; directed layers need the direction kept.",
+]
+
+readings = [
+  { context = "Office: advice and friendship among managers", high = "A larger supra distance than flat distance would mean routes have to change kind of tie. Here the two are identical: no pair of managers needs a switch.", low = "Equal distances mean flattening costs nothing for distance questions." },
+  { context = "Monastery: liking and esteem among novices", high = "The supra mean distance (1.588) is above the flat one (1.523) and the diameter grows from 2 to 3, in a pair of layers that are sparser and tie different people.", low = "Where layers are similar, switching is rarely needed." },
+  { context = "Transport: rail and bus", high = "Transfers cost something and matter for how far apart places really are.", low = "If transfers are free the flat network is the right model." },
+  { context = "Online platform: follow and reply networks", high = "Reaching someone by passing from a follow tie to a reply tie may be a different act from staying on one platform.", low = "If the same accounts do both, switching is rarely needed." },
+]
+
+pitfalls = [
+  "Reporting a supra distance without the coupling cost.",
+  "Comparing supra distances across studies that set the cost differently.",
+  "Ignoring that the flat distance is always the smaller of the two, so any difference measures the price of switching.",
+  "Using a tool's layer-aware measure without checking how it treats couplings and whether routes may start in any layer.",
+]
+
+checks = [
+  "Compute the flat distance as well. If supra and flat agree, say so.",
+  "Repeat with a different coupling cost to see whether conclusions depend on it.",
+  "Check that the supra network is connected before averaging distances.",
+  "Report the share of pairs for which the supra distance is longer.",
+]
+
+do_not_claim = [
+  "That information or influence actually flows along supra shortest routes.",
+  "That a coupling cost of one step reflects the true cost of changing kind of tie.",
+  "That agreement of supra and flat distances in one dataset holds in another.",
+]
+
+report_template = "Among {n} {node_type}, the mean distance is {mean_flat} in the network that merges the {layers} layers and {mean_supra} when changing layer costs {cost} step; {farther} of pairs are farther in the second. This depends on the coupling cost, which is a modelling choice, and describes ties at one moment."
+
+related = ["layer-flattening", "geodesic-distance", "layer-overlap"]
+sources = ["kivela2014multilayer", "dedomenico2013mathematical", "mucha2010community"]
+
+[knappnet]
+rust = "build the supra graph with Graph::from_edges (layers on the diagonal, couplings between copies), then knappnet::metrics::descriptive::compute_distances(&g, None, PathOptions::default())"
+r = "net_distances(as_net_frame(rbind(cbind(x, diag(n)), cbind(diag(n), y)), directed = FALSE)); no ready-made layer-aware measure was verified"
+python = "nx.all_pairs_shortest_path_length(nx.from_numpy_array(np.block([[x, I], [I, y]])))"
