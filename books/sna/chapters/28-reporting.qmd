@@ -66,40 +66,39 @@ Here are the numbers behind that table. The code computes four measures for Krac
 
 ```r
 library(knappnet)
-library(dplyr)
-library(purrr)
-library(tidyr)
 
 # Krackhardt's 21 managers: "To whom do you go for advice?" One row per tie, from asker to person asked.
-managers <- as_tibble(read.csv("data/krackhardt/nodes.csv")) |> rename(id = name)
-advice <- as_tibble(read.csv("data/krackhardt/edges.csv")) |>
-  filter(relation == "advice") |>
-  select(source = from, target = to)
+managers <- read.csv("data/krackhardt/nodes.csv")
+names(managers)[names(managers) == "name"] <- "id"
+edges <- read.csv("data/krackhardt/edges.csv")
+advice <- data.frame(source = edges$from[edges$relation == "advice"], target = edges$to[edges$relation == "advice"])
 g <- net_frame(advice, nodes = managers, directed = TRUE, quiet = TRUE)
 
-scores <- tibble(
+scores <- data.frame(
   manager = managers$id, level = managers$level,
-  asked = net_degree(g, mode = "in"), asks = net_degree(g, mode = "out"),
-  betweenness = net_betweenness(g), eigenvector = net_eigen(g)
+  asked = as.numeric(net_degree(g, mode = "in")), asks = as.numeric(net_degree(g, mode = "out")),
+  betweenness = as.numeric(net_betweenness(g)), eigenvector = as.numeric(net_eigen(g))
 )
 # The same ties with the arrows ignored: a pair counts once, whoever asked.
-pairs <- advice |>
-  mutate(a = pmin(source, target), b = pmax(source, target)) |>
-  distinct(source = a, target = b)
-by_pairs <- net_betweenness(net_frame(pairs, nodes = managers, directed = FALSE, quiet = TRUE))
+pairs <- unique(data.frame(source = pmin(advice$source, advice$target), target = pmax(advice$source, advice$target)))
+by_pairs <- as.numeric(net_betweenness(net_frame(pairs, nodes = managers, directed = FALSE, quiet = TRUE)))
 
-tibble(managers = nrow(managers), advice_ties = nrow(advice), density = round(nrow(advice) / (21 * 20), 3),
-       ties_as_pairs = nrow(pairs))
-scores |>
-  slice_max(betweenness, n = 4) |>
-  mutate(betweenness = round(betweenness, 1), eigenvector = round(eigenvector, 3))
+c(managers = nrow(managers), advice_ties = nrow(advice), density = round(nrow(advice) / (21 * 20), 3),
+  ties_as_pairs = nrow(pairs))
+top <- head(scores[order(-scores$betweenness), ], 4)
+top$betweenness <- round(top$betweenness, 1)
+top$eigenvector <- round(top$eigenvector, 3)
+top
 
 # Betweenness with the arrows and without, for the top three of each view and for manager 18.
-tibble(manager = managers$id, with_arrows = scores$betweenness, ignoring_arrows = by_pairs) |>
-  mutate(rank_with = min_rank(desc(with_arrows)), rank_ignoring = min_rank(desc(ignoring_arrows))) |>
-  filter(rank_with <= 3 | rank_ignoring <= 3 | manager == 18) |>
-  arrange(rank_with) |>
-  mutate(across(c(with_arrows, ignoring_arrows), \(x) round(x, 1)))
+views <- data.frame(manager = managers$id, with_arrows = scores$betweenness, ignoring_arrows = by_pairs)
+views$rank_with <- rank(-views$with_arrows, ties.method = "min")
+views$rank_ignoring <- rank(-views$ignoring_arrows, ties.method = "min")
+shown <- views[views$rank_with <= 3 | views$rank_ignoring <= 3 | views$manager == 18, ]
+shown <- shown[order(shown$rank_with), ]
+shown$with_arrows <- round(shown$with_arrows, 1)
+shown$ignoring_arrows <- round(shown$ignoring_arrows, 1)
+shown
 ```
 
 ::: {.code-output}
@@ -291,18 +290,13 @@ A second reason to choose, not to dump: many of the measures say nearly the same
 
 ```r
 # Florentine marriages (undirected) and Krackhardt advice (directed), four measures each.
-florence <- net_frame(as_tibble(read.csv("data/florentine/edges.csv")), directed = FALSE, quiet = TRUE)
-tibble(
-  degree = net_degree(florence), closeness = net_closeness(florence, normalized = TRUE),
-  betweenness = net_betweenness(florence), eigenvector = net_eigen(florence)
-) |>
-  cor(method = "spearman") |>
-  round(2)
+florence <- net_frame(read.csv("data/florentine/edges.csv"), directed = FALSE, quiet = TRUE)
+round(cor(data.frame(
+  degree = as.numeric(net_degree(florence)), closeness = as.numeric(net_closeness(florence, normalized = TRUE)),
+  betweenness = as.numeric(net_betweenness(florence)), eigenvector = as.numeric(net_eigen(florence))
+), method = "spearman"), 2)
 
-scores |>
-  select(asked, asks, betweenness, eigenvector) |>
-  cor(method = "spearman") |>
-  round(2)
+round(cor(scores[, c("asked", "asks", "betweenness", "eigenvector")], method = "spearman"), 2)
 ```
 
 ::: {.code-output}
@@ -457,94 +451,31 @@ Networks are one observation of one situation. There is no sample of 200 firms b
 
 The simplest check is the one the betweenness card asks for: drop a random fraction of the ties, recompute, and see whether the ranking holds. For each run, compute the scores again and record three things about the leader of the full network: how often it is still first, how often it is in the top three, and how closely the whole ranking tracks the original (Spearman's rank correlation between the run and the full-network scores). Do it two hundred times and look at the spread.
 
-The code uses a fixed scrambling recipe instead of a random number generator, so R, Python and Rust drop exactly the same ties and print the same numbers. With a real generator, record the seed (more below).
+The Rust code uses a fixed scrambling recipe instead of a random number generator, so every run drops exactly the same ties and prints the same numbers. The R and Python tabs are blank here: knappnet's packages do not yet expose a function that drops ties over many replicates (`net_perturb()` and `net_stability()` are the missing pieces). With a real generator, record the seed (more below).
 
 ::: {.panel-tabset group="language"}
 
 ## R
 
 ```r
-# A fixed scrambling recipe, so that every language drops exactly the same ties: replicate r
-# gives tie i the key frac(sin(12.9898 i + 78.233 r) * 43758.5453), and the 19 smallest keys are dropped.
-key <- \(i, r) {
-  x <- sin(i * 12.9898 + r * 78.233) * 43758.5453
-  x - floor(x)
-}
-measure_runs <- \(ties) {
-  h <- net_frame(ties, nodes = managers, directed = TRUE, quiet = TRUE)
-  tibble(asked = net_degree(h, mode = "in"), betweenness = net_betweenness(h))
-}
-runs <- map(1:200, \(r) measure_runs(advice[-order(key(1:190, r))[1:19], ]))
-
-summarise_runs <- \(measure) {
-  lead <- which.max(scores[[measure]])
-  ranks <- map_dbl(runs, \(s) 1 + sum(s[[measure]] > s[[measure]][lead]))
-  rho <- map_dbl(runs, \(s) cor(s[[measure]], scores[[measure]], method = "spearman"))
-  tibble(
-    measure, leader = lead, first = mean(ranks == 1), top3 = mean(ranks <= 3),
-    best_rank = min(ranks), worst_rank = max(ranks), mean_rho = mean(rho), rho_5pct = unname(quantile(rho, 0.05))
-  )
-}
-c("asked", "betweenness") |>
-  map(summarise_runs) |>
-  list_rbind() |>
-  mutate(across(where(is.double), \(x) round(x, 3)))
-
-# If you resampled the 190 ties with replacement, how many distinct ties would survive?
-round(190 * (1 - (1 - 1 / 190)^190))
+# TODO(code, R): needs net_perturb() (drop a random share of ties over many replicates) and net_stability() (how often the leader stays first, rank range, rank correlation with the original). Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 2 × 8
-  measure     leader first  top3 best_rank worst_rank mean_rho rho_5pct
-  <chr>        <int> <dbl> <dbl>     <dbl>      <dbl>    <dbl>    <dbl>
-1 asked            2 0.965     1         1          3    0.967    0.94 
-2 betweenness     18 0.925     1         1          2    0.945    0.888
-[1] 120
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-from math import floor, sin
-
-# A fixed scrambling recipe, so that every language drops exactly the same ties: replicate r
-# gives tie i the key frac(sin(12.9898 i + 78.233 r) * 43758.5453), and the 19 smallest keys are dropped.
-def key(i, r):
-    x = sin(i * 12.9898 + r * 78.233) * 43758.5453
-    return x - floor(x)
-
-def scores(ties):
-    H = nx.DiGraph()
-    H.add_nodes_from(managers)
-    H.add_edges_from(ties)
-    b = nx.betweenness_centrality(H, normalized=False)
-    return np.array([H.in_degree(v) for v in managers]), np.array([b[v] for v in managers])
-
-original = scores(advice)
-runs = []
-for r in range(1, 201):
-    dropped = set(sorted(range(190), key=lambda i: key(i + 1, r))[:19])
-    runs.append(scores([t for i, t in enumerate(advice) if i not in dropped]))
-
-print(f"{'measure':<12}{'leader':>7}{'first':>7}{'top 3':>7}{'rank range':>12}{'mean rho':>10}{'5% rho':>8}")
-for j, name in enumerate(["asked", "betweenness"]):
-    lead = int(np.argmax(original[j]))
-    ranks = np.array([1 + (s[j] > s[j][lead]).sum() for s in runs])
-    rho = np.array([spearmanr(s[j], original[j])[0] for s in runs])
-    print(f"{name:<12}{lead + 1:>7}{np.mean(ranks == 1):>7.3f}{np.mean(ranks <= 3):>7.3f}"
-          f"{ranks.min():>8} to {ranks.max()}{rho.mean():>10.3f}{np.percentile(rho, 5):>8.3f}")
-print(f"if you resampled the 190 ties with replacement, about {190 * (1 - (1 - 1 / 190) ** 190):.0f} distinct ties would survive")
+# TODO(code, Python): needs net_perturb() (drop a random share of ties over many replicates) and net_stability() (how often the leader stays first, rank range, rank correlation with the original). Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-measure      leader  first  top 3  rank range  mean rho  5% rho
-asked             2  0.965  1.000       1 to 3     0.967   0.940
-betweenness      18  0.925  1.000       1 to 2     0.945   0.888
-if you resampled the 190 ties with replacement, about 120 distinct ties would survive
+TODO(output)
 ```
 :::
 
@@ -656,35 +587,26 @@ The karate club [@zachary1977information] is a network of 34 members, where a ti
 
 ```r
 # Karate club: two factions after the split; a tie means two members were seen together outside club meetings (how often is ignored here).
-karate_nodes <- as_tibble(read.csv("data/karate/nodes.csv"))
-karate_edges <- as_tibble(read.csv("data/karate/edges.csv")) |> select(source, target)
+karate_nodes <- read.csv("data/karate/nodes.csv")
+karate_edges <- read.csv("data/karate/edges.csv")[, c("source", "target")]
 club <- net_frame(karate_edges, nodes = karate_nodes, directed = FALSE, quiet = TRUE)
-club_scores <- karate_nodes |>
-  mutate(degree = net_degree(club), betweenness = round(net_betweenness(club), 1))
-leaders <- club_scores |> slice_max(betweenness, n = 2)
+club_scores <- data.frame(id = karate_nodes$id, faction = karate_nodes$faction,
+                          degree = as.numeric(net_degree(club)), betweenness = round(as.numeric(net_betweenness(club)), 1))
+leaders <- head(club_scores[order(-club_scores$betweenness), ], 2)
 leaders
 
-cross <- karate_edges |>
-  mutate(from_side = karate_nodes$faction[source], to_side = karate_nodes$faction[target]) |>
-  filter(from_side != to_side)
-tibble(
-  ties = nrow(karate_edges), crossing = nrow(cross),
-  touching_leaders = sum(cross$source %in% leaders$id | cross$target %in% leaders$id)
-)
+side <- setNames(karate_nodes$faction, karate_nodes$id)
+crossing <- side[as.character(karate_edges$source)] != side[as.character(karate_edges$target)]
+c(ties = nrow(karate_edges), crossing = sum(crossing),
+  touching_leaders = sum(crossing & (karate_edges$source %in% leaders$id | karate_edges$target %in% leaders$id)))
 
 # Without the two leaders: how big are the pieces?
-rest <- net_frame(
-  filter(karate_edges, !source %in% leaders$id, !target %in% leaders$id),
-  nodes = filter(karate_nodes, !id %in% leaders$id), directed = FALSE, quiet = TRUE
-)
-tibble(piece = net_components(rest)$membership) |> count(piece, name = "size") |> arrange(desc(size))
+keep <- !karate_edges$source %in% leaders$id & !karate_edges$target %in% leaders$id
+rest <- net_frame(karate_edges[keep, ], nodes = karate_nodes[!karate_nodes$id %in% leaders$id, ], directed = FALSE, quiet = TRUE)
+sort(table(net_components(rest)$membership), decreasing = TRUE)
 
 # Leave out each tie in turn: is the top member still the same?
-first_without <- map_lgl(seq_len(nrow(karate_edges)), \(i) {
-  h <- net_frame(karate_edges[-i, ], nodes = karate_nodes, directed = FALSE, quiet = TRUE)
-  which.max(net_betweenness(h)) == leaders$id[1]
-})
-tibble(leave_one_out_runs = length(first_without), top_member_stays_first = sum(first_without))
+# TODO(code, R): needs net_stability() (re-run a measure with one tie left out at a time)
 ```
 
 ::: {.code-output}
@@ -729,9 +651,8 @@ print(f"{len(cross)} of {len(club)} ties cross the two factions; {sum(set(t) & s
 rest = K.copy()
 rest.remove_nodes_from(lead)
 print("without them the club falls into pieces of size " + ", ".join(str(len(c)) for c in sorted(nx.connected_components(rest), key=len, reverse=True)))
-top_first = [max(nx.betweenness_centrality(nx.Graph([t for j, t in enumerate(club) if j != i]), normalized=False).items(), key=lambda kv: kv[1])[0] == lead[0]
-             for i in range(len(club))]
-print(f"member {lead[0]} stays first on betweenness in {sum(top_first)} of {len(club)} leave-one-tie-out runs")
+# Leave out each tie in turn: is the top member still the same?
+# TODO(code, Python): needs a leave-one-tie-out stability check in the Python package
 ```
 
 ::: {.code-output}
@@ -739,7 +660,6 @@ print(f"member {lead[0]} stays first on betweenness in {sum(top_first)} of {len(
 34 members, 78 ties; top betweenness: member 1 (231.1, degree 16, Mr. Hi), member 34 (160.6, degree 17, Officer)
 11 of 78 ties cross the two factions; 4 of them touch member 1 or 34
 without them the club falls into pieces of size 26, 5, 1
-member 1 stays first on betweenness in 78 of 78 leave-one-tie-out runs
 ```
 :::
 
@@ -818,55 +738,24 @@ Here the claim is about the relation between two networks on the same 21 manager
 ## R
 
 ```r
-# Do friends tend to be the people you ask for advice? Friendship ties that are also advice ties,
-# against the same count after relabeling who is who (1,000 scrambles by the same recipe).
-friend <- as_tibble(read.csv("data/krackhardt/edges.csv")) |> filter(relation == "friendship")
-A <- matrix(0, 21, 21)
-A[cbind(advice$source, advice$target)] <- 1
-share <- \(p) mean(A[cbind(p[friend$from], p[friend$to])])
-observed <- share(1:21)
-null <- map_dbl(1:1000, \(r) share(order(key(1:21, r))))
-tibble(
-  friendship_ties = nrow(friend), also_advice = observed * nrow(friend), share = observed,
-  advice_density = nrow(advice) / 420, null_mean = mean(null),
-  null_5pct = unname(quantile(null, 0.05)), null_95pct = unname(quantile(null, 0.95)),
-  scrambles_reaching = mean(null >= observed - 1e-9)
-) |>
-  mutate(across(where(is.double), \(x) round(x, 3)))
+# TODO(code, R): needs net_relabel_test() (share of ties of one relation that are also in another, against the same count after relabeling who is who). Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 1 × 8
-  friendship_ties also_advice share advice_density null_mean null_5pct
-            <int>       <dbl> <dbl>          <dbl>     <dbl>     <dbl>
-1             102          60 0.588          0.452     0.451     0.343
-# ℹ 2 more variables: null_95pct <dbl>, scrambles_reaching <dbl>
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# Do friends tend to be the people you ask for advice? Friendship ties that are also advice ties,
-# against the same count after relabeling who is who (1,000 scrambles by the same recipe).
-with open("data/krackhardt/edges.csv") as f:
-    friend = np.array([(int(r["from"]) - 1, int(r["to"]) - 1) for r in csv.DictReader(f) if r["relation"] == "friendship"])
-A = np.zeros((21, 21), dtype=int)
-for a, b in advice:
-    A[a - 1, b - 1] = 1
-share = lambda p: A[p[friend[:, 0]], p[friend[:, 1]]].mean()
-observed = share(np.arange(21))
-null = np.array([share(np.argsort([key(i, r) for i in range(1, 22)])) for r in range(1, 1001)])
-print(f"{len(friend)} friendship ties; {observed * len(friend):.0f} are also advice ties ({observed:.3f}); advice density {len(advice) / 420:.3f}")
-print(f"after relabeling: mean {null.mean():.3f}, middle 90% {np.percentile(null, 5):.3f} to {np.percentile(null, 95):.3f}, "
-      f"{np.mean(null >= observed - 1e-9):.3f} of scrambles reach {observed:.3f}")
+# TODO(code, Python): needs net_relabel_test() (share of ties of one relation that are also in another, against the same count after relabeling who is who). Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-102 friendship ties; 60 are also advice ties (0.588); advice density 0.452
-after relabeling: mean 0.451, middle 90% 0.343 to 0.559, 0.019 of scrambles reach 0.588
+TODO(output)
 ```
 :::
 
@@ -942,10 +831,10 @@ The knappnet engine keeps part of this for you. Each result from `net_run()` in 
 ```r
 # What the engine itself records about one run: the measure and its revision, the network it saw, and a hash of that network.
 prov <- net_provenance(net_run(g, "betweenness"))
-tibble(
+data.frame(
   measure = prov$measure, revision = prov$revision, engine = prov$engine,
   nodes = prov$graph$n, ties = prov$graph$m, directed = prov$graph$directed,
-  graph_hash = c(substr(prov$graph$content, 1, 16), NA)[1]
+  graph_hash = if (is.null(prov$graph$content)) NA else substr(prov$graph$content, 1, 16)
 )
 ```
 
@@ -1004,7 +893,7 @@ graph: 21 nodes, 190 ties, directed true, content hash ad4fe3bd37923e66
 
 :::
 
-The Rust hash covers the network as the engine saw it (its ties in order, direction, node count), not the file it came from, while the Python record hashes the file, so the two cannot be compared. In R the hash shows as missing here: the engine records it only once the hash has been computed, and nothing had asked for it by then, so do not count on it and record your own, as the Python tab does. A record in this shape, kept with the output, is the minimum. @sec-reproducibility goes further: how to pin versions, how to cache and when a cached result is valid, and how to rerun a whole analysis from scratch.
+The Rust hash covers the network as the engine saw it (its ties in order, direction, node count), not the file it came from, while a record of the file hashes the file, so the two cannot be compared. In R the hash shows as missing here: the engine records it only once the hash has been computed, and nothing had asked for it by then, so do not count on it and record your own, as the Python tab does with the file's hash. A record in this shape, kept with the output, is the minimum. @sec-reproducibility goes further: how to pin versions, how to cache and when a cached result is valid, and how to rerun a whole analysis from scratch.
 
 ## Cards: guidance a program can use
 
@@ -1043,65 +932,24 @@ The next block does steps 1 and 5 for the betweenness card, using what this chap
 ## R
 
 ```r
-# Read a card the way a program would: no TOML library, just its own lines.
-card <- readLines("data/../cards/betweenness.toml")
-entries <- \(key) {
-  rest <- card[-seq_len(which(card == paste0(key, " = [")))]
-  head(rest, which(rest == "]")[1] - 1)  # the lines of a list field, up to its closing bracket
-}
-template <- sub('^report_template = "(.*)"$', "\\1", card[startsWith(card, "report_template")])
-blanks <- unique(gsub("[{}]", "", regmatches(template, gregexpr("\\{\\w+\\}", template))[[1]]))
-tibble(checks = length(entries("checks")), claims_to_avoid = length(entries("do_not_claim")), blanks = length(blanks))
-blanks
-
-# What the runs so far can fill in. Anything else stays blank, and the program does not write the sentence.
-have <- c("tie_meaning", "n", "node_type", "node", "value", "share", "rank", "stable_or_not", "perturbation")
-setdiff(blanks, have)
+# TODO(code, R): needs net_card() (read a measure card: its checks, claims to avoid and report-template blanks, and list the blanks that the runs so far cannot fill). Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 1 × 3
-  checks claims_to_avoid blanks
-   <int>           <int>  <int>
-1      5               4     11
- [1] "tie_meaning"     "n"               "node_type"       "node"           
- [5] "value"           "share"           "rank"            "stable_or_not"  
- [9] "perturbation"    "higher_or_lower" "null_summary"   
-[1] "higher_or_lower" "null_summary"   
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-import re
-
-# Read a card the way a program would: no TOML library, just its own lines.
-with open("data/../cards/betweenness.toml") as f:
-    card = f.read().splitlines()
-
-def entries(key):
-    rest = card[card.index(f"{key} = [") + 1:]  # the lines of a list field, up to its closing bracket
-    return rest[:rest.index("]")]
-
-template = next(ln for ln in card if ln.startswith("report_template")).split(" = ", 1)[1].strip('"')
-blanks = list(dict.fromkeys(re.findall(r"\{(\w+)\}", template)))
-print(f"{len(entries('checks'))} checks, {len(entries('do_not_claim'))} claims to avoid, {len(blanks)} blanks in the report template")
-print("blanks: " + ", ".join(blanks))
-
-# What the runs so far can fill in. Anything else stays blank, and the program does not write the sentence.
-have = {"tie_meaning": "advice", "n": 21, "node_type": "managers", "node": "manager 18", "value": 88.9,
-        "share": 88.9 / (20 * 19), "rank": 1, "stable_or_not": "mostly stable", "perturbation": "19 of 190 ties are dropped"}
-missing = [b for b in blanks if b not in have]
-print("not ready to report; still missing: " + ", ".join(missing))
+# TODO(code, Python): needs a card reader in the Python package (read a measure card: its checks, claims to avoid and report-template blanks). Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-5 checks, 4 claims to avoid, 11 blanks in the report template
-blanks: tie_meaning, n, node_type, node, value, share, rank, stable_or_not, perturbation, higher_or_lower, null_summary
-not ready to report; still missing: higher_or_lower, null_summary
+TODO(output)
 ```
 :::
 
@@ -1174,8 +1022,8 @@ None of this makes programs less useful. It makes the human step explicit: when 
 1. B is on the routes A to C and A to D, so betweenness 2. C is on the routes A to D and B to D, so also 2. For each node there are 3 other managers and so 6 ordered pairs of other managers, of which only 2 have a route that passes through it: a share of 2/6 = 1/3. Most ordered pairs have no route at all, because the arrows only run one way. That is why the share says as much as the count.
 2. *Computed:* which network (what is a tie, directed or not, repeated ties), and where "Bea" is in it, since degree 4 means different things if the network has 5 people or 500. *Meaning:* four direct contacts of the kind the tie records; in an advice network, four people she asks or is asked by (in or out must be stated). *How sure:* how many ties could be missing, and whether she would still have about four if one or two were absent. *Not shown:* that she is popular, powerful or important; those are claims about more than the count. Degree 4 compared with the average degree is the missing context.
 3. On average about 2.7 of the 4 ties survive, so the resample is usually sparser than the original. Here is the count. A tie is left out of one draw with probability 3/4, so out of all four draws with probability $(3/4)^4 = 81/256$, about 0.316. The expected number of distinct ties is $4 \times (1 - 81/256) = 700/256$, about 2.73. A resample therefore usually has fewer than four ties and repeats some, so it is a sparser network than the one observed, and scores computed on it are scores of a network nobody observed.
-4. Replace 19 by 38 and by 57 in the drop step (and in the checks, the range of ties). In my run in Python the shares first with 38 dropped were 0.810 for the leader on "asked" and 0.850 for the leader on betweenness, with mean rank correlations of 0.935 and 0.894; with 57 dropped they were 0.735 and 0.750, with rank correlations of 0.898 and 0.835. At 10% the leader on "asked" was the steadier one, but as more ties are dropped the leader on betweenness holds first place a little better, while the whole betweenness ranking is less stable throughout. Your digits depend on the scrambling recipe, but the direction should be the same.
-5. The same 60 ties overlap, but they are 60 of 190 advice ties, which is 31.6%, against a friendship density of 24.3% (102 of 420). After 1,000 relabelings in my Python run the share averages 0.243, the middle 90% runs from 0.189 to 0.300, and 1.4% of scrambles reach 0.316. The share differs because the base is different (the advice network has more ties than the friendship network), but the overlap and the conclusion are the same: more than relabeling gives, and nothing about cause.
+4. Replace 19 by 38 and by 57 in the drop step (and in the checks, the range of ties). In my run the shares first with 38 dropped were 0.810 for the leader on "asked" and 0.850 for the leader on betweenness, with mean rank correlations of 0.935 and 0.894; with 57 dropped they were 0.735 and 0.750, with rank correlations of 0.898 and 0.835. At 10% the leader on "asked" was the steadier one, but as more ties are dropped the leader on betweenness holds first place a little better, while the whole betweenness ranking is less stable throughout. Your digits depend on the scrambling recipe, but the direction should be the same.
+5. The same 60 ties overlap, but they are 60 of 190 advice ties, which is 31.6%, against a friendship density of 24.3% (102 of 420). After 1,000 relabelings in my run the share averages 0.243, the middle 90% runs from 0.189 to 0.300, and 1.4% of scrambles reach 0.316. The share differs because the base is different (the advice network has more ties than the friendship network), but the overlap and the conclusion are the same: more than relabeling gives, and nothing about cause.
 6. Report one of in-degree and eigenvector and say the other agrees (rho 0.97), since they carry the same ranking. Report betweenness separately, because it correlates only about 0.4 with each and so measures something different, and say what question each answers. Listing all three as independent findings would make a single pattern look like three.
 7. For example: "In the marriage network of 15 leading Florentine families, read as one snapshot, the Medici have the highest betweenness (47.5, first of 15), a lead that holds when any one marriage is left out and in 178 of 190 cases when any two are left out. This describes their position on marriage routes, and the network cannot show why they held it or what they did with it." The numbers are the ones in the case study.
 8. Directed: advice has a direction, and "who asks whom" is the question, so routes should follow arrows; you would write "on chains of asking". Undirected: if the question is about who is in contact, with either side able to start, collapsing to 145 pairs may fit better; you would write "on chains of contact, whoever started". Either way, name the choice and the rank it produced (first with arrows, seventh without).

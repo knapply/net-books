@@ -35,7 +35,7 @@ By the end you should be able to:
 
 ::: {.callout-tip appearance="simple"}
 ## Code lives next to the idea
-Each step comes with its code right where it is explained, and every tab is checked by running it. The Rust blocks run top to bottom as one script, so a function defined in one block is there in the next. The R and Python tabs do the same.
+Each step comes with its code right where it is explained, and every tab is checked by running it. The Rust blocks run top to bottom as one script, so a function defined in one block is there in the next. The R and Python tabs are blank for now where knappnet's packages do not expose the function yet; each says which function is missing, and the Rust tab shows the working code.
 :::
 
 ## Predicting is not explaining
@@ -162,136 +162,24 @@ The table below is what you should get on paper for the six-person network. Here
 ## R
 
 ```r
-library(knappnet)
-library(dplyr)
-library(purrr)
-library(tibble)
-
-# Ids are 1-based, as in the data files, so they are also the matrix positions.
-adjacency <- function(pairs, n) {
-  a <- matrix(0, n, n)
-  a[pairs] <- 1
-  a + t(a)
-}
-
-# Steps needed to get from i to j; n stands for "cannot get there".
-hops <- function(a) {
-  n <- nrow(a)
-  pairs <- which(upper.tri(a) & a > 0, arr.ind = TRUE)
-  g <- net_frame(data.frame(source = pairs[, 1], target = pairs[, 2]),
-                 nodes = data.frame(id = seq_len(n)), directed = FALSE, quiet = TRUE)
-  d <- unname(net_distances(g))
-  replace(d, !is.finite(d), n)
-}
-
-link_scores <- function(a, beta = 0.05) {
-  n <- nrow(a)
-  deg <- rowSums(a)
-  common <- a %*% a
-  union <- outer(deg, deg, "+") - common
-  list(
-    CN = common,
-    Jaccard = ifelse(union > 0, common / union, 0),
-    # A node of degree 1 is never a common neighbour, so pmax() only avoids log(1) = 0.
-    AA = a %*% (a / log(pmax(deg, 2))),
-    RA = a %*% (a / pmax(deg, 1)),
-    PA = outer(deg, deg),
-    Katz = solve(diag(n) - beta * a) - diag(n),
-    Path = -hops(a)
-  )
-}
-
-who <- c("Ana", "Ben", "Cy", "Dee", "Eli", "Fay")
-toy <- adjacency(cbind(c(1, 1, 2, 2, 3, 4, 5), c(2, 3, 3, 4, 4, 5, 6)), 6)
-scores <- link_scores(toy)
-open_pairs <- which(upper.tri(toy) & toy == 0, arr.ind = TRUE)
-open_pairs <- open_pairs[order(open_pairs[, 1], open_pairs[, 2]), ]
-scores |>
-  map(\(m) m[open_pairs]) |>
-  as_tibble() |>
-  mutate(pair = paste0(who[open_pairs[, 1]], "-", who[open_pairs[, 2]]), .before = 1) |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
+# TODO(code, R): needs net_link_scores(): common neighbours, Jaccard, Adamic-Adar, resource allocation, preferential attachment, Katz and shortest-path scores for every pair with no tie. Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 8 × 8
-  pair       CN Jaccard    AA    RA    PA  Katz  Path
-  <chr>   <dbl>   <dbl> <dbl> <dbl> <dbl> <dbl> <dbl>
-1 Ana-Dee     2   0.667  1.82 0.667     6 0.005    -2
-2 Ana-Eli     0   0      0    0         4 0        -3
-3 Ana-Fay     0   0      0    0         2 0        -4
-4 Ben-Eli     1   0.25   0.91 0.333     6 0.003    -2
-5 Ben-Fay     0   0      0    0         3 0        -3
-6 Cy-Eli      1   0.25   0.91 0.333     6 0.003    -2
-7 Cy-Fay      0   0      0    0         3 0        -3
-8 Dee-Fay     1   0.333  1.44 0.5       3 0.003    -2
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-import numpy as np
-import pandas as pd
-import networkx as nx
-
-# Ids are 1-based, as in the data files; the matrix position is the id minus one.
-def adjacency(pairs, n):
-    pairs = np.asarray(pairs)
-    a = np.zeros((n, n))
-    a[pairs[:, 0] - 1, pairs[:, 1] - 1] = 1
-    return a + a.T
-
-def hops(a):
-    # Steps needed to get from i to j; n stands for "cannot get there".
-    n = len(a)
-    reach, dist = np.eye(n), np.where(np.eye(n) > 0, 0, n).astype(float)
-    for k in range(1, n):
-        reach = ((reach @ (a + np.eye(n))) > 0).astype(float)
-        dist = np.where((reach > 0) & (dist == n), k, dist)
-    return dist
-
-def link_scores(a, beta=0.05):
-    n, deg = len(a), a.sum(axis=1)
-    common = a @ a
-    union = deg[:, None] + deg[None, :] - common
-    return {
-        "CN": common,
-        "Jaccard": np.divide(common, union, out=np.zeros((n, n)), where=union > 0),
-        # A node of degree 1 is never a common neighbour, so the max() only avoids log(1) = 0.
-        "AA": a @ np.diag(1 / np.log(np.maximum(deg, 2))) @ a,
-        "RA": a @ np.diag(1 / np.maximum(deg, 1)) @ a,
-        "PA": np.outer(deg, deg),
-        "Katz": np.linalg.inv(np.eye(n) - beta * a) - np.eye(n),
-        "Path": -hops(a),
-    }
-
-who = ["Ana", "Ben", "Cy", "Dee", "Eli", "Fay"]
-toy = adjacency([(1, 2), (1, 3), (2, 3), (2, 4), (3, 4), (4, 5), (5, 6)], 6)
-scores = link_scores(toy)
-open_pairs = np.argwhere(np.triu(toy == 0, 1))
-table = pd.DataFrame({k: m[open_pairs[:, 0], open_pairs[:, 1]] for k, m in scores.items()})
-table.insert(0, "pair", [f"{who[u]}-{who[v]}" for u, v in open_pairs])
-print(table.round(3).to_string(index=False))
-
-# The same Adamic-Adar scores from NetworkX.
-check = nx.adamic_adar_index(nx.from_numpy_array(toy), [tuple(p) for p in open_pairs])
-print("largest gap to NetworkX:", max(abs(s - scores["AA"][u, v]) for u, v, s in check))
+# TODO(code, Python): needs net_link_scores(): common neighbours, Jaccard, Adamic-Adar, resource allocation, preferential attachment, Katz and shortest-path scores for every pair with no tie. Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-   pair  CN  Jaccard    AA    RA  PA  Katz  Path
-Ana-Dee 2.0    0.667 1.820 0.667 6.0 0.005  -2.0
-Ana-Eli 0.0    0.000 0.000 0.000 4.0 0.000  -3.0
-Ana-Fay 0.0    0.000 0.000 0.000 2.0 0.000  -4.0
-Ben-Eli 1.0    0.250 0.910 0.333 6.0 0.003  -2.0
-Ben-Fay 0.0    0.000 0.000 0.000 3.0 0.000  -3.0
- Cy-Eli 1.0    0.250 0.910 0.333 6.0 0.003  -2.0
- Cy-Fay 0.0    0.000 0.000 0.000 3.0 0.000  -3.0
-Dee-Fay 1.0    0.333 1.443 0.500 3.0 0.003  -2.0
-largest gap to NetworkX: 0.0
+TODO(output)
 ```
 :::
 
@@ -430,7 +318,7 @@ Read the rows with the idea from the start of the section in mind.
 - The degree product disagrees with all of them. It puts Ben-Eli and Cy-Eli at the top, tied with Ana-Dee at 6, and Dee-Fay low, because it only counts how many people each knows. It would bet on the busy, not on the connected.
 - Katz agrees with common neighbours here. Its values are tiny because $\beta$ is small: Ana and Dee get $0.05^2 \times 2 = 0.005$ from the two walks of length two plus a rounding-sized contribution from longer ones.
 
-Two practical notes. First, the Python tab checks the Adamic-Adar column against NetworkX [@hagberg2008exploring] and the gap is zero, and the Rust tab checks the library's value against the formula. Second, knappnet's R package does not yet expose a link-score function, so the R tab writes the matrix forms out, the way the formulas above are written. The Rust tab uses knappnet's own link-prediction module for the first five scores and writes Katz and the path score by hand. Where a tool is missing, writing it by hand is a good way to see what it does.
+Two practical notes. First, the Rust tab checks the library's value against the formula. Second, knappnet's R and Python packages do not yet expose a link-score function (`net_link_scores()` is the missing piece), so those tabs are blank until they do. The Rust tab uses knappnet's own link-prediction module for the first five scores and writes Katz and the path score by hand. Where a tool is missing, writing it by hand is a good way to see what it does.
 
 ## Judging a ranking
 
@@ -474,9 +362,9 @@ A score earns its keep only against something simple. We use two baselines: **ch
 
 ### Hiding ties with a fixed scramble
 
-To compare scores fairly, and to compare languages, every split must be reproducible. We don't want random number generators that differ between R, Python and Rust. So the code uses a fixed scramble: a short formula $h(u, v, \text{seed})$ that turns two ids and a seed into a number that looks random. Sort the ties by their number and hide the first 20 percent. The scramble is not a good random number generator for anything else, but it spreads ties around well enough for this job, and it makes the three languages hide exactly the same ties. The code below also holds the scores for the rest of the chapter.
+To compare scores fairly, and to compare languages, every split must be reproducible. We don't want random number generators that differ between tools. So the code uses a fixed scramble: a short formula $h(u, v, \text{seed})$ that turns two ids and a seed into a number that looks random. Sort the ties by their number and hide the first 20 percent. The scramble is not a good random number generator for anything else, but it spreads ties around well enough for this job, and it makes every run hide exactly the same ties. The code below also holds the scores for the rest of the chapter.
 
-Think of it as shuffling a deck in exactly the same way every time, so that R, Python and Rust are all dealt the same hand. The formula is not a serious random number generator, just a reproducible shuffle.
+Think of it as shuffling a deck in exactly the same way every time, so that every run is dealt the same hand. The formula is not a serious random number generator, just a reproducible shuffle.
 
 
 ::: {.panel-tabset group="language"}
@@ -484,147 +372,24 @@ Think of it as shuffling a deck in exactly the same way every time, so that R, P
 ## R
 
 ```r
-hide_key <- function(u, v, seed) {
-  # A fixed scramble of (u, v, seed): the same "random" order in every language.
-  x <- (u * 7919 + v * 6841 + seed * 104729 + 12345) %% 1000003
-  x <- (x * x + 12345) %% 1000003
-  x <- (x * x + 777) %% 1000003
-  (x * 48271) %% 1000003
-}
-
-hidden_ties <- function(pairs, seed, frac) {
-  order(hide_key(pairs[, 1], pairs[, 2], seed), seq_len(nrow(pairs)))[seq_len(round(frac * nrow(pairs)))]
-}
-
-# The chance that a hidden tie outscores a pair with no tie; ties count one half.
-auc <- function(score, hit) {
-  s <- round(score, 10)
-  mean(outer(s[hit], s[!hit], ">")) + 0.5 * mean(outer(s[hit], s[!hit], "=="))
-}
-
-precision_at_k <- function(score, hit, k) {
-  s <- round(score, 10)
-  cut <- sort(s, decreasing = TRUE)[k]
-  above <- s > cut
-  tied <- s == cut
-  (sum(hit[above]) + sum(hit[tied]) * (k - sum(above)) / sum(tied)) / k
-}
-
-rank_scores <- function(scores, train, truth) {
-  open <- upper.tri(train) & train == 0   # pairs with no tie in the training network
-  hit <- truth[open] > 0
-  tibble(score = names(scores),
-         auc = unname(map_dbl(scores, \(m) auc(m[open], hit))),
-         p_at_k = unname(map_dbl(scores, \(m) precision_at_k(m[open], hit, sum(hit)))))
-}
-
-one_split <- function(pairs, n, seed, frac = 0.2, leak = FALSE, scorer = link_scores) {
-  train <- adjacency(pairs[-hidden_ties(pairs, seed, frac), , drop = FALSE], n)
-  truth <- adjacency(pairs, n)
-  rank_scores(scorer(if (leak) truth else train), train, truth) |> mutate(seed = seed)
-}
-
-many_splits <- function(pairs, n, seeds = 1:100, ...) {
-  list_rbind(map(seeds, \(s) one_split(pairs, n, s, ...)))
-}
-
-summarise_splits <- function(runs) {
-  runs |>
-    summarise(sd = sd(auc), auc = mean(auc), p_at_k = mean(p_at_k), .by = score) |>
-    select(score, auc, sd, p_at_k) |>
-    mutate(across(c(auc, sd, p_at_k), \(x) round(x, 3)))
-}
-
-# Florentine marriages: families numbered in alphabetical order.
-f <- read.csv("data/florentine/edges.csv")
-fam <- sort(unique(c(f$source, f$target)))
-florence <- cbind(pmin(match(f$source, fam), match(f$target, fam)),
-                  pmax(match(f$source, fam), match(f$target, fam)))
-sprintf("%d families, %d marriages; hiding 10%% hides %d of them",
-        length(fam), nrow(florence), length(hidden_ties(florence, 1, 0.1)))
-summarise_splits(many_splits(florence, length(fam), frac = 0.1))
+# TODO(code, R): needs net_hide_ties() and net_link_eval(): hide a random share of ties, score the pairs with no tie, and report AUC and precision at k over many splits. Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-[1] "15 families, 20 marriages; hiding 10% hides 2 of them"
-# A tibble: 7 × 4
-  score     auc    sd p_at_k
-  <chr>   <dbl> <dbl>  <dbl>
-1 CN      0.514 0.157  0.039
-2 Jaccard 0.521 0.163  0.058
-3 AA      0.525 0.168  0.042
-4 RA      0.525 0.168  0.042
-5 PA      0.498 0.184  0    
-6 Katz    0.449 0.199  0.015
-7 Path    0.448 0.186  0.023
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-def hide_key(u, v, seed):
-    # A fixed scramble of (u, v, seed): the same "random" order in every language.
-    x = (u * 7919 + v * 6841 + seed * 104729 + 12345) % 1000003
-    x = (x * x + 12345) % 1000003
-    x = (x * x + 777) % 1000003
-    return (x * 48271) % 1000003
-
-def hidden_ties(pairs, seed, frac):
-    order = np.lexsort((np.arange(len(pairs)), hide_key(pairs[:, 0], pairs[:, 1], seed)))
-    return order[:round(frac * len(pairs))]
-
-def auc(score, hit):
-    s = np.round(score, 10)
-    won, tied = s[hit][:, None] > s[~hit][None, :], s[hit][:, None] == s[~hit][None, :]
-    return won.mean() + 0.5 * tied.mean()
-
-def precision_at_k(score, hit, k):
-    s = np.round(score, 10)
-    cut = np.sort(s)[::-1][k - 1]
-    above, tied = s > cut, s == cut
-    return (hit[above].sum() + hit[tied].sum() * (k - above.sum()) / tied.sum()) / k
-
-def rank_scores(scores, train, truth):
-    upper = np.triu(train == 0, 1)          # pairs with no tie in the training network
-    hit = truth[upper] > 0
-    return pd.DataFrame({"score": list(scores),
-        "auc": [auc(m[upper], hit) for m in scores.values()],
-        "p_at_k": [precision_at_k(m[upper], hit, hit.sum()) for m in scores.values()]})
-
-def one_split(pairs, n, seed, frac=0.2, leak=False, scorer=link_scores):
-    kept = np.delete(pairs, hidden_ties(pairs, seed, frac), axis=0)
-    train, truth = adjacency(kept, n), adjacency(pairs, n)
-    return rank_scores(scorer(truth if leak else train), train, truth).assign(seed=seed)
-
-def many_splits(pairs, n, seeds=range(1, 101), **kw):
-    return pd.concat([one_split(pairs, n, s, **kw) for s in seeds])
-
-def summarise(runs):
-    by = runs.groupby("score", sort=False)
-    return pd.DataFrame({"auc": by.auc.mean(), "sd": by.auc.std(), "p_at_k": by.p_at_k.mean()}).round(3)
-
-# Florentine marriages: families numbered in alphabetical order.
-f = pd.read_csv("data/florentine/edges.csv")
-fam = sorted(set(f.source) | set(f.target))
-florence = np.sort(np.column_stack([f.source.map(fam.index) + 1, f.target.map(fam.index) + 1]), axis=1)
-print(len(fam), "families,", len(florence), "marriages; hiding 10% hides", round(0.1 * len(florence)), "of them")
-print(summarise(many_splits(florence, len(fam), frac=0.1)))
+# TODO(code, Python): needs net_hide_ties() and net_link_eval(): hide a random share of ties, score the pairs with no tie, and report AUC and precision at k over many splits. Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-15 families, 20 marriages; hiding 10% hides 2 of them
-           auc     sd  p_at_k
-score                        
-CN       0.514  0.157   0.039
-Jaccard  0.521  0.163   0.058
-AA       0.525  0.168   0.042
-RA       0.525  0.168   0.042
-PA       0.498  0.184   0.000
-Katz     0.449  0.199   0.015
-Path     0.448  0.186   0.023
+TODO(output)
 ```
 :::
 
@@ -757,76 +522,24 @@ Zachary's karate club has 34 members and 78 friendships [@zachary1977information
 ## R
 
 ```r
-e <- read.csv("data/karate/edges.csv")
-karate <- cbind(pmin(e$source, e$target), pmax(e$source, e$target))
-karate[hidden_ties(karate, 1, 0.2), ] |> asplit(1) |> map_chr(\(p) paste0("(", p[1], ", ", p[2], ")"))
-summarise_splits(many_splits(karate, 34))
-sizes <- c(0.1, 0.2, 0.3)
-by_size <- map(sizes, \(p) summarise_splits(many_splits(karate, 34, frac = p)))
-tibble(score = by_size[[1]]$score) |>
-  bind_cols(set_names(map(by_size, "auc"), sprintf("%d%% hidden", round(100 * sizes))))
+# TODO(code, R): needs net_hide_ties() and net_link_eval(): repeat the hold-out over seeds 1 to 100 at 10, 20 and 30 percent hidden. Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
- [1] "(1, 5)"   "(1, 20)"  "(6, 17)"  "(25, 32)" "(1, 32)"  "(2, 3)"  
- [7] "(27, 30)" "(2, 22)"  "(33, 34)" "(6, 11)"  "(1, 22)"  "(24, 34)"
-[13] "(30, 34)" "(2, 31)"  "(3, 29)"  "(25, 26)"
-# A tibble: 7 × 4
-  score     auc    sd p_at_k
-  <chr>   <dbl> <dbl>  <dbl>
-1 CN      0.66  0.059  0.132
-2 Jaccard 0.597 0.048  0.013
-3 AA      0.689 0.065  0.18 
-4 RA      0.694 0.066  0.188
-5 PA      0.685 0.075  0.138
-6 Katz    0.701 0.074  0.171
-7 Path    0.648 0.063  0.053
-# A tibble: 7 × 4
-  score   `10% hidden` `20% hidden` `30% hidden`
-  <chr>          <dbl>        <dbl>        <dbl>
-1 CN             0.689        0.66         0.633
-2 Jaccard        0.612        0.597        0.586
-3 AA             0.725        0.689        0.655
-4 RA             0.734        0.694        0.658
-5 PA             0.69         0.685        0.674
-6 Katz           0.729        0.701        0.674
-7 Path           0.667        0.648        0.634
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-e = pd.read_csv("data/karate/edges.csv")
-karate = np.sort(e[["source", "target"]].to_numpy(), axis=1)
-print("seed 1 hides:", [tuple(map(int, karate[i])) for i in hidden_ties(karate, 1, 0.2)])
-print(summarise(many_splits(karate, 34)))
-by_size = {f"{p:.0%} hidden": summarise(many_splits(karate, 34, frac=p)).auc for p in (0.1, 0.2, 0.3)}
-print(pd.DataFrame(by_size))
+# TODO(code, Python): needs net_hide_ties() and net_link_eval(): repeat the hold-out over seeds 1 to 100 at 10, 20 and 30 percent hidden. Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-seed 1 hides: [(1, 5), (1, 20), (6, 17), (25, 32), (1, 32), (2, 3), (27, 30), (2, 22), (33, 34), (6, 11), (1, 22), (24, 34), (30, 34), (2, 31), (3, 29), (25, 26)]
-           auc     sd  p_at_k
-score                        
-CN       0.660  0.059   0.132
-Jaccard  0.597  0.048   0.013
-AA       0.689  0.065   0.180
-RA       0.694  0.066   0.188
-PA       0.685  0.075   0.138
-Katz     0.701  0.074   0.171
-Path     0.648  0.063   0.053
-         10% hidden  20% hidden  30% hidden
-score                                      
-CN            0.689       0.660       0.633
-Jaccard       0.612       0.597       0.586
-AA            0.725       0.689       0.655
-RA            0.734       0.694       0.658
-PA            0.690       0.685       0.674
-Katz          0.729       0.701       0.674
-Path          0.667       0.648       0.634
+TODO(output)
 ```
 :::
 
@@ -942,41 +655,24 @@ This is the hard part of the chapter, and you can skip to the next heading on a 
 ## R
 
 ```r
-barbell <- adjacency(cbind(c(1, 1, 2, 3, 4, 4, 5), c(2, 3, 3, 4, 5, 6, 6)), 6)
-eigen(barbell, symmetric = TRUE)$values[1:2] |> round(4)
-c(one_plus_sqrt2 = 1 + sqrt(2), sqrt3 = sqrt(3)) |> round(4)
-lap <- eigen(diag(rowSums(barbell)) - barbell, symmetric = TRUE)
-c(second_smallest = lap$values[5], formula = (5 - sqrt(17)) / 2) |> round(4)
-(lap$vectors[, 5] / lap$vectors[1, 5]) |> round(4)
+# TODO(code, R): needs net_spectral(): adjacency and Laplacian eigenvalues and eigenvectors, including the Fiedler vector. Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-[1] 2.4142 1.7321
-one_plus_sqrt2          sqrt3 
-        2.4142         1.7321 
-second_smallest         formula 
-         0.4384          0.4384 
-[1]  1.0000  1.0000  0.5616 -0.5616 -1.0000 -1.0000
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-barbell = adjacency([(1, 2), (1, 3), (2, 3), (3, 4), (4, 5), (4, 6), (5, 6)], 6)
-w = np.linalg.eigvalsh(barbell)[::-1]
-print("adjacency, two largest eigenvalues:", w[:2].round(4), " 1+sqrt(2) =", round(1 + 2 ** 0.5, 4), " sqrt(3) =", round(3 ** 0.5, 4))
-wl, vl = np.linalg.eigh(np.diag(barbell.sum(axis=1)) - barbell)
-print("Laplacian, second-smallest eigenvalue:", wl[1].round(4), " (5-sqrt(17))/2 =", round((5 - 17 ** 0.5) / 2, 4))
-print("Fiedler vector, scaled so member 1 is 1:", (vl[:, 1] / vl[0, 1]).round(4))
+# TODO(code, Python): needs net_spectral(): adjacency and Laplacian eigenvalues and eigenvectors, including the Fiedler vector. Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-adjacency, two largest eigenvalues: [2.4142 1.7321]  1+sqrt(2) = 2.4142  sqrt(3) = 1.7321
-Laplacian, second-smallest eigenvalue: 0.4384  (5-sqrt(17))/2 = 0.4384
-Fiedler vector, scaled so member 1 is 1: [ 1.      1.      0.5616 -0.5616 -1.     -1.    ]
+TODO(output)
 ```
 :::
 
@@ -1025,77 +721,24 @@ Now the real network. The first lines show how much of the adjacency matrix a fe
 ## R
 
 ```r
-nodes <- read.csv("data/karate/nodes.csv")
-side <- as.integer(nodes$faction != "Mr. Hi")
-club <- adjacency(karate, 34)
-eig <- eigen(club, symmetric = TRUE)
-big <- order(-abs(eig$values))
-eig$values[big][1:6] |> round(3)
-(cumsum(eig$values[big]^2) / sum(eig$values^2))[1:6] |> round(3)
-
-# How many members land on the side they took when the club split, by the sign of a vector.
-sides <- function(coord) {
-  z <- as.integer(coord > 0)
-  if (sum(z == side) < 17) z <- 1 - z
-  list(agree = sum(z == side), off = which(z != side))
-}
-sides(eig$vectors[, big[2]])
-deg <- rowSums(club)
-lap <- eigen(diag(34) - club / sqrt(outer(deg, deg)), symmetric = TRUE)
-lap$values[34:32] |> round(3)
-sides(lap$vectors[, 33] / sqrt(deg))
+# TODO(code, R): needs net_spectral(): eigenvalue shares and the sign of an eigenvector as a two-way split. Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-[1]  6.726  4.977 -4.487 -3.448 -3.111  2.917
-[1] 0.290 0.449 0.578 0.654 0.716 0.771
-$agree
-[1] 33
-
-$off
-[1] 9
-
-[1] 0.000 0.132 0.287
-$agree
-[1] 32
-
-$off
-[1] 3 9
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-nodes = pd.read_csv("data/karate/nodes.csv")
-side = (nodes["faction"] != "Mr. Hi").to_numpy().astype(int)
-club = adjacency(karate, 34)
-w, v = np.linalg.eigh(club)
-big = np.argsort(-np.abs(w), kind="stable")
-print("largest eigenvalues by size:", w[big][:6].round(3))
-print("share of squared size kept by 1 to 6 dimensions:", (np.cumsum(w[big] ** 2) / (w ** 2).sum())[:6].round(3))
-
-def sides(coord):
-    z = (coord > 0).astype(int)
-    z = z if (z == side).sum() >= 17 else 1 - z
-    return (z == side).sum(), np.where(z != side)[0] + 1
-
-print("adjacency, sign of the second vector: %d of 34 agree; off: %s" % sides(v[:, big[1]]))
-deg = club.sum(axis=1)
-lap = np.eye(34) - club / np.sqrt(np.outer(deg, deg))
-wl, vl = np.linalg.eigh(lap)
-print("normalised Laplacian, smallest eigenvalues:", wl[:3].round(3))
-print("normalised Laplacian, sign of the Fiedler vector: %d of 34 agree; off: %s" % sides(vl[:, 1] / np.sqrt(deg)))
+# TODO(code, Python): needs net_spectral(): eigenvalue shares and the sign of an eigenvector as a two-way split. Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-largest eigenvalues by size: [ 6.726  4.977 -4.487 -3.448 -3.111  2.917]
-share of squared size kept by 1 to 6 dimensions: [0.29  0.449 0.578 0.654 0.716 0.771]
-adjacency, sign of the second vector: 33 of 34 agree; off: [9]
-normalised Laplacian, smallest eigenvalues: [0.    0.132 0.287]
-normalised Laplacian, sign of the Fiedler vector: 32 of 34 agree; off: [3 9]
+TODO(output)
 ```
 :::
 
@@ -1189,90 +832,24 @@ The second half of the code answers the leakage question of the last section. We
 ## R
 
 ```r
-spectral_score <- function(a, d) {
-  e <- eigen(a, symmetric = TRUE)
-  top <- order(-abs(e$values))[seq_len(d)]
-  e$vectors[, top, drop = FALSE] %*% (e$values[top] * t(e$vectors[, top, drop = FALSE]))
-}
-
-# Two blocks from the sign of the second eigenvector; the score is the block-pair density.
-block_score <- function(a) {
-  v <- eigen(a, symmetric = TRUE)$vectors[, 2]
-  v <- v * sign(v[which.max(abs(v))])
-  z <- cbind(v <= 1e-8, v > 1e-8) * 1
-  size <- colSums(z)
-  density <- (t(z) %*% a %*% z) / pmax(outer(size, size) - diag(size), 1)
-  z %*% density %*% t(z)
-}
-
-all_scores <- function(a) {
-  c(link_scores(a), list(Block = block_score(a), Embed2 = spectral_score(a, 2),
-                         Embed3 = spectral_score(a, 3), Embed6 = spectral_score(a, 6)))
-}
-
-honest <- summarise_splits(many_splits(karate, 34, scorer = all_scores))
-honest |> filter(score %in% c("Block", "Embed2", "Embed3", "Embed6"))
-leaked <- summarise_splits(many_splits(karate, 34, scorer = all_scores, leak = TRUE))
-inner_join(honest |> select(score, clean = auc), leaked |> select(score, leaked = auc), by = "score") |>
-  filter(score %in% c("PA", "Embed3"))
+# TODO(code, R): needs net_spectral_embed() for rank-d link scores, and a leak option on net_link_eval() that scores from the full network. Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 4 × 4
-  score    auc    sd p_at_k
-  <chr>  <dbl> <dbl>  <dbl>
-1 Block  0.658 0.061  0.056
-2 Embed2 0.694 0.08   0.166
-3 Embed3 0.751 0.066  0.236
-4 Embed6 0.692 0.076  0.197
-# A tibble: 2 × 3
-  score  clean leaked
-  <chr>  <dbl>  <dbl>
-1 PA     0.685  0.85 
-2 Embed3 0.751  0.941
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-def spectral_score(a, d):
-    w, v = np.linalg.eigh(a)
-    top = np.argsort(-np.abs(w), kind="stable")[:d]
-    return (v[:, top] * w[top]) @ v[:, top].T
-
-def block_score(a):
-    # Two blocks from the sign of the second eigenvector; the score is the block-pair density.
-    v = np.linalg.eigh(a)[1][:, -2]
-    v = v * np.sign(v[np.abs(v).argmax()])
-    z = np.column_stack([v <= 1e-8, v > 1e-8]).astype(float)
-    size = z.sum(axis=0)
-    density = (z.T @ a @ z) / np.maximum(np.outer(size, size) - np.diag(size), 1)
-    return z @ density @ z.T
-
-def all_scores(a):
-    return {**link_scores(a), "Block": block_score(a), "Embed2": spectral_score(a, 2),
-            "Embed3": spectral_score(a, 3), "Embed6": spectral_score(a, 6)}
-
-honest = summarise(many_splits(karate, 34, scorer=all_scores))
-print(honest.loc[["Block", "Embed2", "Embed3", "Embed6"]])
-leaked = summarise(many_splits(karate, 34, scorer=all_scores, leak=True))
-print(pd.DataFrame({"clean": honest.auc, "leaked": leaked.auc}).loc[["PA", "Embed3"]])
+# TODO(code, Python): needs net_spectral_embed() for rank-d link scores, and a leak option on net_link_eval() that scores from the full network. Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-          auc     sd  p_at_k
-score                       
-Block   0.658  0.061   0.056
-Embed2  0.694  0.080   0.166
-Embed3  0.751  0.066   0.236
-Embed6  0.692  0.076   0.197
-        clean  leaked
-score                
-PA      0.685   0.850
-Embed3  0.751   0.941
+TODO(output)
 ```
 :::
 
@@ -1355,95 +932,24 @@ Sampson's monastery records who the 18 novices liked at three times [@sampson196
 ## R
 
 ```r
-liking <- read.csv("data/sampson/edges.csv") |> filter(relation == "liking")
-monk <- read.csv("data/sampson/nodes.csv") |> with(set_names(number, name))
-
-liking_pairs <- function(time) {
-  d <- filter(liking, time == !!time)
-  from <- unname(monk[d$from])
-  to <- unname(monk[d$to])
-  cbind(pmin(from, to), pmax(from, to))
-}
-
-early <- adjacency(liking_pairs(1), 18)
-late <- adjacency(liking_pairs(3), 18)
-sprintf("ties at time 1: %d  at time 3: %d  new at time 3: %d",
-        sum(early) / 2, sum(late) / 2, sum(upper.tri(late) & late > 0 & early == 0))
-rank_scores(all_scores(early), early, pmax(early, late)) |>
-  mutate(across(c(auc, p_at_k), \(x) round(x, 3)))
-later <- which(upper.tri(late) & late > 0, arr.ind = TRUE)
-later <- unname(later[order(later[, 1], later[, 2]), ])
-summarise_splits(many_splits(later, 18, scorer = all_scores)) |> filter(score %in% c("CN", "AA", "PA", "Katz"))
+# TODO(code, R): needs net_link_eval() on two snapshots (train on time 1, predict the ties that are new at time 3). Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-[1] "ties at time 1: 41  at time 3: 41  new at time 3: 15"
-# A tibble: 11 × 3
-   score     auc p_at_k
-   <chr>   <dbl>  <dbl>
- 1 CN      0.588  0.225
- 2 Jaccard 0.61   0.257
- 3 AA      0.644  0.267
- 4 RA      0.644  0.2  
- 5 PA      0.429  0    
- 6 Katz    0.588  0.2  
- 7 Path    0.604  0.169
- 8 Block   0.696  0.274
- 9 Embed2  0.495  0.2  
-10 Embed3  0.589  0.067
-11 Embed6  0.638  0.067
-# A tibble: 4 × 4
-  score   auc    sd p_at_k
-  <chr> <dbl> <dbl>  <dbl>
-1 CN    0.718 0.068  0.177
-2 AA    0.722 0.072  0.179
-3 PA    0.33  0.064  0.026
-4 Katz  0.707 0.079  0.141
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-s = pd.read_csv("data/sampson/edges.csv")
-monk = dict(zip(*pd.read_csv("data/sampson/nodes.csv")[["name", "number"]].to_numpy().T))
-liking = s[s.relation == "liking"]
-
-def liking_pairs(time):
-    d = liking[liking.time == time]
-    return np.sort(np.column_stack([d["from"].map(monk), d["to"].map(monk)]).astype(int), axis=1)
-
-early, late = adjacency(liking_pairs(1), 18), adjacency(liking_pairs(3), 18)
-print("ties at time 1:", int(early.sum() / 2), " at time 3:", int(late.sum() / 2),
-      " new at time 3:", int(((late > 0) & (early == 0)).sum() / 2))
-forward = rank_scores(all_scores(early), early, np.maximum(early, late))
-print(forward.round(3).to_string(index=False))
-later = np.argwhere(np.triu(late)) + 1
-print(summarise(many_splits(later, 18)).loc[["CN", "AA", "PA", "Katz"]])
+# TODO(code, Python): needs net_link_eval() on two snapshots (train on time 1, predict the ties that are new at time 3). Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-ties at time 1: 41  at time 3: 41  new at time 3: 15
-  score   auc  p_at_k
-     CN 0.588   0.225
-Jaccard 0.610   0.257
-     AA 0.644   0.267
-     RA 0.644   0.200
-     PA 0.429   0.000
-   Katz 0.588   0.200
-   Path 0.604   0.169
-  Block 0.696   0.274
- Embed2 0.495   0.200
- Embed3 0.589   0.067
- Embed6 0.638   0.067
-         auc     sd  p_at_k
-score                      
-CN     0.718  0.068   0.177
-AA     0.722  0.072   0.179
-PA     0.330  0.064   0.026
-Katz   0.707  0.079   0.141
+TODO(output)
 ```
 :::
 
@@ -1553,7 +1059,7 @@ It reports an AUC as an accuracy, uses the best of several settings picked on th
 - **"Random hiding is the standard, so it's fine."** It is the standard, which is why it needs the caveats above.
 - **"The score tells me which ties to make."** It ranks pairs by a pattern in the data. It says nothing about cost, consent or whether a tie is wanted.
 
-Tools agree on these scores for simple undirected networks: the Python tab's Adamic-Adar matches NetworkX to a gap of zero, and the Rust tab's library scores match the formula. The conventions that can differ are worth knowing. A pair with an empty union gets a Jaccard of 0 in knappnet and NetworkX. Direction, weights and parallel ties are ignored by both, so on a directed network you decide whether to symmetrise, as we did for Sampson, or to write a directed score. knappnet's documentation says its scores follow NetworkX's conventions.
+The Rust tab's library scores match the formula. The conventions that can differ between tools are worth knowing. A pair with an empty union gets a Jaccard of 0 in knappnet and NetworkX. Direction, weights and parallel ties are ignored by both, so on a directed network you decide whether to symmetrise, as we did for Sampson, or to write a directed score. knappnet's documentation says its scores follow NetworkX's conventions.
 
 ## Exercises
 

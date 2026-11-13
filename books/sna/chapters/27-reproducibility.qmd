@@ -52,23 +52,18 @@ One tie list, three networks, three densities. Nobody made an arithmetic mistake
 
 ```r
 library(knappnet)
-library(dplyr)
-library(purrr)
 
 # Five people. Ben-Chloe was entered twice, and Dev is tied to himself.
-ties <- tibble(source = c("Ana", "Ben", "Chloe", "Ben", "Dev"), target = c("Ben", "Chloe", "Ana", "Chloe", "Dev"))
-recorded <- net_frame(ties, nodes = tibble(id = c("Ana", "Ben", "Chloe", "Dev", "Eli")), directed = FALSE, quiet = TRUE)
+ties <- data.frame(source = c("Ana", "Ben", "Chloe", "Ben", "Dev"), target = c("Ben", "Chloe", "Ana", "Chloe", "Dev"))
+recorded <- net_frame(ties, nodes = data.frame(id = c("Ana", "Ben", "Chloe", "Dev", "Eli")), directed = FALSE, quiet = TRUE)
 
-tibble(
-  reading = c("as recorded", "simple graph", "adjacency matrix"),
-  network = list(recorded, net_simplify(recorded), net_simplify(recorded, remove_loops = TRUE))
-) |>
-  mutate(
-    ties = map_int(network, \(x) nrow(x$edges)),
-    degrees = map_chr(network, \(x) paste(as.numeric(net_degree(x)), collapse = " ")),
-    density = map_dbl(network, \(x) round(as.numeric(net_density(x)), 2))
-  ) |>
-  select(-network)
+readings <- list(`as recorded` = recorded, `simple graph` = net_simplify(recorded),
+                 `adjacency matrix` = net_simplify(recorded, remove_loops = TRUE))
+data.frame(
+  ties = sapply(readings, function(x) nrow(x$edges)),
+  degrees = sapply(readings, function(x) paste(as.numeric(net_degree(x)), collapse = " ")),
+  density = sapply(readings, function(x) round(as.numeric(net_density(x)), 2))
+)
 ```
 
 ::: {.code-output}
@@ -166,20 +161,13 @@ Notice what that says. The seed fixes the stream *for one recipe*. Different lan
 ## R
 
 ```r
-# Park-Miller, a small generator you can write in any language (see the text).
-park_miller <- \(seed, k) purrr::accumulate(seq_len(k), \(s, i) (16807 * s) %% 2147483647, .init = seed)[-1] / 2147483647
-
+# The first three numbers R's own generator draws after seed 1.
 set.seed(1)
-tibble(
-  generator = c("R, runif()", "Park-Miller, by hand"),
-  first_three = c(paste(round(runif(3), 3), collapse = " "), paste(round(park_miller(1, 3), 3), collapse = " "))
-)
+round(runif(3), 3)
 
 # One random network from the engine: 10 people, 18 ties, seed 1.
-net_random_gnm(10, 18, seed = 1)$edges |>
-  head(5) |>
-  mutate(tie = paste(source, target, sep = "-")) |>
-  pull(tie)
+draw <- net_random_gnm(10, 18, seed = 1)$edges
+paste(head(draw$source, 5), head(draw$target, 5), sep = "-")
 ```
 
 ::: {.code-output}
@@ -198,19 +186,11 @@ net_random_gnm(10, 18, seed = 1)$edges |>
 ```python
 import random
 import numpy as np
-
-def park_miller(seed, k):
-    """k numbers in (0, 1) from the Park-Miller recurrence: the same in every language."""
-    out, s = [], seed
-    for _ in range(k):
-        s = 16807 * s % 2147483647
-        out.append(s / 2147483647)
-    return out
+import networkx as nx
 
 random.seed(1)
 print("Python random       ", " ".join(f"{random.random():.3f}" for _ in range(3)))
 print("NumPy default_rng   ", " ".join(f"{x:.3f}" for x in np.random.default_rng(1).random(3)))
-print("Park-Miller         ", " ".join(f"{x:.3f}" for x in park_miller(1, 3)))
 draw = nx.gnm_random_graph(10, 18, seed=1)
 print("G(10, 18), seed 1   ", " ".join(f"{a + 1}-{b + 1}" for a, b in list(draw.edges())[:5]))
 ```
@@ -219,7 +199,6 @@ print("G(10, 18), seed 1   ", " ".join(f"{a + 1}-{b + 1}" for a, b in list(draw.
 ```text
 Python random        0.134 0.847 0.764
 NumPy default_rng    0.512 0.950 0.144
-Park-Miller          0.000 0.132 0.756
 G(10, 18), seed 1    1-7 1-8 1-6 1-9 1-5
 ```
 :::
@@ -254,7 +233,7 @@ G(10, 18), seed 1   1-2 1-3 1-5 2-5 2-8
 
 :::
 
-Read across the tabs. R's own generator (the Mersenne Twister, behind `runif()`), Python's `random`, NumPy's `default_rng` and the engine's Philox generator [@salmon2011parallel] all start from seed 1 and print different numbers. Philox is a "counter-based" generator: each stream is a function of the seed, a stream number and a position, which, according to the engine's documentation, is what lets it draw the same numbers whether you use one thread or twenty. The line that agrees in every tab is Park-Miller [@parkmiller1988random], a one-line recipe: multiply by 16,807, keep the remainder after dividing by 2,147,483,647, and divide by that same number. It is a weak generator by modern standards, and for that reason we use it only where the point is that every language can reproduce it exactly (for example in @sec-tests-and-null-models).
+Read across the tabs. R's own generator (the Mersenne Twister, behind `runif()`), Python's `random`, NumPy's `default_rng` and the engine's Philox generator [@salmon2011parallel] all start from seed 1 and print different numbers. Philox is a "counter-based" generator: each stream is a function of the seed, a stream number and a position, which, according to the engine's documentation, is what lets it draw the same numbers whether you use one thread or twenty. The line that agrees in every language is Park-Miller [@parkmiller1988random], a one-line recipe (printed by the Rust tab): multiply by 16,807, keep the remainder after dividing by 2,147,483,647, and divide by that same number. It is a weak generator by modern standards, and for that reason we use it only where the point is that every language can reproduce it exactly (for example in @sec-tests-and-null-models).
 
 Now the last line of each tab. The random network is drawn from the same model, "10 people, 18 ties, every such network equally likely", with the same seed. The R tab and the Rust tab call the same engine, so they print the same five ties. NetworkX has its own recipe for the same model and prints other ties. All three draws are fine. None of them is *the* draw for seed 1.
 
@@ -270,14 +249,12 @@ Two lessons follow.
 
 ```r
 # Average transitivity of 300 random networks, for each of ten seeds.
-mean_clustering <- \(seed) {
-  net_random_gnm(10, 18, reps = 300, seed = seed) |>
-    map_dbl(\(x) as.numeric(net_transitivity(x))) |>
-    mean(na.rm = TRUE)
+mean_clustering <- function(seed) {
+  nets <- net_random_gnm(10, 18, reps = 300, seed = seed)
+  mean(sapply(nets, function(x) as.numeric(net_transitivity(x))), na.rm = TRUE)
 }
-means <- map_dbl(1:10, mean_clustering)
-tibble(lowest = min(means), average = mean(means), highest = max(means)) |>
-  mutate(across(everything(), \(x) round(x, 3)))
+means <- sapply(1:10, mean_clustering)
+round(c(lowest = min(means), average = mean(means), highest = max(means)), 3)
 ```
 
 ::: {.code-output}
@@ -348,25 +325,21 @@ The same problem shows up more sharply when the estimate itself rests on a small
 
 ```r
 # Krackhardt's 21 managers: "To whom do you go for advice?" One row per tie, from asker to person asked.
-managers <- as_tibble(read.csv("data/krackhardt/nodes.csv")) |> rename(id = name)
-advice <- as_tibble(read.csv("data/krackhardt/edges.csv")) |>
-  filter(relation == "advice") |>
-  select(source = from, target = to)
+managers <- read.csv("data/krackhardt/nodes.csv")
+names(managers)[names(managers) == "name"] <- "id"
+edges <- read.csv("data/krackhardt/edges.csv")
+advice <- data.frame(source = edges$from[edges$relation == "advice"], target = edges$to[edges$relation == "advice"])
 g <- net_frame(advice, nodes = managers, directed = TRUE, quiet = TRUE)
 
 exact <- as.numeric(net_betweenness(g))
-tibble(manager = c(18, 21), exact = round(exact[c(18, 21)], 1))
+round(setNames(exact[c(18, 21)], c("manager 18", "manager 21")), 1)
 
 # Five sampled sources, five different seeds.
-estimate <- \(seed) as.numeric(net_value(net_run(g, "betweenness_approx", samples = 5, seed = seed))$nodes)
-tibble(seed = 1:5) |>
-  mutate(
-    b = map(seed, estimate),
-    first = map_int(b, which.max),
-    first_estimate = round(map2_dbl(b, first, \(x, i) x[i]), 1),
-    manager_21 = round(map_dbl(b, \(x) x[21]), 1)
-  ) |>
-  select(-b)
+estimate <- function(seed) as.numeric(net_value(net_run(g, "betweenness_approx", samples = 5, seed = seed))$nodes)
+data.frame(t(sapply(1:5, function(seed) {
+  b <- estimate(seed)
+  c(seed = seed, first = which.max(b), first_estimate = round(max(b), 1), manager_21 = round(b[21], 1))
+})))
 ```
 
 ::: {.code-output}
@@ -491,50 +464,33 @@ Zachary's karate club has 34 members and 78 ties. List the members from 1 to 34 
 ## R
 
 ```r
-members <- as_tibble(read.csv("data/karate/nodes.csv"))
-karate_ties <- as_tibble(read.csv("data/karate/edges.csv")) |> select(source, target)
-backward_members <- arrange(members, desc(id))
+members <- read.csv("data/karate/nodes.csv")
+karate_ties <- read.csv("data/karate/edges.csv")[, c("source", "target")]
+backward_members <- members[order(members$id, decreasing = TRUE), ]
 forward <- net_frame(karate_ties, nodes = members, directed = FALSE, quiet = TRUE)
 backward <- net_frame(karate_ties, nodes = backward_members, directed = FALSE, quiet = TRUE)
 
 # 1. Betweenness belongs to the member, so line the backward run up again before comparing.
-tibble(betweenness_agrees_to_1e9 = max(abs(as.numeric(net_betweenness(forward)) - rev(as.numeric(net_betweenness(backward))))) < 1e-9)
+max(abs(as.numeric(net_betweenness(forward)) - rev(as.numeric(net_betweenness(backward))))) < 1e-9
 
-# 2. Top six by degree: arrange() keeps the listed order among ties.
-top_six <- \(people, frame) people |>
-  mutate(degree = as.numeric(net_degree(frame))) |>
-  arrange(desc(degree)) |>
-  slice_head(n = 6) |>
-  pull(id)
-tibble(
-  listed = c("forward", "backward"),
-  top_six = c(paste(top_six(members, forward), collapse = " "), paste(top_six(backward_members, backward), collapse = " "))
-)
+# 2. Top six by degree: order() keeps the listed order among ties.
+top_six <- function(people, frame) people$id[order(-as.numeric(net_degree(frame)))][1:6]
+data.frame(listed = c("forward", "backward"),
+           top_six = c(paste(top_six(members, forward), collapse = " "),
+                       paste(top_six(backward_members, backward), collapse = " ")))
 
 # 3. Louvain with the same seed on both listings; adjusted Rand 1 means the same groups.
-louvain_pair <- \(seed) {
+louvain_pair <- function(seed) {
   a <- net_louvain(forward, seed = seed)
   b <- net_louvain(backward, seed = seed)
-  tibble(
-    seed = seed, modularity_forward = round(attr(a, "modularity"), 3), modularity_backward = round(attr(b, "modularity"), 3),
-    adjusted_rand = round(net_compare_partitions(as.integer(a), rev(as.integer(b)), method = "adjusted_rand"), 3)
-  )
+  data.frame(seed = seed, modularity_forward = round(attr(a, "modularity"), 3),
+             modularity_backward = round(attr(b, "modularity"), 3),
+             adjusted_rand = round(net_compare_partitions(as.integer(a), rev(as.integer(b)), method = "adjusted_rand"), 3))
 }
-map(1:5, louvain_pair) |> list_rbind()
+do.call(rbind, lapply(1:5, louvain_pair))
 
-# 4. Fingerprints: the ties as row numbers (what the engine stores), and the ties by member name, sorted.
-by_position <- \(frame) frame$edges |>
-  transmute(a = match(source, frame$nodes$id), b = match(target, frame$nodes$id)) |>
-  rlang::hash() |> substr(1, 12)
-by_name <- \(frame) frame$edges |>
-  transmute(a = pmin(source, target), b = pmax(source, target)) |>
-  arrange(a, b) |>
-  rlang::hash() |> substr(1, 12)
-tibble(
-  listed = c("forward", "backward"),
-  by_position = c(by_position(forward), by_position(backward)),
-  by_name = c(by_name(forward), by_name(backward))
-)
+# 4. Fingerprints of the ties by row number and by member name:
+# TODO(code, R): needs net_fingerprint() (a hash of the ties as stored, and of the ties by member name, sorted)
 ```
 
 ::: {.code-output}
@@ -567,10 +523,6 @@ tibble(
 ## Python
 
 ```python
-import hashlib
-from collections import Counter
-from math import comb
-
 members = list(range(1, 35))
 with open("data/karate/edges.csv") as f:
     karate_ties = [(int(r["source"]), int(r["target"])) for r in csv.DictReader(f)]
@@ -592,31 +544,15 @@ top_six = lambda g: [m for m, d in sorted(g.degree(), key=lambda t: -t[1])[:6]]
 print("top six, listed forward  ", top_six(forward))
 print("top six, listed backward ", top_six(backward))
 
-# 3. Louvain with the same seed on both listings; adjusted Rand 1 means the same groups.
-def adjusted_rand(a, b):
-    joint = Counter(zip(a, b))
-    index, rows, cols = (sum(comb(n, 2) for n in c.values()) for c in (joint, Counter(a), Counter(b)))
-    expected = rows * cols / comb(len(a), 2)
-    return (index - expected) / ((rows + cols) / 2 - expected)
-
-labels = lambda groups: [next(k for k, s in enumerate(groups) if m in s) for m in members]
-print("seed  modularity forward  backward  adjusted Rand")
+# 3. Louvain with the same seed on both listings.
+print("seed  modularity forward  backward")
 for seed in range(1, 6):
     a = nx.community.louvain_communities(forward, seed=seed)
     b = nx.community.louvain_communities(backward, seed=seed)
-    print(f"{seed:>4}  {nx.community.modularity(forward, a):>18.3f}  {nx.community.modularity(backward, b):>8.3f}  {adjusted_rand(labels(a), labels(b)):>13.3f}")
+    print(f"{seed:>4}  {nx.community.modularity(forward, a):>18.3f}  {nx.community.modularity(backward, b):>8.3f}")
 
-# 4. Fingerprints: the ties as row numbers, the ties by member name (sorted), and NetworkX's structure hash.
-def fingerprints(order, g):
-    where = {m: i for i, m in enumerate(order)}
-    digest = lambda x: hashlib.sha256(repr(x).encode()).hexdigest()[:12]
-    return (digest([(where[a], where[b]) for a, b in karate_ties]),
-            digest(sorted(tuple(sorted(t)) for t in karate_ties)),
-            nx.weisfeiler_lehman_graph_hash(g)[:12])
-
-print(f"{'listed':<9}{'by position':>13}{'by name':>14}{'structure':>14}")
-for label, order, g in [("forward", members, forward), ("backward", members[::-1], backward)]:
-    print(f"{label:<9}" + "".join(f"{x:>14}" for x in fingerprints(order, g)))
+# 4. NetworkX's structure hash, which ignores the listing.
+print("structure hash, forward and backward:", nx.weisfeiler_lehman_graph_hash(forward)[:12], nx.weisfeiler_lehman_graph_hash(backward)[:12])
 ```
 
 ::: {.code-output}
@@ -624,15 +560,13 @@ for label, order, g in [("forward", members, forward), ("backward", members[::-1
 betweenness agrees to 1e-9: True
 top six, listed forward   [34, 1, 33, 3, 2, 4]
 top six, listed backward  [34, 1, 33, 3, 2, 32]
-seed  modularity forward  backward  adjusted Rand
-   1               0.419     0.419          1.000
-   2               0.419     0.415          0.759
-   3               0.415     0.415          1.000
-   4               0.415     0.415          1.000
-   5               0.416     0.420          0.767
-listed     by position       by name     structure
-forward    3c804304fe42  b79d1c5d3a33  6239a89f4422
-backward   7f9d943f1668  b79d1c5d3a33  6239a89f4422
+seed  modularity forward  backward
+   1               0.419     0.419
+   2               0.419     0.415
+   3               0.415     0.415
+   4               0.415     0.415
+   5               0.416     0.420
+structure hash, forward and backward: 6239a89f4422 6239a89f4422
 ```
 :::
 
@@ -714,9 +648,9 @@ Read it in four parts.
 
 **The top-six list changes.** Members 34, 1, 33, 3 and 2 are the first five either way. Sixth place is a tie between members 4 and 32, each with six ties. Whoever is listed first wins the tie, so "the top six" is member 4 in one run and member 32 in the other. Nothing is wrong with the sort. The question "who are the top six" has no single answer when sixth place is tied, and the honest report says "the top five, and a tie for sixth". This is the cheapest of all reproducibility traps to avoid: before you cut a ranking at a number, look at the value on either side of the cut.
 
-**Louvain moves with the order.** Louvain visits the people in a sequence and moves each to the neighbouring group that raises modularity most, and the sequence follows the listing [@blondel2008fast]. The same seed on a reordered table is, in effect, a different seed. The modularity values are all close to 0.42, so by that score the partitions are equally good, and the adjusted Rand index between the two listings is 1.000 for some seeds and as low as 0.588 (engine, seed 2) or 0.759 (NetworkX, seed 2) for others. Adjusted Rand is 1 when two partitions are identical and about 0 when they agree no more than chance (@sec-subgroups). So a community result is a draw from a set of near-equal partitions, and the order of your table is one of the things that picks the draw. The fix is the one from the random-draw section: run several seeds, or several orders, and report what is stable.
+**Louvain moves with the order.** Louvain visits the people in a sequence and moves each to the neighbouring group that raises modularity most, and the sequence follows the listing [@blondel2008fast]. The same seed on a reordered table is, in effect, a different seed. The modularity values are all close to 0.42, so by that score the partitions are equally good, and the adjusted Rand index between the two listings is 1.000 for some seeds and as low as 0.588 (engine, seed 2) for others. Adjusted Rand is 1 when two partitions are identical and about 0 when they agree no more than chance (@sec-subgroups). So a community result is a draw from a set of near-equal partitions, and the order of your table is one of the things that picks the draw. The fix is the one from the random-draw section: run several seeds, or several orders, and report what is stable.
 
-**Three fingerprints for "the same network".** The first fingerprint hashes the ties as row numbers. It changes with the listing, because row numbers do. The second hashes the ties by member name, sorted, so it does not. The third is a *structure* hash (Weisfeiler and Lehman's colour-refinement idea, as NetworkX and the engine implement it [@shervashidze2011weisfeiler; @hagberg2008exploring]): it depends only on the shape, so it is the same under any listing and any renaming, and for the same reason it cannot tell Ana's network from a stranger's with the same shape. Which one you want depends on the question. "Did my file change?" wants a hash of the bytes. "Is this the same list of people and ties?" wants a hash by name. "Is this the same shape?" wants the structure hash. (In the forward listing the row numbers and the names coincide, so in the R tab the first two fingerprints agree there.) A table of nodes in a different order is the *same network* to the second and third, and a *different input* to the first, which matters because algorithms are fed positions.
+**Three fingerprints for "the same network".** The first fingerprint hashes the ties as row numbers. It changes with the listing, because row numbers do. The second hashes the ties by member name, sorted, so it does not. The third is a *structure* hash (Weisfeiler and Lehman's colour-refinement idea, as NetworkX and the engine implement it [@shervashidze2011weisfeiler; @hagberg2008exploring]): it depends only on the shape, so it is the same under any listing and any renaming, and for the same reason it cannot tell Ana's network from a stranger's with the same shape. Which one you want depends on the question. "Did my file change?" wants a hash of the bytes. "Is this the same list of people and ties?" wants a hash by name. "Is this the same shape?" wants the structure hash. A table of nodes in a different order is the *same network* to the second and third, and a *different input* to the first, which matters because algorithms are fed positions.
 
 ### Stable node ids
 
@@ -741,7 +675,7 @@ A **convention** is a choice a measure's definition leaves open, such as what to
 
 Here is one more, on the network from @sec-centrality: five people in a line and two more who know only each other. Who is the most central person by closeness? It depends on the tool.
 
-The engine has a `convention` argument that reproduces each tool, and the cleanest way to see the differences is to run all of them. The tabs compute closeness, scaled to run from 0 to 1, under four conventions. Python writes all four rules out by hand and checks one of them against NetworkX.
+The engine has a `convention` argument that reproduces each tool, and the cleanest way to see the differences is to run all of them. The tabs compute closeness, scaled to run from 0 to 1, under four conventions. NetworkX has only its own rule, so the Python tab is blank until the Python package exposes the others.
 
 ::: {.panel-tabset group="language"}
 
@@ -750,19 +684,13 @@ The engine has a `convention` argument that reproduces each tool, and the cleane
 ```r
 # A, B, C, D, E: a triangle A-B-C with a chain C-D-E; F and G know only each other.
 split_net <- net_frame(
-  tibble(source = c("A", "A", "B", "C", "D", "F"), target = c("B", "C", "C", "D", "E", "G")),
-  nodes = tibble(id = LETTERS[1:7]), directed = FALSE, quiet = TRUE
+  data.frame(source = c("A", "A", "B", "C", "D", "F"), target = c("B", "C", "C", "D", "E", "G")),
+  nodes = data.frame(id = LETTERS[1:7]), directed = FALSE, quiet = TRUE
 )
-leaders <- \(x) if (max(x) - min(x) < 1e-12) "everyone (all equal)" else paste(LETTERS[1:7][x > max(x) - 1e-12], collapse = " and ")
-
-tibble(convention = c("igraph", "networkx", "sna", "ucinet")) |>
-  mutate(
-    scores = map(convention, \(cv) as.numeric(net_closeness(split_net, normalized = TRUE, convention = cv))),
-    node_C = round(map_dbl(scores, 3), 3),
-    node_F = round(map_dbl(scores, 6), 3),
-    first = map_chr(scores, leaders)
-  ) |>
-  select(-scores)
+closeness <- sapply(c("igraph", "networkx", "sna", "ucinet"),
+                    function(cv) as.numeric(net_closeness(split_net, normalized = TRUE, convention = cv)))
+rownames(closeness) <- LETTERS[1:7]
+round(closeness, 3)
 ```
 
 ::: {.code-output}
@@ -780,44 +708,12 @@ tibble(convention = c("igraph", "networkx", "sna", "ucinet")) |>
 ## Python
 
 ```python
-# A, B, C, D, E: a triangle A-B-C with a chain C-D-E; F and G know only each other.
-split = nx.Graph([("A", "B"), ("A", "C"), ("B", "C"), ("C", "D"), ("D", "E"), ("F", "G")])
-
-def closeness_rule(g, rule):
-    n = g.number_of_nodes()
-    lengths = {v: nx.single_source_shortest_path_length(g, v) for v in g}
-    longest = max(d for row in lengths.values() for d in row.values())
-    out = {}
-    for v, row in lengths.items():
-        reached, total = len(row) - 1, sum(row.values())
-        if rule == "igraph":    # average over the people you can reach
-            out[v] = reached / total
-        elif rule == "networkx":  # the same, scaled by the share of people you reach
-            out[v] = reached / total * reached / (n - 1)
-        elif rule == "sna":     # zero unless you reach everyone
-            out[v] = (n - 1) / total if reached == n - 1 else 0.0
-        else:                   # ucinet: a missing distance counts as one more than the longest observed
-            out[v] = (n - 1) / (total + (n - 1 - reached) * (longest + 1))
-    return out
-
-for rule in ["igraph", "networkx", "sna", "ucinet"]:
-    c = closeness_rule(split, rule)
-    best = max(c.values())
-    first = "everyone (all equal)" if best - min(c.values()) < 1e-12 else " and ".join(v for v in c if c[v] > best - 1e-12)
-    print(f"{rule:<9} C {c['C']:.3f}  F {c['F']:.3f}  first {first}")
-
-# Check by hand-written rule against NetworkX itself.
-wf = nx.closeness_centrality(split)
-print("matches NetworkX:", all(abs(wf[v] - closeness_rule(split, "networkx")[v]) < 1e-12 for v in split))
+# TODO(code, Python): needs closeness conventions in the Python package, e.g. closeness_centrality(G, convention=...) with igraph, sna and UCINET rules (NetworkX has only its own). Use the R or Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-igraph    C 0.800  F 1.000  first F and G
-networkx  C 0.533  F 0.167  first C
-sna       C 0.000  F 0.000  first everyone (all equal)
-ucinet    C 0.462  F 0.286  first C
-matches NetworkX: True
+TODO(output)
 ```
 :::
 
@@ -868,11 +764,11 @@ Here is the record for the seed-3 sampled betweenness run above, next to the thi
 ## R
 
 ```r
-run <- net_run(g, "betweenness_approx", samples = 5, seed = 3)
-prov <- net_provenance(run)
+g_run <- net_run(g, "betweenness_approx", samples = 5, seed = 3)
+prov <- net_provenance(g_run)
 
 # What the engine recorded.
-tibble(
+data.frame(
   field = c("measure", "revision", "engine", "seed", "parameter hash", "nodes", "ties", "graph hash"),
   value = c(prov$measure, prov$revision, prov$engine, prov$seed, substr(prov$params_hash, 1, 8),
             prov$graph$n, prov$graph$m,
@@ -880,10 +776,10 @@ tibble(
 )
 
 # What it did not: the data file and the software, recorded by hand.
-tibble(
-  field = c("data file", "file hash", "R", "knappnet", "dplyr"),
-  value = c("krackhardt/edges.csv", rlang::hash_file("data/krackhardt/edges.csv"), R.version.string,
-            as.character(packageVersion("knappnet")), as.character(packageVersion("dplyr")))
+data.frame(
+  field = c("data file", "file hash (md5)", "R", "knappnet"),
+  value = c("krackhardt/edges.csv", unname(tools::md5sum("data/krackhardt/edges.csv")), R.version.string,
+            as.character(packageVersion("knappnet")))
 )
 ```
 
@@ -914,39 +810,12 @@ tibble(
 ## Python
 
 ```python
-import struct
-import sys
-
-def graph_hash(n, directed, sources, targets):
-    """The engine's content hash, rebuilt from its documented layout: BLAKE2b-256 of the ties, in the order stored."""
-    h = hashlib.blake2b(digest_size=32)
-    h.update(b"knappnet graph content 1")
-    h.update(bytes([directed, 0]))                     # directed? weighted?
-    h.update(struct.pack("<QQ", n, len(sources)))      # number of nodes, number of ties
-    h.update(np.array(sources, dtype="<u4").tobytes()) # every tie's source, then every tie's target
-    h.update(np.array(targets, dtype="<u4").tobytes())
-    return h.hexdigest()
-
-with open("data/krackhardt/edges.csv", "rb") as f:
-    raw = f.read()
-record = {
-    "data": "krackhardt/edges.csv, relation advice",
-    "file_sha256": hashlib.sha256(raw).hexdigest()[:16],
-    "graph_hash": graph_hash(21, 1, [a - 1 for a, b in advice], [b - 1 for a, b in advice])[:16],
-    "measure": "betweenness_centrality(k=5, seed=3, normalized=False)",
-    "library": f"networkx {nx.__version__}, numpy {np.__version__}, python {sys.version_info.major}.{sys.version_info.minor}",
-}
-for key, value in record.items():
-    print(f"{key:<12} {value}")
+# TODO(code, Python): needs a provenance record in the Python package (measure, revision, parameter hash, seed and a content hash of the graph). Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-data         krackhardt/edges.csv, relation advice
-file_sha256  42c02a3815b52628
-graph_hash   ad4fe3bd37923e66
-measure      betweenness_centrality(k=5, seed=3, normalized=False)
-library      networkx 3.7, numpy 2.5.3, python 3.13
+TODO(output)
 ```
 :::
 
@@ -978,11 +847,11 @@ graph hash ad4fe3bd37923e66, known after asking: true
 
 Three things in the output.
 
-**The graph hash is the same in two languages.** The engine's content hash covers the network as the engine holds it: whether ties have direction, whether they have weights, the number of nodes and of ties, then every tie's source and every tie's target in the order stored. The Python tab rebuilds that hash from the documented layout and gets the same 16 hexadecimal characters the Rust tab prints, so the hash is a checkable fact and not a private number. The layout carries a version tag ("knappnet graph content 1"), so treat a hash as comparable only between runs of the same tag. Notice what is in it: ties as positions. Change the order of the rows and the hash changes, which is why the previous section matters.
+**The graph hash has a documented layout.** The engine's content hash covers the network as the engine holds it: whether ties have direction, whether they have weights, the number of nodes and of ties, then every tie's source and every tie's target in the order stored. The hash follows a documented layout, so it is a checkable fact and not a private number: the Rust tab prints it, and it can be rebuilt from that layout. The layout carries a version tag ("knappnet graph content 1"), so treat a hash as comparable only between runs of the same tag. Notice what is in it: ties as positions. Change the order of the rows and the hash changes, which is why the previous section matters.
 
-**The R graph hash is missing.** In the R tab the `graph hash` row is `NA`. I looked into why, and it is a gap in the engine's interface, not an error in your analysis. The engine computes a graph's content hash lazily, because hashing a very large graph costs more than computing a simple measure on it. A provenance record carries the hash only if something has already asked for it. The Rust tab shows exactly that: before `content_hash()` is called the record says it is unknown, and after the call the same record knows it. R's runtime path never makes that call (I also tried with the result cache switched off and after repeated runs: still missing), and the C interface that R goes through has no function to ask for the hash, so R cannot trigger it, and the field stays empty. Until that is fixed, do what the R tab does for the data: hash the file with `rlang::hash_file()`, and write the other fields in yourself. The other fields (measure, revision, parameter hash, seed, engine version) are filled in correctly in all languages, and the parameter hash printed by R and Rust is the same, so a result computed in R can be matched to the same call made from Rust.
+**The R graph hash is missing.** In the R tab the `graph hash` row is `NA`. I looked into why, and it is a gap in the engine's interface, not an error in your analysis. The engine computes a graph's content hash lazily, because hashing a very large graph costs more than computing a simple measure on it. A provenance record carries the hash only if something has already asked for it. The Rust tab shows exactly that: before `content_hash()` is called the record says it is unknown, and after the call the same record knows it. R's runtime path never makes that call (I also tried with the result cache switched off and after repeated runs: still missing), and the C interface that R goes through has no function to ask for the hash, so R cannot trigger it, and the field stays empty. Until that is fixed, do what the R tab does for the data: hash the file with `tools::md5sum()`, and write the other fields in yourself. The other fields (measure, revision, parameter hash, seed, engine version) are filled in correctly in all languages, and the parameter hash printed by R and Rust is the same, so a result computed in R can be matched to the same call made from Rust.
 
-**The engine does not know what you did around it.** It cannot record which file the ties came from, which rows you dropped, which package versions were loaded, or which random choices you made in your own code. The Python tab shows the minimum record for a library with no provenance of its own: the file's hash, the network's hash, the call with its seed, and the versions. Keep a record like it beside every table you hand to anybody, in a file, not in your head.
+**The engine does not know what you did around it.** It cannot record which file the ties came from, which rows you dropped, which package versions were loaded, or which random choices you made in your own code. The record you write for a library with no provenance of its own holds at least the file's hash, the network's hash, the call with its seed, and the versions. Keep a record like it beside every table you hand to anybody, in a file, not in your head.
 
 ### Cache keys, and the size of the network
 
@@ -1025,14 +894,12 @@ A <- A + t(A)
 top <- abs(eigen(A, symmetric = TRUE)$vectors[, 1])
 oracle_eigen <- top / sqrt(sum(top^2))
 oracle_rank <- solve(diag(34) - 0.85 * t(A / rowSums(A)), rep(0.15 / 34, 34))
-gap <- \(a, b) max(abs(as.numeric(a) - as.numeric(b)))
+gap <- function(a, b) max(abs(as.numeric(a) - as.numeric(b)))
 
-tibble(
-  check = c("eigenvector, igraph's scale", "eigenvector, unit length", "pagerank, tol 1e-6", "pagerank, tol 1e-12"),
-  gap = c(gap(net_eigen(forward), oracle_eigen), gap(net_eigen(forward, convention = "networkx"), oracle_eigen),
+gaps <- c(gap(net_eigen(forward), oracle_eigen), gap(net_eigen(forward, convention = "networkx"), oracle_eigen),
           gap(net_pagerank(forward, tol = 1e-6), oracle_rank), gap(net_pagerank(forward, tol = 1e-12), oracle_rank))
-) |>
-  mutate(close_at_1e9 = gap < 1e-9, gap = signif(pmax(gap, 1e-12), 2))
+data.frame(check = c("eigenvector, igraph's scale", "eigenvector, unit length", "pagerank, tol 1e-6", "pagerank, tol 1e-12"),
+           gap = signif(pmax(gaps, 1e-12), 2), close_at_1e9 = gaps < 1e-9)
 ```
 
 ::: {.code-output}
@@ -1224,53 +1091,24 @@ You can measure the risk on your own data before you share it. Suppose an outsid
 ## R
 
 ```r
-# What could an outsider look for? Count how many members share each description.
-degree <- rowSums(A)
-describe <- list(
-  `degree` = as.character(degree),
-  `degree and friends' degrees` = map_chr(1:34, \(m) paste(degree[m], paste(sort(degree[A[m, ] > 0]), collapse = ","), sep = "|")),
-  `degree in bands of five` = as.character(degree %/% 5)
-)
-tibble(
-  what_an_outsider_knows = names(describe),
-  unique_members = map_int(describe, \(s) sum(table(s)[s] == 1)),
-  smallest_group = map_int(describe, \(s) min(table(s)))
-)
+# TODO(code, R): needs net_reidentify(): count members who are unique by degree, by degree plus their friends' degrees, or by degree band. Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 3 × 3
-  what_an_outsider_knows      unique_members smallest_group
-  <chr>                                <int>          <int>
-1 degree                                   6              1
-2 degree and friends' degrees             23              1
-3 degree in bands of five                  0              2
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# What could an outsider look for? Count how many members share each description.
-degree_of = dict(forward.degree())
-descriptions = {
-    "degree": lambda m: (degree_of[m],),
-    "degree and friends' degrees": lambda m: (degree_of[m], tuple(sorted(degree_of[u] for u in forward[m]))),
-    "degree in bands of five": lambda m: (degree_of[m] // 5,),
-}
-print(f"{'what an outsider knows':<30}{'unique members':>15}{'smallest group':>16}")
-for label, describe in descriptions.items():
-    groups = Counter(describe(m) for m in members)
-    print(f"{label:<30}{sum(groups[describe(m)] == 1 for m in members):>15}{min(groups.values()):>16}")
+# TODO(code, Python): needs net_reidentify(): count members who are unique by degree, by degree plus their friends' degrees, or by degree band. Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-what an outsider knows         unique members  smallest group
-degree                                      6               1
-degree and friends' degrees                23               1
-degree in bands of five                     0               2
+TODO(output)
 ```
 :::
 
