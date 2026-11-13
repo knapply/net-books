@@ -1,0 +1,57 @@
+id = "thresholding"
+title = "Thresholding a weighted network"
+kind = "procedure"
+chapter = "foundations"
+summary = "Turning a weighted network into a plain one by keeping the ties whose weight is at least a cutoff; the cutoff is a modeling choice that changes density, degrees and components."
+answers = "Which ties count as ties, and does my result survive other reasonable cutoffs?"
+
+data_requirements = [
+  "Weights that mean the same thing for every pair (messages in the same period, minutes in the same setting). Weights from different sources need rescaling first.",
+  "A reason for the cutoff that comes from the question, not from the result.",
+  "The full distribution of weights, so the cutoff can be placed against it.",
+  "A decision about whether weights are strengths (bigger means closer) or distances or costs (bigger means farther). The cutoff points the other way for the second kind.",
+]
+
+assumptions = [
+  "A weak tie is not a non-tie. Thresholding says that ties below the cutoff are absent, which for questions about information flow can be exactly wrong (the weak ties can carry new information).",
+  "Weights are comparable across people. A person who sends many short messages and a person who sends few long ones may have the same relationship.",
+  "A single cutoff is appropriate for the whole network. Heavy users have heavy ties to everyone, and a global cutoff keeps their ties and drops those of quiet people.",
+]
+
+readings = [
+  { context = "Messages among five coworkers (cutoffs 1, 2 and 7)", high = "At 1: 6 ties, density 0.60, one connected group.", low = "At 7: 1 tie, density 0.10, four groups. At 2 the network becomes a hub around the person with the most messages and leaves one person alone." },
+  { context = "Co-attendance or co-authorship counts", high = "A low cutoff keeps every pair that ever shared an event, and links many people through one big event.", low = "A high cutoff keeps repeat partners and tends to show cohesive groups, discarding one-off contacts." },
+  { context = "Trade or traffic volumes", high = "A low cutoff keeps every connection, including trivial ones.", low = "A high cutoff keeps the main corridors, and the network looks like a backbone. Smaller flows can matter to smaller places." },
+  { context = "Online interactions (replies, mentions)", high = "A low cutoff keeps one-off replies, and in large networks almost everyone is connected.", low = "A high cutoff keeps sustained interaction, which may be mostly among a few active accounts." },
+]
+
+pitfalls = [
+  "Reporting a result after a cutoff without saying which cutoff or how it was chosen.",
+  "Choosing the cutoff that gives a pleasing picture or the hoped-for result.",
+  "Comparing networks thresholded at the same raw value when their weights have different scales.",
+  "Thresholding at the median or some other quantile and calling the resulting density a finding.",
+  "Using a method that supports weights after thresholding, and so throwing away information that the method could have used.",
+]
+
+checks = [
+  "Repeat the analysis at several cutoffs and report how the result changes.",
+  "Plot the number of ties, the density and the number of components against the cutoff.",
+  "Compare with a weighted version of the measure (strength instead of degree, weighted paths) if one exists.",
+  "Check whether the cutoff isolates anyone and how many people have no ties left.",
+]
+
+do_not_claim = [
+  "That ties below the cutoff do not exist or do not matter.",
+  "That a structure found at one cutoff holds at other cutoffs without checking.",
+  "That the density after thresholding says anything about the density of the underlying relation.",
+]
+
+report_template = "The weighted {tie_meaning} network of {n} {node_type} was made plain by keeping ties with weight at least {cutoff}, chosen because {reason}. At that cutoff it has {ties} ties, density {density} and {components} component(s). At cutoffs {other_cutoffs} the number of components is {other_components}, so the conclusion {changes_or_not}."
+
+related = ["weighted-degree", "symmetrization", "density", "components"]
+sources = ["opsahl2010node", "granovetter1973strength", "wasserman1994social"]
+
+[knappnet]
+rust = "keep the ties whose weight is at least the cutoff, then Graph::from_edges(n, &from, &to, None, directed); compute_strength for the weighted version"
+r = "net_dichotomize(g, threshold = cutoff, op = \">=\"), or filter the edge table and rebuild with net_frame(); net_strength(g) for the weighted version"
+python = "G.edge_subgraph / a filtered edge list with networkx.Graph; G.degree(weight=\"weight\") for strength"

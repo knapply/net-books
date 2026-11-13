@@ -1,0 +1,57 @@
+id = "adjacency-walks"
+title = "Walk counts and triangles from the adjacency matrix"
+kind = "measure"
+chapter = "foundations"
+summary = "The entry (i, j) of the k-th power of the adjacency matrix counts the walks of length k from i to j; in a simple undirected network the trace of the cube divided by six is the number of triangles."
+answers = "How many ways are there to get from one person to another in exactly k steps, and how many triangles does the network contain?"
+
+data_requirements = [
+  "An adjacency matrix with a fixed order of people, the same on rows and columns.",
+  "For the triangle count: a simple undirected network, with no loops and no repeated ties.",
+  "For weights: say whether the matrix holds 0 and 1 or weights. With weights the powers add up products of weights, not counts.",
+  "A network small enough for dense matrix products, or sparse matrix tools for a large one.",
+]
+
+assumptions = [
+  "A walk may revisit people. The count is not the number of different routes that never repeat anyone.",
+  "Direction matters: in a directed network (A^k)_{ij} counts walks that follow the arrows from i to j, and the trace of A^3 counts closed walks, each directed triangle being counted three times.",
+  "Loops or repeated ties change the counts. The triangle formula holds only for simple undirected networks.",
+]
+
+readings = [
+  { context = "Marriage or alliance network among families", high = "Many walks of length 2 between two families: many shared in-laws, so a tie between them would close many triangles.", low = "No walk of length 2: no shared partner. It does not mean the families are unrelated outside the data." },
+  { context = "Communication inside a team", high = "Many walks between two people: many ways for a message to pass, with repeats counted, so the count overstates distinct routes.", low = "Few walks: messages have few routes. A zero for length k says only that no walk of exactly that length exists." },
+  { context = "Transport or supply network", high = "Many walks of a given length between two places: alternative connections with that many legs.", low = "Few walks: one route, or none. Capacity and distance are not shown." },
+  { context = "Online platform", high = "Many walks of length 2 between two accounts: many shared contacts, the idea behind friend suggestions.", low = "No shared contacts. Counts grow quickly with k in large networks and are dominated by popular accounts." },
+]
+
+pitfalls = [
+  "Reading a walk count as a count of distinct routes. Walks of length 3 from Ana to Ben include Ana, Chloe, Ana, Ben.",
+  "Using the triangle formula on a network with loops or repeated ties.",
+  "Forgetting that the diagonal of A^2 is the degree, so total walks are dominated by high-degree people.",
+  "Using a different order of people for the rows and the columns.",
+  "Computing the powers of a very large matrix as a dense matrix when it is sparse.",
+]
+
+checks = [
+  "On a small example, check the diagonal of A^2 against the degrees and the trace of A^3 against a triangle count by hand.",
+  "Check that the network is simple and undirected before using trace(A^3) / 6.",
+  "Check that the matrix is symmetric when the network is undirected.",
+  "For weighted networks, compare with the unweighted counts to see how much the weights drive the result.",
+]
+
+do_not_claim = [
+  "That a high walk count between two people means a strong relationship or many different routes.",
+  "That zero walks of length k means the two people cannot reach each other (they may be reachable in other lengths).",
+  "That the triangle count measures cohesion without a comparison with what the degrees alone would give.",
+]
+
+report_template = "In this {tie_meaning} network of {n} {node_type}, there are {walks} walks of length {k} from {a} to {b}, counting walks that revisit people. The network is simple and undirected, so its {triangles} triangles equal the trace of the cube of the adjacency matrix divided by six."
+
+related = ["degree", "geodesic-distance", "clustering"]
+sources = ["wasserman1994social", "newman2018networks", "harary1969graph", "bondy2008graph"]
+
+[knappnet]
+rust = "build_adjacency_matrix(&g, false, &nodelist)?.to_dense_rows()  // the engine has no matrix product; multiply by hand or with a linear algebra library"
+r = "a <- matrix(0, n, n); a[cbind(i, j)] <- 1; a + t(a); a %*% a  # base R matrix product"
+python = "A = networkx.to_numpy_array(G, nodelist=nodes); A @ A; numpy.trace(A @ A @ A) / 6"

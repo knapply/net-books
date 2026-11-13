@@ -1,0 +1,59 @@
+id = "symmetrization"
+title = "Symmetrizing a directed network (either, both and the rules between)"
+kind = "procedure"
+chapter = "foundations"
+summary = "Turning a directed network into an undirected one by a stated rule: keep a pair if either person has a tie to the other, only if both do, or combine the two weights. The rule changes the network."
+answers = "How should I turn directions into plain ties for a method that needs them, and does my answer depend on the choice?"
+
+data_requirements = [
+  "A directed network, and a method that needs undirected ties (for example most community detection, or a measure that is defined only for undirected ties).",
+  "A reason, stated in advance, for the rule: what a tie in either direction means for the question asked.",
+  "For weighted ties, a decision on how two weights combine (the larger, the smaller, the sum, the mean).",
+  "The number of pairs that are mutual and the number that are one-way, so the effect of the rule can be seen.",
+]
+
+assumptions = [
+  "The 'either' rule assumes a tie in one direction is enough for contact or exposure. It suits questions about who could hear from whom.",
+  "The 'both' rule assumes only mutual ties count. It suits questions about relationships, and it discards every one-way tie, which in some data is most of them.",
+  "Direction carries no information that the question needs. If it does (who asks, who is asked), symmetrizing throws it away.",
+]
+
+readings = [
+  { context = "Advice among 5 coworkers (7 arrows)", high = "Either: 6 ties, density 0.60, one connected group.", low = "Both: 1 tie, density 0.10, four groups. Same data, opposite impressions of how connected the group is." },
+  { context = "Friendship nominations among students", high = "Either gives a denser network that includes one-sided claims, which may be wishes or errors.", low = "Both keeps confirmed friendships and can fragment the network, especially when each student may name only a few people." },
+  { context = "Follows on an online platform", high = "Either: anyone connected by any follow. The network is large and mostly one-way, led by popular accounts.", low = "Both: mutual follows, a much smaller network that looks more like communities of acquaintances." },
+  { context = "Trade or traffic between places", high = "Either: places linked by any flow in either direction, which suits questions about connection.", low = "Both: places with flows both ways, which suits questions about exchange. Net flow needs the weights, not a yes-or-no rule." },
+]
+
+pitfalls = [
+  "Choosing silently, or choosing the rule that gives the hoped-for answer.",
+  "Calling the result 'the network' without saying that it was derived from a directed one.",
+  "Using 'both' on a fixed-choice survey and reading the many isolates as socially isolated people.",
+  "Comparing results across studies that used different rules.",
+  "Treating a derived undirected network as if its ties were observed as mutual.",
+  "Assuming a tool's default. NetworkX's to_undirected keeps a pair if either direction exists unless reciprocal=True is given, and knappnet's net_symmetrize in R defaults to the larger weight, which for unweighted ties is the 'either' rule. Other tools may differ.",
+]
+
+checks = [
+  "Report the numbers of mutual and one-way pairs before choosing.",
+  "Rerun the analysis under both rules and report whether the answer changes.",
+  "Compare the densities and the number of components under each rule.",
+  "If the weights matter, try a second way of combining them.",
+  "Say in a sentence which rule was used and why it fits the question.",
+]
+
+do_not_claim = [
+  "That the symmetrized network is the true undirected version of the relation.",
+  "That a result found under one rule holds under the other without checking.",
+  "That a person with no mutual ties has no ties.",
+]
+
+report_template = "The directed {tie_meaning} network of {n} {node_type} ({m} ties; {mutual} mutual pairs and {one_way} one-way pairs) was made undirected by keeping a pair if {rule_description}, which gives {ties} ties, density {density} and {components} component(s). Under the other rule ({other_rule}) the figures are {other_ties} ties, density {other_density} and {other_components} component(s), and the conclusion {changes_or_not}."
+
+related = ["reciprocity", "density", "components", "thresholding"]
+sources = ["wasserman1994social", "newman2018networks"]
+
+[knappnet]
+rust = "compute_symmetrize(&g, SymmetrizeMethod::Weak)  // Weak is either, Strong is both; also Max, Min, Sum, Mean"
+r = "net_symmetrize(g, method = \"max\")  # \"max\" is either, \"min\" is both; also \"sum\", \"average\""
+python = "G.to_undirected()  # either; G.to_undirected(reciprocal=True) is both"
