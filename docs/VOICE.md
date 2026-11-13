@@ -73,3 +73,27 @@ background can follow the whole text.
   read, and what the reader will still have if they skip it.
 - Math stays correct and complete. Friendly means more explanation, not less
   rigor; never delete a formula to make a page easier.
+
+## Code rules (standing, 13 November 2026)
+
+- **Only show what the tool really does.** R and Python tabs call functions the knappnet
+  packages actually expose today. If the package lacks a function, the tab is a stub:
+  a short comment naming the missing function, no hand-written replacement, and an
+  empty output block:
+
+  ```r
+  # TODO(code, R): needs <what knappnet would expose, e.g. net_swap_edges()>
+  ```
+  ```text
+  TODO(output)
+  ```
+
+  Rust tabs stay as they are. `python3 tools/pending.py` lists every stub so we can
+  see what is still missing.
+- **R stays simple.** Base R, plus `library(knappnet)` and nothing else unless there is
+  no sensible alternative. No tidyverse (dplyr, purrr, tidyr, tibble), no pipes
+  chains of verbs. Read results the way a student would: name the vector or list
+  (`setNames()`, `names<-`), or build a plain `data.frame` or `table`, and let R print it.
+  Output does not have to look like the Python or Rust output; it has to be easy to read.
+  Native pipe `|>` is fine for one or two steps; no loops written out for show, no `print()`
+  or `cat()`.
