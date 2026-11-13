@@ -190,6 +190,10 @@ one degree of longitude: 111.2 km at the equator, 55.6 km at 60 N
 
 The same degree of longitude is twice as long on the equator as at 60 degrees north, because the lines of longitude converge toward the pole. A planar formula applied to degrees would call both distances 1.
 
+You can check this on paper. For two points at the same latitude $\varphi$ and a small gap $\Delta\lambda$ between their longitudes (in radians), the formula reduces to $d \approx R \cos\varphi \, \Delta\lambda$. One degree is $0.017453$ radians, so on the equator $d \approx 6371.0088 \times 0.017453 = 111.2$ km, and at 60 degrees north, where $\cos 60^\circ = 0.5$, it is $55.6$ km. Those are the numbers the code printed.
+
+One quirk to know about: R's printed header says `sphere radius 6371.0088 m`, but we gave the radius in kilometers, so every distance knappnet returns here is in kilometers. The unit of a distance is whatever unit you gave the radius, and the header does not know it.
+
 ## Our data: country borders {#sec-space-data}
 
 Our real example is the network of **land borders**: two countries are tied when they share a stretch of land border. It comes from Natural Earth, a public-domain world map (the 1:110 million scale "Admin 0" layer, which is generalized, so borders are simplified), and it ships with knappnet. Natural Earth gives each unit a label point, a spot chosen to print the name on the map; we use it as the unit's location, and I'll call these points "the dots." A dot is not a true center. For France it sits in Paris, which matters in a moment.
@@ -220,7 +224,7 @@ tibble(
 )
 
 # The three longest ties, by country name.
-world$edges |>
+borders |>
   mutate(km = round(lengths), across(c(source, target), \(id) countries$name[match(id, countries$id)])) |>
   slice_max(km, n = 3)
 ```
@@ -607,6 +611,98 @@ pop_i * pop_j / distance^2          0.98
 The fitted exponent is about 2.17, close to the 2 that made the data; the gap is the noise. More interesting is the second table. Distance alone lines up with the log of the flows at 0.77, and the two populations alone at 0.81. Together, in the gravity score, they reach 0.98. Neither ingredient explains the flows by itself, and together they explain almost all.
 
 On real data the gravity model is a baseline, not a finding. Big places and nearby places exchange more of everything, so a large flow between two big, close towns tells you very little about them in particular. What is interesting is a pair whose flow is far above or below what size and distance predict: a rail line, a shared employer, a river that cuts a town in two. That gap is the same idea as the null models at the end of the chapter, and the same warning applies: the size of the gap depends on the exponent you fitted, so show how much it moves when you change it.
+
+### Stress check: how far does the gap move with the exponent?
+
+I said the size of a gap depends on the exponent you fitted. Here is how much. For each pair, take the commuters we see and divide by what the gravity score predicts at exponent $b$, after setting the constant $k$ so that the *typical* pair (in the sense of a geometric mean) is predicted exactly. A **gap factor** of 2 means the pair has twice the commuters the model expects, and 0.5 means half.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# The gap factor of every pair at exponent b. Dividing by the geometric mean sets the constant k.
+gap_at <- \(b) {
+  g <- log(pairs$commuters * pairs$km^b / (pairs$pop_i * pairs$pop_j))
+  exp(g - mean(g))
+}
+gap_two <- gap_at(2)
+
+tibble(exponent = 1:3) |>
+  mutate(
+    gap = map(exponent, gap_at),
+    largest_gap = map_chr(gap, \(g) paste(pairs$source[which.max(g)], pairs$target[which.max(g)], sep = " - ")),
+    factor = map_dbl(gap, \(g) round(max(g), 2)),
+    spread = map_dbl(gap, \(g) round(sd(log(g)), 2)),
+    corr_with_b2 = map_dbl(gap, \(g) round(cor(log(g), log(gap_two)), 2))
+  ) |>
+  select(-gap)
+```
+
+::: {.code-output}
+```text
+```
+:::
+
+## Python
+
+```python
+# The gap factor of every pair at exponent b. Dividing by the geometric mean sets the constant k.
+def gap_at(b):
+    g = np.log(flows["commuters"] * km ** b / pop_product)
+    return g - g.mean()
+
+gap_two = gap_at(2)
+print(f"{'exponent':<9} {'largest gap':<20} {'factor':>6} {'spread':>6} {'corr with b=2':>13}")
+for b in [1, 2, 3]:
+    g = gap_at(b)
+    top = g.idxmax()
+    print(f"{b:<9} {flows['source'][top] + ' - ' + flows['target'][top]:<20} {np.exp(g[top]):>6.2f} "
+          f"{g.std():>6.2f} {np.corrcoef(g, gap_two)[0, 1]:>13.2f}")
+```
+
+::: {.code-output}
+```text
+exponent  largest gap          factor spread corr with b=2
+1         Fenwick - Grove        3.31   0.57          0.70
+2         Fenwick - Grove        1.88   0.30          1.00
+3         Alder - Kestrel        2.78   0.45          0.45
+```
+:::
+
+## Rust
+
+```rust
+// The gap factor of every pair at exponent b, on the log scale. Subtracting the mean sets the constant k.
+let gap_at = |b: f64| -> Vec<f64> {
+    let g: Vec<f64> = (0..flows.len()).map(|k| (flows[k].2 * km[k].powf(b) / pop_product[k]).ln()).collect();
+    let mean = g.iter().sum::<f64>() / g.len() as f64;
+    g.iter().map(|v| v - mean).collect()
+};
+let gap_two = gap_at(2.0);
+println!("{:<9} {:<20} {:>6} {:>6} {:>13}", "exponent", "largest gap", "factor", "spread", "corr with b=2");
+for b in [1.0, 2.0, 3.0] {
+    let g = gap_at(b);
+    let top = (0..g.len()).max_by(|&p, &q| g[p].partial_cmp(&g[q]).unwrap()).unwrap();
+    let (_, sum_sq, _) = moments(&g, &g);
+    println!("{:<9} {:<20} {:>6.2} {:>6.2} {:>13.2}", b,
+             format!("{} - {}", town_rows[flows[top].0][0], town_rows[flows[top].1][0]),
+             g[top].exp(), (sum_sq / (g.len() - 1) as f64).sqrt(), corr(&g, &gap_two));
+}
+```
+
+::: {.code-output}
+```text
+exponent  largest gap          factor spread corr with b=2
+1         Fenwick - Grove        3.31   0.57          0.70
+2         Fenwick - Grove        1.88   0.30          1.00
+3         Alder - Kestrel        2.78   0.45          0.45
+```
+:::
+
+:::
+
+At exponent 2, the one that made the data, the largest gap is Fenwick to Grove at about 1.9 times the commuters predicted, and the gaps have a spread of 0.30 on the log scale, roughly the 0.35 of noise I put in. Change the exponent and the story changes. At 1 the same pair is 3.3 times its prediction, so the gap is bigger; at 3 the largest gap is Alder to Kestrel (2.8 times), a pair far apart, and the correlation between its gaps and the exponent-2 gaps falls to 0.45. In other words a "surprisingly strong" pair is partly a statement about the exponent. If you were hunting for a pair with a shared employer, you would get a different shortlist at 1 than at 3. Report the exponent, say how it was chosen, and rerun the shortlist at a neighbouring value.
 
 A last practical point. A table of flows between every pair of places is a dense network, not a sparse one, and most of its ties are tiny. Before you measure it with the tools of the earlier chapters, decide what a tie is, perhaps flows above some number or the strongest few per town, and report that choice.
 
@@ -1310,12 +1406,58 @@ Taken together, the three tabs read like this.
 
 When you report a spatial result, say which coordinate system and distance formula you used, what a node's location stands for (a dot, a centroid, a home address), how the study area was chosen, and whether the result survives a distance-matched comparison, a change of unit and a move of the boundary. And say what the data cannot show. A network that is clustered because its members live near each other has not shown you a social process, and a network that is not has not ruled one out.
 
+Here is the border result, once as a sentence you can defend and once as one you cannot.
+
+> **Defensible.** Among the 15,576 pairs of Natural Earth country units, 66% of pairs whose label points are under 500 km apart share a land border, against about one in a thousand beyond 3,000 km. The border network's transitivity (0.372) is higher than in networks with the same number of ties in each distance band (mean about 0.25, none of 200 draws as high), so its closure is more local than tie lengths alone would give. Removing the two French Guiana ties changes the largest piece from 150 units to 128.
+
+> **Over-claiming.** Neighboring countries cluster because states choose to align with their neighbors.
+
+The second sentence names a process the data never measured: we have borders, not alliances or choices, and the null that was beaten was a crude one.
+
+## Reading the same numbers in different settings {#sec-space-settings}
+
+A tie length or a decay curve means different things depending on what the nodes are and why the ties exist. Four settings show how much the reading shifts.
+
+- **Marriage or alliance ties among families in one town.** Short ties and a steep decay say that families mostly married near home. That can be a preference, or it can be what the marriage market looked like: you can only marry someone you could meet. The number does not tell the two apart.
+- **An office, with the distance between desks.** A steep decay says people talk to those who sit near them. It does not say that nearness causes the talk. Managers often seat people next to the colleagues they work with, so the seating may follow the ties, not the other way round. A change of seating, if you have one, is the useful test.
+- **A transport or supply network.** Here distance is usually the mechanism, not a nuisance: a road, a rail line or a flight costs more the longer it is, so a steep decay is what you expect and "controlling for distance" would remove the answer. A long tie means someone paid to span the gap. Betweenness in such a network counts hops, not kilometers or travel time, so it can crown a short link between two regions as the most important place on the map. Weight the paths by length if cost is your question.
+- **An online platform.** Locations are often typed in by users, guessed from an address on the network, or missing. A weak decay may mean the platform really connects people across places, or only that the location field is wrong or coarse. A "long" tie may be a person who moved. Say how the location was obtained before you say anything about distance.
+
+In all four, the number describes where the ties are. It does not say why they are there, and it cannot say what would happen if you moved people.
+
+## Mistakes people make, and where tools differ {#sec-space-misconceptions}
+
+- **"A longer tie is a weaker tie."** Not unless you measured strength. Length is geography; strength is something else, and the two may or may not go together.
+- **"A steep decay shows people prefer nearby partners."** It shows nearby partners are more often tied. Opportunity, cost and preference all produce that, and the curve cannot separate them.
+- **"The nearest-neighbor network shows who is isolated."** It cannot: every node gets $k$ ties by construction. Isolation shows up in a radius network, and only for that radius.
+- **"Higher transitivity than the null means social closure."** The null only removed what distance bands explain. Closure from geometry survives it.
+- **"Great-circle distance is how far people travel."** It is the straight line over a sphere. Roads, borders and mountains make real trips longer, and for some questions travel time is the right distance.
+
+Where tools differ, in this chapter: every deterministic number (distances, bands, thresholds, correlations, the three stress checks) was identical in R, Python and Rust. The distance-matched null is the exception, because each language draws its own random numbers: the null mean is 0.257 in R, 0.255 in Python and 0.252 in Rust, with a standard deviation near 0.02 each time, and no draw reaches 0.372 in any of them. That is the size of difference you should expect from a different random seed, and it is not a disagreement about the answer. Two smaller differences are not about numbers. R's frame header prints the sphere radius with the unit `m` even when you supplied kilometers, as noted earlier. And Natural Earth files Russia under Europe, so a "Europe" boundary drawn from its continent column contains Russia while six of Russia's borders run out of it, a choice no tool will warn you about. For other software, such as ellipsoidal distances in geodesy libraries, expect small differences from the spherical formula, as noted at the start of the chapter.
+
 ## Exercises
 
 1. **By hand.** Three towns sit at A = (0, 0), B = (30, 40) and C = (60, 0), in kilometers, with populations 10, 20 and 40 thousand. Find the three distances. Which pairs does a radius network of 55 km join? Using the gravity score $P_i P_j / d^2$, which pair would you expect to have the largest flow? Does that pair appear in the radius network?
 2. **Code.** Using `data/space/borders`, rebuild the distance-decay table with bands of 250 km for the first 1,000 km. Is the fall in the chance of a tie as steep inside the first 500 km as it is between 500 and 1,000? Then remove the Egypt to Israel tie and compare the pieces with and without it. Predict the result first.
 3. **Interpretation.** A study of a firm reports that two employees on the same floor are five times as likely to be friends as two in different buildings, and concludes that the firm has "a culture of silos". List at least two explanations that do not involve culture. Which of the three checks in this chapter would you run first, and what would you compare against?
 4. **Interpretation.** You build a contact network from phone location pings, joining people who were within 50 meters at the same time. Your colleague rebuilds it at 100 meters and gets a different story about who is central. What would you show to settle which result to trust?
+5. **By hand.** Two points on the equator are 90 degrees of longitude apart. How far apart are they? Two points at 60 degrees north are also 90 degrees of longitude apart. Use the haversine formula to find their distance, and say whether it is half of the equatorial one.
+6. **By hand.** Four towns sit on a straight road at kilometer marks 0, 1, 3 and 7. Build the radius network for $r = 2$ and the 1-nearest-neighbor network under both the "either" and the "mutual" rule. Which of them leaves the town at 7 alone?
+7. **Code.** On the invented towns, refit the gravity exponent 66 times, leaving out one pair each time. How far does the exponent move? Then drop only the pair with the most commuters. What does this say about trusting the 2.17?
+8. **Interpretation.** A student fits a gravity model to commuting between 30 real towns, gets an exponent of 2.2, and writes that "commuting obeys an inverse-square law, like gravity". Name two things the fit does not show, and one check you would ask for.
+
+::: {.callout-note collapse="true" appearance="simple"}
+## Worked answers
+
+1. The distances are AB = 50, BC = 50 and AC = 60 km. A 55 km radius joins A-B and B-C, not A-C. The gravity scores are $10 \cdot 20 / 50^2 = 0.08$ for A-B, $20 \cdot 40 / 50^2 = 0.32$ for B-C and $10 \cdot 40 / 60^2 = 0.11$ for A-C, so B-C should have the largest flow, and it is in the radius network.
+2. In bands of 250 km the share of pairs that are tied is 0.889 (36 pairs), 0.584 (113), 0.350 (143) and 0.281 (178). In share points the fall is 0.31, 0.23 and 0.07, steepest at the start; as a ratio each step multiplies the share by 0.66, 0.60 and 0.80, so it is not steeper inside the first 500 km. Without the Egypt to Israel tie there are 26 pieces instead of 25, and the largest has 100 units instead of 150: the 50 units of Africa are cut off from Eurasia.
+3. Two explanations without culture: people on the same floor are on the same team (the floor is a proxy for work), and people choose or are assigned floors by tenure or by who they already know. Run Check 1 first: compare with networks that keep how many ties fall in each distance class (same floor, same building, different building) and ask whether the "silo" is bigger than that.
+4. Show how each defining number moves across a sweep of thresholds (25, 50, 100, 200 meters), and say what the phone's location error is: if it is about 30 meters, a 50 meter contact is mostly noise. Report which conclusions survive the sweep.
+5. On the equator, $d = R \pi / 2 = 6371.0088 \times 1.5708 = 10{,}007.6$ km. At 60 degrees north the haversine term is $\cos^2 60^\circ \sin^2 45^\circ = 0.25 \times 0.5 = 0.125$, so $d = 2R \arcsin\sqrt{0.125} = 4{,}604.5$ km. That is less than half of the equatorial distance (5,003.8 km): the shortest path between two points on the same parallel bends toward the pole, where meridians are closer.
+6. For $r = 2$ the pairs 0-1 (distance 1) and 1-3 (distance 2) are joined, so the network is the path 0-1-3 and the town at 7 is alone. For 1-nearest: 0 points to 1, 1 to 0, 3 to 1 (distance 2, against 3 to 0 and 4 to 7), and 7 to 3. "Either" keeps 0-1, 1-3 and 3-7, one piece with 7 attached. "Mutual" keeps only 0-1, because only 0 and 1 point at each other, and leaves 3 and 7 alone. So the radius network and the mutual one isolate 7, and "either" never does.
+7. The exponent stays between 2.14 and 2.20 across the 66 refits. Dropping only the largest flow (Cedar to Fenwick, 1,428 commuters) gives 2.15. So the 2.17 is stable to any one pair, which is what you want to show. It says nothing about whether the form is right, since these data were built from it.
+8. The fit does not show a mechanism (it describes the pattern, and size and distance may stand in for jobs, roads and housing), and it does not give a law, because 435 pairs from 30 towns are not independent observations: each town appears in 29 pairs, so the usual standard errors are too small. Ask for the exponent with an interval that accounts for that (for example by resampling towns, not pairs), and for the fit with a sensible alternative such as travel time in place of distance.
+:::
 
 ## Summary
 

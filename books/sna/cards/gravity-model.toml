@@ -1,0 +1,55 @@
+id = "gravity-model"
+title = "Gravity model of flows"
+kind = "model"
+chapter = "space"
+summary = "A model in which the flow between two places grows with the product of their sizes and shrinks as a power of the distance between them."
+answers = "How much of the flow between places is explained by how big they are and how far apart, and which pairs have more or less than that?"
+
+data_requirements = [
+  "A flow (a count or amount) for each pair of places, a size for each place, and a distance for each pair.",
+  "Positive flows for the pairs fitted: the log fit drops zeros, so say how many pairs were left out.",
+  "Flows are direction-free in the chapter. For directed flows fit each direction, or add origin and destination effects.",
+]
+
+assumptions = [
+  "Flow is proportional to the product of the two sizes and to distance to a negative power, with noise that is multiplicative.",
+  "One exponent describes all pairs. Short and long trips may follow different exponents.",
+  "Distance is the right yardstick: travel time or cost may fit better.",
+]
+
+readings = [
+  { context = "Commuting between towns (the invented set of twelve in the chapter)", high = "A pair far above the fit may share an employer, a rail line or a bridge; at exponent 2 the largest gap is Fenwick to Grove, at about 1.9 times the prediction.", low = "A pair far below the fit may be cut apart by a river or a border." },
+  { context = "Trade or supply between regions", high = "Flows above the gravity baseline are the interesting ones, such as an agreement or a shared supplier.", low = "Big flows between big close places are expected and show little by themselves." },
+  { context = "Messages or calls between offices", high = "Pairs above the baseline are linked by projects or reporting lines.", low = "Pairs below it may be separated by time zones or language." },
+  { context = "Online platform with a location field", high = "Flows between places above the baseline may reflect migration or shared culture.", low = "Low flows can reflect blocked access, not a lack of interest." },
+]
+
+pitfalls = [
+  "Reading the fitted exponent as a law. On the invented towns the fitted 2.17 is close to the 2 that made the data, and that is the only reason it is believable there.",
+  "Treating pairs as independent: each place sits in many pairs, so standard errors from a plain regression are too small.",
+  "Taking the gap as a finding without checking the exponent: the largest gap moved from Fenwick-Grove to Alder-Kestrel when the exponent went from 2 to 3, and the correlation between the gaps fell to 0.45.",
+  "Dropping zero flows and then calling the fit a fit of all flows.",
+]
+
+checks = [
+  "Refit leaving out one pair at a time, and without the largest flow.",
+  "Rerun the shortlist of surprising pairs at neighbouring exponents (the chapter uses 1, 2 and 3).",
+  "Resample places, not pairs, when reporting uncertainty.",
+  "Compare with an alternative yardstick for distance, such as travel time.",
+]
+
+do_not_claim = [
+  "That the model is a law of nature or an inverse-square law.",
+  "That a large gap explains why a pair is special.",
+  "That an exponent fitted on one region transfers to another.",
+]
+
+report_template = "A gravity model log(flow / (size_i * size_j)) = a - b log(distance) was fitted to {n_pairs} pairs of {node_type}, giving b = {b} ({how_uncertainty}). The pairs furthest above the fit at exponents {exponents} were {pairs}. This shows what size and distance leave unexplained and not why."
+
+related = ["distance-decay", "mrqap", "latent-space-model"]
+sources = ["barthelemy2011spatial"]
+
+[knappnet]
+rust = "knappnet::spatial::{Points, Crs}; the log-linear fit is written out in the chapter"
+r = "net_edge_lengths() then lm(); net_distance_decay() builds the distance weights"
+python = "not in knappnet; the chapter uses numpy.polyfit"

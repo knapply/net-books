@@ -1,0 +1,55 @@
+id = "spatial-checks"
+title = "Three checks for spatial networks"
+kind = "procedure"
+chapter = "space"
+summary = "Three quick checks to run before reporting structure in a spatial network: a distance-matched null, a change of unit, and a move of the study boundary."
+answers = "How much of the structure I see is just nearness, the way units were drawn, or where the study stopped?"
+
+data_requirements = [
+  "A network with locations for every node and all pairwise distances.",
+  "A way to define alternative units or a different study region.",
+  "Enough pairs per distance band to shuffle within bands.",
+]
+
+assumptions = [
+  "A null that keeps how many ties fall in each distance band is a fair comparison for closure. It still lets A and B be tied to a C that is far from A, so it overstates how surprising local closure is.",
+  "Units are chosen by a map-maker, and some of their ties may be artefacts of that choice.",
+  "The study boundary is arbitrary until shown otherwise.",
+]
+
+readings = [
+  { context = "Country borders: transitivity against a distance-matched null", high = "The observed 0.372 is above a null mean of about 0.25 (sd about 0.02); no draw of 200 reaches it, so closure is more local than tie lengths alone give.", low = "A value inside the null would say that nearness could produce the clustering by itself." },
+  { context = "Country borders: change the unit", high = "Dropping two ties that exist only because France includes French Guiana moved the largest piece from 150 to 128 units and changed the third-ranked unit by betweenness.", low = "A result unchanged by such edits is robust to how units were drawn." },
+  { context = "Country borders: move the boundary", high = "Cutting Europe out removed 10 of the 89 ties touching a European unit, most of them Russia's (6).", low = "Few cut ties would say the region is nearly closed." },
+  { context = "Office or building network", high = "Clustering by floor above a floor-and-distance null suggests more than seating.", low = "No gap says seating could explain the clusters." },
+]
+
+pitfalls = [
+  "Reading a result against a null as proof of a social process: the null removed distance bands and nothing else.",
+  "Using one random seed. Each language gave a slightly different null mean (0.257, 0.255, 0.252 here), so report the spread of the null, not one draw.",
+  "Controlling for distance when distance is the mechanism.",
+  "Choosing a study boundary because a label such as continent is convenient.",
+]
+
+checks = [
+  "Report the null mean, spread and the number of draws at or above the observed value.",
+  "Rerun after merging or splitting units, or after removing ties known to depend on the unit.",
+  "Report which units lose ties when the boundary is drawn, and by how many.",
+  "A stricter null keeps positions and simulates ties from a fitted distance-decay curve; use it when the first null is passed.",
+]
+
+do_not_claim = [
+  "That passing a distance-matched null shows a social process.",
+  "That the result holds under a different definition of the unit.",
+  "That centrality or degree near the boundary is the same as in the full network.",
+]
+
+report_template = "On {network}, {statistic} was {observed}. In {draws} networks with the same number of ties in each {band_width} distance band it had mean {null_mean} and sd {null_sd}, and {count_at_or_above} draws were at or above the observed value. Changing {unit_change} moved {what_moved}, and cutting the study area at {boundary} removed {cut_ties} ties. This shows what nearness alone does not explain; it does not show a social process."
+
+related = ["permutation-test", "null-models-choice", "network-autocorrelation", "distance-decay"]
+sources = ["anselin1988spatial", "barthelemy2011spatial"]
+
+[knappnet]
+rust = "knappnet::spatial plus knappnet::rng::Stream for the shuffles"
+r = "net_proximity() for the pairs, then net_transitivity() on shuffled ties"
+python = "not in knappnet; the chapter uses numpy and networkx"

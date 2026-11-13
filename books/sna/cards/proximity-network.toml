@@ -1,0 +1,55 @@
+id = "proximity-network"
+title = "Proximity networks (radius and k-nearest-neighbor)"
+kind = "procedure"
+chapter = "space"
+summary = "A network built from locations alone, by joining nodes within a distance or each node to its k nearest others."
+answers = "If I have positions but no ties, what network do they imply, and how much of what I measure belongs to the rule I chose?"
+
+data_requirements = [
+  "A location for every node and a distance formula suited to the coordinates.",
+  "A reason for the rule: a radio range, a walking distance, a contact definition.",
+  "Either a threshold or a k, and the plan to vary it.",
+]
+
+assumptions = [
+  "Being near is a good stand-in for being tied. On the country borders the best radius in the sweep, 1,000 km, found 63% of the real borders and only 42% of its ties were borders.",
+  "The same rule suits dense and sparse regions: a radius makes knots in cities and leaves few ties in sparse places.",
+  "For k-nearest, that every node should have exactly k ties.",
+]
+
+readings = [
+  { context = "Countries (Natural Earth label points)", high = "A radius of 2,000 km finds 92% of the borders but only 19% of its 1,475 ties are borders.", low = "A radius of 250 km has precision 0.89 but joins only 36 pairs and leaves 147 pieces." },
+  { context = "Sensors or wireless devices", high = "Dense clusters of ties where devices are packed.", low = "Isolated sensors in sparse areas show a coverage gap, only for that radius." },
+  { context = "People's homes in a survey", high = "A tie within a few hundred meters says they could plausibly meet.", low = "It does not say they know each other." },
+  { context = "Transport stops", high = "A radius network of stops within walking distance describes transfers one could make on foot.", low = "It ignores barriers such as rivers and motorways." },
+]
+
+pitfalls = [
+  "Reporting connectivity or mean degree without the threshold that produced it: from 500 to 1,000 km the number of pieces fell from 100 to 35.",
+  "Using k-nearest to say who is isolated: it never leaves anyone out (3 nearest with either rule gave one piece of 177).",
+  "Forgetting the choice of rule for directed k-nearest: 'either' and 'mutual' gave 348 and 183 ties for k = 3.",
+  "Treating precision and recall against another network as a measure of quality; they say how much the two look alike.",
+]
+
+checks = [
+  "Show a sweep of thresholds or values of k with the number of ties, pieces and mean degree.",
+  "If a real network exists for some nodes, report precision and recall against it.",
+  "Rerun with 'either' and 'mutual' and say which you used.",
+  "Compare the proximity network with a random network of the same density.",
+]
+
+do_not_claim = [
+  "That a proximity tie is a social tie.",
+  "That the network is connected, or fragmented, without the threshold.",
+  "That a node with no ties in a radius network is isolated in any other sense.",
+]
+
+report_template = "A {rule} network was built on {n} {node_type} using {distance_kind}, giving {m} ties in {pieces} connected pieces. A sweep over {sweep} changed the number of pieces from {low_pieces} to {high_pieces}; conclusions that hold across the sweep are {robust}."
+
+related = ["tie-length", "distance-decay", "spatial-checks", "components"]
+sources = ["barthelemy2011spatial", "sinnott1984virtues"]
+
+[knappnet]
+rust = "knappnet::spatial::{find_pairs_within_distance, find_nearest_neighbors}"
+r = "net_proximity(within = r) or net_proximity(k = k, knn = \"either\" or \"mutual\")"
+python = "not in knappnet; the chapter uses numpy distances and networkx"
