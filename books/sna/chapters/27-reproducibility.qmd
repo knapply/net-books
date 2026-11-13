@@ -63,7 +63,12 @@ tibble(
 
 ::: {.code-output}
 ```text
-(R output goes here)
+# A tibble: 3 × 4
+  reading           ties degrees   density
+  <chr>            <int> <chr>       <dbl>
+1 as recorded          5 2 3 3 2 0     0.5
+2 simple graph         4 2 2 2 2 0     0.4
+3 adjacency matrix     3 2 2 2 0 0     0.3
 ```
 :::
 
@@ -169,7 +174,12 @@ net_random_gnm(10, 18, seed = 1)$edges |>
 
 ::: {.code-output}
 ```text
-(R output goes here)
+# A tibble: 2 × 2
+  generator            first_three      
+  <chr>                <chr>            
+1 R, runif()           0.266 0.372 0.573
+2 Park-Miller, by hand 0 0.132 0.756    
+[1] "1-2" "1-3" "1-5" "2-5" "2-8"
 ```
 :::
 
@@ -262,7 +272,10 @@ tibble(lowest = min(means), average = mean(means), highest = max(means)) |>
 
 ::: {.code-output}
 ```text
-(R output goes here)
+# A tibble: 1 × 3
+  lowest average highest
+   <dbl>   <dbl>   <dbl>
+1  0.361   0.369   0.374
 ```
 :::
 
@@ -313,7 +326,7 @@ lowest 0.361  average 0.369  highest 0.374
 
 :::
 
-Within one tool, the averages for different seeds differ in the third decimal place. Between tools the averages are close too, and the gap between R or Rust and Python is of the same size as the gap between two seeds of one tool. That is what "the answer does not depend on the draw" looks like. When the draws are many enough, the choice of generator stops mattering, and what is left is Monte Carlo error, which @sec-tests-and-null-models shows how to size. The practical rule is the one the permutation-test card repeats: say how many draws you used and the seed, and rerun with another seed before you trust the third decimal.
+Within one tool, the averages for different seeds run from 0.361 to 0.374 (R and Rust) or 0.372 (Python), a spread of about 0.01. Between tools the overall averages, 0.369 and 0.367, differ by 0.002, much less than the spread between seeds of one tool. That is what "the answer does not depend on the draw" looks like. When the draws are many enough, the choice of generator stops mattering, and what is left is Monte Carlo error, which @sec-tests-and-null-models shows how to size. The practical rule is the one the permutation-test card repeats: say how many draws you used and the seed, and rerun with another seed before you trust the third decimal.
 
 ### A seed in a sampled estimate
 
@@ -348,7 +361,19 @@ tibble(seed = 1:5) |>
 
 ::: {.code-output}
 ```text
-(R output goes here)
+# A tibble: 2 × 2
+  manager exact
+    <dbl> <dbl>
+1      18  88.9
+2      21  60.1
+# A tibble: 5 × 4
+   seed first first_estimate manager_21
+  <int> <int>          <dbl>      <dbl>
+1     1    18           72.6       27.6
+2     2    18           81         62.4
+3     3    18           61.4       11.5
+4     4    21           71.9       71.9
+5     5    18           63.2       55.8
 ```
 :::
 
@@ -433,11 +458,11 @@ seed  first (estimate)  manager 21
 
 Two things are going on, and they are different. First, five sources is a small sample, so the estimate for manager 21 swings a long way from seed to seed in every tool. A sampled estimate with a handful of sources should never be reported without its sample size and a repeat with other seeds. Second, even for the same seed the tools disagree: NetworkX and the engine each pick their five sources by their own rule, so seed 3 means one set of sources in one and another set in the other. That second part is the reproducibility problem, and the first is the statistics problem. The record you keep has to say how many sources, which seed and which tool, because all three change the answer.
 
-For the engine, R and Rust agree digit for digit on the same seed. They are the same code.
+For the engine, R and Rust agree digit for digit on the same seed, in the draws, the sampled estimates and the Louvain runs below. They are the same code.
 
 ::: {.callout-note appearance="simple"}
-## A habit for R users
-If you leave `seed` out of an engine call that uses one, the R package draws a seed from R's own random numbers, so `set.seed()` at the top of your script makes the whole script repeatable, and the seed that was used is stored in the result's provenance record, which we meet below. Passing `seed =` yourself is clearer, and it keeps working if somebody reorders your script.
+## A caution for R users
+Do not count on R's `set.seed()` to seed the engine. In a test with `set.seed(5)` and no `seed =` argument, the provenance record of a sampled measure showed seed 0, so the call used the engine's default and not a number drawn from R's generator. Pass `seed =` yourself, and read it back from the provenance record.
 :::
 
 ## Order of the nodes, and ties in a ranking {#sec-order-and-ties}
@@ -504,7 +529,28 @@ tibble(
 
 ::: {.code-output}
 ```text
-(R output goes here)
+# A tibble: 1 × 1
+  betweenness_agrees_to_1e9
+  <lgl>                    
+1 TRUE                     
+# A tibble: 2 × 2
+  listed   top_six       
+  <chr>    <chr>         
+1 forward  34 1 33 3 2 4 
+2 backward 34 1 33 3 2 32
+# A tibble: 5 × 4
+   seed modularity_forward modularity_backward adjusted_rand
+  <int>              <dbl>               <dbl>         <dbl>
+1     1              0.419               0.42          0.898
+2     2              0.416               0.398         0.588
+3     3              0.419               0.42          0.898
+4     4              0.419               0.419         1    
+5     5              0.42                0.419         0.898
+# A tibble: 2 × 3
+  listed   by_position  by_name     
+  <chr>    <chr>        <chr>       
+1 forward  272d00ea8d3a 272d00ea8d3a
+2 backward 6a3035f33c7e 272d00ea8d3a
 ```
 :::
 
@@ -658,9 +704,9 @@ Read it in four parts.
 
 **The top-six list changes.** Members 34, 1, 33, 3 and 2 are the first five either way. Sixth place is a tie between members 4 and 32, each with six ties. Whoever is listed first wins the tie, so "the top six" is member 4 in one run and member 32 in the other. Nothing is wrong with the sort. The question "who are the top six" has no single answer when sixth place is tied, and the honest report says "the top five, and a tie for sixth". This is the cheapest of all reproducibility traps to avoid: before you cut a ranking at a number, look at the value on either side of the cut.
 
-**Louvain moves with the order.** Louvain visits the people in a sequence and moves each to the neighbouring group that raises modularity most, and the sequence follows the listing [@blondel2008fast]. The same seed on a reordered table is, in effect, a different seed. The modularity values are all close to 0.42, so by that score the partitions are equally good, and the adjusted Rand index between the two listings ranges from 1 for seed 4 to well below 1 for others. Adjusted Rand is 1 when two partitions are identical and about 0 when they agree no more than chance (@sec-subgroups). So a community result is a draw from a set of near-equal partitions, and the order of your table is one of the things that picks the draw. The fix is the one from the random-draw section: run several seeds, or several orders, and report what is stable.
+**Louvain moves with the order.** Louvain visits the people in a sequence and moves each to the neighbouring group that raises modularity most, and the sequence follows the listing [@blondel2008fast]. The same seed on a reordered table is, in effect, a different seed. The modularity values are all close to 0.42, so by that score the partitions are equally good, and the adjusted Rand index between the two listings is 1.000 for some seeds and as low as 0.588 (engine, seed 2) or 0.759 (NetworkX, seed 2) for others. Adjusted Rand is 1 when two partitions are identical and about 0 when they agree no more than chance (@sec-subgroups). So a community result is a draw from a set of near-equal partitions, and the order of your table is one of the things that picks the draw. The fix is the one from the random-draw section: run several seeds, or several orders, and report what is stable.
 
-**Three fingerprints for "the same network".** The first fingerprint hashes the ties as row numbers. It changes with the listing, because row numbers do. The second hashes the ties by member name, sorted, so it does not. The third is a *structure* hash (Weisfeiler and Lehman's colour-refinement idea, as NetworkX and the engine implement it [@shervashidze2011weisfeiler; @hagberg2008exploring]): it depends only on the shape, so it is the same under any listing and any renaming, and for the same reason it cannot tell Ana's network from a stranger's with the same shape. Which one you want depends on the question. "Did my file change?" wants a hash of the bytes. "Is this the same list of people and ties?" wants a hash by name. "Is this the same shape?" wants the structure hash. A table of nodes in a different order is the *same network* to the second and third, and a *different input* to the first, which matters because algorithms are fed positions.
+**Three fingerprints for "the same network".** The first fingerprint hashes the ties as row numbers. It changes with the listing, because row numbers do. The second hashes the ties by member name, sorted, so it does not. The third is a *structure* hash (Weisfeiler and Lehman's colour-refinement idea, as NetworkX and the engine implement it [@shervashidze2011weisfeiler; @hagberg2008exploring]): it depends only on the shape, so it is the same under any listing and any renaming, and for the same reason it cannot tell Ana's network from a stranger's with the same shape. Which one you want depends on the question. "Did my file change?" wants a hash of the bytes. "Is this the same list of people and ties?" wants a hash by name. "Is this the same shape?" wants the structure hash. (In the forward listing the row numbers and the names coincide, so in the R tab the first two fingerprints agree there.) A table of nodes in a different order is the *same network* to the second and third, and a *different input* to the first, which matters because algorithms are fed positions.
 
 ### Stable node ids
 
@@ -711,7 +757,13 @@ tibble(convention = c("igraph", "networkx", "sna", "ucinet")) |>
 
 ::: {.code-output}
 ```text
-(R output goes here)
+# A tibble: 4 × 4
+  convention node_C node_F first               
+  <chr>       <dbl>  <dbl> <chr>               
+1 igraph      0.8    1     F and G             
+2 networkx    0.533  0.167 C                   
+3 sna         0      0     everyone (all equal)
+4 ucinet      0.462  0.286 C                   
 ```
 :::
 
@@ -827,7 +879,25 @@ tibble(
 
 ::: {.code-output}
 ```text
-(R output goes here)
+# A tibble: 8 × 2
+  field          value             
+  <chr>          <chr>             
+1 measure        betweenness_approx
+2 revision       1                 
+3 engine         0.0.1             
+4 seed           3                 
+5 parameter hash 7bee3a7c          
+6 nodes          21                
+7 ties           190               
+8 graph hash     <NA>              
+# A tibble: 5 × 2
+  field     value                           
+  <chr>     <chr>                           
+1 data file krackhardt/edges.csv            
+2 file hash cc0f8c80c75960cbed4fbd16c5dd2216
+3 R         R version 4.6.2 (2026-10-29)    
+4 knappnet  0.0.1                           
+5 dplyr     1.2.1                           
 ```
 :::
 
@@ -900,7 +970,7 @@ Three things in the output.
 
 **The graph hash is the same in two languages.** The engine's content hash covers the network as the engine holds it: whether ties have direction, whether they have weights, the number of nodes and of ties, then every tie's source and every tie's target in the order stored. The Python tab rebuilds that hash from the documented layout and gets the same 16 hexadecimal characters the Rust tab prints, so the hash is a checkable fact and not a private number. The layout carries a version tag ("knappnet graph content 1"), so treat a hash as comparable only between runs of the same tag. Notice what is in it: ties as positions. Change the order of the rows and the hash changes, which is why the previous section matters.
 
-**The R graph hash is missing.** In the R tab the `graph hash` row is `NA`. I looked into why, and it is a gap in the engine's interface, not an error in your analysis. The engine computes a graph's content hash lazily, because hashing a very large graph costs more than computing a simple measure on it. A provenance record carries the hash only if something has already asked for it. The Rust tab shows exactly that: before `content_hash()` is called the record says it is unknown, and after the call the same record knows it. R's runtime path never makes that call, and the C interface that R goes through has no function to ask for the hash, so R cannot trigger it, and the field stays empty. Until that is fixed, do what the R tab does for the data: hash the file with `rlang::hash_file()`, and write the other fields in yourself. The other fields (measure, revision, parameter hash, seed, engine version) are filled in correctly in all languages, and the parameter hash printed by R and Rust is the same, so a result computed in R can be matched to the same call made from Rust.
+**The R graph hash is missing.** In the R tab the `graph hash` row is `NA`. I looked into why, and it is a gap in the engine's interface, not an error in your analysis. The engine computes a graph's content hash lazily, because hashing a very large graph costs more than computing a simple measure on it. A provenance record carries the hash only if something has already asked for it. The Rust tab shows exactly that: before `content_hash()` is called the record says it is unknown, and after the call the same record knows it. R's runtime path never makes that call (I also tried with the result cache switched off and after repeated runs: still missing), and the C interface that R goes through has no function to ask for the hash, so R cannot trigger it, and the field stays empty. Until that is fixed, do what the R tab does for the data: hash the file with `rlang::hash_file()`, and write the other fields in yourself. The other fields (measure, revision, parameter hash, seed, engine version) are filled in correctly in all languages, and the parameter hash printed by R and Rust is the same, so a result computed in R can be matched to the same call made from Rust.
 
 **The engine does not know what you did around it.** It cannot record which file the ties came from, which rows you dropped, which package versions were loaded, or which random choices you made in your own code. The Python tab shows the minimum record for a library with no provenance of its own: the file's hash, the network's hash, the call with its seed, and the versions. Keep a record like it beside every table you hand to anybody, in a file, not in your head.
 
@@ -950,7 +1020,13 @@ tibble(
 
 ::: {.code-output}
 ```text
-(R output goes here)
+# A tibble: 4 × 3
+  check                           gap close_at_1e9
+  <chr>                         <dbl> <lgl>       
+1 eigenvector, igraph's scale 6.3e- 1 FALSE       
+2 eigenvector, unit length    1  e-12 TRUE        
+3 pagerank, tol 1e-6          2.5e- 7 FALSE       
+4 pagerank, tol 1e-12         1  e-12 TRUE        
 ```
 :::
 
@@ -1147,7 +1223,12 @@ tibble(
 
 ::: {.code-output}
 ```text
-(R output goes here)
+# A tibble: 3 × 3
+  what_an_outsider_knows      unique_members smallest_group
+  <chr>                                <int>          <int>
+1 degree                                   6              1
+2 degree and friends' degrees             23              1
+3 degree in bands of five                  0              2
 ```
 :::
 
