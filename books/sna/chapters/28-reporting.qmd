@@ -72,22 +72,24 @@ scores <- tibble(
   asked = net_degree(g, mode = "in"), asks = net_degree(g, mode = "out"),
   betweenness = net_betweenness(g), eigenvector = net_eigen(g)
 )
-tibble(managers = nrow(managers), advice_ties = nrow(advice), density = round(nrow(advice) / (21 * 20), 3))
-scores |>
-  slice_max(betweenness, n = 4) |>
-  mutate(betweenness = round(betweenness, 1), eigenvector = round(eigenvector, 3))
-
 # The same ties with the arrows ignored: a pair counts once, whoever asked.
 pairs <- advice |>
   mutate(a = pmin(source, target), b = pmax(source, target)) |>
   distinct(source = a, target = b)
 by_pairs <- net_betweenness(net_frame(pairs, nodes = managers, directed = FALSE, quiet = TRUE))
-compare <- tibble(manager = managers$id, with_arrows = scores$betweenness, ignoring_arrows = by_pairs) |>
-  mutate(rank_with = min_rank(desc(with_arrows)), rank_ignoring = min_rank(desc(ignoring_arrows)))
-tibble(ties_as_arrows = nrow(advice), ties_as_pairs = nrow(pairs))
-compare |> slice_max(with_arrows, n = 3) |> select(manager, with_arrows) |> mutate(with_arrows = round(with_arrows, 1))
-compare |> slice_max(ignoring_arrows, n = 3) |> select(manager, ignoring_arrows) |> mutate(ignoring_arrows = round(ignoring_arrows, 1))
-compare |> filter(manager == 18) |> select(manager, rank_with, rank_ignoring)
+
+tibble(managers = nrow(managers), advice_ties = nrow(advice), density = round(nrow(advice) / (21 * 20), 3),
+       ties_as_pairs = nrow(pairs))
+scores |>
+  slice_max(betweenness, n = 4) |>
+  mutate(betweenness = round(betweenness, 1), eigenvector = round(eigenvector, 3))
+
+# Betweenness with the arrows and without, for the top three of each view and for manager 18.
+tibble(manager = managers$id, with_arrows = scores$betweenness, ignoring_arrows = by_pairs) |>
+  mutate(rank_with = min_rank(desc(with_arrows)), rank_ignoring = min_rank(desc(ignoring_arrows))) |>
+  filter(rank_with <= 3 | rank_ignoring <= 3 | manager == 18) |>
+  arrange(rank_with) |>
+  mutate(across(c(with_arrows, ignoring_arrows), \(x) round(x, 1)))
 ```
 
 ::: {.code-output}
