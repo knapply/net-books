@@ -53,38 +53,29 @@ The same six contacts, held these four ways, in code. For the intervals we make 
 
 ```r
 library(knappnet)
-library(dplyr)
-library(tidyr)
-library(purrr)
 
 people <- c("Ana", "Ben", "Cleo", "Dev", "Eli", "Fay")
 
 # An event stream: one row per contact, with the time it happened.
-contacts <- tibble(
+contacts <- data.frame(
   source = people[c(1, 3, 2, 4, 1, 5)],
   target = people[c(2, 4, 3, 5, 2, 6)],
   time = 1:6
 )
-g <- net_temporal(contacts, nodes = tibble(id = people), directed = FALSE)
+g <- net_temporal(contacts, nodes = data.frame(id = people), directed = FALSE)
 contacts
 
 # Snapshots: two waves, times 1 to 3 and times 4 to 6. How many contacts fall in each?
-tibble(wave = 1:2, from = c(1, 4)) |>
-  mutate(contacts = map_int(from, \(a) nrow(net_window(g, a, a + 3)$edges)))
+data.frame(wave = 1:2, contacts = sapply(c(1, 4), \(a) nrow(net_window(g, a, a + 3)$edges)))
 
 # Cumulative aggregation: everything up to time 3, and everything up to time 6.
-tibble(up_to = c(3, 6)) |>
-  mutate(
-    piled = map(up_to, \(t) net_aggregate(g, from = 1, to = t + 0.5)$edges),
-    contacts = map_dbl(piled, \(e) sum(e$count)),
-    pairs = map_int(piled, nrow)
-  ) |>
-  select(-piled)
+piled <- lapply(c(3, 6), \(t) net_aggregate(g, from = 1, to = t + 0.5)$edges)
+data.frame(up_to = c(3, 6), contacts = sapply(piled, \(e) sum(e$count)), pairs = sapply(piled, nrow))
 
 # Intervals: suppose each meeting lasted half a time unit. Who is meeting at time 3.2?
-spells <- contacts |>
-  mutate(end = time + 0.5) |>
-  net_temporal(nodes = tibble(id = people), end = "end", directed = FALSE)
+spells <- contacts
+spells$end <- spells$time + 0.5
+spells <- net_temporal(spells, nodes = data.frame(id = people), end = "end", directed = FALSE)
 net_at(spells, 3.2)$edges
 ```
 
@@ -119,49 +110,12 @@ net_at(spells, 3.2)$edges
 ## Python
 
 ```python
-import csv
-
-import networkx as nx
-import numpy as np
-
-names = ["Ana", "Ben", "Cleo", "Dev", "Eli", "Fay"]
-person_a = [0, 2, 1, 3, 0, 4]
-person_b = [1, 3, 2, 4, 1, 5]
-when = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
-
-# An event stream: one row per contact, with the time it happened.
-contacts = sorted(zip(when, person_a, person_b))
-print(f"event stream: {len(contacts)} contacts")
-for t, a, b in contacts:
-    print(f"  t={t:g}  {names[a]} - {names[b]}")
-
-# Snapshots: two waves, times 1 to 3 and times 4 to 6.
-in_wave = [sum(lo <= t < lo + 3 for t, _, _ in contacts) for lo in (1, 4)]
-print(f"snapshots: {in_wave[0]} contacts in wave 1, {in_wave[1]} in wave 2")
-
-# Cumulative aggregation: everything up to time 3, and everything up to time 6.
-for up_to in (3, 6):
-    so_far = [(a, b) for t, a, b in contacts if t <= up_to]
-    print(f"up to time {up_to}: {len(so_far)} contacts, {len({frozenset(p) for p in so_far})} distinct pairs")
-
-# Intervals: suppose each meeting lasted half a time unit. Who is meeting at time 3.2?
-meeting = [(names[a], names[b]) for t, a, b in contacts if t <= 3.2 < t + 0.5]
-print(f"at time 3.2: {meeting[0][0]} - {meeting[0][1]}")
+# TODO(code, Python): needs a temporal network type with windows, aggregation and net_at() (net_temporal(), net_window(), net_aggregate(), net_at())
 ```
 
 ::: {.code-output}
 ```text
-event stream: 6 contacts
-  t=1  Ana - Ben
-  t=2  Cleo - Dev
-  t=3  Ben - Cleo
-  t=4  Dev - Eli
-  t=5  Ana - Ben
-  t=6  Eli - Fay
-snapshots: 3 contacts in wave 1, 3 in wave 2
-up to time 3: 3 contacts, 3 distinct pairs
-up to time 6: 6 contacts, 5 distinct pairs
-at time 3.2: Ben - Cleo
+TODO(output)
 ```
 :::
 
@@ -259,50 +213,38 @@ In each wave we'll compute: the number of choices, the density (the share of pos
 
 ```r
 # Sampson's 18 novices: the "liking" choices at times 1, 2 and 3.
-sampson <- read.csv("data/sampson/edges.csv") |>
-  as_tibble() |>
-  filter(relation == "liking") |>
-  select(source = from, target = to, wave = time)
-novices <- tibble(id = sort(unique(c(sampson$source, sampson$target))))
+sampson <- read.csv("data/sampson/edges.csv")
+sampson <- sampson[sampson$relation == "liking", c("from", "to", "time")]
+names(sampson) <- c("source", "target", "wave")
+novices <- data.frame(id = sort(unique(c(sampson$source, sampson$target))))
 panel <- net_temporal(sampson, nodes = novices, wave = "wave", directed = TRUE)
 waves <- net_waves(panel)
 
 # Describe each wave on its own.
-waves |>
-  map(\(h) tibble(
-    ties = nrow(h$edges),
-    density = net_density(h),
-    returned = net_reciprocity(h),
-    pieces = max(net_components(h, mode = "weak")$membership),
-    nobody_chose = sum(net_degree(h, mode = "in") == 0)
-  )) |>
-  list_rbind(names_to = "wave") |>
-  mutate(across(c(density, returned), \(x) round(x, 3)))
+data.frame(
+  ties = sapply(waves, \(h) nrow(h$edges)),
+  density = round(sapply(waves, net_density), 3),
+  returned = round(sapply(waves, net_reciprocity), 3),
+  pieces = sapply(waves, \(h) max(net_components(h, mode = "weak")$membership)),
+  nobody_chose = sapply(waves, \(h) sum(net_degree(h, mode = "in") == 0))
+)
 
-# Who is most chosen in each wave?
-chosen <- waves |>
-  map(\(h) mutate(h$nodes, received = net_degree(h, mode = "in"))) |>
-  list_rbind(names_to = "wave") |>
-  rename(novice = id)
-chosen |>
-  group_by(wave) |>
-  slice_max(received, n = 3, with_ties = FALSE)
+# Who is most chosen in each wave? The three highest in-degrees.
+received <- sapply(waves, \(h) net_degree(h, mode = "in"))
+rownames(received) <- novices$id
+setNames(lapply(1:3, \(k) head(sort(received[, k], decreasing = TRUE), 3)), paste("wave", 1:3))
 
 # How stable is the ranking by popularity? Spearman correlation of in-degree between waves.
-received <- pivot_wider(chosen, names_from = wave, values_from = received, id_cols = novice)
-list(c("1", "2"), c("2", "3"), c("1", "3")) |>
-  map_dbl(\(w) cor(received[[w[1]]], received[[w[2]]], method = "spearman")) |>
-  set_names(c("1 vs 2", "2 vs 3", "1 vs 3")) |>
-  round(2)
+round(cor(received, method = "spearman"), 2)
 
 # How many choices carry over, and what happens when we pile the waves together?
-kept <- waves |> map(\(h) paste(h$edges$source, h$edges$target))
+kept <- lapply(waves, \(h) paste(h$edges$source, h$edges$target))
 c(
   kept_1_to_2 = length(intersect(kept[[1]], kept[[2]])),
   kept_2_to_3 = length(intersect(kept[[2]], kept[[3]]))
 )
 piled <- net_aggregate(panel)
-tibble(
+data.frame(
   ties = nrow(piled$edges),
   density = round(net_density(piled), 3),
   in_all_three = sum(piled$edges$count == 3)
@@ -344,6 +286,9 @@ kept_1_to_2 kept_2_to_3
 ## Python
 
 ```python
+import csv
+
+import networkx as nx
 import pandas as pd
 from scipy.stats import spearmanr
 
@@ -507,48 +452,31 @@ Now look at the last line. Piled together, the three waves hold 88 distinct choi
 
 ### A stress check: how much carry-over is chance?
 
-That 35 of 55 choices carried over from wave 1 to wave 2 sounds like a lot, but "a lot" needs a yardstick. Here is one that needs no simulation. Suppose each novice, in each wave, picked his friends at random among the other 17. A novice who named $a$ people in one wave and $b$ in the next would be expected to repeat $a b / 17$ of them. Read that as: the chance that any one of his second-wave picks was also a first-wave pick is $a/17$, and he makes $b$ picks. For a novice who named 3 and 3, that is $3 \times 3 / 17 \approx 0.53$ repeats (worked by hand here, not taken from the code). Add that up over the novices.
+That 35 of 55 choices carried over from wave 1 to wave 2 sounds like a lot, but "a lot" needs a yardstick. Here is one that needs no simulation. Suppose each novice, in each wave, picked his friends at random among the other 17. A novice who named $a$ people in one wave and $b$ in the next would be expected to repeat $a b / 17$ of them. Read that as: the chance that any one of his second-wave picks was also a first-wave pick is $a/17$, and he makes $b$ picks. For a novice who named 3 and 3, that is $3 \times 3 / 17 \approx 0.53$ repeats (worked by hand here, not taken from the code). Add that up over the novices. Only the Rust tab computes the sum; the R and Python tabs stay blank until knappnet exposes a tie-persistence function (`net_tie_persistence()`).
 
 ::: {.panel-tabset group="language"}
 
 ## R
 
 ```r
-# If each novice's choices in the next wave were drawn at random from the 17 others, how many would repeat?
-# A novice who named a choices in one wave and b in the next is expected to repeat a * b / 17 of them.
-named <- waves |> map(\(h) net_degree(h, mode = "out"))
-tibble(step = 1:2) |>
-  mutate(
-    kept = map_int(step, \(k) length(intersect(kept[[k]], kept[[k + 1]]))),
-    expected_if_random = map_dbl(step, \(k) sum(named[[k]] * named[[k + 1]]) / 17) |> round(1)
-  )
+# TODO(code, R): needs net_tie_persistence(), ties kept from one wave to the next and the number expected if choices were drawn at random
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 2 × 3
-   step  kept expected_if_random
-  <int> <int>              <dbl>
-1     1    35               10.3
-2     2    40               10.4
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# If each novice's choices in the next wave were drawn at random from the 17 others, how many would repeat?
-# A novice who named a choices in one wave and b in the next is expected to repeat a * b / 17 of them.
-named = {k: dict(g.out_degree()) for k, g in waves.items()}
-for k in (1, 2):
-    expected = sum(named[k][n] * named[k + 1][n] for n in novices) / 17
-    print(f"wave {k} to {k + 1}: {len(ties[k] & ties[k + 1])} kept, {expected:.1f} expected if choices were random")
+# TODO(code, Python): needs net_tie_persistence(), ties kept from one wave to the next and the number expected if choices were drawn at random
 ```
 
 ::: {.code-output}
 ```text
-wave 1 to 2: 35 kept, 10.3 expected if choices were random
-wave 2 to 3: 40 kept, 10.4 expected if choices were random
+TODO(output)
 ```
 :::
 
@@ -636,13 +564,13 @@ piece_size <- \(h) {
   membership <- net_components(h, mode = "weak")$membership
   as.vector(table(membership)[membership]) - 1
 }
-g$nodes |>
-  mutate(
-    time_respecting = net_temporal_reach(g),
-    piled_up = piece_size(net_aggregate(g)),
-    wave1_time_respecting = net_temporal_reach(g, start = 1, end = 3),
-    wave1_photo = piece_size(net_window(g, 1, 4))
-  )
+data.frame(
+  person = g$nodes$id,
+  time_respecting = net_temporal_reach(g),
+  piled_up = piece_size(net_aggregate(g)),
+  wave1_time_respecting = net_temporal_reach(g, start = 1, end = 3),
+  wave1_photo = piece_size(net_window(g, 1, 4))
+)
 ```
 
 ::: {.code-output}
@@ -662,51 +590,12 @@ g$nodes |>
 ## Python
 
 ```python
-# NetworkX has no time-respecting paths, so we walk the contacts in time order: a contact passes
-# the message on if one of its two people already has it. When several contacts share a time,
-# we keep going until nothing changes (unless strict, which forbids chaining within one time).
-def earliest_arrival(root, contacts, directed=False, start=-np.inf, end=np.inf, strict=False):
-    arrive = {root: -np.inf}
-    for t in sorted({c[0] for c in contacts if start <= c[0] <= end}):
-        moved = True
-        while moved:
-            moved = False
-            for when_, a, b in contacts:
-                if when_ != t:
-                    continue
-                for u, v in ([(a, b)] if directed else [(a, b), (b, a)]):
-                    ready = u in arrive and (arrive[u] < t if strict else arrive[u] <= t)
-                    if ready and t < arrive.get(v, np.inf):
-                        arrive[v] = t
-                        moved = True
-    return arrive
-
-def piece_size(pairs, n=6):
-    g = nx.Graph()
-    g.add_nodes_from(range(n))
-    g.add_edges_from(pairs)
-    return [len(nx.node_connected_component(g, k)) - 1 for k in range(n)]
-
-# For every person, how many others can a message reach if it only moves forward in time?
-# Compare with the same contacts piled into one picture, and with the first wave only.
-time_respecting = [len(earliest_arrival(k, contacts)) - 1 for k in range(6)]
-wave1_time_respecting = [len(earliest_arrival(k, contacts, start=1, end=3)) - 1 for k in range(6)]
-piled_up = piece_size([(a, b) for _, a, b in contacts])
-wave1_photo = piece_size([(a, b) for t, a, b in contacts if t <= 3])
-print(f"{'':<5} {'time-respecting':>15} {'piled up':>9} {'wave 1 time-respecting':>23} {'wave 1 photo':>13}")
-for k, name in enumerate(names):
-    print(f"{name:<5} {time_respecting[k]:>15} {piled_up[k]:>9} {wave1_time_respecting[k]:>23} {wave1_photo[k]:>13}")
+# TODO(code, Python): needs time-respecting reach (net_temporal_reach()), which NetworkX does not have
 ```
 
 ::: {.code-output}
 ```text
-      time-respecting  piled up  wave 1 time-respecting  wave 1 photo
-Ana                 2         5                       2             3
-Ben                 2         5                       2             3
-Cleo                5         5                       2             3
-Dev                 5         5                       2             3
-Eli                 2         5                       0             0
-Fay                 1         5                       0             0
+TODO(output)
 ```
 :::
 
@@ -762,10 +651,7 @@ Reaching someone isn't the same as reaching them quickly. The **earliest arrival
 ```r
 # The earliest moment a message from Ana, and from Dev, can arrive at everyone else.
 # Inf means never.
-net_temporal_distances(g, from = c("Ana", "Dev")) |>
-  as_tibble(rownames = "from") |>
-  pivot_longer(-from, names_to = "to", values_to = "arrives") |>
-  filter(from != to)
+net_temporal_distances(g, from = c("Ana", "Dev"))
 ```
 
 ::: {.code-output}
@@ -789,19 +675,12 @@ net_temporal_distances(g, from = c("Ana", "Dev")) |>
 ## Python
 
 ```python
-for who, root in [("Ana", 0), ("Dev", 3)]:
-    arrive = earliest_arrival(root, contacts)
-    line = f"from {who}:"
-    for k, name in enumerate(names):
-        if k != root:
-            line += f"  {name} at t={arrive[k]:g}" if k in arrive else f"  {name} never"
-    print(line)
+# TODO(code, Python): needs earliest-arrival times over a temporal network (net_temporal_distances()), which NetworkX does not have
 ```
 
 ::: {.code-output}
 ```text
-from Ana:  Ben at t=1  Cleo at t=3  Dev never  Eli never  Fay never
-from Dev:  Ana at t=5  Ben at t=3  Cleo at t=2  Eli at t=4  Fay at t=6
+TODO(output)
 ```
 :::
 
@@ -890,16 +769,13 @@ gaps <- diff(times)
 
 # Treat the whole log as one stream of events (a single node with a self-loop per message)
 # and ask for its burstiness B and memory M.
-stream_stats <- \(t) {
-  net_temporal(tibble(source = "all", target = "all", time = t), directed = TRUE) |>
-    net_burstiness()
-}
-tibble(n_gaps = length(gaps), shortest = min(gaps), longest = max(gaps)) |>
-  bind_cols(stream_stats(times) |> select(burstiness, memory)) |>
-  mutate(across(where(is.numeric), \(x) round(x, 2)))
+stream_stats <- \(t) net_burstiness(net_temporal(data.frame(source = "all", target = "all", time = t), directed = TRUE))
+stats <- stream_stats(times)
+round(data.frame(n_gaps = length(gaps), shortest = min(gaps), longest = max(gaps),
+                 burstiness = stats$burstiness, memory = stats$memory), 2)
 
 # Compare with a metronome: the same number of events, perfectly evenly spaced.
-stream_stats(2.75 * 1:80)$burstiness |> round(2)
+round(stream_stats(2.75 * 1:80)$burstiness, 2)
 ```
 
 ::: {.code-output}
@@ -915,35 +791,12 @@ stream_stats(2.75 * 1:80)$burstiness |> round(2)
 ## Python
 
 ```python
-times = np.array([
-    0.3, 0.8, 3.3, 4.8, 6.8, 25.4, 28.4, 33.4, 35.2, 36.8,
-    37.0, 38.0, 43.6, 44.5, 46.3, 46.6, 48.2, 49.0, 49.3, 50.1,
-    50.4, 50.7, 52.4, 52.7, 53.3, 55.0, 56.0, 56.9, 57.8, 58.6,
-    58.8, 63.3, 64.5, 64.6, 65.6, 77.9, 78.0, 85.1, 98.6, 99.4,
-    99.7, 102.9, 105.4, 106.1, 107.1, 107.2, 108.0, 128.2, 128.6, 128.8,
-    129.2, 130.8, 134.5, 135.2, 148.1, 149.0, 149.3, 176.8, 182.2, 182.4,
-    182.6, 182.8, 183.1, 183.6, 184.6, 185.9, 193.0, 195.1, 196.2, 202.8,
-    203.2, 204.4, 204.7, 205.8, 206.1, 208.4, 208.5, 214.4, 215.2, 217.3,
-])
-gaps = np.diff(times)
-
-def burstiness_memory(gaps):
-    b = (gaps.std() - gaps.mean()) / (gaps.std() + gaps.mean())
-    m = np.corrcoef(gaps[:-1], gaps[1:])[0, 1] if gaps[:-1].std() > 0 else np.nan
-    return b, m
-
-burstiness, memory = burstiness_memory(gaps)
-print(f"{len(gaps)} gaps, shortest {gaps.min():.1f} hours, longest {gaps.max():.1f} hours")
-print(f"burstiness B = {burstiness:.2f}, memory M = {memory:.2f}")
-b_regular, _ = burstiness_memory(np.full(79, 2.75))
-print(f"evenly spaced: B = {b_regular:.2f}")
+# TODO(code, Python): needs burstiness and memory of an event stream (net_burstiness())
 ```
 
 ::: {.code-output}
 ```text
-79 gaps, shortest 0.1 hours, longest 27.5 hours
-burstiness B = 0.27, memory M = -0.03
-evenly spaced: B = -1.00
+TODO(output)
 ```
 :::
 
@@ -1000,9 +853,8 @@ How much does $B$ depend on how long you watch? Keep only the first few gaps of 
 
 ```r
 # How does B depend on how many events we watched? Use only the first k gaps of the log.
-sigma <- \(x) sqrt(mean((x - mean(x))^2))
-tibble(gaps_used = c(5, 10, 20, 40, 79)) |>
-  mutate(B = map_dbl(gaps_used, \(k) (sigma(gaps[1:k]) - mean(gaps[1:k])) / (sigma(gaps[1:k]) + mean(gaps[1:k]))) |> round(2))
+k <- c(5, 10, 20, 40, 79)
+data.frame(gaps_used = k, B = round(sapply(k, \(n) stream_stats(times[1:(n + 1)])$burstiness), 2))
 ```
 
 ::: {.code-output}
@@ -1021,18 +873,12 @@ tibble(gaps_used = c(5, 10, 20, 40, 79)) |>
 ## Python
 
 ```python
-# How does B depend on how many events we watched? Use only the first k gaps of the log.
-for k in (5, 10, 20, 40, 79):
-    print(f"first {k:>2} gaps: B = {burstiness_memory(gaps[:k])[0]:.2f}")
+# TODO(code, Python): needs burstiness and memory of an event stream (net_burstiness()), here on the first k gaps
 ```
 
 ::: {.code-output}
 ```text
-first  5 gaps: B = 0.15
-first 10 gaps: B = 0.17
-first 20 gaps: B = 0.23
-first 40 gaps: B = 0.22
-first 79 gaps: B = 0.27
+TODO(output)
 ```
 :::
 
@@ -1085,26 +931,20 @@ receiver <- c(
   0, 7, 6, 2, 6, 6, 7, 2, 1, 6, 4, 1, 4, 4, 7, 1, 1, 4, 3, 0,
   5, 0, 6, 0, 2, 7, 6, 2, 5, 3, 4, 2, 1, 4, 4, 2, 7, 1, 0, 0
 ) + 1
-coworkers <- tibble(id = as.character(1:8))
+coworkers <- data.frame(id = as.character(1:8))
 messages <- net_temporal(
-  tibble(source = as.character(sender), target = as.character(receiver), time = times),
+  data.frame(source = as.character(sender), target = as.character(receiver), time = times),
   nodes = coworkers, directed = TRUE
 )
 
-# Density of a window, averaged over windows of the same width.
-tibble(width = c(12, 24, 72, 220)) |>
-  mutate(
-    windows = ceiling(220 / width),
-    mean_density = map2_dbl(width, windows, \(w, k) {
-      seq_len(k) |>
-        map_dbl(\(i) net_density(net_aggregate(messages, from = (i - 1) * w, to = i * w))) |>
-        mean()
-    }) |> round(3)
-  )
+# TODO(code, R): needs net_window_density(), the mean density of aggregated windows of a given width (see the Rust tab)
 
 # Reach ratio in three consecutive windows of 72 hours.
-tibble(from = c(0, 72, 144), to = from + 72) |>
-  mutate(reach_ratio = map2_dbl(from, to, \(a, b) net_reach_ratio(messages, start = a, end = b)) |> round(3))
+starts <- c(0, 72, 144)
+data.frame(
+  from = starts, to = starts + 72,
+  reach_ratio = round(sapply(starts, \(a) net_reach_ratio(messages, start = a, end = a + 72)), 3)
+)
 ```
 
 ::: {.code-output}
@@ -1128,44 +968,12 @@ tibble(from = c(0, 72, 144), to = from + 72) |>
 ## Python
 
 ```python
-sender = np.array([
-    6, 2, 5, 7, 4, 4, 6, 5, 3, 4, 6, 0, 5, 6, 2, 3, 1, 5, 7, 2,
-    3, 7, 4, 3, 5, 0, 1, 7, 1, 0, 7, 5, 7, 5, 6, 2, 5, 1, 6, 5,
-    2, 1, 1, 6, 4, 2, 4, 5, 5, 7, 6, 3, 0, 2, 0, 6, 6, 2, 7, 3,
-    3, 4, 7, 7, 1, 6, 1, 6, 4, 1, 0, 7, 0, 1, 7, 4, 3, 3, 4, 3,
-])
-receiver = np.array([
-    4, 7, 4, 0, 7, 5, 1, 6, 6, 6, 3, 4, 2, 1, 5, 7, 6, 3, 5, 3,
-    5, 2, 2, 2, 3, 3, 3, 1, 5, 3, 3, 4, 4, 2, 7, 7, 6, 6, 5, 3,
-    0, 7, 6, 2, 6, 6, 7, 2, 1, 6, 4, 1, 4, 4, 7, 1, 1, 4, 3, 0,
-    5, 0, 6, 0, 2, 7, 6, 2, 5, 3, 4, 2, 1, 4, 4, 2, 7, 1, 0, 0,
-])
-messages = sorted(zip(times.tolist(), sender.tolist(), receiver.tolist()))
-
-def reach_ratio(log, n=8, **window):
-    reached = sum(len(earliest_arrival(k, log, directed=True, **window)) - 1 for k in range(n))
-    return reached / (n * (n - 1))
-
-# Density of a window, averaged over windows of the same width.
-for width in (12, 24, 72, 220):
-    windows = int(np.ceil(220 / width))
-    density = [len({(a, b) for t, a, b in messages if i * width <= t < (i + 1) * width}) / 56 for i in range(windows)]
-    print(f"width {width:>3} hours: {windows:>2} windows, mean density {np.mean(density):.3f}")
-
-# Reach ratio in three consecutive windows of 72 hours.
-for lo in (0, 72, 144):
-    print(f"hours {lo:>3} to {lo + 72:>3}: reach ratio {reach_ratio(messages, start=lo, end=lo + 72):.3f}")
+# TODO(code, Python): needs windowed density and the reach ratio of a temporal network (net_window_density(), net_reach_ratio())
 ```
 
 ::: {.code-output}
 ```text
-width  12 hours: 19 windows, mean density 0.072
-width  24 hours: 10 windows, mean density 0.136
-width  72 hours:  4 windows, mean density 0.321
-width 220 hours:  1 windows, mean density 0.804
-hours   0 to  72: reach ratio 0.804
-hours  72 to 144: reach ratio 0.464
-hours 144 to 216: reach ratio 0.714
+TODO(output)
 ```
 :::
 
@@ -1243,8 +1051,8 @@ You can see the effect on reach by letting the observation window grow.
 
 ```r
 # Reach ratio when we only watch the first part of the log.
-tibble(watched_hours = c(54, 108, 163, 218)) |>
-  mutate(reach_ratio = map_dbl(watched_hours, \(h) net_reach_ratio(messages, start = 0, end = h)) |> round(3))
+watched <- c(54, 108, 163, 218)
+data.frame(watched_hours = watched, reach_ratio = round(sapply(watched, \(h) net_reach_ratio(messages, start = 0, end = h)), 3))
 ```
 
 ::: {.code-output}
@@ -1262,17 +1070,12 @@ tibble(watched_hours = c(54, 108, 163, 218)) |>
 ## Python
 
 ```python
-# Reach ratio when we only watch the first part of the log.
-for hours in (54, 108, 163, 218):
-    print(f"first {hours:>3} hours watched: reach ratio {reach_ratio(messages, start=0, end=hours):.3f}")
+# TODO(code, Python): needs the reach ratio of a temporal network (net_reach_ratio())
 ```
 
 ::: {.code-output}
 ```text
-first  54 hours watched: reach ratio 0.643
-first 108 hours watched: reach ratio 0.964
-first 163 hours watched: reach ratio 0.982
-first 218 hours watched: reach ratio 1.000
+TODO(output)
 ```
 :::
 
@@ -1309,16 +1112,16 @@ A timestamp has a resolution, and the resolution is a choice. Suppose the same l
 ```r
 # The same messages, recorded only to the day. Day 0 is hours 0 to 24, and so on.
 messages_by_day <- net_temporal(
-  tibble(source = as.character(sender), target = as.character(receiver), time = floor(times / 24)),
+  data.frame(source = as.character(sender), target = as.character(receiver), time = floor(times / 24)),
   nodes = coworkers, directed = TRUE
 )
 # Reach ratio over the first two days: with the hours, and with days where same-day messages can
 # chain, and where they cannot.
-c(
+round(c(
   hours = net_reach_ratio(messages, start = 0, end = 48),
   days_chaining_allowed = net_reach_ratio(messages_by_day, start = 0, end = 1),
   days_no_chaining = net_reach_ratio(messages_by_day, start = 0, end = 1, strict = TRUE)
-) |> round(3)
+), 3)
 ```
 
 ::: {.code-output}
@@ -1331,20 +1134,12 @@ c(
 ## Python
 
 ```python
-# The same messages, recorded only to the day. Day 0 is hours 0 to 24, and so on.
-by_day = [(float(np.floor(t / 24)), a, b) for t, a, b in messages]
-# Reach ratio over the first two days: with the hours, and with days where same-day messages can
-# chain, and where they cannot.
-print(f"hours: {reach_ratio(messages, start=0, end=48):.3f}")
-print(f"days, chaining allowed: {reach_ratio(by_day, start=0, end=1):.3f}")
-print(f"days, no chaining: {reach_ratio(by_day, start=0, end=1, strict=True):.3f}")
+# TODO(code, Python): needs the reach ratio of a temporal network, with and without chaining within one time (net_reach_ratio())
 ```
 
 ::: {.code-output}
 ```text
-hours: 0.500
-days, chaining allowed: 0.804
-days, no chaining: 0.304
+TODO(output)
 ```
 :::
 
@@ -1383,52 +1178,24 @@ So far, "50% of pairs can reach each other in the first 48 hours" has no yardsti
 ## R
 
 ```r
-# Keep who wrote to whom, but deal the timestamps out in a different order: shift them around a circle by s places.
-shifted <- \(s) net_temporal(
-  tibble(source = as.character(sender), target = as.character(receiver), time = times[(seq_along(times) + s - 1) %% 80 + 1]),
-  nodes = coworkers, directed = TRUE
-)
-tibble(end = c(48, 108)) |>
-  mutate(
-    observed = map_dbl(end, \(e) net_reach_ratio(messages, start = 0, end = e)),
-    null = map(end, \(e) map_dbl(1:79, \(s) net_reach_ratio(shifted(s), start = 0, end = e))),
-    shifted_mean = map_dbl(null, mean),
-    shifted_min = map_dbl(null, min),
-    shifted_max = map_dbl(null, max),
-    at_least_as_high = map2_int(null, observed, \(v, o) sum(v >= o - 1e-12))
-  ) |>
-  select(-null) |>
-  mutate(across(observed:shifted_max, \(x) round(x, 3)))
+# TODO(code, R): needs a timestamp-shuffling null model for the reach ratio (net_shuffle_times() feeding net_reach_ratio())
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 2 × 6
-    end observed shifted_mean shifted_min shifted_max at_least_as_high
-  <dbl>    <dbl>        <dbl>       <dbl>       <dbl>            <int>
-1    48    0.5          0.414       0.304       0.607                8
-2   108    0.964        0.976       0.911       1                   65
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# Keep who wrote to whom, but deal the timestamps out in a different order: shift them around a circle by s places.
-def shifted(s):
-    return sorted((float(times[(i + s) % 80]), int(sender[i]), int(receiver[i])) for i in range(80))
-
-for end in (48, 108):
-    observed = reach_ratio(messages, start=0, end=end)
-    null = np.array([reach_ratio(shifted(s), start=0, end=end) for s in range(1, 80)])
-    print(f"hours 0 to {end:>3}: observed {observed:.3f}, shifted mean {null.mean():.3f}, range {null.min():.3f} to {null.max():.3f}, "
-          f"{(null >= observed - 1e-12).sum()} of 79 shifts at least as high")
+# TODO(code, Python): needs a timestamp-shuffling null model for the reach ratio (net_shuffle_times() feeding net_reach_ratio())
 ```
 
 ::: {.code-output}
 ```text
-hours 0 to  48: observed 0.500, shifted mean 0.414, range 0.304 to 0.607, 8 of 79 shifts at least as high
-hours 0 to 108: observed 0.964, shifted mean 0.976, range 0.911 to 1.000, 65 of 79 shifts at least as high
+TODO(output)
 ```
 :::
 
@@ -1478,7 +1245,7 @@ Before you report any temporal result, three checks are cheap and catch most tro
 - **"$B$ near 0 means the events are random."** It means the gaps have about the spread of a random process; a daily rhythm can still be present, and with few events $B$ is biased downward.
 - **"A time-respecting path is a path the message took."** It is a path the contacts would have allowed.
 
-On tools, we found this much ourselves. NetworkX has no time-respecting path function, so the Python tabs implement it by hand and need an explicit choice between chaining and not chaining contacts that share a timestamp. In knappnet that choice is `strict`, and it moved the reach ratio of the day-stamped log from 0.80 to 0.30. Reach here excludes the person themself; a package that counts them would add 1 to every person's count. We did not run other temporal packages for this chapter, so we cannot say which conventions they use; before comparing numbers across tools, check the rule for simultaneous contacts, the treatment of the window edges and whether self is counted.
+On tools, we found this much ourselves. NetworkX has no time-respecting path function, so a Python version would have to be written by hand (the Python tabs are blank until knappnet has one) and would need an explicit choice between chaining and not chaining contacts that share a timestamp. In knappnet that choice is `strict`, and it moved the reach ratio of the day-stamped log from 0.80 to 0.30. Reach here excludes the person themself; a package that counts them would add 1 to every person's count. We did not run other temporal packages for this chapter, so we cannot say which conventions they use; before comparing numbers across tools, check the rule for simultaneous contacts, the treatment of the window edges and whether self is counted.
 
 ### What a temporal result can and cannot show
 

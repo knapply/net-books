@@ -27,7 +27,7 @@ Two datasets carry the chapter. The first is real: the land borders between the 
 
 ::: {.callout-note appearance="simple"}
 ## Which tools do what here
-The R and Rust tabs use knappnet's spatial functions: `net_spatial`, `net_edge_lengths` and `net_proximity` in R, and the `spatial` module in Rust. knappnet's Python package does not cover spatial networks, so the Python tabs write the few formulas they need by hand with numpy, with networkx for the graph measures. Where that is the case the code says so. R also has `net_distance_decay` and `net_group_geometry`, and can take node tables from the sf package for shapes other than points; we don't need them here.
+The R and Rust tabs use knappnet's spatial functions: `net_spatial`, `net_edge_lengths` and `net_proximity` in R, and the `spatial` module in Rust. knappnet's Python package does not cover spatial networks, so the Python tabs are blank wherever a spatial function is needed; only the graph measures run, through networkx. R tabs that need a function knappnet does not expose yet are blank too, with a note on what is missing. R also has `net_distance_decay` and `net_group_geometry`, and can take node tables from the sf package for shapes other than points; we don't need them here.
 :::
 
 ## Places on a sphere {#sec-space-coordinates}
@@ -58,23 +58,20 @@ The tabs below build the country-border network and show the degree problem with
 
 ```r
 library(knappnet)
-library(dplyr)
-library(purrr)
-library(tibble)
 
 # Countries: one row per unit, with a point (longitude, latitude) for each.
-countries <- as_tibble(read.csv("data/space/borders/nodes.csv"))
+countries <- read.csv("data/space/borders/nodes.csv")
 # Borders: one row per pair of countries that share a land border.
-borders <- as_tibble(read.csv("data/space/borders/edges.csv"))
+borders <- read.csv("data/space/borders/edges.csv")
 
 # Tell knappnet which columns are coordinates, and that the sphere has radius
 # 6371.0088 km, so every distance comes out in kilometers.
-world <- net_frame(borders, countries, directed = FALSE) |>
-  net_spatial(coords = c("longitude", "latitude"), radius = 6371.0088)
+world <- net_spatial(net_frame(borders, countries, directed = FALSE),
+                     coords = c("longitude", "latitude"), radius = 6371.0088)
 world
 
 # Two points one degree of longitude apart, on the equator and at 60 degrees north.
-tiny <- tibble(id = c("a", "b", "c", "d"), lon = c(0, 1, 0, 1), lat = c(0, 0, 60, 60))
+tiny <- data.frame(id = c("a", "b", "c", "d"), lon = c(0, 1, 0, 1), lat = c(0, 0, 60, 60))
 net_proximity(tiny, coords = c("lon", "lat"), radius = 6371.0088, within = 200)$edges
 ```
 
@@ -108,44 +105,12 @@ net_proximity(tiny, coords = c("lon", "lat"), radius = 6371.0088, within = 200)$
 ## Python
 
 ```python
-import numpy as np
-import pandas as pd
-import networkx as nx
-
-R_KM = 6371.0088  # mean Earth radius in kilometers
-
-def haversine(lon1, lat1, lon2, lat2):
-    """Great-circle distance in km. knappnet's Python package has no spatial
-    module, so this is the formula above written out with numpy."""
-    p1, p2 = np.radians(lat1), np.radians(lat2)
-    h = np.sin((p2 - p1) / 2) ** 2 + np.cos(p1) * np.cos(p2) * np.sin(np.radians(lon2 - lon1) / 2) ** 2
-    return 2 * R_KM * np.arcsin(np.sqrt(np.clip(h, 0, 1)))
-
-# Countries: one row per unit, with a point (longitude, latitude) for each.
-countries = pd.read_csv("data/space/borders/nodes.csv")
-# Borders: one row per pair of countries that share a land border.
-borders = pd.read_csv("data/space/borders/edges.csv")
-row_of = {code: i for i, code in enumerate(countries["id"])}
-tie_from = borders["source"].map(row_of).to_numpy()
-tie_to = borders["target"].map(row_of).to_numpy()
-lon = countries["longitude"].to_numpy()
-lat = countries["latitude"].to_numpy()
-
-world = nx.Graph()
-world.add_nodes_from(range(len(countries)))
-world.add_edges_from(zip(tie_from, tie_to))
-print(f"{world.number_of_nodes()} units, {world.number_of_edges()} borders, "
-      f"{sum(1 for v in world if world.degree(v) == 0)} with no land border")
-
-# One degree of longitude, on the equator and at 60 degrees north.
-print(f"one degree of longitude: {haversine(0, 0, 1, 0):.1f} km at the equator, "
-      f"{haversine(0, 60, 1, 60):.1f} km at 60 N")
+# TODO(code, Python): needs a spatial module (net_spatial(), net_proximity(), net_edge_lengths() with great-circle distances); the Python package has none
 ```
 
 ::: {.code-output}
 ```text
-177 units, 313 borders, 21 with no land border
-one degree of longitude: 111.2 km at the equator, 55.6 km at 60 N
+TODO(output)
 ```
 :::
 
@@ -231,20 +196,18 @@ The first spatial question to ask of any network with places is the plainest one
 ```r
 # The length of every border tie, in kilometers: the distance between the two dots.
 lengths <- net_edge_lengths(world)
-tibble(
-  stat = c("shortest", "25%", "median", "mean", "75%", "longest"),
-  km = round(c(min(lengths), quantile(lengths, 0.25), median(lengths), mean(lengths),
-               quantile(lengths, 0.75), max(lengths)))
-)
+round(c(
+  shortest = min(lengths), `25%` = quantile(lengths, 0.25, names = FALSE), median = median(lengths),
+  mean = mean(lengths), `75%` = quantile(lengths, 0.75, names = FALSE), longest = max(lengths)
+))
 
 # The three longest ties, by country name.
-names_by_id <- select(countries, id, name)
-borders |>
-  mutate(km = round(lengths)) |>
-  slice_max(km, n = 3) |>
-  left_join(rename(names_by_id, source = id, from = name), by = "source") |>
-  left_join(rename(names_by_id, target = id, to = name), by = "target") |>
-  select(from, to, km)
+top <- order(-lengths)[1:3]
+data.frame(
+  from = countries$name[match(borders$source[top], countries$id)],
+  to = countries$name[match(borders$target[top], countries$id)],
+  km = round(lengths[top])
+)
 ```
 
 ::: {.code-output}
@@ -270,23 +233,12 @@ borders |>
 ## Python
 
 ```python
-# The length of every border tie, in kilometers: the distance between the two dots.
-lengths = haversine(lon[tie_from], lat[tie_from], lon[tie_to], lat[tie_to])
-q25, median, q75 = np.percentile(lengths, [25, 50, 75])
-print(f"shortest {lengths.min():.0f}  25% {q25:.0f}  median {median:.0f}  mean {lengths.mean():.0f}  "
-      f"75% {q75:.0f}  longest {lengths.max():.0f}  (km)")
-
-# The three longest ties, by country name.
-for k in np.argsort(-lengths)[:3]:
-    print(f"{countries['name'][tie_from[k]]:<12} {countries['name'][tie_to[k]]:<12} {lengths[k]:>6.0f}")
+# TODO(code, Python): needs a spatial module (net_spatial(), net_proximity(), net_edge_lengths() with great-circle distances); the Python package has none
 ```
 
 ::: {.code-output}
 ```text
-shortest 65  25% 427  median 815  mean 1012  75% 1241  longest 8336  (km)
-Brazil       France         8336
-Suriname     France         7313
-Russia       North Korea    5883
+TODO(output)
 ```
 :::
 
@@ -336,77 +288,31 @@ Two other things to remember. A length by itself says nothing about cost or effo
 
 So ties are short. But short compared with what? There are far more far-apart pairs than close ones, so a plain histogram of tie lengths mostly shows where the pairs are, not how likely ties are. To see the pull of distance you divide: for each band of distances, the share of *all possible pairs* in that band that are tied. That share is the **distance decay** of ties, the tendency of the chance of a tie to fall as distance grows.
 
-The code below builds all 15,576 pairs of countries, flags the 313 that share a border, and tabulates the share by 500 km bands. In R and Rust the pairs come from knappnet's own proximity search with a radius wider than the Earth. In Python they come from the pairwise distances computed with numpy.
+The code below builds all 15,576 pairs of countries, flags the 313 that share a border, and tabulates the share by 500 km bands. In Rust the pairs come from knappnet's own proximity search with a radius wider than the Earth. The R and Python tabs stay blank until knappnet exposes a tie-by-distance helper (`net_tie_by_distance()`).
 
 ::: {.panel-tabset group="language"}
 
 ## R
 
 ```r
-# Every pair of countries with its distance in kilometers: the radius is wider than
-# any pair of points on Earth can be, so no pair is left out.
-all_pairs <- net_proximity(countries, coords = c("longitude", "latitude"),
-                           radius = 6371.0088, within = 21000)$edges
-
-# A pair is "tied" if it is one of the 313 borders. Order the two codes so a-b matches b-a.
-pair_key <- \(a, b) paste(pmin(a, b), pmax(a, b))
-border_keys <- pair_key(borders$source, borders$target)
-
-# Share of pairs that are tied, by distance band of 500 km (the last band is 3000 km and up).
-bands <- c(paste0(seq(0, 2500, 500), "-", seq(500, 3000, 500)), "3000+")
-all_pairs <- all_pairs |>
-  mutate(tied = pair_key(source, target) %in% border_keys, band = pmin(distance %/% 500, 6))
-decay <- all_pairs |>
-  summarise(pairs = n(), ties = sum(tied), share = round(mean(tied), 3), .by = band) |>
-  arrange(band) |>
-  mutate(km = bands[band + 1], .before = 1) |>
-  select(-band)
-decay
+# TODO(code, R): needs net_tie_by_distance(), the share of all pairs that are tied within each distance band
 ```
 
 ::: {.code-output}
 ```text
-         km pairs ties share
-1     0-500   149   98 0.658
-2  500-1000   321  100 0.312
-3 1000-1500   463   65 0.140
-4 1500-2000   542   24 0.044
-5 2000-2500   592    7 0.012
-6 2500-3000   550    8 0.015
-7     3000+ 12959   11 0.001
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# Every pair of countries with its distance in kilometers (15,576 pairs).
-i, j = np.triu_indices(len(countries), 1)
-distance = haversine(lon[i], lat[i], lon[j], lat[j])
-
-# A pair is "tied" if it is one of the 313 borders. Order the two codes so a-b matches b-a.
-border_keys = {(min(a, b), max(a, b)) for a, b in zip(tie_from, tie_to)}
-tied = np.array([(a, b) in border_keys for a, b in zip(i, j)])
-
-# Share of pairs that are tied, by distance band of 500 km (the last band is 3000 km and up).
-band = np.minimum(distance // 500, 6).astype(int)
-labels = [f"{b * 500}-{b * 500 + 500}" for b in range(6)] + ["3000+"]
-print(f"{'km':<10} {'pairs':>6} {'ties':>5} {'share':>6}")
-for b in range(7):
-    pairs, ties_in = int((band == b).sum()), int(tied[band == b].sum())
-    print(f"{labels[b]:<10} {pairs:>6} {ties_in:>5} {ties_in / pairs:>6.3f}")
+# TODO(code, Python): needs net_tie_by_distance() and a spatial module (net_spatial(), net_proximity(), net_edge_lengths() with great-circle distances); the Python package has none
 ```
 
 ::: {.code-output}
 ```text
-km          pairs  ties  share
-0-500         149    98  0.658
-500-1000      321   100  0.312
-1000-1500     463    65  0.140
-1500-2000     542    24  0.044
-2000-2500     592     7  0.012
-2500-3000     550     8  0.015
-3000+       12959    11  0.001
+TODO(output)
 ```
 :::
 
@@ -486,86 +392,24 @@ Our real country data has no flows, so we use a small *invented* set: twelve mad
 ## R
 
 ```r
-# INVENTED data: twelve towns on a 100 km by 100 km square, and the daily commuters
-# between each pair, made up to behave like a gravity law with some noise.
-towns <- as_tibble(read.csv("data/space/towns/nodes.csv"))
-flows <- as_tibble(read.csv("data/space/towns/edges.csv"))
-town_net <- net_frame(flows, towns, directed = FALSE, weight = "commuters", weight_type = "strength") |>
-  net_spatial(coords = c("x_km", "y_km"), crs = "planar")
-
-# For each pair: the distance (km, planar), both populations (thousands), and a gravity score.
-pairs <- town_net$edges |>
-  mutate(
-    km = net_edge_lengths(town_net),
-    pop_i = towns$population_thousands[match(source, towns$id)],
-    pop_j = towns$population_thousands[match(target, towns$id)],
-    score = pop_i * pop_j / km^2
-  )
-
-# If flow = k * pop_i * pop_j / distance^b, then log(flow / (pop_i * pop_j)) falls in a
-# straight line with log(distance), with slope -b.
-fit <- lm(log(commuters / (pop_i * pop_j)) ~ log(km), data = pairs)
-tibble(distance_exponent = -unname(coef(fit)[2]))
-
-# How well does each ingredient alone line up with log(commuters)?
-tibble(
-  predictor = c("1 / distance", "pop_i * pop_j", "pop_i * pop_j / distance^2"),
-  correlation = c(cor(log(pairs$commuters), -log(pairs$km)),
-                  cor(log(pairs$commuters), log(pairs$pop_i * pairs$pop_j)),
-                  cor(log(pairs$commuters), log(pairs$score))) |> round(2)
-)
+# TODO(code, R): needs net_gravity(), a gravity-model fit of flows between places (distance exponent from populations and distances)
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 1 × 1
-  distance_exponent
-              <dbl>
-1              2.17
-# A tibble: 3 × 2
-  predictor                  correlation
-  <chr>                            <dbl>
-1 1 / distance                      0.77
-2 pop_i * pop_j                     0.81
-3 pop_i * pop_j / distance^2        0.98
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# INVENTED data: twelve towns on a 100 km by 100 km square, and the daily commuters
-# between each pair, made up to behave like a gravity law with some noise.
-towns = pd.read_csv("data/space/towns/nodes.csv")
-flows = pd.read_csv("data/space/towns/edges.csv")
-x = dict(zip(towns["id"], towns["x_km"]))
-y = dict(zip(towns["id"], towns["y_km"]))
-pop = dict(zip(towns["id"], towns["population_thousands"]))
-
-# For each pair: the distance (km, planar), both populations (thousands), and a gravity score.
-km = np.hypot(flows["source"].map(x) - flows["target"].map(x), flows["source"].map(y) - flows["target"].map(y))
-pop_product = flows["source"].map(pop) * flows["target"].map(pop)
-log_flow = np.log(flows["commuters"])
-
-# If flow = k * pop_i * pop_j / distance^b, then log(flow / (pop_i * pop_j)) falls in a
-# straight line with log(distance), with slope -b.
-slope = np.polyfit(np.log(km), np.log(flows["commuters"] / pop_product), 1)[0]
-print(f"distance exponent {-slope:.2f}")
-
-# How well does each ingredient alone line up with log(commuters)?
-print(f"{'predictor':<28} {'correlation':>11}")
-for label, predictor in [("1 / distance", -np.log(km)), ("pop_i * pop_j", np.log(pop_product)),
-                         ("pop_i * pop_j / distance^2", np.log(pop_product / km ** 2))]:
-    print(f"{label:<28} {np.corrcoef(log_flow, predictor)[0, 1]:>11.2f}")
+# TODO(code, Python): needs net_gravity(), a gravity-model fit of flows between places (distance exponent from populations and distances)
 ```
 
 ::: {.code-output}
 ```text
-distance exponent 2.17
-predictor                    correlation
-1 / distance                        0.77
-pop_i * pop_j                       0.81
-pop_i * pop_j / distance^2          0.98
+TODO(output)
 ```
 :::
 
@@ -645,58 +489,24 @@ I said the size of a gap depends on the exponent you fitted. Here is how much. F
 ## R
 
 ```r
-# The gap factor of every pair at exponent b. Dividing by the geometric mean sets the constant k.
-gap_at <- \(b) {
-  g <- log(pairs$commuters * pairs$km^b / (pairs$pop_i * pairs$pop_j))
-  exp(g - mean(g))
-}
-gap_two <- gap_at(2)
-
-tibble(exponent = 1:3) |>
-  mutate(
-    gap = map(exponent, gap_at),
-    largest_gap = map_chr(gap, \(g) paste(pairs$source[which.max(g)], pairs$target[which.max(g)], sep = " - ")),
-    factor = map_dbl(gap, \(g) round(max(g), 2)),
-    spread = map_dbl(gap, \(g) round(sd(log(g)), 2)),
-    corr_with_b2 = map_dbl(gap, \(g) round(cor(log(g), log(gap_two)), 2))
-  ) |>
-  select(-gap)
+# TODO(code, R): needs net_gravity() with the gap factor of every pair at a chosen exponent
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 3 × 5
-  exponent largest_gap     factor spread corr_with_b2
-     <int> <chr>            <dbl>  <dbl>        <dbl>
-1        1 Fenwick - Grove   3.31   0.57         0.7 
-2        2 Fenwick - Grove   1.88   0.3          1   
-3        3 Alder - Kestrel   2.78   0.45         0.45
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# The gap factor of every pair at exponent b. Dividing by the geometric mean sets the constant k.
-def gap_at(b):
-    g = np.log(flows["commuters"] * km ** b / pop_product)
-    return g - g.mean()
-
-gap_two = gap_at(2)
-print(f"{'exponent':<9} {'largest gap':<20} {'factor':>6} {'spread':>6} {'corr with b=2':>13}")
-for b in [1, 2, 3]:
-    g = gap_at(b)
-    top = g.idxmax()
-    print(f"{b:<9} {flows['source'][top] + ' - ' + flows['target'][top]:<20} {np.exp(g[top]):>6.2f} "
-          f"{g.std():>6.2f} {np.corrcoef(g, gap_two)[0, 1]:>13.2f}")
+# TODO(code, Python): needs net_gravity() with the gap factor of every pair at a chosen exponent
 ```
 
 ::: {.code-output}
 ```text
-exponent  largest gap          factor spread corr with b=2
-1         Fenwick - Grove        3.31   0.57          0.70
-2         Fenwick - Grove        1.88   0.30          1.00
-3         Alder - Kestrel        2.78   0.45          0.45
+TODO(output)
 ```
 :::
 
@@ -750,21 +560,9 @@ Both need a distance and a rule, and the rule is a choice you make, not somethin
 ## R
 
 ```r
-# A helper: the near-neighbor network of the countries, in kilometers.
+# One row per way of building a network from distances alone: how many ties and how many pieces.
 near <- \(...) net_proximity(countries, coords = c("longitude", "latitude"), radius = 6371.0088, ...)
-
-# One row per way of building a network from distances alone: how many ties, how many
-# pieces it falls into, and how well it recovers the real borders.
-profile <- \(g) {
-  e <- g$edges
-  parts <- net_components(g)
-  hit <- sum(pair_key(e$source, e$target) %in% border_keys)
-  tibble(ties = nrow(e), mean_degree = round(2 * nrow(e) / nrow(g$nodes), 1), pieces = parts$no,
-         largest = max(parts$csize), real = hit,
-         precision = round(hit / nrow(e), 2), recall = round(hit / nrow(borders), 2))
-}
-
-list(
+setups <- list(
   "within 250 km" = near(within = 250),
   "within 500 km" = near(within = 500),
   "within 1000 km" = near(within = 1000),
@@ -773,9 +571,15 @@ list(
   "3 nearest (either)" = near(k = 3, knn = "either"),
   "3 nearest (mutual)" = near(k = 3, knn = "mutual"),
   "5 nearest (either)" = near(k = 5, knn = "either")
-) |>
-  imap(\(g, label) bind_cols(setup = label, profile(g))) |>
-  list_rbind()
+)
+data.frame(
+  ties = sapply(setups, \(g) nrow(g$edges)),
+  mean_degree = round(sapply(setups, \(g) 2 * nrow(g$edges) / nrow(g$nodes)), 1),
+  pieces = sapply(setups, \(g) net_components(g)$no),
+  largest = sapply(setups, \(g) max(net_components(g)$csize))
+)
+
+# TODO(code, R): needs net_edge_overlap(), the share of a network's ties that are real borders (precision) and the share of real borders it recovers (recall)
 ```
 
 ::: {.code-output}
@@ -797,51 +601,12 @@ list(
 ## Python
 
 ```python
-# The near-neighbor networks of the countries, from the distances of the last block.
-n = len(countries)
-dist = np.zeros((n, n))
-dist[i, j] = dist[j, i] = distance
-
-def profile(label, pair_set):
-    """Ties, pieces, and how well a set of pairs recovers the real borders."""
-    g = nx.Graph()
-    g.add_nodes_from(range(n))
-    g.add_edges_from(pair_set)
-    pieces = [len(c) for c in nx.connected_components(g)]
-    hit = len(pair_set & border_keys)
-    print(f"{label:<20} {len(pair_set):>5} {2 * len(pair_set) / n:>6.1f} {len(pieces):>6} {max(pieces):>7} "
-          f"{hit:>5} {hit / len(pair_set):>9.2f} {hit / len(border_keys):>7.2f}")
-
-def within(r):
-    return {(a, b) for a, b in zip(i[distance <= r], j[distance <= r])}
-
-def nearest(k, mutual):
-    # Each unit points at its k nearest others (ties in distance broken by position).
-    order = np.argsort(dist + np.diag([np.inf] * n), axis=1, kind="stable")[:, :k]
-    arcs = {(a, int(b)) for a in range(n) for b in order[a]}
-    keep = {(a, b) for a, b in arcs if (b, a) in arcs} if mutual else arcs
-    return {(min(a, b), max(a, b)) for a, b in keep}
-
-print(f"{'setup':<20} {'ties':>5} {'degree':>6} {'pieces':>6} {'largest':>7} {'real':>5} {'precision':>9} {'recall':>7}")
-for r in [250, 500, 1000, 2000]:
-    profile(f"within {r} km", within(r))
-profile("2 nearest (either)", nearest(2, False))
-profile("3 nearest (either)", nearest(3, False))
-profile("3 nearest (mutual)", nearest(3, True))
-profile("5 nearest (either)", nearest(5, False))
+# TODO(code, Python): needs net_proximity() (distance-threshold and k-nearest-neighbor networks); a spatial module (net_spatial(), net_proximity(), net_edge_lengths() with great-circle distances); the Python package has none
 ```
 
 ::: {.code-output}
 ```text
-setup                 ties degree pieces largest  real precision  recall
-within 250 km           36    0.4    147      10    32      0.89    0.10
-within 500 km          149    1.7    100      30    98      0.66    0.31
-within 1000 km         470    5.3     35     110   198      0.42    0.63
-within 2000 km        1475   16.7      7     139   287      0.19    0.92
-2 nearest (either)     243    2.7      7     111   158      0.65    0.50
-3 nearest (either)     348    3.9      1     177   202      0.58    0.65
-3 nearest (mutual)     183    2.1     37      14   128      0.70    0.41
-5 nearest (either)     557    6.3      1     177   252      0.45    0.81
+TODO(output)
 ```
 :::
 
@@ -931,26 +696,11 @@ We can measure that second thing directly. **Remoteness** is a unit's average di
 ## R
 
 ```r
-# Remoteness: a unit's average distance to every other unit on the map. It uses only the
-# dots, not the borders, so it measures where a unit sits, not whom it touches.
-remote <- bind_rows(select(all_pairs, id = source, distance), select(all_pairs, id = target, distance)) |>
-  summarise(remote_km = sum(distance) / (nrow(countries) - 1), .by = id)
+# The five units whose borders carry the most shortest routes.
+position <- data.frame(name = countries$name, degree = net_degree(world), betweenness = round(net_betweenness(world)))
+head(position[order(-position$betweenness), ], 5)
 
-position <- countries |>
-  mutate(degree = net_degree(world), betweenness = net_betweenness(world)) |>
-  left_join(remote, by = "id") |>
-  select(name, degree, betweenness, remote_km)
-
-# The five units whose borders carry the most shortest routes, and the five least remote.
-position |> slice_max(betweenness, n = 5) |> mutate(across(c(betweenness, remote_km), round))
-position |> slice_min(remote_km, n = 5) |> mutate(across(c(betweenness, remote_km), round))
-
-# Rank correlation: does being near the middle of the map go with network position?
-tibble(
-  measure = c("betweenness", "degree"),
-  spearman_with_remoteness = c(cor(position$betweenness, position$remote_km, method = "spearman"),
-                               cor(position$degree, position$remote_km, method = "spearman")) |> round(2)
-)
+# TODO(code, R): needs net_remoteness(), a unit's average distance to every other unit, for the five least remote units and the rank correlation with betweenness and degree
 ```
 
 ::: {.code-output}
@@ -982,39 +732,12 @@ tibble(
 ## Python
 
 ```python
-# Remoteness: a unit's average distance to every other unit on the map. It uses only the
-# dots, not the borders, so it measures where a unit sits, not whom it touches.
-remote = dist.sum(axis=1) / (n - 1)
-degree = dict(world.degree())
-between = nx.betweenness_centrality(world, normalized=False)
-position = pd.DataFrame({"name": countries["name"], "degree": [degree[v] for v in range(n)],
-                         "betweenness": [between[v] for v in range(n)], "remote_km": remote})
-
-# The five units whose borders carry the most shortest routes, and the five least remote.
-print(position.nlargest(5, "betweenness").round({"betweenness": 0, "remote_km": 0}).to_string(index=False))
-print(position.nsmallest(5, "remote_km").round({"betweenness": 0, "remote_km": 0}).to_string(index=False))
-
-# Rank correlation: does being near the middle of the map go with network position?
-for measure in ["betweenness", "degree"]:
-    print(f"spearman({measure}, remoteness) {position[measure].corr(position['remote_km'], method='spearman'):.2f}")
+# TODO(code, Python): needs net_remoteness(); a spatial module (net_spatial(), net_proximity(), net_edge_lengths() with great-circle distances); the Python package has none
 ```
 
 ::: {.code-output}
 ```text
-  name  degree  betweenness  remote_km
-Israel       5       4971.0     5582.0
- Egypt       3       4900.0     5590.0
-Russia      14       4651.0     6234.0
-Turkey       7       4402.0     5572.0
- Syria       5       4315.0     5622.0
-           name  degree  betweenness  remote_km
-         Greece       4        216.0     5483.0
-        Albania       4         58.0     5493.0
-North Macedonia       5         53.0     5494.0
-         Kosovo       4          4.0     5505.0
-       Bulgaria       5        852.0     5511.0
-spearman(betweenness, remoteness) -0.31
-spearman(degree, remoteness) -0.45
+TODO(output)
 ```
 :::
 
@@ -1113,60 +836,24 @@ Take the 313 border ties and sort them into the same distance bands as before. N
 ## R
 
 ```r
-# Keep how many ties sit in each distance band, but choose which pairs at random within the band.
-set.seed(14)
-ties_per_band <- all_pairs |> summarise(n = sum(tied), .by = band) |> arrange(band) |> pull(n)
-
-shuffled_transitivity <- \(draw) {
-  chosen <- all_pairs |>
-    group_by(band) |>
-    group_modify(\(rows, key) slice_sample(rows, n = ties_per_band[key$band + 1])) |>
-    ungroup() |>
-    select(source, target)
-  net_transitivity(net_frame(chosen, countries, directed = FALSE))
-}
-
-observed <- net_transitivity(world)
-null <- map_dbl(1:200, shuffled_transitivity)
-tibble(observed = round(observed, 3), null_mean = round(mean(null), 3), null_sd = round(sd(null), 3),
-       null_min = round(min(null), 3), null_max = round(max(null), 3), draws_at_or_above = sum(null >= observed))
+# TODO(code, R): needs a distance-band null model (net_shuffle_by_distance() feeding net_transitivity())
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 1 × 6
-  observed null_mean null_sd null_min null_max draws_at_or_above
-     <dbl>     <dbl>   <dbl>    <dbl>    <dbl>             <int>
-1    0.372     0.257   0.019    0.213    0.315                 0
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# Keep how many ties sit in each distance band, but choose which pairs at random within the band.
-rng = np.random.default_rng(14)
-members = [np.flatnonzero(band == b) for b in range(7)]
-ties_per_band = [int(tied[band == b].sum()) for b in range(7)]
-
-def shuffled_transitivity():
-    chosen = np.concatenate([rng.choice(members[b], ties_per_band[b], replace=False) for b in range(7)])
-    g = nx.Graph()
-    g.add_edges_from(zip(i[chosen], j[chosen]))
-    return nx.transitivity(g)
-
-observed = nx.transitivity(world)
-null = np.array([shuffled_transitivity() for _ in range(200)])
-print(f"observed transitivity {observed:.3f}")
-print(f"distance-matched null: mean {null.mean():.3f}, sd {null.std(ddof=1):.3f}, range {null.min():.3f} to {null.max():.3f}")
-print(f"null draws at or above the observed value: {(null >= observed).sum()} of 200")
+# TODO(code, Python): needs a distance-band null model (net_shuffle_by_distance() feeding net_transitivity())
 ```
 
 ::: {.code-output}
 ```text
-observed transitivity 0.372
-distance-matched null: mean 0.255, sd 0.020, range 0.186 to 0.309
-null draws at or above the observed value: 0 of 200
+TODO(output)
 ```
 :::
 
@@ -1227,18 +914,17 @@ The check for the modifiable unit is to change the unit and see what moves. We c
 
 ```r
 # Pieces, size of the largest piece, and the three units with the most shortest routes through them.
-summarize_net <- \(label, g) {
+summarize_net <- \(g) {
   parts <- net_components(g)
-  top <- countries |> mutate(b = net_betweenness(g)) |> slice_max(b, n = 3) |> pull(name)
-  tibble(setup = label, pieces = parts$no, largest = max(parts$csize), top_betweenness = paste(top, collapse = ", "))
+  top <- countries$name[order(-net_betweenness(g))[1:3]]
+  data.frame(pieces = parts$no, largest = max(parts$csize), top_betweenness = paste(top, collapse = ", "))
 }
 
 # Drop the two ties that exist only because the French unit includes French Guiana.
-trimmed <- borders |>
-  filter(!(pair_key(source, target) %in% pair_key("FRA", c("BRA", "SUR")))) |>
-  net_frame(countries, directed = FALSE)
+involves <- \(a, b) (borders$source == a & borders$target == b) | (borders$source == b & borders$target == a)
+trimmed <- net_frame(borders[!(involves("FRA", "BRA") | involves("FRA", "SUR")), ], countries, directed = FALSE)
 
-bind_rows(summarize_net("as recorded", world), summarize_net("without the French Guiana ties", trimmed))
+rbind(`as recorded` = summarize_net(world), `without the French Guiana ties` = summarize_net(trimmed))
 ```
 
 ::: {.code-output}
@@ -1254,6 +940,16 @@ bind_rows(summarize_net("as recorded", world), summarize_net("without the French
 ## Python
 
 ```python
+import networkx as nx
+import pandas as pd
+
+countries = pd.read_csv("data/space/borders/nodes.csv")
+borders = pd.read_csv("data/space/borders/edges.csv")
+row_of = {code: i for i, code in enumerate(countries["id"])}
+world = nx.Graph()
+world.add_nodes_from(range(len(countries)))
+world.add_edges_from(zip(borders["source"].map(row_of).to_numpy(), borders["target"].map(row_of).to_numpy()))
+
 # Pieces, size of the largest piece, and the three units with the most shortest routes through them.
 def summarize(label, g):
     pieces = sorted((len(c) for c in nx.connected_components(g)), reverse=True)
@@ -1320,69 +1016,24 @@ The check for edge effects is to move the boundary and see what the boundary doe
 ## R
 
 ```r
-# Study Europe only (Natural Earth's continent column) and see which ties the boundary cuts.
-europe <- countries$id[countries$continent == "Europe"]
-cut <- borders |> mutate(source_in = source %in% europe, target_in = target %in% europe)
-inside <- filter(cut, source_in & target_in)
-crossing <- filter(cut, source_in != target_in)
-
-tibble(
-  units = length(europe), ties_inside = nrow(inside), ties_crossing = nrow(crossing),
-  mean_degree_inside_only = round(2 * nrow(inside) / length(europe), 2),
-  mean_degree_with_crossing = round((2 * nrow(inside) + nrow(crossing)) / length(europe), 2)
-)
-
-# Which European units lose ties to the outside, and how many?
-crossing |>
-  mutate(id = if_else(source_in, source, target)) |>
-  count(id, name = "lost") |>
-  left_join(countries, by = "id") |>
-  arrange(desc(lost), name) |>
-  select(name, lost)
+# TODO(code, R): needs net_boundary(), the ties inside and crossing a chosen set of units, and the degree lost at the boundary
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 1 × 5
-  units ties_inside ties_crossing mean_degree_inside_only mean_degree_with_cro…¹
-  <int>       <int>         <int>                   <dbl>                  <dbl>
-1    39          79            10                    4.05                   4.31
-# ℹ abbreviated name: ¹​mean_degree_with_crossing
-# A tibble: 4 × 2
-  name      lost
-  <chr>    <int>
-1 Russia       6
-2 France       2
-3 Bulgaria     1
-4 Greece       1
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-from collections import Counter
-
-# Study Europe only (Natural Earth's continent column) and see which ties the boundary cuts.
-in_europe = (countries["continent"] == "Europe").to_numpy()
-inside = [(a, b) for a, b in zip(tie_from, tie_to) if in_europe[a] and in_europe[b]]
-crossing = [(a, b) for a, b in zip(tie_from, tie_to) if in_europe[a] != in_europe[b]]
-m = int(in_europe.sum())
-print(f"Europe: {m} units, {len(inside)} ties inside, {len(crossing)} ties cross the boundary")
-print(f"mean degree counting only inside ties {2 * len(inside) / m:.2f}; "
-      f"counting the crossing ones too {(2 * len(inside) + len(crossing)) / m:.2f}")
-
-# Which European units lose ties to the outside, and how many?
-lost = Counter(a if in_europe[a] else b for a, b in crossing)
-ranked = sorted(lost.items(), key=lambda kv: (-kv[1], countries["name"][kv[0]]))
-print("units that lose ties to the outside:", ", ".join(f"{countries['name'][v]} ({c})" for v, c in ranked))
+# TODO(code, Python): needs net_boundary(), the ties inside and crossing a chosen set of units, and the degree lost at the boundary
 ```
 
 ::: {.code-output}
 ```text
-Europe: 39 units, 79 ties inside, 10 ties cross the boundary
-mean degree counting only inside ties 4.05; counting the crossing ones too 4.31
-units that lose ties to the outside: Russia (6), France (2), Bulgaria (1), Greece (1)
+TODO(output)
 ```
 :::
 
@@ -1463,7 +1114,7 @@ In all four, the number describes where the ties are. It does not say why they a
 - **"Higher transitivity than the null means social closure."** The null only removed what distance bands explain. Closure from geometry survives it.
 - **"Great-circle distance is how far people travel."** It is the straight line over a sphere. Roads, borders and mountains make real trips longer, and for some questions travel time is the right distance.
 
-Where tools differ, in this chapter: every deterministic number (distances, bands, thresholds, correlations, the three stress checks) was identical in R, Python and Rust. The distance-matched null is the exception, because each language draws its own random numbers: the null mean is 0.257 in R, 0.255 in Python and 0.252 in Rust, with a standard deviation near 0.02 each time, and no draw reaches 0.372 in any of them. That is the size of difference you should expect from a different random seed, and it is not a disagreement about the answer. Two smaller differences are not about numbers. R's frame header prints the sphere radius with the unit `m` even when you supplied kilometers, as noted earlier. And Natural Earth files Russia under Europe, so a "Europe" boundary drawn from its continent column contains Russia while six of Russia's borders run out of it, a choice no tool will warn you about. For other software, such as ellipsoidal distances in geodesy libraries, expect small differences from the spherical formula, as noted at the start of the chapter.
+Where tools differ, in this chapter: every deterministic number (distances, bands, thresholds, correlations, the three stress checks) was identical in every tab that prints it. The distance-matched null is the exception, because it depends on the random numbers drawn: in the Rust tab its mean is 0.252, with a standard deviation near 0.02, and no draw reaches 0.372. A different seed would move the mean a little; that is not a disagreement about the answer. Two smaller differences are not about numbers. R's frame header prints the sphere radius with the unit `m` even when you supplied kilometers, as noted earlier. And Natural Earth files Russia under Europe, so a "Europe" boundary drawn from its continent column contains Russia while six of Russia's borders run out of it, a choice no tool will warn you about. For other software, such as ellipsoidal distances in geodesy libraries, expect small differences from the spherical formula, as noted at the start of the chapter.
 
 ## Exercises
 

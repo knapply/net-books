@@ -86,129 +86,31 @@ Let's count the triangles in our office. A triangle needs three people who are a
 
 Four triangles, all balanced. There's a neat picture behind that: put Ana, Ben and Cleo in one camp and Dev and Eli in another. Every positive tie is inside a camp and every negative tie is between camps.
 
-Now add Ben likes Dev. Ben and Dev have three common neighbours (Ana, Cleo and Eli), so three new triangles appear, and each has exactly one negative tie (for instance Ben, Dev, Eli has Ben–Dev $+$, Dev–Eli $+$, Ben–Eli $-$). One new tie has made three triangles unbalanced. The code below checks this by brute force, and also counts something we haven't named yet, the **frustration index**, which is where the next section is heading.
+Now add Ben likes Dev. Ben and Dev have three common neighbours (Ana, Cleo and Eli), so three new triangles appear, and each has exactly one negative tie (for instance Ben, Dev, Eli has Ben–Dev $+$, Dev–Eli $+$, Ben–Eli $-$). One new tie has made three triangles unbalanced. The Rust tab below checks this by brute force, and also counts something we haven't named yet, the **frustration index**, which is where the next section is heading. The R and Python tabs stay blank until knappnet exposes a balance function (`net_balance()`).
 
 ::: {.panel-tabset group="language"}
 
 ## R
 
 ```r
-library(knappnet)
-library(dplyr)
-library(purrr)
-
-people <- c("Ana", "Ben", "Cleo", "Dev", "Eli")
-# One row per tie: the two people (numbered from 1) and its sign, +1 or -1.
-office <- tibble(
-  a = c(1, 1, 2, 4, 1, 3, 3, 2),
-  b = c(2, 3, 3, 5, 4, 4, 5, 5),
-  sign = c(1, 1, 1, 1, -1, -1, -1, -1)
-)
-office_plus <- bind_rows(office, tibble(a = 2, b = 4, sign = 1)) # Ben also likes Dev
-
-# The three tie numbers of every triangle (one row each) in a network of n people.
-triangle_ties <- function(n, ties) {
-  number <- matrix(0L, n, n)
-  number[cbind(ties$a, ties$b)] <- seq_len(nrow(ties))
-  number <- pmax(number, t(number))
-  trio <- t(combn(n, 3))
-  found <- cbind(number[trio[, c(1, 2)]], number[trio[, c(1, 3)]], number[trio[, c(2, 3)]])
-  found[rowSums(found == 0) == 0, , drop = FALSE]
-}
-# How many of each triangle's ties are negative.
-negatives_in <- function(ties, found) rowSums(matrix(ties$sign[found], ncol = 3) < 0)
-
-# Every split into two camps, one per row, as +1 and -1. Person 1 is always in camp +1.
-camps <- function(n) {
-  bits <- outer(0:(2^(n - 1) - 1), seq_len(n - 1) - 1L, \(m, b) bitwAnd(bitwShiftR(m, b), 1L))
-  cbind(1, 1 - 2 * bits)
-}
-# The fewest ties that disagree with some split, and every split that reaches it.
-frustration <- function(n, ties) {
-  x <- camps(n)
-  agreeing <- (x[, ties$a] * x[, ties$b]) %*% ties$sign
-  bad <- (nrow(ties) - agreeing[, 1]) / 2
-  list(index = min(bad), splits = x[bad == min(bad), , drop = FALSE])
-}
-
-list(office = office, `office plus Ben-Dev` = office_plus) |>
-  map(\(d) {
-    neg <- negatives_in(d, triangle_ties(5, d))
-    best <- frustration(5, d)
-    tibble(
-      ties = nrow(d), triangles = length(neg),
-      neg_0 = sum(neg == 0), neg_1 = sum(neg == 1), neg_2 = sum(neg == 2), neg_3 = sum(neg == 3),
-      balanced = sum(neg %% 2 == 0), frustration = best$index,
-      anas_camp = paste(people[best$splits[1, ] == 1], collapse = " ")
-    )
-  }) |>
-  list_rbind(names_to = "network")
+# TODO(code, R): needs net_balance(), the signed-triangle census, balance share and frustration index (with the best two-camp splits) of a signed network
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 2 × 10
-  network  ties triangles neg_0 neg_1 neg_2 neg_3 balanced frustration anas_camp
-  <chr>   <int>     <int> <int> <int> <int> <int>    <int>       <dbl> <chr>    
-1 office      8         4     1     0     3     0        4           0 Ana Ben …
-2 office…     9         7     1     3     3     0        4           1 Ana Ben …
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-import itertools
-
-import numpy as np
-
-people = ["Ana", "Ben", "Cleo", "Dev", "Eli"]
-# One entry per tie: the two people (numbered from zero) and the sign, +1 or -1.
-office = [(0, 1, 1), (0, 2, 1), (1, 2, 1), (3, 4, 1), (0, 3, -1), (2, 3, -1), (2, 4, -1), (1, 4, -1)]
-office_plus = office + [(1, 3, 1)]  # Ben also likes Dev
-
-def triangle_ties(n, ties):
-    """The three tie numbers of every triangle in a network of n people."""
-    number = {}
-    for k, (a, b, _) in enumerate(ties):
-        number[a, b] = number[b, a] = k
-    return [(number[a, b], number[a, c], number[b, c])
-            for a, b, c in itertools.combinations(range(n), 3)
-            if (a, b) in number and (a, c) in number and (b, c) in number]
-
-def negatives(ties, triangles):
-    """How many of each triangle's ties are negative."""
-    return [sum(ties[e][2] < 0 for e in t) for t in triangles]
-
-def camps(n):
-    """Every split into two camps, one per row, as +1 and -1. Person 0 is always in camp +1."""
-    bits = (np.arange(2 ** (n - 1))[:, None] >> np.arange(n - 1)) & 1
-    return np.hstack([np.ones((len(bits), 1), dtype=int), 1 - 2 * bits])
-
-def frustration(n, ties):
-    """The fewest ties that disagree with some split, and every split that reaches it."""
-    i, j, s = (np.array(column) for column in zip(*ties))
-    x = camps(n)
-    bad = ((x[:, i] * x[:, j]) != s).sum(axis=1)
-    return bad.min(), x[bad == bad.min()]
-
-for label, ties in [("office", office), ("office plus Ben-Dev", office_plus)]:
-    neg = negatives(ties, triangle_ties(5, ties))
-    fewest, splits = frustration(5, ties)
-    camp = lambda side: " ".join(p for p, v in zip(people, splits[0]) if v == side)
-    print(f"{label}: {len(ties)} ties, {len(neg)} triangles, {sum(k % 2 == 0 for k in neg)} balanced, frustration {fewest}")
-    print(f"  triangles with 0, 1, 2, 3 negative ties: {np.bincount(neg, minlength=4).tolist()}")
-    print(f"  best split: {camp(1)} | {camp(-1)}")
+# TODO(code, Python): needs net_balance(), the signed-triangle census, balance share and frustration index (with the best two-camp splits) of a signed network
 ```
 
 ::: {.code-output}
 ```text
-office: 8 ties, 4 triangles, 4 balanced, frustration 0
-  triangles with 0, 1, 2, 3 negative ties: [1, 0, 3, 0]
-  best split: Ana Ben Cleo | Dev Eli
-office plus Ben-Dev: 9 ties, 7 triangles, 4 balanced, frustration 1
-  triangles with 0, 1, 2, 3 negative ties: [1, 3, 3, 0]
-  best split: Ana Ben Cleo | Dev Eli
+TODO(output)
 ```
 :::
 
@@ -295,7 +197,7 @@ office plus Ben-Dev: 9 ties, 7 triangles, 4 balanced, frustration 1
 
 :::
 
-The office starts with four triangles, all balanced. After Ben likes Dev there are seven, and only four are balanced. Three have exactly one negative tie, which is the unbalanced $++-$ pattern. The one new tie is responsible for all three, and the best split into two camps is the same as before. The code found it by trying every split.
+The office starts with four triangles, all balanced. After Ben likes Dev there are seven, and only four are balanced. Three have exactly one negative tie, which is the unbalanced $++-$ pattern. The one new tie is responsible for all three, and the best split into two camps is the same as before. The Rust code found it by trying every split.
 
 ## From triangles to the whole network
 
@@ -357,92 +259,37 @@ Three facts make $F$ easier to read than it first looks.
 
 - **Three ways of counting give the same number.** $F$ is also the fewest ties you would have to *delete*, or the fewest you would have to *flip* in sign, to make the network balanced. (Take an optimal split. Deleting its frustrated ties leaves a balanced network, and so does flipping them. Conversely, any set of ties whose deletion or flipping balances the network contains the frustrated ties of the split that results, so none is smaller.)
 - **It is at most half the ties.** A random split frustrates half the ties on average, so the best split frustrates at most half. So $F/m$, where $m$ is the number of ties, lies between 0 and $\tfrac12$.
-- **It is hard to compute for big networks.** It is a max-cut problem in disguise, and large networks use heuristics or integer programming [@facchetti2011computing]. For 20 or so people you can try all $2^{n-1}$ splits, which is what the code in this chapter does (person 0 is fixed in one camp, since swapping camps changes nothing).
+- **It is hard to compute for big networks.** It is a max-cut problem in disguise, and large networks use heuristics or integer programming [@facchetti2011computing]. For 20 or so people you can try all $2^{n-1}$ splits, which is what the Rust code in this chapter does (person 0 is fixed in one camp, since swapping camps changes nothing).
 
 The two numbers are linked but not interchangeable: the triangle share is about local tension, the frustration index is about whether *one dividing line* works for the whole network. A network can have a high balanced share and still need many ties to be flipped, and the reverse. Doreian and Mrvar [@doreian1996partitioning] built on the same idea to ask for the best partition into *any* number of groups, scoring a partition by its negative ties inside groups plus its positive ties between them. We'll compute that score below.
 
 ## Sampson's novices: balance in practice
 
-Time to try it on real people. The code below builds both versions of the signed network, counts the triangles by type, and finds the frustration index under each rule.
+Time to try it on real people. The Rust tab below builds both versions of the signed network, counts the triangles by type, and finds the frustration index under each rule.
 
 ::: {.panel-tabset group="language"}
 
 ## R
 
 ```r
-sampson <- read.csv("data/sampson/edges.csv") |> as_tibble()
-novices <- sort(unique(c(sampson$from, sampson$to)))
-
-# Liking (+) and disliking (-) at time 3, one row per pair of novices.
-affect <- sampson |>
-  filter(time == 3, relation %in% c("liking", "disliking")) |>
-  mutate(a = pmin(match(from, novices), match(to, novices)),
-         b = pmax(match(from, novices), match(to, novices)))
-pairs <- affect |>
-  group_by(a, b) |>
-  summarise(positive = any(sign > 0), negative = any(sign < 0), net = sum(sign * rank), .groups = "drop")
-# Rule 1 keeps pairs whose choices all agree. Rule 2 keeps the sign of the summed ranks.
-agree <- pairs |> filter(positive != negative) |> mutate(sign = if_else(positive, 1, -1))
-net_rank <- pairs |> filter(net != 0) |> mutate(sign = sign(net))
-
-tibble(with_a_choice = nrow(pairs), both_signs = sum(pairs$positive & pairs$negative), net_zero = sum(pairs$net == 0))
-list(agree = agree, net_rank = net_rank) |>
-  map(\(d) tibble(ties = nrow(d), positive = sum(d$sign > 0), negative = sum(d$sign < 0))) |>
-  list_rbind(names_to = "rule")
+# TODO(code, R): needs net_as_signed() from tables of positive and negative choices, with a rule for pairs that choose both ways (agreement or summed rank)
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 1 × 3
-  with_a_choice both_signs net_zero
-          <int>      <int>    <int>
-1            67         12        3
-# A tibble: 2 × 4
-  rule      ties positive negative
-  <chr>    <int>    <int>    <int>
-1 agree       55       29       26
-2 net_rank    64       34       30
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-import csv
-from collections import Counter, defaultdict
-from fractions import Fraction
-
-import networkx as nx
-
-with open("data/sampson/edges.csv") as f:
-    sampson = list(csv.DictReader(f))
-novices = sorted({r["from"] for r in sampson} | {r["to"] for r in sampson})
-number = {name: k for k, name in enumerate(novices)}
-
-# Liking (+) and disliking (-) at time 3, one entry per pair of novices.
-seen = defaultdict(lambda: {"plus": False, "minus": False, "net": 0})
-for r in sampson:
-    if r["time"] == "3" and r["relation"] in ("liking", "disliking"):
-        pair = tuple(sorted((number[r["from"]], number[r["to"]])))
-        seen[pair]["plus" if int(r["sign"]) > 0 else "minus"] = True
-        seen[pair]["net"] += int(r["sign"]) * int(r["rank"])
-# Rule 1 keeps pairs whose choices all agree. Rule 2 keeps the sign of the summed ranks.
-agree = [(a, b, 1 if v["plus"] else -1) for (a, b), v in sorted(seen.items()) if v["plus"] != v["minus"]]
-net_rank = [(a, b, 1 if v["net"] > 0 else -1) for (a, b), v in sorted(seen.items()) if v["net"] != 0]
-
-print(f"pairs {len(seen)}, with choices of both signs {sum(v['plus'] and v['minus'] for v in seen.values())}, "
-      f"net rank zero {sum(v['net'] == 0 for v in seen.values())}")
-print("rule      ties  positive  negative")
-for label, ties in [("agree", agree), ("net rank", net_rank)]:
-    print(f"{label:<9} {len(ties):>4} {sum(s > 0 for *_, s in ties):>9} {sum(s < 0 for *_, s in ties):>9}")
+# TODO(code, Python): needs net_as_signed() from tables of positive and negative choices, with a rule for pairs that choose both ways (agreement or summed rank)
 ```
 
 ::: {.code-output}
 ```text
-pairs 67, with choices of both signs 12, net rank zero 3
-rule      ties  positive  negative
-agree       55        29        26
-net rank    64        34        30
+TODO(output)
 ```
 :::
 
@@ -498,101 +345,24 @@ Now the triangles and the frustration index. The second block also checks Davis'
 ## R
 
 ```r
-by_rule <- list(agree = agree, net_rank = net_rank) |>
-  map(\(d) {
-    neg <- negatives_in(d, triangle_ties(18, d))
-    best <- frustration(18, d)
-    tibble(ties = nrow(d), triangles = length(neg),
-           `+++` = sum(neg == 0), `++-` = sum(neg == 1), `+--` = sum(neg == 2), `---` = sum(neg == 3),
-           balanced_share = round(mean(neg %% 2 == 0), 3), frustration = best$index,
-           share_of_ties = round(best$index / nrow(d), 3), best_splits = nrow(best$splits))
-  }) |>
-  list_rbind(names_to = "rule")
-by_rule
-
-# The two camps that frustrate the fewest ties, under the agree rule.
-best <- frustration(18, agree)
-split(novices, best$splits[1, ])
-
-# Davis: cut to the positive ties and look at its pieces. Is any negative tie inside a piece?
-positive <- agree |> filter(sign > 0) |> transmute(source = novices[a], target = novices[b])
-pieces <- net_frame(positive, nodes = tibble(id = novices), directed = FALSE) |> net_components()
-inside <- agree |> filter(sign < 0) |> mutate(same_piece = pieces$membership[a] == pieces$membership[b])
-# Score a partition by its negative ties inside groups plus its positive ties between groups.
-cost <- \(group) sum((group[agree$a] == group[agree$b]) != (agree$sign > 0))
-neg <- negatives_in(agree, triangle_ties(18, agree))
-tibble(
-  positive_pieces = pieces$no, negative_inside_a_piece = sum(inside$same_piece), negative_ties = nrow(inside),
-  one_group = cost(rep(1, 18)), two_camps = cost(best$splits[1, ]), everyone_alone = cost(1:18),
-  two_negative_triangles = sum(neg == 2), three_negative_triangles = sum(neg == 3)
-)
+# TODO(code, R): needs net_balance(), the signed-triangle census, balance share and frustration index (with the best two-camp splits) of a signed network, plus clusterability (Davis) and the cost of any partition
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 2 × 11
-  rule      ties triangles `+++` `++-` `+--` `---` balanced_share frustration
-  <chr>    <int>     <int> <int> <int> <int> <int>          <dbl>       <dbl>
-1 agree       55        34     9     6    14     5          0.676          11
-2 net_rank    64        58    14    14    24     6          0.655          14
-# ℹ 2 more variables: share_of_ties <dbl>, best_splits <int>
-$`-1`
-[1] "Berthold"   "Gregory"    "Hugh"       "John Bosco" "Louis"     
-[6] "Peter"      "Winfrid"   
-
-$`1`
- [1] "Albert"      "Amand"       "Ambrose"     "Basil"       "Bonaventure"
- [6] "Boniface"    "Elias"       "Mark"        "Romuald"     "Simplicius" 
-[11] "Victor"     
-
-# A tibble: 1 × 8
-  positive_pieces negative_inside_a_piece negative_ties one_group two_camps
-            <int>                   <int>         <int>     <int>     <int>
-1               1                      26            26        26        11
-# ℹ 3 more variables: everyone_alone <int>, two_negative_triangles <int>,
-#   three_negative_triangles <int>
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-for label, ties in [("agree", agree), ("net rank", net_rank)]:
-    neg = negatives(ties, triangle_ties(18, ties))
-    counts = np.bincount(neg, minlength=4)
-    fewest, splits = frustration(18, ties)
-    print(f"{label:<9} ties {len(ties)}, triangles {len(neg)} (+++ {counts[0]}, ++- {counts[1]}, +-- {counts[2]}, --- {counts[3]}), "
-          f"balanced share {sum(k % 2 == 0 for k in neg) / len(neg):.3f}, frustration {fewest} = {fewest / len(ties):.3f} of ties, "
-          f"best splits {len(splits)}")
-
-# The two camps that frustrate the fewest ties, under the agree rule.
-fewest, splits = frustration(18, agree)
-for side, label in [(1, "A"), (-1, "B")]:
-    print(f"camp {label}: " + ", ".join(n for n, v in zip(novices, splits[0]) if v == side))
-
-# Davis: cut to the positive ties and look at its pieces. Is any negative tie inside a piece?
-positive = nx.Graph()
-positive.add_nodes_from(range(18))
-positive.add_edges_from((a, b) for a, b, s in agree if s > 0)
-piece = {v: k for k, part in enumerate(nx.connected_components(positive)) for v in part}
-inside = sum(piece[a] == piece[b] for a, b, s in agree if s < 0)
-# Score a partition by its negative ties inside groups plus its positive ties between groups.
-cost = lambda group: sum((group[a] == group[b]) != (s > 0) for a, b, s in agree)
-neg = negatives(agree, triangle_ties(18, agree))
-print(f"positive pieces {len(set(piece.values()))}; negative ties inside a positive piece {inside} of {sum(s < 0 for *_, s in agree)}")
-print(f"ties that disagree: one group {cost([0] * 18)}, two camps {cost(list(splits[0]))}, everyone alone {cost(list(range(18)))}")
-print(f"triangles with two negative ties {neg.count(2)}, with three {neg.count(3)}")
+# TODO(code, Python): needs net_balance(), the signed-triangle census, balance share and frustration index (with the best two-camp splits) of a signed network, plus clusterability (Davis) and the cost of any partition
 ```
 
 ::: {.code-output}
 ```text
-agree     ties 55, triangles 34 (+++ 9, ++- 6, +-- 14, --- 5), balanced share 0.676, frustration 11 = 0.200 of ties, best splits 1
-net rank  ties 64, triangles 58 (+++ 14, ++- 14, +-- 24, --- 6), balanced share 0.655, frustration 14 = 0.219 of ties, best splits 2
-camp A: Albert, Amand, Ambrose, Basil, Bonaventure, Boniface, Elias, Mark, Romuald, Simplicius, Victor
-camp B: Berthold, Gregory, Hugh, John Bosco, Louis, Peter, Winfrid
-positive pieces 1; negative ties inside a positive piece 26 of 26
-ties that disagree: one group 26, two camps 11, everyone alone 29
-triangles with two negative ties 14, with three 5
+TODO(output)
 ```
 :::
 
@@ -667,86 +437,31 @@ Doreian and Mrvar's partition score gives a third angle. Put everyone in one gro
 
 Here is the trap. 0.676 sounds high. But a sparse network is easy to balance. With only 55 ties among 153 possible pairs, there aren't many triangles or long cycles to contradict each other, and even *random* signs would come out partly balanced. The honest comparison is a **null model**: keep the ties exactly where they are, keep the number of positives and negatives, and **shuffle which tie gets which sign**. If the real network is more balanced than most shuffles, there's evidence of structure beyond "it's sparse and about half the ties are negative".
 
-The code below does 100 shuffles. To make all three languages print the same numbers, it uses a tiny, fully specified random number generator (the Park-Miller recipe, which in words says "multiply the last number by 16807 and keep the remainder after dividing by 2,147,483,647, which is $2^{31}-1$", written $x \leftarrow 16807\,x \bmod (2^{31}-1)$, started from 2024) rather than each language's own, and shuffles by sorting the ties by random keys.
+The Rust tab below does 100 shuffles. To make the numbers repeatable, it uses a tiny, fully specified random number generator (the Park-Miller recipe, which in words says "multiply the last number by 16807 and keep the remainder after dividing by 2,147,483,647, which is $2^{31}-1$", written $x \leftarrow 16807\,x \bmod (2^{31}-1)$, started from 2024) rather than the language's own, and shuffles by sorting the ties by random keys.
 
 ::: {.panel-tabset group="language"}
 
 ## R
 
 ```r
-reps <- 100
-m <- nrow(agree)
-found <- triangle_ties(18, agree)
-x <- camps(18)
-across_split <- x[, agree$a] * x[, agree$b]      # +1 where the split puts a tie's two ends together
-keys <- accumulate(seq_len(reps * m), \(k, i) (16807 * k) %% 2147483647, .init = 2024)[-1]
-order_of <- apply(matrix(keys, nrow = m), 2, order)               # one shuffle per column
-shuffled <- matrix(agree$sign[order_of], nrow = m)                # signs after shuffling, one column per shuffle
-neg <- (shuffled[found[, 1], ] < 0) + (shuffled[found[, 2], ] < 0) + (shuffled[found[, 3], ] < 0)
-null <- tibble(
-  balanced = colSums(neg %% 2 == 0),
-  frustration = (m - apply(across_split %*% shuffled, 2, max)) / 2
-)
-observed <- tibble(balanced = sum(negatives_in(agree, found) %% 2 == 0), frustration = best$index)
-
-bind_rows(
-  observed = observed,
-  `shuffled mean` = summarise(null, across(everything(), mean)),
-  `shuffled min` = summarise(null, across(everything(), min)),
-  `shuffled max` = summarise(null, across(everything(), max)),
-  .id = "signs"
-) |>
-  mutate(balanced_share = round(balanced / nrow(found), 3), across(c(balanced, frustration), \(v) round(v, 1)))
-c(
-  as_balanced_or_more = sum(null$balanced >= observed$balanced),
-  as_unfrustrated_or_less = sum(null$frustration <= observed$frustration)
-)
+# TODO(code, R): needs a sign-shuffling null model for balance (net_shuffle_signs() feeding net_balance())
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 4 × 4
-  signs         balanced frustration balanced_share
-  <chr>            <dbl>       <dbl>          <dbl>
-1 observed          23          11            0.676
-2 shuffled mean     17.4        12.3          0.511
-3 shuffled min      10           8            0.294
-4 shuffled max      26          15            0.765
-    as_balanced_or_more as_unfrustrated_or_less 
-                      7                      27 
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-reps, m = 100, len(agree)
-found = triangle_ties(18, agree)
-i, j, sign = (np.array(column) for column in zip(*agree))
-across_split = camps(18)[:, i] * camps(18)[:, j]   # +1 where the split puts a tie's two ends together
-
-keys, state = [], 2024
-for _ in range(reps * m):
-    state = 16807 * state % 2147483647
-    keys.append(state)
-order_of = np.argsort(np.array(keys).reshape(reps, m), axis=1)      # one shuffle per row
-shuffled = sign[order_of]                                          # signs after shuffling, one row per shuffle
-neg = (shuffled[:, np.array(found)] < 0).sum(axis=2)
-balanced = (neg % 2 == 0).sum(axis=1)
-frustrated = (m - (across_split @ shuffled.T).max(axis=0)) // 2
-observed = sum(k % 2 == 0 for k in negatives(agree, found))
-
-print(f"observed: {observed} balanced triangles of {len(found)} ({observed / len(found):.3f}), frustration {fewest}")
-print(f"{reps} shuffles of the signs: balanced triangles {balanced.mean():.1f} on average (range {balanced.min()} to {balanced.max()}), "
-      f"frustration {frustrated.mean():.1f} on average (range {frustrated.min()} to {frustrated.max()})")
-print(f"shuffles at least as balanced as observed: {(balanced >= observed).sum()}; at least as unfrustrated: {(frustrated <= fewest).sum()}")
+# TODO(code, Python): needs a sign-shuffling null model for balance (net_shuffle_signs() feeding net_balance())
 ```
 
 ::: {.code-output}
 ```text
-observed: 23 balanced triangles of 34 (0.676), frustration 11
-100 shuffles of the signs: balanced triangles 17.4 on average (range 10 to 26), frustration 12.3 on average (range 8 to 15)
-shuffles at least as balanced as observed: 7; at least as unfrustrated: 27
+TODO(output)
 ```
 :::
 
@@ -826,81 +541,24 @@ Most tools in this book assume ties are non-negative. Here is what goes wrong, m
 ## R
 
 ```r
-tibble(novice = novices) |>
-  mutate(
-    liked_by = map_int(novice, \(n) sum(affect$to == n & affect$sign > 0)),
-    disliked_by = map_int(novice, \(n) sum(affect$to == n & affect$sign < 0)),
-    net = liked_by - disliked_by
-  ) |>
-  arrange(desc(net), novice)
-affect |> count(from, sign) |> pull(n) |> max()
+# TODO(code, R): needs net_signed_degree(), positive and negative in-degree and out-degree of a signed network
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 18 × 4
-   novice      liked_by disliked_by   net
-   <chr>          <int>       <int> <int>
- 1 Bonaventure        6           0     6
- 2 Boniface           6           0     6
- 3 Ambrose            3           0     3
- 4 John Bosco         4           2     2
- 5 Louis              2           0     2
- 6 Romuald            4           2     2
- 7 Simplicius         3           1     2
- 8 Albert             2           1     1
- 9 Winfrid            2           1     1
-10 Amand              2           2     0
-11 Berthold           4           4     0
-12 Hugh               2           2     0
-13 Mark               2           2     0
-14 Victor             5           5     0
-15 Elias              2           4    -2
-16 Peter              6           8    -2
-17 Basil              1           6    -5
-18 Gregory            0           7    -7
-[1] 4
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-affect = [r for r in sampson if r["time"] == "3" and r["relation"] in ("liking", "disliking")]
-rows = []
-for name in novices:
-    liked = sum(r["to"] == name and int(r["sign"]) > 0 for r in affect)
-    disliked = sum(r["to"] == name and int(r["sign"]) < 0 for r in affect)
-    rows.append((name, liked, disliked, liked - disliked))
-rows.sort(key=lambda t: (-t[3], t[0]))
-print(f"{'novice':<12} {'liked by':>8} {'disliked by':>11} {'net':>4}")
-for name, liked, disliked, net in rows:
-    print(f"{name:<12} {liked:>8} {disliked:>11} {net:>4}")
-print("most choices of one sign by any novice:", max(Counter((r["from"], r["sign"]) for r in affect).values()))
+# TODO(code, Python): needs net_signed_degree(), positive and negative in-degree and out-degree of a signed network
 ```
 
 ::: {.code-output}
 ```text
-novice       liked by disliked by  net
-Bonaventure         6           0    6
-Boniface            6           0    6
-Ambrose             3           0    3
-John Bosco          4           2    2
-Louis               2           0    2
-Romuald             4           2    2
-Simplicius          3           1    2
-Albert              2           1    1
-Winfrid             2           1    1
-Amand               2           2    0
-Berthold            4           4    0
-Hugh                2           2    0
-Mark                2           2    0
-Victor              5           5    0
-Elias               2           4   -2
-Peter               6           8   -2
-Basil               1           6   -5
-Gregory             0           7   -7
-most choices of one sign by any novice: 4
+TODO(output)
 ```
 :::
 
@@ -958,7 +616,7 @@ Compare Peter, Berthold and Boniface. Peter is liked by 6 novices and disliked b
 
 **Community detection.** Standard modularity rewards dense groups of positive ties and knows nothing about negative ones. Run on the absolute values of signed ties, it will happily put sworn enemies into one community. Traag and Bruggeman's signed version [@traag2009community] scores a partition by how many positive ties are *inside* groups compared with chance, and how many negative ties are *between* groups compared with chance, with the two parts weighed against their own null expectations. The Doreian-Mrvar score above does a similar thing without the null model. In Sampson, the two-camp split frustrates 11 ties; any signed community method should recover something at least that good, and you can check it.
 
-**Triangle-based measures.** In an unsigned network a triangle is a triangle. In a signed one, there are four kinds with four meanings. Always report the counts by type (as the code above does), not one combined total.
+**Triangle-based measures.** In an unsigned network a triangle is a triangle. In a signed one, there are four kinds with four meanings. Always report the counts by type (as the Rust code above does), not one combined total.
 
 ## Reading signed networks in different settings
 
@@ -982,41 +640,24 @@ What about a network with no signs at all? The Florentine marriage network among
 ## R
 
 ```r
-marriages <- read.csv("data/florentine/edges.csv") |> as_tibble()
-families <- sort(unique(c(marriages$source, marriages$target)))
-n <- length(families)
-links <- marriages |> transmute(a = match(source, families), b = match(target, families), sign = 1)
-neg <- negatives_in(links, triangle_ties(n, links))
-tibble(
-  families = n, ties = nrow(links), triangles = length(neg), with_a_negative_tie = sum(neg > 0),
-  frustration = frustration(n, links)$index
-)
+# TODO(code, R): needs net_balance(), the signed-triangle census, balance share and frustration index (with the best two-camp splits) of a signed network
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 1 × 5
-  families  ties triangles with_a_negative_tie frustration
-     <int> <int>     <int>               <int>       <dbl>
-1       15    20         3                   0           0
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-with open("data/florentine/edges.csv") as f:
-    marriages = [(r["source"], r["target"]) for r in csv.DictReader(f)]
-families = sorted({x for pair in marriages for x in pair})
-ties = [(families.index(a), families.index(b), 1) for a, b in marriages]
-neg = negatives(ties, triangle_ties(len(families), ties))
-print(f"families {len(families)}, ties {len(ties)}, triangles {len(neg)}, with a negative tie {sum(k > 0 for k in neg)}, "
-      f"frustration {frustration(len(families), ties)[0]}")
+# TODO(code, Python): needs net_balance(), the signed-triangle census, balance share and frustration index (with the best two-camp splits) of a signed network
 ```
 
 ::: {.code-output}
 ```text
-families 15, ties 20, triangles 3, with a negative tie 0, frustration 0
+TODO(output)
 ```
 :::
 
@@ -1085,7 +726,9 @@ In the favours example, Ann scores 4 at every $\alpha$ (four ties of weight 1 ma
 ## R
 
 ```r
-favours <- tibble(
+library(knappnet)
+
+favours <- data.frame(
   source = c("Ann", "Ann", "Ann", "Ann", "Fay", "Gus"),
   target = c("Bo", "Cy", "Di", "Ed", "Gus", "Ed"),
   weight = c(1, 1, 1, 1, 5, 1)
@@ -1093,11 +736,12 @@ favours <- tibble(
 trade <- net_frame(favours, directed = FALSE, weight = "weight", weight_type = "strength")
 
 # Opsahl's generalized degree: k^(1 - alpha) * s^alpha. Alpha 0 is degree, alpha 1 is strength.
+# TODO(code, R): needs net_degree(alpha =); until then the formula is written out
 generalized <- \(k, s, alpha) k^(1 - alpha) * s^alpha
-tibble(person = trade$nodes$id, degree = net_degree(trade), strength = net_strength(trade)) |>
-  mutate(alpha_0.5 = generalized(degree, strength, 0.5), alpha_1.5 = generalized(degree, strength, 1.5)) |>
-  mutate(across(starts_with("alpha"), \(v) round(v, 3))) |>
-  arrange(person)
+people <- data.frame(degree = net_degree(trade), strength = net_strength(trade), row.names = trade$nodes$id)
+people$alpha_0.5 <- round(generalized(people$degree, people$strength, 0.5), 3)
+people$alpha_1.5 <- round(generalized(people$degree, people$strength, 1.5), 3)
+people[order(rownames(people)), ]
 ```
 
 ::: {.code-output}
@@ -1118,30 +762,12 @@ tibble(person = trade$nodes$id, degree = net_degree(trade), strength = net_stren
 ## Python
 
 ```python
-favours = [("Ann", "Bo", 1), ("Ann", "Cy", 1), ("Ann", "Di", 1), ("Ann", "Ed", 1), ("Fay", "Gus", 5), ("Gus", "Ed", 1)]
-trade = nx.Graph()
-trade.add_weighted_edges_from(favours)
-
-# Opsahl's generalized degree: k^(1 - alpha) * s^alpha. Alpha 0 is degree, alpha 1 is strength.
-def generalized(k, s, alpha):
-    return k ** (1 - alpha) * s ** alpha
-
-print(f"{'person':<7} {'degree':>6} {'strength':>8} {'alpha 0.5':>10} {'alpha 1.5':>10}")
-for person in sorted(trade):
-    k, s = trade.degree(person), trade.degree(person, weight="weight")
-    print(f"{person:<7} {k:>6} {s:>8} {generalized(k, s, 0.5):>10.3f} {generalized(k, s, 1.5):>10.3f}")
+# TODO(code, Python): needs Opsahl's generalized degree, net_degree(alpha =)
 ```
 
 ::: {.code-output}
 ```text
-person  degree strength  alpha 0.5  alpha 1.5
-Ann          4        4      4.000      4.000
-Bo           1        1      1.000      1.000
-Cy           1        1      1.000      1.000
-Di           1        1      1.000      1.000
-Ed           2        2      2.000      2.000
-Fay          1        5      2.236     11.180
-Gus          2        6      3.464     10.392
+TODO(output)
 ```
 :::
 
@@ -1196,19 +822,25 @@ Does weight change who looks central? The code below prints degree, strength and
 ## R
 
 ```r
-karate <- read.csv("data/karate/edges.csv") |> as_tibble() |> mutate(across(c(source, target), as.character))
+karate <- read.csv("data/karate/edges.csv")
+karate$source <- as.character(karate$source)
+karate$target <- as.character(karate$target)
 club <- net_frame(karate, directed = FALSE, weight = "contexts", weight_type = "strength")
-members <- tibble(member = as.integer(club$nodes$id), degree = net_degree(club), strength = net_strength(club)) |>
-  mutate(mean_weight = round(strength / degree, 2))
+members <- data.frame(member = as.integer(club$nodes$id), degree = net_degree(club), strength = net_strength(club))
+members$mean_weight <- round(members$strength / members$degree, 2)
 focus <- c(34, 1, 33, 24, 26)
-members |> filter(member %in% focus) |> arrange(match(member, focus))
+members[match(focus, members$member), ]
 
-c(0, 0.5, 1, 1.5, 2, 3) |>
-  map(\(a) members |>
-    mutate(score = generalized(degree, strength, a)) |>
-    slice_max(score, n = 3, with_ties = FALSE) |>
-    summarise(alpha = a, top_three = paste0(member, " (", round(score, 1), ")", collapse = ", "))) |>
-  list_rbind()
+# The three highest scores at each alpha.
+alphas <- c(0, 0.5, 1, 1.5, 2, 3)
+data.frame(
+  alpha = alphas,
+  top_three = sapply(alphas, \(a) {
+    score <- generalized(members$degree, members$strength, a)
+    top <- order(-score)[1:3]
+    paste0(members$member[top], " (", round(score[top], 1), ")", collapse = ", ")
+  })
+)
 ```
 
 ::: {.code-output}
@@ -1236,37 +868,12 @@ c(0, 0.5, 1, 1.5, 2, 3) |>
 ## Python
 
 ```python
-with open("data/karate/edges.csv") as f:
-    club_ties = [(int(r["source"]), int(r["target"]), int(r["contexts"])) for r in csv.DictReader(f)]
-club = nx.Graph()
-club.add_nodes_from(range(1, 35))
-club.add_weighted_edges_from(club_ties)
-degree = dict(club.degree())
-strength = dict(club.degree(weight="weight"))
-
-print("member degree strength mean weight")
-for member in (34, 1, 33, 24, 26):
-    print(f"{member:>6} {degree[member]:>6} {strength[member]:>8} {strength[member] / degree[member]:>11.2f}")
-for alpha in (0, 0.5, 1, 1.5, 2, 3):
-    score = {m: generalized(degree[m], strength[m], alpha) for m in club}
-    top = sorted(score, key=lambda m: (-score[m], m))[:3]
-    print(f"alpha {alpha:<3}: " + ", ".join(f"{m} ({score[m]:.1f})" for m in top))
+# TODO(code, Python): needs Opsahl's generalized degree, net_degree(alpha =)
 ```
 
 ::: {.code-output}
 ```text
-member degree strength mean weight
-    34     17       48        2.82
-     1     16       42        2.62
-    33     12       38        3.17
-    24      5       21        4.20
-    26      3       14        4.67
-alpha 0  : 34 (17.0), 1 (16.0), 33 (12.0)
-alpha 0.5: 34 (28.6), 1 (25.9), 33 (21.4)
-alpha 1  : 34 (48.0), 1 (42.0), 33 (38.0)
-alpha 1.5: 34 (80.7), 1 (68.0), 33 (67.6)
-alpha 2  : 34 (135.5), 33 (120.3), 1 (110.2)
-alpha 3  : 34 (382.7), 33 (381.1), 24 (370.4)
+TODO(output)
 ```
 :::
 
@@ -1345,15 +952,16 @@ Here $w_{ij}$ is the tie weight and $A^{(t)}$ is the resulting plain network. It
 ## R
 
 ```r
-1:7 |>
-  map(\(t) {
-    kept <- karate |> filter(contexts >= t)
-    h <- net_frame(kept, nodes = tibble(id = as.character(1:34)), directed = FALSE)
-    d <- net_degree(h)
-    tibble(cut = t, ties = nrow(kept), pieces = net_components(h)$no, isolated = sum(d == 0),
-           most_ties = paste(which(d == max(d)), collapse = ", "), max_degree = max(d))
-  }) |>
-  list_rbind()
+# Keep only ties of at least t shared contexts, and see how the network falls apart.
+everyone <- data.frame(id = as.character(1:34))
+cuts <- lapply(1:7, \(t) {
+  kept <- karate[karate$contexts >= t, ]
+  h <- net_frame(kept, nodes = everyone, directed = FALSE)
+  d <- net_degree(h)
+  data.frame(cut = t, ties = nrow(kept), pieces = net_components(h)$no, isolated = sum(d == 0),
+             most_ties = paste(which(d == max(d)), collapse = ", "), max_degree = max(d))
+})
+do.call(rbind, cuts)
 ```
 
 ::: {.code-output}
@@ -1374,6 +982,16 @@ Here $w_{ij}$ is the tie weight and $A^{(t)}$ is the resulting plain network. It
 ## Python
 
 ```python
+import csv
+
+import networkx as nx
+
+with open("data/karate/edges.csv") as f:
+    club_ties = [(int(r["source"]), int(r["target"]), int(r["contexts"])) for r in csv.DictReader(f)]
+club = nx.Graph()
+club.add_nodes_from(range(1, 35))
+club.add_weighted_edges_from(club_ties)
+
 print("cut  ties  pieces  isolated  most ties")
 for t in range(1, 8):
     h = nx.Graph()
@@ -1447,20 +1065,22 @@ Here is that last mistake on the karate club. The block computes betweenness thr
 ## R
 
 ```r
-list(
+# Betweenness read three ways: ties only, weight as distance, weight as strength.
+readings <- list(
   `ties only` = net_betweenness(club, weighted = FALSE),
   `weight as distance` = net_betweenness(club, weighted = TRUE, weights_as = "distance"),
   `weight as strength` = net_betweenness(club, weighted = TRUE, weights_as = "strength")
-) |>
-  imap(\(score, reading) {
-    tibble(member = as.integer(club$nodes$id), score = score) |>
-      summarise(
-        reading = reading,
-        top_four = paste0(member[order(-score, member)][1:4], " (", round(sort(score, decreasing = TRUE)[1:4], 1), ")", collapse = ", "),
-        member_33 = round(score[member == 33], 1)
-      )
-  }) |>
-  list_rbind()
+)
+member <- as.integer(club$nodes$id)
+data.frame(
+  reading = names(readings),
+  top_four = sapply(readings, \(s) {
+    top <- order(-s, member)[1:4]
+    paste0(member[top], " (", round(s[top], 1), ")", collapse = ", ")
+  }),
+  member_33 = round(sapply(readings, \(s) s[member == 33]), 1),
+  row.names = NULL
+)
 ```
 
 ::: {.code-output}
@@ -1477,6 +1097,8 @@ list(
 ## Python
 
 ```python
+from fractions import Fraction
+
 for a, b, w in club_ties:
     club[a][b]["inverse"] = Fraction(1, w)  # a strength turned into a length, kept exact (see the text)
 readings = {"ties only": None, "weight as distance": "weight", "weight as strength": "inverse"}

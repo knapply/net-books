@@ -44,25 +44,18 @@ The three pictures look nothing alike. Advice is a thicket, friendship is airier
 
 ```r
 library(knappnet)
-library(dplyr)
-library(purrr)
 
-# Krackhardt's 21 managers: one 21 x 21 table of 0s and 1s per layer.
-# A 1 in row i, column j means manager i names manager j.
+# Krackhardt's 21 managers: one edge table with a relation column, split into one network per layer.
+# An arc from i to j means manager i names manager j.
 kr <- read.csv("data/krackhardt/edges.csv")
-layer <- kr |>
-  split(~relation) |>
-  map(\(e) {
-    m <- matrix(0, 21, 21)
-    m[cbind(e$from, e$to)] <- 1
-    m
-  })
+names(kr)[1:2] <- c("source", "target")
+krack <- net_frame(kr, nodes = data.frame(id = 1:21), directed = TRUE, relation = "relation")
+layer <- net_split_relations(krack)
 
-tibble(
-  relation = names(layer),
-  arcs = map_dbl(layer, sum),
-  density = round(arcs / (21 * 20), 3),
-  reciprocated = round(map_dbl(layer, \(m) sum(m * t(m)) / sum(m)), 2)
+data.frame(
+  arcs = sapply(layer, \(h) nrow(h$edges)),
+  density = round(sapply(layer, net_density), 3),
+  reciprocated = round(sapply(layer, net_reciprocity), 2)
 )
 ```
 
@@ -83,21 +76,18 @@ tibble(
 import csv
 
 import networkx as nx
-import numpy as np
 
-# Krackhardt's 21 managers: one 21 x 21 table of 0s and 1s per layer.
-# A 1 in row i, column j means manager i names manager j.
+# Krackhardt's 21 managers: one directed graph per layer. An arc i -> j means manager i names manager j.
 with open("data/krackhardt/edges.csv") as f:
     rows = list(csv.DictReader(f))
-names = ["advice", "friendship", "reports_to"]
-layer = {k: np.zeros((21, 21), dtype=int) for k in names}
+layer = {k: nx.DiGraph() for k in ("advice", "friendship", "reports_to")}
+for g in layer.values():
+    g.add_nodes_from(range(1, 22))
 for r in rows:
-    layer[r["relation"]][int(r["from"]) - 1, int(r["to"]) - 1] = 1
+    layer[r["relation"]].add_edge(int(r["from"]), int(r["to"]))
 
-for k in names:
-    m = layer[k]
-    arcs = int(m.sum())
-    print(f"{k:<11} {arcs:>4} arcs, density {arcs / 420:.3f}, reciprocated {(m * m.T).sum() / arcs:.2f}")
+for k, g in layer.items():
+    print(f"{k:<11} {g.number_of_edges():>4} arcs, density {nx.density(g):.3f}, reciprocated {nx.reciprocity(g):.2f}")
 ```
 
 ::: {.code-output}
@@ -199,97 +189,24 @@ The Jaccard index says how alike the layers are overall. A **conditional probabi
 ## R
 
 ```r
-pairs <- tribble(
-  ~a, ~b,
-  "advice", "friendship",
-  "advice", "reports_to",
-  "friendship", "reports_to"
-)
-total <- \(k) sum(layer[[k]])
-any_direction <- \(k) pmax(layer[[k]], t(layer[[k]]))[upper.tri(layer[[k]])]
-
-# Overlap and Jaccard, counting arcs, and again when a tie in either direction counts.
-pairs |>
-  mutate(
-    both = map2_dbl(a, b, \(x, y) sum(layer[[x]] * layer[[y]])),
-    jaccard = round(both / (map_dbl(a, total) + map_dbl(b, total) - both), 2),
-    jaccard_either_direction = round(
-      map2_dbl(a, b, \(x, y) sum(any_direction(x) * any_direction(y)) / sum(pmax(any_direction(x), any_direction(y)))),
-      2
-    )
-  )
-
-# Given a tie in one layer, how likely is the same pair in another? Compared with the base rate.
-tribble(
-  ~given, ~then,
-  "advice", "friendship",
-  "friendship", "advice",
-  "reports_to", "advice",
-  "advice", "reports_to"
-) |>
-  mutate(
-    p_given = map2_dbl(given, then, \(g, t) sum(layer[[g]] * layer[[t]]) / total(g)),
-    p_overall = map_dbl(then, total) / 420,
-    ratio = p_given / p_overall
-  ) |>
-  mutate(across(c(p_given, p_overall), \(x) round(x, 3)), ratio = round(ratio, 2))
+# TODO(code, R): needs net_layer_overlap(), the overlap, Jaccard index, conditional probability and chance-expected overlap between two layers
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 3 × 5
-  a          b           both jaccard jaccard_either_direction
-  <chr>      <chr>      <dbl>   <dbl>                    <dbl>
-1 advice     friendship    60    0.26                     0.41
-2 advice     reports_to    19    0.1                      0.14
-3 friendship reports_to    12    0.11                     0.14
-# A tibble: 4 × 5
-  given      then       p_given p_overall ratio
-  <chr>      <chr>        <dbl>     <dbl> <dbl>
-1 advice     friendship   0.316     0.243   1.3
-2 friendship advice       0.588     0.452   1.3
-3 reports_to advice       0.95      0.452   2.1
-4 advice     reports_to   0.1       0.048   2.1
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-pairs = [("advice", "friendship"), ("advice", "reports_to"), ("friendship", "reports_to")]
-upper = np.triu_indices(21, k=1)
-
-def either_direction(m):
-    # a pair counts as tied if either manager names the other
-    return (m | m.T)[upper]
-
-# Overlap and Jaccard, counting arcs, and again when a tie in either direction counts.
-print("layers                       both  Jaccard  Jaccard, either direction")
-for a, b in pairs:
-    both = int((layer[a] & layer[b]).sum())
-    jaccard = both / (layer[a] | layer[b]).sum()
-    x, y = either_direction(layer[a]), either_direction(layer[b])
-    print(f"{a + ' & ' + b:<27} {both:>5} {jaccard:>8.2f} {(x & y).sum() / (x | y).sum():>26.2f}")
-
-# Given a tie in one layer, how likely is the same pair in another? Compared with the base rate.
-print("given         then          P(then | given)  P(then) overall  ratio")
-for given, then in [("advice", "friendship"), ("friendship", "advice"), ("reports_to", "advice"), ("advice", "reports_to")]:
-    p_given = (layer[given] & layer[then]).sum() / layer[given].sum()
-    p_overall = layer[then].sum() / 420
-    print(f"{given:<13} {then:<13} {p_given:>15.3f} {p_overall:>16.3f} {p_given / p_overall:>7.2f}")
+# TODO(code, Python): needs net_layer_overlap(), the overlap, Jaccard index, conditional probability and chance-expected overlap between two layers
 ```
 
 ::: {.code-output}
 ```text
-layers                       both  Jaccard  Jaccard, either direction
-advice & friendship            60     0.26                       0.41
-advice & reports_to            19     0.10                       0.14
-friendship & reports_to        12     0.11                       0.14
-given         then          P(then | given)  P(then) overall  ratio
-advice        friendship              0.316            0.243    1.30
-friendship    advice                  0.588            0.452    1.30
-reports_to    advice                  0.950            0.452    2.10
-advice        reports_to              0.100            0.048    2.10
+TODO(output)
 ```
 :::
 
@@ -351,68 +268,31 @@ Reporting is the outlier. Of the 20 reporting arcs, 19 are advice arcs: a manage
 
 ### Two yardsticks for an overlap number
 
-A Jaccard of 0.26 sounds low, and 0.10 sounds lower. But how high *could* it be, and how high would it be by luck? Both answers come from the symbols above and need no simulation. In ordinary words: the ceiling is "the most the two layers could possibly share, given their sizes," and the luck number is "what they'd share if each layer were thrown down on the pairs at random." For advice (190 arcs) and friendship (102 arcs) among 420 ordered pairs, luck gives $190 \times 102 / 420 \approx 46$ shared arcs. The code prints, for every pair of layers, the two layer sizes, the overlap, the overlap expected by luck ($m_A m_B / N$), the lift, the Jaccard index, its ceiling and the share of the smaller layer found in the larger one ($o / \min(m_A, m_B)$).
+A Jaccard of 0.26 sounds low, and 0.10 sounds lower. But how high *could* it be, and how high would it be by luck? Both answers come from the symbols above and need no simulation. In ordinary words: the ceiling is "the most the two layers could possibly share, given their sizes," and the luck number is "what they'd share if each layer were thrown down on the pairs at random." For advice (190 arcs) and friendship (102 arcs) among 420 ordered pairs, luck gives $190 \times 102 / 420 \approx 46$ shared arcs. The Rust tab prints, for every pair of layers, the two layer sizes, the overlap, the overlap expected by luck ($m_A m_B / N$), the lift, the Jaccard index, its ceiling and the share of the smaller layer found in the larger one ($o / \min(m_A, m_B)$).
 
 ::: {.panel-tabset group="language"}
 
 ## R
 
 ```r
-off <- \(m) m[row(m) != col(m)]
-budget <- \(x, y) {
-  x <- off(x)
-  y <- off(y)
-  both <- sum(x * y)
-  expected <- sum(x) * sum(y) / length(x)
-  tibble(
-    in_a = sum(x), in_b = sum(y), both,
-    expected = round(expected, 1),
-    lift = round(both / (sum(x) * sum(y) / length(x)), 2),
-    jaccard = round(both / (sum(x) + sum(y) - both), 2),
-    ceiling = round(min(sum(x), sum(y)) / max(sum(x), sum(y)), 2),
-    share_of_smaller = round(both / min(sum(x), sum(y)), 2)
-  )
-}
-
-pairs |>
-  bind_cols(map2(pairs$a, pairs$b, \(x, y) budget(layer[[x]], layer[[y]])) |> list_rbind())
+# TODO(code, R): needs net_layer_overlap(), including the two yardsticks (chance-expected overlap, lift, the Jaccard ceiling and the share of the smaller layer)
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 3 × 10
-  a      b      in_a  in_b  both expected  lift jaccard ceiling share_of_smaller
-  <chr>  <chr> <dbl> <dbl> <dbl>    <dbl> <dbl>   <dbl>   <dbl>            <dbl>
-1 advice frie…   190   102    60     46.1  1.3     0.26    0.54             0.59
-2 advice repo…   190    20    19      9    2.1     0.1     0.11             0.95
-3 frien… repo…   102    20    12      4.9  2.47    0.11    0.2              0.6 
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-off = ~np.eye(21, dtype=bool)
-head = "layers                      in A  in B  both  expected  lift  Jaccard  ceiling  share of smaller"
-
-def budget(name, x, y):
-    # x and y hold a 0 or 1 for every ordered pair of people
-    mx, my, both = x.sum(), y.sum(), (x & y).sum()
-    expected = mx * my / len(x)
-    print(f"{name:<27} {mx:>4} {my:>5} {both:>5} {expected:>9.1f} {both / expected:>5.2f} "
-          f"{both / (mx + my - both):>8.2f} {min(mx, my) / max(mx, my):>8.2f} {both / min(mx, my):>9.2f}")
-
-print(head)
-for a, b in pairs:
-    budget(f"{a} & {b}", layer[a][off], layer[b][off])
+# TODO(code, Python): needs net_layer_overlap(), including the two yardsticks (chance-expected overlap, lift, the Jaccard ceiling and the share of the smaller layer)
 ```
 
 ::: {.code-output}
 ```text
-layers                      in A  in B  both  expected  lift  Jaccard  ceiling  share of smaller
-advice & friendship          190   102    60      46.1  1.30     0.26     0.54      0.59
-advice & reports_to          190    20    19       9.0  2.10     0.10     0.11      0.95
-friendship & reports_to      102    20    12       4.9  2.47     0.11     0.20      0.60
+TODO(output)
 ```
 :::
 
@@ -479,65 +359,24 @@ How much does each merge keep? Code each ordered pair of managers by *which* lay
 ## R
 
 ```r
-# Code each ordered pair by the layers that tie it: advice 1, friendship 2, reporting 4.
-code <- (layer$advice + 2 * layer$friendship + 4 * layer$reports_to)[row(layer$advice) != col(layer$advice)]
-labels <- c("no layer", "advice only", "friendship only", "advice + friendship",
-            "reporting only", "advice + reporting", "friendship + reporting", "all three")
-
-tibble(code = factor(code, levels = 0:7)) |>
-  count(code, .drop = FALSE) |>
-  mutate(tied_in = labels, .before = 1) |>
-  select(tied_in, pairs = n)
-
-# What each merge keeps.
-tibble(union_arcs = sum(code > 0), in_two_or_more = sum(code %in% c(3, 5, 6, 7)))
+# TODO(code, R): needs net_layer_patterns(), the count of ordered pairs tied by each combination of layers
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 8 × 2
-  tied_in                pairs
-  <chr>                  <int>
-1 no layer                 188
-2 advice only              122
-3 friendship only           41
-4 advice + friendship       49
-5 reporting only             0
-6 advice + reporting         8
-7 friendship + reporting     1
-8 all three                 11
-# A tibble: 1 × 2
-  union_arcs in_two_or_more
-       <int>          <int>
-1        232             69
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# Code each ordered pair by the layers that tie it: advice 1, friendship 2, reporting 4.
-code = (layer["advice"] + 2 * layer["friendship"] + 4 * layer["reports_to"])[~np.eye(21, dtype=bool)]
-labels = ["no layer", "advice only", "friendship only", "advice + friendship", "reporting only",
-          "advice + reporting", "friendship + reporting", "all three"]
-for c, label in enumerate(labels):
-    print(f"{label:<24} {(code == c).sum():>4}")
-
-# What each merge keeps.
-print(f"union keeps {(code > 0).sum()} arcs; {np.isin(code, [3, 5, 6, 7]).sum()} of them are in two or more layers")
+# TODO(code, Python): needs net_layer_patterns(), the count of ordered pairs tied by each combination of layers
 ```
 
 ::: {.code-output}
 ```text
-no layer                  188
-advice only               122
-friendship only            41
-advice + friendship        49
-reporting only              0
-advice + reporting          8
-friendship + reporting      1
-all three                  11
-union keeps 232 arcs; 69 of them are in two or more layers
+TODO(output)
 ```
 :::
 
@@ -596,15 +435,14 @@ A **correlation** is a number between -1 and 1 that says whether two lists of nu
 ## R
 
 ```r
-indeg <- map(layer, colSums)
-outdeg <- map(layer, rowSums)
-pairs |>
-  mutate(
-    in_degree_r = map2_dbl(a, b, \(x, y) cor(indeg[[x]], indeg[[y]])),
-    in_degree_rho = map2_dbl(a, b, \(x, y) cor(indeg[[x]], indeg[[y]], method = "spearman")),
-    out_degree_r = map2_dbl(a, b, \(x, y) cor(outdeg[[x]], outdeg[[y]]))
-  ) |>
-  mutate(across(where(is.numeric), \(x) round(x, 2)))
+# Each manager's in-degree and out-degree in each layer, and how the layers' columns correlate.
+indeg <- sapply(layer, net_degree, mode = "in")
+outdeg <- sapply(layer, net_degree, mode = "out")
+list(
+  in_degree_pearson = round(cor(indeg), 2),
+  in_degree_spearman = round(cor(indeg, method = "spearman"), 2),
+  out_degree_pearson = round(cor(outdeg), 2)
+)
 ```
 
 ::: {.code-output}
@@ -621,26 +459,36 @@ pairs |>
 ## Python
 
 ```python
-def ranks(x):
-    # 1 for the smallest; tied values share the average of their ranks
-    return np.array([(x < v).sum() + ((x == v).sum() + 1) / 2 for v in x])
+import pandas as pd
 
-def corr(x, y):
-    return np.corrcoef(x, y)[0, 1]
-
-print("layers                      in-degree r  in-degree rho  out-degree r")
-for a, b in pairs:
-    ia, ib = layer[a].sum(axis=0), layer[b].sum(axis=0)
-    oa, ob = layer[a].sum(axis=1), layer[b].sum(axis=1)
-    print(f"{a + ' & ' + b:<27} {corr(ia, ib):>9.2f} {corr(ranks(ia), ranks(ib)):>14.2f} {corr(oa, ob):>13.2f}")
+# Each manager's in-degree and out-degree in each layer, and how the layers' columns correlate.
+indeg = pd.DataFrame({k: nx.in_degree_centrality(g) for k, g in layer.items()})
+outdeg = pd.DataFrame({k: nx.out_degree_centrality(g) for k, g in layer.items()})
+print("in-degree, Pearson r")
+print(indeg.corr().round(2))
+print("in-degree, Spearman rho")
+print(indeg.corr(method="spearman").round(2))
+print("out-degree, Pearson r")
+print(outdeg.corr().round(2))
 ```
 
 ::: {.code-output}
 ```text
-layers                      in-degree r  in-degree rho  out-degree r
-advice & friendship              0.31           0.14         -0.11
-advice & reports_to              0.54           0.65          0.04
-friendship & reports_to          0.09           0.00          0.25
+in-degree, Pearson r
+            advice  friendship  reports_to
+advice        1.00        0.31        0.54
+friendship    0.31        1.00        0.09
+reports_to    0.54        0.09        1.00
+in-degree, Spearman rho
+            advice  friendship  reports_to
+advice        1.00        0.14        0.65
+friendship    0.14        1.00        0.00
+reports_to    0.65        0.00        1.00
+out-degree, Pearson r
+            advice  friendship  reports_to
+advice        1.00       -0.11        0.04
+friendship   -0.11        1.00        0.25
+reports_to    0.04        0.25        1.00
 ```
 :::
 
@@ -694,26 +542,22 @@ Now the personal version of the question. Take betweenness, the share of shortes
 ## R
 
 ```r
-sym <- \(m) pmax(m, t(m))
-union <- pmin(layer$advice + layer$friendship + layer$reports_to, 1)
-between <- \(m) net_betweenness(as_net_frame(sym(m), directed = FALSE))
-
-scores <- tibble(
-  manager = 1:21,
+# Ignore direction: a pair is tied if either manager names the other.
+union <- net_combine_relations(krack, method = "union")
+between <- \(h) net_betweenness(net_symmetrize(h))
+scores <- data.frame(
   advice = between(layer$advice),
   friendship = between(layer$friendship),
   all_ties = between(union)
-) |>
-  mutate(across(c(advice, friendship, all_ties), \(x) rank(-x), .names = "{.col}_rank"))
-
-scores |>
-  filter(if_any(ends_with("_rank"), \(r) r <= 3)) |>
-  mutate(across(c(advice, friendship, all_ties), \(x) round(x, 1))) |>
-  select(manager, advice, advice_rank, friendship, friendship_rank, all_ties, all_ties_rank)
+)
+ranks <- as.data.frame(lapply(scores, \(x) rank(-x)))   # 1 = most between
+names(ranks) <- paste0(names(scores), "_rank")
+results <- cbind(manager = 1:21, round(scores, 1), ranks)
+results[rowSums(ranks <= 3) > 0, ]
 
 # A check: keep only friendships that both managers name.
-mutual <- between(layer$friendship * t(layer$friendship))
-tibble(manager = 17, betweenness = round(mutual[17], 1), rank = rank(-mutual)[17])
+mutual <- net_betweenness(net_symmetrize(layer$friendship, method = "min"))
+c(betweenness = unname(mutual[17]), rank = unname(rank(-mutual)[17]))
 ```
 
 ::: {.code-output}
@@ -737,25 +581,23 @@ tibble(manager = 17, betweenness = round(mutual[17], 1), rank = rank(-mutual)[17
 ## Python
 
 ```python
-union = layer["advice"] | layer["friendship"] | layer["reports_to"]
+# Ignore direction: a pair is tied if either manager names the other.
+def between(g, reciprocal=False):
+    b = nx.betweenness_centrality(g.to_undirected(reciprocal=reciprocal), normalized=False)
+    return pd.Series(b).sort_index()
 
-def between(m):
-    # ignore direction: a pair is tied if either manager names the other
-    g = nx.from_numpy_array(m | m.T)
-    b = nx.betweenness_centrality(g, normalized=False)
-    return np.array([b[i] for i in range(21)])
+union = nx.compose_all(layer.values())
+score = pd.DataFrame({"advice": between(layer["advice"]), "friendship": between(layer["friendship"]),
+                      "all ties": between(union)})
+rank = score.rank(ascending=False)  # 1 = most between
 
-score = {"advice": between(layer["advice"]), "friendship": between(layer["friendship"]), "all ties": between(union)}
-rank = {k: ranks(-v) for k, v in score.items()}  # 1 = most between
-
-top = [i for i in range(21) if any(r[i] <= 3 for r in rank.values())]
 print("manager    advice (rank)   friendship (rank)   all ties (rank)")
-for i in top:
-    print(f"{i + 1:>7}  " + "   ".join(f"{score[k][i]:>8.1f} ({rank[k][i]:>2.0f})" for k in score))
+for i in score.index[(rank <= 3).any(axis=1)]:
+    print(f"{i:>7}  " + "   ".join(f"{score[k][i]:>8.1f} ({rank[k][i]:>2.0f})" for k in score))
 
 # A check: keep only friendships that both managers name.
-mutual = between(layer["friendship"] & layer["friendship"].T)
-print(f"manager 17 with only mutual friendships: betweenness {mutual[16]:.1f}, rank {ranks(-mutual)[16]:.0f}")
+mutual = between(layer["friendship"], reciprocal=True)
+print(f"manager 17 with only mutual friendships: betweenness {mutual[17]:.1f}, rank {mutual.rank(ascending=False)[17]:.0f}")
 ```
 
 ::: {.code-output}
@@ -835,80 +677,24 @@ A ranking from one survey of 21 people could change a good deal if one person's 
 ## R
 
 ```r
-# Take each manager out in turn: none of their ties count, in any layer.
-without <- \(i) map(layer, \(m) {
-  m[i, ] <- 0
-  m[, i] <- 0
-  m
-})
-
-stability <- tibble(dropped = 1:21) |>
-  mutate(
-    kept = map(dropped, without),
-    top_friendship = map_int(kept, \(k) which.max(between(k$friendship))),
-    top_advice = map_int(kept, \(k) which.max(between(k$advice))),
-    jaccard = map_dbl(kept, \(k) sum(k$advice * k$friendship) / sum(pmax(k$advice, k$friendship)))
-  )
-
-# Who has the highest betweenness once someone else is out? (Manager 17 and 15 are skipped in their own tables.)
-stability |> filter(dropped != 17) |> count(top_friendship)
-stability |> filter(dropped != 15) |> count(top_advice)
-stability |> filter(dropped != 15, top_advice != 15) |> select(dropped, top_advice)
-stability |> summarise(lowest_jaccard = round(min(jaccard), 3), highest_jaccard = round(max(jaccard), 3))
+# TODO(code, R): needs a leave-one-manager-out stability check across layers (net_leave_out(), removing a node from every layer and rerunning a measure)
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 1 × 2
-  top_friendship     n
-           <int> <int>
-1             17    20
-# A tibble: 2 × 2
-  top_advice     n
-       <int> <int>
-1          2     1
-2         15    19
-# A tibble: 1 × 2
-  dropped top_advice
-    <int>      <int>
-1      12          2
-# A tibble: 1 × 2
-  lowest_jaccard highest_jaccard
-           <dbl>           <dbl>
-1          0.235           0.288
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-def without(i):
-    # take manager i out: none of their ties count, in any layer
-    kept = {k: m.copy() for k, m in layer.items()}
-    for m in kept.values():
-        m[i, :] = 0
-        m[:, i] = 0
-    return kept
-
-runs = []
-for i in range(21):
-    kept = without(i)
-    both = (kept["advice"] & kept["friendship"]).sum()
-    runs.append((i + 1, int(between(kept["friendship"]).argmax()) + 1, int(between(kept["advice"]).argmax()) + 1,
-                 both / (kept["advice"] | kept["friendship"]).sum()))
-
-friendship = [top for out, top, _, _ in runs if out != 17]
-advice = [(out, top) for out, _, top, _ in runs if out != 15]
-print(f"friendship: manager 17 has the highest betweenness in {friendship.count(17)} of {len(friendship)} drops")
-print(f"advice: manager 15 has it in {sum(t == 15 for _, t in advice)} of {len(advice)} drops; others (dropped, leader): {[a for a in advice if a[1] != 15]}")
-print(f"Jaccard of advice and friendship: lowest {min(r[3] for r in runs):.3f}, highest {max(r[3] for r in runs):.3f}")
+# TODO(code, Python): needs a leave-one-manager-out stability check across layers (net_leave_out(), removing a node from every layer and rerunning a measure)
 ```
 
 ::: {.code-output}
 ```text
-friendship: manager 17 has the highest betweenness in 20 of 20 drops
-advice: manager 15 has it in 19 of 20 drops; others (dropped, leader): [(12, 2)]
-Jaccard of advice and friendship: lowest 0.235, highest 0.288
+TODO(output)
 ```
 :::
 
@@ -965,49 +751,37 @@ Everything so far looked at layers one at a time, or after merging them. A metho
 
 A hand-checkable case. Take Ana, Ben and Cleo again, with advice tying Ana and Ben, and lunch tying Ben and Cleo. The supra network has six nodes: each person once in each layer. The couplings join Ana-in-advice to Ana-in-lunch, and likewise for Ben and Cleo. Think of a metro system where each line is a layer and changing lines costs you a minute on the platform. Now ask how far Ana is from Cleo. In the merged network, two steps: Ana to Ben to Cleo. In the supra network, if switching layers costs a step, it takes three: Ana to Ben within advice, Ben from advice to lunch, Ben to Cleo within lunch. That extra step is the price of changing the *kind* of tie, which is sometimes exactly the thing you want to measure. Passing a work request along an advice chain and then having to switch to a social tie to pass on a favour are different acts.
 
-As far as I have checked, none of the three tools used here has a ready-made layer-aware path measure. (In R, knappnet can hold a multilayer network and adds the coupling ties for you with `net_as_multilayer()`, but I haven't verified a path measure that uses them.) So we build the supra network by hand, for two layers at a time, after the Sampson data, where the layers are sparser and the comparison has more to show. If you need these measures for larger problems, look at tools built for the job: @magnani2021analysis describes an R package for multiplex social networks and @nurmi2024pymnet a Python library for multilayer networks. For community detection that spans layers, see @mucha2010community. Check what each one assumes about the couplings before you trust its output.
+As far as I have checked, none of the three tools used here has a ready-made layer-aware path measure. (In R, knappnet can hold a multilayer network and adds the coupling ties for you with `net_as_multilayer()`, but I haven't verified a path measure that uses them.) So the Rust tab builds the supra network by hand, for two layers at a time, after the Sampson data, where the layers are sparser and the comparison has more to show. If you need these measures for larger problems, look at tools built for the job: @magnani2021analysis describes an R package for multiplex social networks and @nurmi2024pymnet a Python library for multilayer networks. For community detection that spans layers, see @mucha2010community. Check what each one assumes about the couplings before you trust its output. The R and Python tabs for this section stay blank until knappnet exposes a layer-aware distance (`net_supra_distances()` on the list of missing functions).
 
 ## A second set of layers: Sampson's novices
 
 Krackhardt's layers are three different *kinds of tie*, all asked of the same people at about the same time. Sampson's monastery data are a good contrast. Samuel Sampson lived with a group of 18 novices in a New England monastery and asked each of them to rank the three novices they liked best, esteemed most and so on, for several relations, in a positive and a negative version of each [@sampson1968novitiate]. Liking was recorded at three times. The data are in the book's `data/sampson` folder.
 
-We use ten layers: liking at three times, then esteem, praise and positive influence, then disliking, disesteem, blame and negative influence. For each pair of layers we correlate the two tables of 0s and 1s over all 306 ordered pairs of novices. The code first prints how many ties each layer has and the fewest and most any novice names, which will turn out to matter.
+We use ten layers: liking at three times, then esteem, praise and positive influence, then disliking, disesteem, blame and negative influence. For each pair of layers we correlate the two tables of 0s and 1s over all 306 ordered pairs of novices. The R tab prints how many ties each layer has and the fewest and most any novice names, which will turn out to matter; the Rust tab also prints the correlation table.
 
 ::: {.panel-tabset group="language"}
 
 ## R
 
 ```r
-sn <- read.csv("data/sampson/nodes.csv")
-number <- set_names(sn$number, sn$name)
+# Sampson's 18 novices: ten layers. Liking is recorded at three times; the others once.
+sampson <- read.csv("data/sampson/edges.csv")
+sampson$kind <- ifelse(sampson$relation == "liking", paste0("liking_t", sampson$time), sampson$relation)
+names(sampson)[1:2] <- c("source", "target")
+novices <- data.frame(id = read.csv("data/sampson/nodes.csv")$name)
+net <- net_frame(sampson[c("source", "target", "kind")], nodes = novices, directed = TRUE, relation = "kind")
 order <- c("liking_t1", "liking_t2", "liking_t3", "esteem", "praise", "positive_influence",
            "disliking", "disesteem", "blame", "negative_influence")
-short <- c("like1", "like2", "like3", "esteem", "praise", "influ+", "dislike", "disest", "blame", "influ-")
-
-sampson <- read.csv("data/sampson/edges.csv") |>
-  mutate(key = if_else(relation == "liking", paste0("liking_t", time), relation)) |>
-  split(~key) |>
-  map(\(e) {
-    m <- matrix(0, 18, 18)
-    m[cbind(unname(number[e$from]), unname(number[e$to]))] <- 1
-    m
-  })
+sampson_layers <- net_split_relations(net)[order]
 
 # How many ties, and how many does one novice name at the fewest and the most?
-tibble(
-  layer = order,
-  ties = map_dbl(sampson[order], sum),
-  fewest = map_dbl(sampson[order], \(m) min(rowSums(m))),
-  most = map_dbl(sampson[order], \(m) max(rowSums(m)))
+data.frame(
+  ties = sapply(sampson_layers, \(h) nrow(h$edges)),
+  fewest = sapply(sampson_layers, \(h) min(net_degree(h, mode = "out"))),
+  most = sapply(sampson_layers, \(h) max(net_degree(h, mode = "out")))
 )
 
-# Correlation between layers over all ordered pairs of novices.
-sampson[order] |>
-  map(\(m) m[row(m) != col(m)]) |>
-  set_names(short) |>
-  as_tibble() |>
-  cor() |>
-  round(2)
+# TODO(code, R): needs net_layer_cor(), the correlation between layers over all ordered pairs (see the Rust tab)
 ```
 
 ::: {.code-output}
@@ -1042,55 +816,12 @@ influ-  -0.07 -0.05 -0.03  -0.20  -0.17  -0.20    0.55   0.58  0.35   1.00
 ## Python
 
 ```python
-with open("data/sampson/nodes.csv") as f:
-    number = {r["name"]: int(r["number"]) - 1 for r in csv.DictReader(f)}
-with open("data/sampson/edges.csv") as f:
-    sampson_rows = list(csv.DictReader(f))
-order = ["liking_t1", "liking_t2", "liking_t3", "esteem", "praise", "positive_influence",
-         "disliking", "disesteem", "blame", "negative_influence"]
-short = ["like1", "like2", "like3", "esteem", "praise", "influ+", "dislike", "disest", "blame", "influ-"]
-
-sampson = {k: np.zeros((18, 18), dtype=int) for k in order}
-for r in sampson_rows:
-    key = r["relation"] + (f"_t{r['time']}" if r["relation"] == "liking" else "")
-    sampson[key][number[r["from"]], number[r["to"]]] = 1
-
-# How many ties, and how many does one novice name at the fewest and the most?
-for k in order:
-    m = sampson[k]
-    print(f"{k:<19} {m.sum():>3} ties, fewest named {m.sum(axis=1).min()}, most {m.sum(axis=1).max()}")
-
-# Correlation between layers over all ordered pairs of novices.
-off = ~np.eye(18, dtype=bool)
-table = np.corrcoef(np.array([sampson[k][off] for k in order]))
-print(" " * 8 + "".join(f"{s:>8}" for s in short))
-for s, row in zip(short, table):
-    print(f"{s:<8}" + "".join(f"{v:>8.2f}" for v in row))
+# TODO(code, Python): needs a Python layer reader and net_layer_cor(), the correlation between layers over all ordered pairs
 ```
 
 ::: {.code-output}
 ```text
-liking_t1            55 ties, fewest named 3, most 4
-liking_t2            57 ties, fewest named 3, most 4
-liking_t3            56 ties, fewest named 3, most 4
-esteem               54 ties, fewest named 0, most 4
-praise               39 ties, fewest named 0, most 4
-positive_influence   53 ties, fewest named 0, most 4
-disliking            47 ties, fewest named 0, most 4
-disesteem            58 ties, fewest named 0, most 5
-blame                41 ties, fewest named 0, most 5
-negative_influence   50 ties, fewest named 0, most 5
-           like1   like2   like3  esteem  praise  influ+ dislike  disest   blame  influ-
-like1       1.00    0.54    0.55    0.01    0.03    0.01    0.04   -0.03   -0.01   -0.07
-like2       0.54    1.00    0.64    0.02    0.04    0.00    0.01   -0.06   -0.04   -0.05
-like3       0.55    0.64    1.00    0.07    0.12    0.07    0.03   -0.03   -0.06   -0.03
-esteem      0.01    0.02    0.07    1.00    0.54    0.67   -0.17   -0.22   -0.16   -0.20
-praise      0.03    0.04    0.12    0.54    1.00    0.58   -0.16   -0.16   -0.15   -0.17
-influ+      0.01    0.00    0.07    0.67    0.58    1.00   -0.12   -0.18   -0.18   -0.20
-dislike     0.04    0.01    0.03   -0.17   -0.16   -0.12    1.00    0.65    0.28    0.55
-disest     -0.03   -0.06   -0.03   -0.22   -0.16   -0.18    0.65    1.00    0.37    0.58
-blame      -0.01   -0.04   -0.06   -0.16   -0.15   -0.18    0.28    0.37    1.00    0.35
-influ-     -0.07   -0.05   -0.03   -0.20   -0.17   -0.20    0.55    0.58    0.35    1.00
+TODO(output)
 ```
 :::
 
@@ -1183,44 +914,24 @@ The correlations say the waves go together. The yardsticks from earlier say how 
 ## R
 
 ```r
-waves <- tribble(
-  ~a, ~b,
-  "liking_t1", "liking_t2",
-  "liking_t2", "liking_t3",
-  "liking_t3", "esteem",
-  "liking_t3", "disliking"
-)
-waves |>
-  bind_cols(map2(waves$a, waves$b, \(x, y) budget(sampson[[x]], sampson[[y]])) |> list_rbind())
+# TODO(code, R): needs net_layer_overlap(), the overlap, Jaccard index, conditional probability and chance-expected overlap between two layers
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 4 × 10
-  a      b      in_a  in_b  both expected  lift jaccard ceiling share_of_smaller
-  <chr>  <chr> <dbl> <dbl> <dbl>    <dbl> <dbl>   <dbl>   <dbl>            <dbl>
-1 likin… liki…    55    57    35     10.2  3.42    0.45    0.96             0.64
-2 likin… liki…    57    56    40     10.4  3.83    0.55    0.98             0.71
-3 likin… este…    56    54    13      9.9  1.32    0.13    0.96             0.24
-4 likin… disl…    56    47    10      8.6  1.16    0.11    0.84             0.21
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-print(head)
-for a, b in [("liking_t1", "liking_t2"), ("liking_t2", "liking_t3"), ("liking_t3", "esteem"), ("liking_t3", "disliking")]:
-    budget(f"{a} & {b}", sampson[a][off], sampson[b][off])
+# TODO(code, Python): needs net_layer_overlap(), the overlap, Jaccard index, conditional probability and chance-expected overlap between two layers
 ```
 
 ::: {.code-output}
 ```text
-layers                      in A  in B  both  expected  lift  Jaccard  ceiling  share of smaller
-liking_t1 & liking_t2         55    57    35      10.2  3.42     0.45     0.96      0.64
-liking_t2 & liking_t3         57    56    40      10.4  3.83     0.55     0.98      0.71
-liking_t3 & esteem            56    54    13       9.9  1.32     0.13     0.96      0.24
-liking_t3 & disliking         56    47    10       8.6  1.16     0.11     0.84      0.21
+TODO(output)
 ```
 :::
 
@@ -1260,79 +971,24 @@ Now the supra network, built by hand for two layers at a time. It has $2n$ nodes
 ## R
 
 ```r
-supra_vs_flat <- \(x, y) {
-  n <- nrow(x)
-  flat <- net_distances(as_net_frame(pmax(x, y), directed = FALSE))
-  # The supra network: the layers side by side, each person tied to their own copy.
-  d <- net_distances(as_net_frame(rbind(cbind(x, diag(n)), cbind(diag(n), y)), directed = FALSE))
-  # A person-to-person distance may start and end in whichever copy is quickest.
-  supra <- pmin(d[1:n, 1:n], d[1:n, n + 1:n], d[n + 1:n, 1:n], d[n + 1:n, n + 1:n])
-  between_people <- row(flat) != col(flat)
-  tibble(
-    mean_flat = round(mean(flat[between_people]), 3),
-    mean_supra = round(mean(supra[between_people]), 3),
-    farther = round(mean(supra[between_people] > flat[between_people]), 3),
-    diameter_flat = max(flat),
-    diameter_supra = max(supra)
-  )
-}
-
-list(
-  "Ana, Ben, Cleo" = list(rbind(c(0, 1, 0), c(1, 0, 0), c(0, 0, 0)), rbind(c(0, 0, 0), c(0, 0, 1), c(0, 1, 0))),
-  "managers: advice, friendship" = list(sym(layer$advice), sym(layer$friendship)),
-  "novices: liking 3, esteem" = list(sym(sampson$liking_t3), sym(sampson$esteem))
-) |>
-  map(\(l) supra_vs_flat(l[[1]], l[[2]])) |>
-  list_rbind(names_to = "layers")
+# TODO(code, R): needs net_supra_distances(), person-to-person layer-aware distances on a coupled multilayer network
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 3 × 6
-  layers               mean_flat mean_supra farther diameter_flat diameter_supra
-  <chr>                    <dbl>      <dbl>   <dbl>         <dbl>          <dbl>
-1 Ana, Ben, Cleo            1.33       1.67   0.333             2              3
-2 managers: advice, f…      1.24       1.24   0                 2              2
-3 novices: liking 3, …      1.52       1.59   0.065             2              3
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-def distances(m):
-    d = dict(nx.all_pairs_shortest_path_length(nx.from_numpy_array(m)))
-    return np.array([[d[i][j] for j in range(len(m))] for i in range(len(m))])
-
-def supra_vs_flat(x, y):
-    n = len(x)
-    flat = distances(x | y)
-    # The supra network: the layers side by side, each person tied to their own copy.
-    supra = distances(np.block([[x, np.eye(n, dtype=int)], [np.eye(n, dtype=int), y]]))
-    # A person-to-person distance may start and end in whichever copy is quickest.
-    person = np.minimum.reduce([supra[:n, :n], supra[:n, n:], supra[n:, :n], supra[n:, n:]])
-    between_people = ~np.eye(n, dtype=bool)
-    return (flat[between_people].mean(), person[between_people].mean(),
-            (person[between_people] > flat[between_people]).mean(), flat.max(), person.max())
-
-either = lambda m: m | m.T
-cases = {
-    "Ana, Ben, Cleo": (np.array([[0, 1, 0], [1, 0, 0], [0, 0, 0]]), np.array([[0, 0, 0], [0, 0, 1], [0, 1, 0]])),
-    "managers: advice, friendship": (either(layer["advice"]), either(layer["friendship"])),
-    "novices: liking 3, esteem": (either(sampson["liking_t3"]), either(sampson["esteem"])),
-}
-print("layers                       mean flat  mean supra  share farther  diameter flat  diameter supra")
-for name, (x, y) in cases.items():
-    mean_flat, mean_supra, farther, diameter_flat, diameter_supra = supra_vs_flat(x, y)
-    print(f"{name:<28} {mean_flat:>9.3f} {mean_supra:>11.3f} {farther:>14.3f} {diameter_flat:>14} {diameter_supra:>15}")
+# TODO(code, Python): needs net_supra_distances(), person-to-person layer-aware distances on a coupled multilayer network
 ```
 
 ::: {.code-output}
 ```text
-layers                       mean flat  mean supra  share farther  diameter flat  diameter supra
-Ana, Ben, Cleo                   1.333       1.667          0.333              2               3
-managers: advice, friendship     1.243       1.243          0.000              2               2
-novices: liking 3, esteem        1.523       1.588          0.065              2               3
+TODO(output)
 ```
 :::
 
@@ -1420,14 +1076,13 @@ A layer-by-layer analysis produces many numbers. It is easy to say too much abou
 ## R
 
 ```r
-tests <- pairs |>
-  mutate(test = map2(a, b, \(x, y) net_qap_cor(layer[[x]], layer[[y]], mode = "digraph", reps = 10000, seed = 1)))
-tests |>
-  mutate(
-    correlation = round(map_dbl(test, \(t) as.numeric(t$statistic)), 3),
-    share_at_least = round(map_dbl(test, \(t) t$p.value[["Pr(>=r)"]]), 4)
-  ) |>
-  select(a, b, correlation, share_at_least)
+pairs <- list(c("advice", "friendship"), c("advice", "reports_to"), c("friendship", "reports_to"))
+tests <- lapply(pairs, \(p) net_qap_cor(layer[[p[1]]], layer[[p[2]]], reps = 10000, seed = 1))
+data.frame(
+  layers = sapply(pairs, paste, collapse = " & "),
+  correlation = round(sapply(tests, \(t) as.numeric(t$statistic)), 3),
+  share_at_least = round(sapply(tests, \(t) t$p.value[["Pr(>=r)"]]), 4)
+)
 ```
 
 ::: {.code-output}
@@ -1444,30 +1099,12 @@ tests |>
 ## Python
 
 ```python
-def qap(a, b, reps=10000, seed=1):
-    # relabel the managers in one layer (rows and columns together) and recompute the correlation
-    off = ~np.eye(21, dtype=bool)
-    rng = np.random.default_rng(seed)
-    observed = corr(a[off], b[off])
-    draws = np.empty(reps)
-    for r in range(reps):
-        p = rng.permutation(21)
-        draws[r] = corr(a[np.ix_(p, p)][off], b[off])
-    return observed, np.mean(draws >= observed - 1e-10)
-
-# Python draws its own relabelings, so the last digit of the share can differ from the other tabs.
-print("layers                      correlation  share of relabelings at least that high")
-for a, b in pairs:
-    r, share = qap(layer[a], layer[b])
-    print(f"{a + ' & ' + b:<27} {r:>11.3f} {share:>20.4f}")
+# TODO(code, Python): needs a QAP correlation test between two networks (net_qap_cor(); the Python backend does not wrap it)
 ```
 
 ::: {.code-output}
 ```text
-layers                      correlation  share of relabelings at least that high
-advice & friendship               0.155               0.0192
-advice & reports_to               0.224               0.0000
-friendship & reports_to           0.186               0.0001
+TODO(output)
 ```
 :::
 
@@ -1528,7 +1165,7 @@ Tools also disagree, and it is worth knowing where we saw it.
 - *What counts as the pairs.* Counting ordered arcs gave a Jaccard of 0.26 for advice and friendship; counting a pair as tied if either manager names the other gave 0.41. Both are right. They answer different questions, and each tool will do the one you ask for.
 - *Random relabelings.* R and Rust gave the same QAP shares here (0.0186, 0.0000 and 0.0002 for the three pairs), since the R package calls the same engine and draws the same relabelings. Python draws its own, and its share for advice and friendship was 0.0192. The correlation (0.155) was identical in all three. Differences in the third decimal of a Monte Carlo share (a share worked out from random relabelings, so it wobbles a little from run to run) are noise; if a decision hangs on them, run more relabelings.
 - *Ties in ranks.* We compute ranks with tied values sharing their average, and the three tabs agreed on every correlation printed. We did not test a tool that breaks ties by position, but it would give different rank correlations whenever many scores tie, as in-degrees do, so check which rule yours uses.
-- *Layer-aware measures.* None of the tools here has a ready-made one that I checked, which is why the supra distances above were written by hand. Packages built for multilayer networks [@magnani2021analysis; @nurmi2024pymnet] are the place to look. Check how each treats couplings, and report the coupling cost you used.
+- *Layer-aware measures.* None of the tools here has a ready-made one that I checked, which is why the supra distances above were written by hand in the Rust tab. Packages built for multilayer networks [@magnani2021analysis; @nurmi2024pymnet] are the place to look. Check how each treats couplings, and report the coupling cost you used.
 
 ## A checklist before you report
 
