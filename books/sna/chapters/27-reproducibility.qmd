@@ -2,75 +2,1305 @@
 
 ::: {.callout-note appearance="simple"}
 ## Prerequisites
-Getting started.
+@sec-getting-started and @sec-tests-and-null-models. We reuse Krackhardt's 21 managers and Zachary's karate club, and the habit of reading a result against random draws. @sec-collecting-data says where network data come from, and @sec-reporting says what to write about a result. This chapter is about what has to hold still between the two so that someone else, or you in a year, gets the same answer.
 :::
 
 ## Introduction
 
-Conventions that differ across tools, provenance, and working with large graphs.
+You ran an analysis in R last spring. A colleague reruns it in Python this week and gets a different number. Or you rerun it yourself, on the same laptop, and a community comes out in a different place. Somebody has to decide which number is right, and the first honest answer is often "both".
 
-TODO(prose, see docs/VOICE.md): motivating question, the idea in plain words, what the reader can
-do after this chapter.
+Network results fail to reproduce for reasons that have little to do with whether the analysis was careful. A random draw uses a different generator. Two people on a tie list are ranked in a different order. A function counts a repeated tie once in one package and twice in another. A file was edited. The goal of this chapter is not to scare you off network analysis. It is to give you a short list of the usual suspects, a way to tell them apart, and a habit that makes most of them harmless.
 
-## The same measure, different answers
+By the end you should be able to:
 
-TODO(prose): concept, definition, a small worked example by hand.
+- name the eight usual reasons two runs of "the same" analysis disagree, and say which one you are looking at;
+- read a tie list the way each tool reads it (repeated ties, self-loops, direction) and say what each reading counts;
+- say what a seed does and what it does not do, and why "seed 1" means something different in each language;
+- make a result independent of the order the nodes happen to be listed in, and know when it cannot be;
+- record a run so that it can be repeated: data hash, graph hash, parameters, seed and versions;
+- compare two tools' numbers with a tolerance that is chosen on purpose, and test a measure against an answer you worked out by hand;
+- lay out a project, a notebook and a container so that rerunning it is boring;
+- share a network without handing over the people in it.
 
-Every code example uses this three-tab block. The tab text is placeholder until
-the library interface is final; the comment names the measure it will call.
+Every number below comes from code that ran. Where the three languages print different numbers, that is the point, and the text says so.
+
+## Eight reasons two runs disagree
+
+Start with the smallest example that shows the trouble, because a trouble you can count by hand is one you will recognize later. Five people: Ana, Ben, Chloe, Dev and Eli. A survey recorded five ties: Ana and Ben, Ben and Chloe, Chloe and Ana, Ben and Chloe *again* (somebody typed it twice), and Dev with Dev (a typing slip, or an entry meaning "works alone"). Eli is on the roster and has no ties.
+
+Count each person's degree, the number of ties they have, three ways.
+
+1. **As recorded.** Keep every row. Ana has 2 ties. Ben has 3 (Ana, and Chloe twice). Chloe has 3. Dev has a tie to himself, which by the usual rule adds 2 to his count, so 2. Eli has 0. There are 5 ties among 5 people, out of $5 \times 4 / 2 = 10$ possible pairs, so the density is 0.50. (The ten pairs leave out the pair of a person with themselves; that choice is another convention.)
+2. **A simple graph.** Merge the repeated Ben and Chloe tie and keep the loop, the way NetworkX's `Graph` does. Now 4 ties, degrees 2, 2, 2, 2 and 0, density 0.40.
+3. **An adjacency matrix.** Merge repeats and drop the diagonal, the way sna and UCINET read a matrix. Now 3 ties, degrees 2, 2, 2, 0 and 0, density 0.30.
+
+One tie list, three networks, three densities. Nobody made an arithmetic mistake. Here is the same count in code.
 
 ::: {.panel-tabset group="language"}
 
 ## R
 
 ```r
-# TODO(code, R): reproduce another tool's convention with a preset
+library(knappnet)
+library(dplyr)
+library(purrr)
+
+# Five people. Ben-Chloe was entered twice, and Dev is tied to himself.
+ties <- tibble(source = c("Ana", "Ben", "Chloe", "Ben", "Dev"), target = c("Ben", "Chloe", "Ana", "Chloe", "Dev"))
+recorded <- net_frame(ties, nodes = tibble(id = c("Ana", "Ben", "Chloe", "Dev", "Eli")), directed = FALSE, quiet = TRUE)
+
+tibble(
+  reading = c("as recorded", "simple graph", "adjacency matrix"),
+  network = list(recorded, net_simplify(recorded), net_simplify(recorded, remove_loops = TRUE))
+) |>
+  mutate(
+    ties = map_int(network, \(x) nrow(x$edges)),
+    degrees = map_chr(network, \(x) paste(as.numeric(net_degree(x)), collapse = " ")),
+    density = map_dbl(network, \(x) round(as.numeric(net_density(x)), 2))
+  ) |>
+  select(-network)
 ```
 
 ::: {.code-output}
 ```text
-TODO(output): the printed result of the code above, once it runs.
+(R output goes here)
 ```
 :::
 
 ## Python
 
 ```python
-# TODO(code, Python): reproduce another tool's convention with a preset
+import networkx as nx
+
+# Five people. Ben-Chloe was entered twice, and Dev is tied to himself.
+people = ["Ana", "Ben", "Chloe", "Dev", "Eli"]
+recorded = nx.MultiGraph()
+recorded.add_nodes_from(people)
+recorded.add_edges_from([("Ana", "Ben"), ("Ben", "Chloe"), ("Chloe", "Ana"), ("Ben", "Chloe"), ("Dev", "Dev")])
+simple = nx.Graph(recorded)  # repeated ties merged, the loop kept
+matrix = nx.Graph(recorded)  # merged, and the loop dropped
+matrix.remove_edges_from(list(nx.selfloop_edges(matrix)))
+
+for label, g in [("as recorded", recorded), ("simple graph", simple), ("adjacency matrix", matrix)]:
+    print(f"{label:<17} ties {g.number_of_edges()}  degrees {[d for _, d in g.degree()]}  density {nx.density(g):.2f}")
 ```
 
 ::: {.code-output}
 ```text
-TODO(output): the printed result of the code above, once it runs.
+as recorded       ties 5  degrees [2, 3, 3, 2, 0]  density 0.50
+simple graph      ties 4  degrees [2, 2, 2, 2, 0]  density 0.40
+adjacency matrix  ties 3  degrees [2, 2, 2, 0, 0]  density 0.30
 ```
 :::
 
 ## Rust
 
 ```rust
-// TODO(code, Rust): reproduce another tool's convention with a preset
+use knappnet::metrics::degree::{compute_degree, DegreeMode};
+use knappnet::metrics::topography::{compute_density, simplify, simplify_keeping_loops, ParallelWeight};
+use knappnet::Graph;
+
+// Ana 0, Ben 1, Chloe 2, Dev 3, Eli 4. Ben-Chloe was entered twice, and Dev is tied to himself.
+let recorded = Graph::from_edges(5, &[0, 1, 2, 1, 3], &[1, 2, 0, 2, 3], None, false)?;
+let simple = simplify_keeping_loops(&recorded, false, ParallelWeight::Max, true)?; // repeated ties merged, the loop kept
+let matrix = simplify(&recorded, false, ParallelWeight::Max)?; // merged, and the loop dropped
+
+for (label, g) in [("as recorded", &recorded), ("simple graph", &simple), ("adjacency matrix", &matrix)] {
+    let degrees: Vec<i64> = compute_degree(g, DegreeMode::All, true).iter().map(|&d| d as i64).collect();
+    println!("{label:<17} ties {}  degrees {degrees:?}  density {:.2}", g.edge_count(), compute_density(g, false));
+}
 ```
 
 ::: {.code-output}
 ```text
-TODO(output): the printed result of the code above, once it runs.
+as recorded       ties 5  degrees [2, 3, 3, 2, 0]  density 0.50
+simple graph      ties 4  degrees [2, 2, 2, 2, 0]  density 0.40
+adjacency matrix  ties 3  degrees [2, 2, 2, 0, 0]  density 0.30
 ```
 :::
 
 :::
 
+The engine reads the list as recorded, which is also how igraph reads it, and it hands you `net_simplify()` when you want one of the other two. Each reading is a legitimate network. The trouble starts when two tools make different choices silently and you compare their numbers.
+
+That example is one of eight causes. Here is the whole list, with the section that deals with each.
+
+| # | Cause | What it looks like | Where in this chapter |
+| --- | --- | --- | --- |
+| 1 | **Repeated ties, loops, direction** | Degrees, density and path counts differ by a little or a lot | above, and the next section |
+| 2 | **Random draws** | A p-value or a community moves between runs | @sec-random-draws |
+| 3 | **A seed that means different things** | "Seed 1" in R and in Python give different numbers | @sec-random-draws |
+| 4 | **Order of the nodes or ties** | A top-ten list, a community or a tie-break changes when rows are sorted | @sec-order-and-ties |
+| 5 | **Conventions** | The same measure name gives different numbers in different packages | @sec-repro-conventions |
+| 6 | **Stopping rules and rounding** | Numbers agree to six digits and no further | @sec-tolerance |
+| 7 | **Versions** | A package update changes a default, or a bug is fixed | @sec-provenance |
+| 8 | **The data changed** | A file was edited, re-exported or sorted | @sec-provenance |
+
+The rest of the chapter takes them in turn. The strategy is the same each time: find out which cause you have, then either remove it (fix the seed, sort by name, state the convention) or record it (write down the version, hash the data).
+
+A word on direction, since it belongs with cause 1. A tie list says "Ana asked Ben" or "Ana and Ben talk". Read as arrows, Ana to Ben and Ben to Ana are two ties; read as pairs, they are one. In @sec-reporting the same advice network among Krackhardt's 21 managers has 190 arrows or 145 pairs, depending on which reading you take, and manager 18 is first for betweenness with the arrows and seventh without them. That is not a software disagreement. It is a question you answered without noticing. State it in the report: "directed" or "undirected", and what happens to a pair tied both ways.
+
+## Random draws, and what a seed does {#sec-random-draws}
+
+Many network methods use random numbers: null models, permutation tests, sampled approximations, community detection, layouts. A **pseudo-random generator** is a recipe that turns one number, the **seed**, into a long stream of numbers that look random. Same recipe and same seed give the same stream, every time. That is what lets you repeat a random analysis.
+
+Notice what that says. The seed fixes the stream *for one recipe*. Different languages use different recipes, so "set the seed to 1" starts four different streams. Here are the first three numbers each tool draws after seed 1, plus the first five ties of one random network with 10 people and 18 ties, drawn with seed 1.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# Park-Miller, a small generator you can write in any language (see the text).
+park_miller <- \(seed, k) purrr::accumulate(seq_len(k), \(s, i) (16807 * s) %% 2147483647, .init = seed)[-1] / 2147483647
+
+set.seed(1)
+tibble(
+  generator = c("R, runif()", "Park-Miller, by hand"),
+  first_three = c(paste(round(runif(3), 3), collapse = " "), paste(round(park_miller(1, 3), 3), collapse = " "))
+)
+
+# One random network from the engine: 10 people, 18 ties, seed 1.
+net_random_gnm(10, 18, seed = 1)$edges |>
+  head(5) |>
+  mutate(tie = paste(source, target, sep = "-")) |>
+  pull(tie)
+```
+
+::: {.code-output}
+```text
+(R output goes here)
+```
+:::
+
+## Python
+
+```python
+import random
+import numpy as np
+
+def park_miller(seed, k):
+    """k numbers in (0, 1) from the Park-Miller recurrence: the same in every language."""
+    out, s = [], seed
+    for _ in range(k):
+        s = 16807 * s % 2147483647
+        out.append(s / 2147483647)
+    return out
+
+random.seed(1)
+print("Python random       ", " ".join(f"{random.random():.3f}" for _ in range(3)))
+print("NumPy default_rng   ", " ".join(f"{x:.3f}" for x in np.random.default_rng(1).random(3)))
+print("Park-Miller         ", " ".join(f"{x:.3f}" for x in park_miller(1, 3)))
+draw = nx.gnm_random_graph(10, 18, seed=1)
+print("G(10, 18), seed 1   ", " ".join(f"{a + 1}-{b + 1}" for a, b in list(draw.edges())[:5]))
+```
+
+::: {.code-output}
+```text
+Python random        0.134 0.847 0.764
+NumPy default_rng    0.512 0.950 0.144
+Park-Miller          0.000 0.132 0.756
+G(10, 18), seed 1    1-7 1-8 1-6 1-9 1-5
+```
+:::
+
+## Rust
+
+```rust
+use knappnet::generate::sample_gnm;
+use knappnet::rng::Stream;
+
+// The engine's own generator (Philox), stream 0 of seed 1, and Park-Miller written out by hand.
+let mut stream = Stream::new(1, 0);
+let own: Vec<String> = (0..3).map(|_| format!("{:.3}", stream.draw_uniform())).collect();
+let mut state = 1u64;
+let portable: Vec<String> = (0..3).map(|_| { state = 16807 * state % 2147483647; format!("{:.3}", state as f64 / 2147483647.0) }).collect();
+println!("knappnet Philox     {}", own.join(" "));
+println!("Park-Miller         {}", portable.join(" "));
+
+// One random network: 10 people, 18 ties, seed 1 (positions start at 0, so we add 1 to match the others).
+let draw = &sample_gnm(10, 18, false, false, 1, 1, 0)?[0];
+let first_ties: Vec<String> = draw.from.iter().zip(&draw.to).take(5).map(|(a, b)| format!("{}-{}", a + 1, b + 1)).collect();
+println!("G(10, 18), seed 1   {}", first_ties.join(" "));
+```
+
+::: {.code-output}
+```text
+knappnet Philox     0.890 0.586 0.672
+Park-Miller         0.000 0.132 0.756
+G(10, 18), seed 1   1-2 1-3 1-5 2-5 2-8
+```
+:::
+
+:::
+
+Read across the tabs. R's own generator (the Mersenne Twister, behind `runif()`), Python's `random`, NumPy's `default_rng` and the engine's Philox generator [@salmon2011parallel] all start from seed 1 and print different numbers. Philox is a "counter-based" generator: each stream is a function of the seed, a stream number and a position, which, according to the engine's documentation, is what lets it draw the same numbers whether you use one thread or twenty. The line that agrees in every tab is Park-Miller [@parkmiller1988random], a one-line recipe: multiply by 16,807, keep the remainder after dividing by 2,147,483,647, and divide by that same number. It is a weak generator by modern standards, and for that reason we use it only where the point is that every language can reproduce it exactly (for example in @sec-tests-and-null-models).
+
+Now the last line of each tab. The random network is drawn from the same model, "10 people, 18 ties, every such network equally likely", with the same seed. The R tab and the Rust tab call the same engine, so they print the same five ties. NetworkX has its own recipe for the same model and prints other ties. All three draws are fine. None of them is *the* draw for seed 1.
+
+Two lessons follow.
+
+**A seed makes a run repeatable, not portable.** Set it, record it, and record which tool drew from it. If a colleague moves your analysis to another language and gets another number, that does not mean one of you made a mistake.
+
+**The answer should not depend on the draw.** If it does, the result is not ready to report. To see how much a result depends on the draw, repeat the whole analysis with several seeds and look at the spread. Here is the average clustering (transitivity) of random networks with 10 people and 18 ties, 300 networks per seed, for ten seeds.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# Average transitivity of 300 random networks, for each of ten seeds.
+mean_clustering <- \(seed) {
+  net_random_gnm(10, 18, reps = 300, seed = seed) |>
+    map_dbl(\(x) as.numeric(net_transitivity(x))) |>
+    mean(na.rm = TRUE)
+}
+means <- map_dbl(1:10, mean_clustering)
+tibble(lowest = min(means), average = mean(means), highest = max(means)) |>
+  mutate(across(everything(), \(x) round(x, 3)))
+```
+
+::: {.code-output}
+```text
+(R output goes here)
+```
+:::
+
+## Python
+
+```python
+# Average transitivity of 300 random networks, for each of ten seeds (NetworkX wants one seed per network).
+def mean_clustering(seed):
+    return np.mean([nx.transitivity(nx.gnm_random_graph(10, 18, seed=1000 * seed + i)) for i in range(300)])
+
+means = [mean_clustering(s) for s in range(1, 11)]
+print(f"lowest {min(means):.3f}  average {np.mean(means):.3f}  highest {max(means):.3f}")
+```
+
+::: {.code-output}
+```text
+lowest 0.361  average 0.367  highest 0.372
+```
+:::
+
+## Rust
+
+```rust
+use knappnet::metrics::descriptive::{compute_transitivity, ClusteringOptions};
+
+// Average transitivity of 300 random networks, for each of ten seeds.
+let mean_clustering = |seed: u64| -> Result<f64, knappnet::Error> {
+    let draws = sample_gnm(10, 18, false, false, 300, seed, 0)?;
+    let mut total = 0.0;
+    for d in &draws {
+        let from: Vec<i64> = d.from.iter().map(|&x| x as i64).collect();
+        let to: Vec<i64> = d.to.iter().map(|&x| x as i64).collect();
+        total += compute_transitivity(&Graph::from_edges(10, &from, &to, None, false)?, ClusteringOptions::default());
+    }
+    Ok(total / draws.len() as f64)
+};
+let means: Vec<f64> = (1..=10u64).map(mean_clustering).collect::<Result<_, _>>()?;
+let lowest = means.iter().cloned().fold(f64::INFINITY, f64::min);
+let highest = means.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+println!("lowest {lowest:.3}  average {:.3}  highest {highest:.3}", means.iter().sum::<f64>() / 10.0);
+```
+
+::: {.code-output}
+```text
+lowest 0.361  average 0.369  highest 0.374
+```
+:::
+
+:::
+
+Within one tool, the averages for different seeds differ in the third decimal place. Between tools the averages are close too, and the gap between R or Rust and Python is of the same size as the gap between two seeds of one tool. That is what "the answer does not depend on the draw" looks like. When the draws are many enough, the choice of generator stops mattering, and what is left is Monte Carlo error, which @sec-tests-and-null-models shows how to size. The practical rule is the one the permutation-test card repeats: say how many draws you used and the seed, and rerun with another seed before you trust the third decimal.
+
+### A seed in a sampled estimate
+
+The same problem shows up more sharply when the estimate itself rests on a small random sample. Exact betweenness needs the shortest routes between all pairs. A cheaper estimate picks a few *source* people at random, computes routes from only them, and scales up [@brandes2007centrality]. Both NetworkX (`k=`) and the engine (`betweenness_approx`) offer it. Take Krackhardt's advice network and sample five sources. For seeds 1 to 5, which manager comes out first, with what estimate, and what does the estimate say about manager 21, whose exact betweenness is 60.1?
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# Krackhardt's 21 managers: "To whom do you go for advice?" One row per tie, from asker to person asked.
+managers <- as_tibble(read.csv("data/krackhardt/nodes.csv")) |> rename(id = name)
+advice <- as_tibble(read.csv("data/krackhardt/edges.csv")) |>
+  filter(relation == "advice") |>
+  select(source = from, target = to)
+g <- net_frame(advice, nodes = managers, directed = TRUE, quiet = TRUE)
+
+exact <- as.numeric(net_betweenness(g))
+tibble(manager = c(18, 21), exact = round(exact[c(18, 21)], 1))
+
+# Five sampled sources, five different seeds.
+estimate <- \(seed) as.numeric(net_value(net_run(g, "betweenness_approx", samples = 5, seed = seed))$nodes)
+tibble(seed = 1:5) |>
+  mutate(
+    b = map(seed, estimate),
+    first = map_int(b, which.max),
+    first_estimate = round(map2_dbl(b, first, \(x, i) x[i]), 1),
+    manager_21 = round(map_dbl(b, \(x) x[21]), 1)
+  ) |>
+  select(-b)
+```
+
+::: {.code-output}
+```text
+(R output goes here)
+```
+:::
+
+## Python
+
+```python
+import csv
+
+# Krackhardt's 21 managers: "To whom do you go for advice?" One row per tie, from asker to person asked.
+with open("data/krackhardt/edges.csv") as f:
+    advice = [(int(r["from"]), int(r["to"])) for r in csv.DictReader(f) if r["relation"] == "advice"]
+D = nx.DiGraph()
+D.add_nodes_from(range(1, 22))
+D.add_edges_from(advice)
+
+exact = nx.betweenness_centrality(D, normalized=False)
+print(f"exact: manager 18 {exact[18]:.1f}, manager 21 {exact[21]:.1f}")
+
+# Five sampled sources, five different seeds.
+print("seed  first (estimate)  manager 21")
+for seed in range(1, 6):
+    b = nx.betweenness_centrality(D, k=5, seed=seed, normalized=False)
+    top = max(b, key=b.get)
+    print(f"{seed:>4}  {top:>5} ({b[top]:>5.1f})  {b[21]:>10.1f}")
+```
+
+::: {.code-output}
+```text
+exact: manager 18 88.9, manager 21 60.1
+seed  first (estimate)  manager 21
+   1     18 ( 43.4)         9.6
+   2     21 (168.5)       168.5
+   3     18 ( 61.8)        56.4
+   4     18 ( 85.0)        10.0
+   5     18 ( 88.5)        81.0
+```
+:::
+
+## Rust
+
+```rust
+use knappnet::exec::Exec;
+use knappnet::measures::{compute_betweenness_approx, BetweennessApprox};
+use knappnet::{compute_betweenness, BetweennessOptions};
+
+// Krackhardt's 21 managers: "To whom do you go for advice?" One row per tie, from asker to person asked.
+let text = std::fs::read_to_string("data/krackhardt/edges.csv")?;
+let advice: Vec<(i64, i64)> = text.lines().skip(1)
+    .map(|l| l.split(',').collect::<Vec<_>>())
+    .filter(|c| c[2] == "advice")
+    .map(|c| (c[0].parse::<i64>().unwrap() - 1, c[1].parse::<i64>().unwrap() - 1))
+    .collect();
+let (from, to): (Vec<i64>, Vec<i64>) = advice.iter().copied().unzip();
+let g = Graph::from_edges(21, &from, &to, None, true)?;
+
+let exact = compute_betweenness(&g, BetweennessOptions::default())?;
+println!("exact: manager 18 {:.1}, manager 21 {:.1}", exact[17], exact[20]);
+
+// Five sampled sources, five different seeds.
+println!("seed  first (estimate)  manager 21");
+for seed in 1..=5u64 {
+    let run = compute_betweenness_approx(&g, &BetweennessApprox { samples: 5, seed, ..Default::default() }, &Exec::default())?;
+    let b = &run.value.nodes;
+    let top = (0..21).fold(0, |best, i| if b[i] > b[best] { i } else { best });
+    println!("{seed:>4}  {:>5} ({:>5.1})  {:>10.1}", top + 1, b[top], b[20]);
+}
+```
+
+::: {.code-output}
+```text
+exact: manager 18 88.9, manager 21 60.1
+seed  first (estimate)  manager 21
+   1     18 ( 72.6)        27.6
+   2     18 ( 81.0)        62.4
+   3     18 ( 61.4)        11.5
+   4     21 ( 71.9)        71.9
+   5     18 ( 63.2)        55.8
+```
+:::
+
+:::
+
+Two things are going on, and they are different. First, five sources is a small sample, so the estimate for manager 21 swings a long way from seed to seed in every tool. A sampled estimate with a handful of sources should never be reported without its sample size and a repeat with other seeds. Second, even for the same seed the tools disagree: NetworkX and the engine each pick their five sources by their own rule, so seed 3 means one set of sources in one and another set in the other. That second part is the reproducibility problem, and the first is the statistics problem. The record you keep has to say how many sources, which seed and which tool, because all three change the answer.
+
+For the engine, R and Rust agree digit for digit on the same seed. They are the same code.
+
+::: {.callout-note appearance="simple"}
+## A habit for R users
+If you leave `seed` out of an engine call that uses one, the R package draws a seed from R's own random numbers, so `set.seed()` at the top of your script makes the whole script repeatable, and the seed that was used is stored in the result's provenance record, which we meet below. Passing `seed =` yourself is clearer, and it keeps working if somebody reorders your script.
+:::
+
+## Order of the nodes, and ties in a ranking {#sec-order-and-ties}
+
+The second source of quiet disagreement is order. A table of nodes has a first row, and many routines use position: to break ties, to start a search, to number the groups, to decide which of two equally good moves to take. Reorder the rows and some answers move even though the network has not changed.
+
+Zachary's karate club has 34 members and 78 ties. List the members from 1 to 34 and then from 34 to 1, build the same network each way, and compare. Four things to look at:
+
+1. a measure that depends only on the structure (betweenness) should agree once we line the members up again, up to rounding in the last digits;
+2. a "top six by degree" list, where two members tie for sixth place;
+3. Louvain communities (@sec-subgroups) with the same seed;
+4. three ways to fingerprint the network.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+members <- as_tibble(read.csv("data/karate/nodes.csv"))
+karate_ties <- as_tibble(read.csv("data/karate/edges.csv")) |> select(source, target)
+backward_members <- arrange(members, desc(id))
+forward <- net_frame(karate_ties, nodes = members, directed = FALSE, quiet = TRUE)
+backward <- net_frame(karate_ties, nodes = backward_members, directed = FALSE, quiet = TRUE)
+
+# 1. Betweenness belongs to the member, so line the backward run up again before comparing.
+tibble(betweenness_agrees_to_1e9 = max(abs(as.numeric(net_betweenness(forward)) - rev(as.numeric(net_betweenness(backward))))) < 1e-9)
+
+# 2. Top six by degree: arrange() keeps the listed order among ties.
+top_six <- \(people, frame) people |>
+  mutate(degree = as.numeric(net_degree(frame))) |>
+  arrange(desc(degree)) |>
+  slice_head(n = 6) |>
+  pull(id)
+tibble(
+  listed = c("forward", "backward"),
+  top_six = c(paste(top_six(members, forward), collapse = " "), paste(top_six(backward_members, backward), collapse = " "))
+)
+
+# 3. Louvain with the same seed on both listings; adjusted Rand 1 means the same groups.
+louvain_pair <- \(seed) {
+  a <- net_louvain(forward, seed = seed)
+  b <- net_louvain(backward, seed = seed)
+  tibble(
+    seed = seed, modularity_forward = round(attr(a, "modularity"), 3), modularity_backward = round(attr(b, "modularity"), 3),
+    adjusted_rand = round(net_compare_partitions(as.integer(a), rev(as.integer(b)), method = "adjusted_rand"), 3)
+  )
+}
+map(1:5, louvain_pair) |> list_rbind()
+
+# 4. Fingerprints: the ties as row numbers (what the engine stores), and the ties by member name, sorted.
+by_position <- \(frame) frame$edges |>
+  transmute(a = match(source, frame$nodes$id), b = match(target, frame$nodes$id)) |>
+  rlang::hash() |> substr(1, 12)
+by_name <- \(frame) frame$edges |>
+  transmute(a = pmin(source, target), b = pmax(source, target)) |>
+  arrange(a, b) |>
+  rlang::hash() |> substr(1, 12)
+tibble(
+  listed = c("forward", "backward"),
+  by_position = c(by_position(forward), by_position(backward)),
+  by_name = c(by_name(forward), by_name(backward))
+)
+```
+
+::: {.code-output}
+```text
+(R output goes here)
+```
+:::
+
+## Python
+
+```python
+import hashlib
+from collections import Counter
+from math import comb
+
+members = list(range(1, 35))
+with open("data/karate/edges.csv") as f:
+    karate_ties = [(int(r["source"]), int(r["target"])) for r in csv.DictReader(f)]
+
+def build(order):
+    g = nx.Graph()
+    g.add_nodes_from(order)  # the order the members are listed in
+    g.add_edges_from(karate_ties)
+    return g
+
+forward, backward = build(members), build(members[::-1])
+
+# 1. Betweenness belongs to the member, so compare by member.
+b1, b2 = nx.betweenness_centrality(forward), nx.betweenness_centrality(backward)
+print(f"betweenness agrees to 1e-9: {max(abs(b1[m] - b2[m]) for m in members) < 1e-9}")
+
+# 2. Top six by degree: sorted() keeps the listed order among ties.
+top_six = lambda g: [m for m, d in sorted(g.degree(), key=lambda t: -t[1])[:6]]
+print("top six, listed forward  ", top_six(forward))
+print("top six, listed backward ", top_six(backward))
+
+# 3. Louvain with the same seed on both listings; adjusted Rand 1 means the same groups.
+def adjusted_rand(a, b):
+    joint = Counter(zip(a, b))
+    index, rows, cols = (sum(comb(n, 2) for n in c.values()) for c in (joint, Counter(a), Counter(b)))
+    expected = rows * cols / comb(len(a), 2)
+    return (index - expected) / ((rows + cols) / 2 - expected)
+
+labels = lambda groups: [next(k for k, s in enumerate(groups) if m in s) for m in members]
+print("seed  modularity forward  backward  adjusted Rand")
+for seed in range(1, 6):
+    a = nx.community.louvain_communities(forward, seed=seed)
+    b = nx.community.louvain_communities(backward, seed=seed)
+    print(f"{seed:>4}  {nx.community.modularity(forward, a):>18.3f}  {nx.community.modularity(backward, b):>8.3f}  {adjusted_rand(labels(a), labels(b)):>13.3f}")
+
+# 4. Fingerprints: the ties as row numbers, the ties by member name (sorted), and NetworkX's structure hash.
+def fingerprints(order, g):
+    where = {m: i for i, m in enumerate(order)}
+    digest = lambda x: hashlib.sha256(repr(x).encode()).hexdigest()[:12]
+    return (digest([(where[a], where[b]) for a, b in karate_ties]),
+            digest(sorted(tuple(sorted(t)) for t in karate_ties)),
+            nx.weisfeiler_lehman_graph_hash(g)[:12])
+
+print(f"{'listed':<9}{'by position':>13}{'by name':>14}{'structure':>14}")
+for label, order, g in [("forward", members, forward), ("backward", members[::-1], backward)]:
+    print(f"{label:<9}" + "".join(f"{x:>14}" for x in fingerprints(order, g)))
+```
+
+::: {.code-output}
+```text
+betweenness agrees to 1e-9: True
+top six, listed forward   [34, 1, 33, 3, 2, 4]
+top six, listed backward  [34, 1, 33, 3, 2, 32]
+seed  modularity forward  backward  adjusted Rand
+   1               0.419     0.419          1.000
+   2               0.419     0.415          0.759
+   3               0.415     0.415          1.000
+   4               0.415     0.415          1.000
+   5               0.416     0.420          0.767
+listed     by position       by name     structure
+forward    3c804304fe42  b79d1c5d3a33  6239a89f4422
+backward   7f9d943f1668  b79d1c5d3a33  6239a89f4422
+```
+:::
+
+## Rust
+
+```rust
+use knappnet::metrics::community::find_louvain_communities;
+use knappnet::metrics::partition::compare::{compare_partitions, CompareMethod};
+use knappnet::metrics::wl::{compute_wl_graph_hash, WlOptions};
+
+// Member m (1 to 34) sits at position m - 1 forward and 34 - m backward.
+let text = std::fs::read_to_string("data/karate/edges.csv")?;
+let karate_ties: Vec<(i64, i64)> = text.lines().skip(1)
+    .map(|l| { let c: Vec<&str> = l.split(',').collect(); (c[0].parse::<i64>().unwrap() - 1, c[1].parse::<i64>().unwrap() - 1) })
+    .collect();
+let build = |flip: bool| -> Result<Graph, knappnet::Error> {
+    let at = |v: i64| if flip { 33 - v } else { v };
+    let from: Vec<i64> = karate_ties.iter().map(|t| at(t.0)).collect();
+    let to: Vec<i64> = karate_ties.iter().map(|t| at(t.1)).collect();
+    Graph::from_edges(34, &from, &to, None, false)
+};
+let (forward, backward) = (build(false)?, build(true)?);
+
+// 1. Betweenness belongs to the member, so compare by member.
+let (b1, b2) = (compute_betweenness(&forward, BetweennessOptions::default())?, compute_betweenness(&backward, BetweennessOptions::default())?);
+let gap = (0..34).map(|m| (b1[m] - b2[33 - m]).abs()).fold(0.0, f64::max);
+println!("betweenness agrees to 1e-9: {}", gap < 1e-9);
+
+// 2. Top six by degree: a stable sort keeps the listed order among ties.
+let top_six = |g: &Graph, flip: bool| -> Vec<usize> {
+    let d = compute_degree(g, DegreeMode::All, true);
+    let mut order: Vec<usize> = (0..34).collect();
+    order.sort_by(|&a, &b| d[b].partial_cmp(&d[a]).unwrap());
+    order[..6].iter().map(|&p| if flip { 34 - p } else { p + 1 }).collect()
+};
+println!("top six, listed forward   {:?}", top_six(&forward, false));
+println!("top six, listed backward  {:?}", top_six(&backward, true));
+
+// 3. Louvain with the same seed on both listings; adjusted Rand 1 means the same groups.
+println!("seed  modularity forward  backward  adjusted Rand");
+for seed in 1..=5u64 {
+    let a = find_louvain_communities(&forward, 1.0, false, seed)?;
+    let b = find_louvain_communities(&backward, 1.0, false, seed)?;
+    let la: Vec<i64> = a.membership.iter().map(|&m| m as i64).collect();
+    let lb: Vec<i64> = (0..34).map(|m| b.membership[33 - m] as i64).collect();
+    println!("{seed:>4}  {:>18.3}  {:>8.3}  {:>13.3}", a.modularity, b.modularity, compare_partitions(&la, &lb, CompareMethod::AdjustedRand)?);
+}
+
+// 4. Fingerprints: the engine's content hash (ties as row numbers) and the Weisfeiler-Lehman structure hash.
+let short = |bytes: [u8; 32]| bytes.iter().take(6).map(|b| format!("{b:02x}")).collect::<String>();
+println!("{:<9}{:>14}{:>14}", "listed", "by position", "structure");
+for (label, g) in [("forward", &forward), ("backward", &backward)] {
+    println!("{label:<9}{:>14}{:>14}", short(g.content_hash()), &compute_wl_graph_hash(g, WlOptions::default())?[..12]);
+}
+```
+
+::: {.code-output}
+```text
+betweenness agrees to 1e-9: true
+top six, listed forward   [34, 1, 33, 3, 2, 4]
+top six, listed backward  [34, 1, 33, 3, 2, 32]
+seed  modularity forward  backward  adjusted Rand
+   1               0.419     0.420          0.898
+   2               0.416     0.398          0.588
+   3               0.419     0.420          0.898
+   4               0.419     0.419          1.000
+   5               0.420     0.419          0.898
+listed      by position     structure
+forward    0143a655585e  6239a89f4422
+backward   f09128389317  6239a89f4422
+```
+:::
+
+:::
+
+Read it in four parts.
+
+**Betweenness agrees**, up to rounding in the last digits (the sum over paths is added in a different order, so the lowest bits differ). That is why every comparison in this chapter has a tolerance and none uses `==` on decimals.
+
+**The top-six list changes.** Members 34, 1, 33, 3 and 2 are the first five either way. Sixth place is a tie between members 4 and 32, each with six ties. Whoever is listed first wins the tie, so "the top six" is member 4 in one run and member 32 in the other. Nothing is wrong with the sort. The question "who are the top six" has no single answer when sixth place is tied, and the honest report says "the top five, and a tie for sixth". This is the cheapest of all reproducibility traps to avoid: before you cut a ranking at a number, look at the value on either side of the cut.
+
+**Louvain moves with the order.** Louvain visits the people in a sequence and moves each to the neighbouring group that raises modularity most, and the sequence follows the listing [@blondel2008fast]. The same seed on a reordered table is, in effect, a different seed. The modularity values are all close to 0.42, so by that score the partitions are equally good, and the adjusted Rand index between the two listings ranges from 1 for seed 4 to well below 1 for others. Adjusted Rand is 1 when two partitions are identical and about 0 when they agree no more than chance (@sec-subgroups). So a community result is a draw from a set of near-equal partitions, and the order of your table is one of the things that picks the draw. The fix is the one from the random-draw section: run several seeds, or several orders, and report what is stable.
+
+**Three fingerprints for "the same network".** The first fingerprint hashes the ties as row numbers. It changes with the listing, because row numbers do. The second hashes the ties by member name, sorted, so it does not. The third is a *structure* hash (Weisfeiler and Lehman's colour-refinement idea, as NetworkX and the engine implement it [@shervashidze2011weisfeiler; @hagberg2008exploring]): it depends only on the shape, so it is the same under any listing and any renaming, and for the same reason it cannot tell Ana's network from a stranger's with the same shape. Which one you want depends on the question. "Did my file change?" wants a hash of the bytes. "Is this the same list of people and ties?" wants a hash by name. "Is this the same shape?" wants the structure hash. A table of nodes in a different order is the *same network* to the second and third, and a *different input* to the first, which matters because algorithms are fed positions.
+
+### Stable node ids
+
+The rule that follows is short.
+
+- **Give every node an id that belongs to the person, not to the row.** A name, an account number, a key that comes from the data source. Never use the row number as the id, and do not reuse numbers when rows are dropped.
+- **Say whether ids start at 0 or 1.** The karate club's files number the members 1 to 34; NetworkX's own copy of the club numbers them 0 to 33; Rust and Python index from 0 and R from 1. One off-by-one error turns "member 9" into "member 10" with no complaint. The Rust tab above subtracts 1 on the way in and adds 1 on the way out, in two places, because that is exactly where the mistakes happen.
+- **Sort by id when you want a canonical listing.** Before hashing or exporting, sort nodes by id and ties by (source id, target id). Two people with the same data then get byte-identical files.
+- **Cut ranked lists with the tie in view.** Report "top five and a tie for sixth", or break ties by a stated rule (alphabetical by id) so the list is the same on every machine.
+
+## Conventions that differ between tools {#sec-repro-conventions}
+
+A **convention** is a choice a measure's definition leaves open, such as what to do with a person who can't reach everyone, or whether to divide by a maximum. Tools make the choice differently and mostly document it, and the numbers differ. @sec-centrality, @sec-paths-and-cohesion and @sec-triads-and-motifs each hit one, so here is what they looked like side by side.
+
+| Quantity | Reading 1 | Reading 2 | Where |
+| --- | --- | --- | --- |
+| Average clustering, Florentine families | 0.218 (people with fewer than two friends left out, igraph's way) | 0.160 (counted as zero, NetworkX's way) | @sec-triads-and-motifs |
+| Reciprocity, five-person advice network | 0.286, 0.167, 0.500 or $-0.099$ | four definitions of the word | @sec-paths-and-cohesion |
+| Degree centralization, friendship network | 0.267 (loops allowed in the maximum) | 0.333 (Freeman's classic maximum) | @sec-centrality |
+| Density | repeated ties and loops count (igraph, NetworkX) | adjacency matrix only (sna, UCINET) | above, and @sec-paths-and-cohesion |
+| Eigenvector centrality scale | largest score is 1 (igraph) | unit length (NetworkX, sna, UCINET) | below |
+
+Here is one more, on the network from @sec-centrality: five people in a line and two more who know only each other. Who is the most central person by closeness? It depends on the tool.
+
+The engine has a `convention` argument that reproduces each tool, and the cleanest way to see the differences is to run all of them. The tabs compute closeness, scaled to run from 0 to 1, under four conventions. Python writes all four rules out by hand and checks one of them against NetworkX.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# A, B, C, D, E: a triangle A-B-C with a chain C-D-E; F and G know only each other.
+split_net <- net_frame(
+  tibble(source = c("A", "A", "B", "C", "D", "F"), target = c("B", "C", "C", "D", "E", "G")),
+  nodes = tibble(id = LETTERS[1:7]), directed = FALSE, quiet = TRUE
+)
+leaders <- \(x) if (max(x) - min(x) < 1e-12) "everyone (all equal)" else paste(LETTERS[1:7][x > max(x) - 1e-12], collapse = " and ")
+
+tibble(convention = c("igraph", "networkx", "sna", "ucinet")) |>
+  mutate(
+    scores = map(convention, \(cv) as.numeric(net_closeness(split_net, normalized = TRUE, convention = cv))),
+    node_C = round(map_dbl(scores, 3), 3),
+    node_F = round(map_dbl(scores, 6), 3),
+    first = map_chr(scores, leaders)
+  ) |>
+  select(-scores)
+```
+
+::: {.code-output}
+```text
+(R output goes here)
+```
+:::
+
+## Python
+
+```python
+# A, B, C, D, E: a triangle A-B-C with a chain C-D-E; F and G know only each other.
+split = nx.Graph([("A", "B"), ("A", "C"), ("B", "C"), ("C", "D"), ("D", "E"), ("F", "G")])
+
+def closeness_rule(g, rule):
+    n = g.number_of_nodes()
+    lengths = {v: nx.single_source_shortest_path_length(g, v) for v in g}
+    longest = max(d for row in lengths.values() for d in row.values())
+    out = {}
+    for v, row in lengths.items():
+        reached, total = len(row) - 1, sum(row.values())
+        if rule == "igraph":    # average over the people you can reach
+            out[v] = reached / total
+        elif rule == "networkx":  # the same, scaled by the share of people you reach
+            out[v] = reached / total * reached / (n - 1)
+        elif rule == "sna":     # zero unless you reach everyone
+            out[v] = (n - 1) / total if reached == n - 1 else 0.0
+        else:                   # ucinet: a missing distance counts as one more than the longest observed
+            out[v] = (n - 1) / (total + (n - 1 - reached) * (longest + 1))
+    return out
+
+for rule in ["igraph", "networkx", "sna", "ucinet"]:
+    c = closeness_rule(split, rule)
+    best = max(c.values())
+    first = "everyone (all equal)" if best - min(c.values()) < 1e-12 else " and ".join(v for v in c if c[v] > best - 1e-12)
+    print(f"{rule:<9} C {c['C']:.3f}  F {c['F']:.3f}  first {first}")
+
+# Check by hand-written rule against NetworkX itself.
+wf = nx.closeness_centrality(split)
+print("matches NetworkX:", all(abs(wf[v] - closeness_rule(split, "networkx")[v]) < 1e-12 for v in split))
+```
+
+::: {.code-output}
+```text
+igraph    C 0.800  F 1.000  first F and G
+networkx  C 0.533  F 0.167  first C
+sna       C 0.000  F 0.000  first everyone (all equal)
+ucinet    C 0.462  F 0.286  first C
+matches NetworkX: True
+```
+:::
+
+## Rust
+
+```rust
+use knappnet::metrics::closeness::{compute_closeness, ClosenessOptions, Unreachable};
+
+// A, B, C, D, E: a triangle A-B-C with a chain C-D-E; F and G know only each other.
+let split = Graph::from_edges(7, &[0, 0, 1, 2, 3, 5], &[1, 2, 2, 3, 4, 6], None, false)?;
+let letters = ["A", "B", "C", "D", "E", "F", "G"];
+for (label, rule) in [("igraph", Unreachable::Ignore), ("networkx", Unreachable::WassermanFaust), ("sna", Unreachable::Zero), ("ucinet", Unreachable::MaxPlusOne)] {
+    let c = compute_closeness(&split, ClosenessOptions { normalized: true, unreachable: rule, ..Default::default() })?;
+    let best = c.iter().cloned().fold(f64::MIN, f64::max);
+    let worst = c.iter().cloned().fold(f64::MAX, f64::min);
+    let first = if best - worst < 1e-12 { "everyone (all equal)".to_string() } else {
+        (0..7).filter(|&i| c[i] > best - 1e-12).map(|i| letters[i]).collect::<Vec<_>>().join(" and ")
+    };
+    println!("{label:<9} C {:.3}  F {:.3}  first {first}", c[2], c[5]);
+}
+```
+
+::: {.code-output}
+```text
+igraph    C 0.800  F 1.000  first F and G
+networkx  C 0.533  F 0.167  first C
+sna       C 0.000  F 0.000  first everyone (all equal)
+ucinet    C 0.462  F 0.286  first C
+```
+:::
+
+:::
+
+Four conventions, three different "most central" answers. igraph's averages over the people you can reach, so F and G, who reach exactly one person each and are one step from them, score a perfect 1.000 and beat C. NetworkX scales by the share of people reached, which punishes F and G, and C wins. sna gives zero to anyone who can't reach everyone, so with two separate pieces every score is zero and there is no leader. UCINET fills each missing distance with the longest distance in the network plus one, so C wins with 0.462, which is $6/13$: the distances from C add up to 5, and the two unreachable people each count 4, so the sum is 13.
+
+Nobody is wrong, and you cannot fix this with a seed. You fix it by writing the convention down. The checklist in @sec-reporting says "state the convention", and the engine makes this easy because every convention has a name that goes in the provenance record. The rule I follow: **never compare numbers across tools without first finding out which convention each used, and when a number disagrees, change the convention before you suspect a bug.** The engine's documentation records the known differences between igraph, NetworkX, sna and UCINET in one place [@csardi2006igraph; @hagberg2008exploring; @butts2008sna; @borgatti2002ucinet], and the appendix on conventions (@sec-conventions) is the place for the full list.
+
+## Provenance: a record that travels with the number {#sec-provenance}
+
+@sec-reporting listed what a record must say: the data, the network, the measure and its convention, the random choices, the software and the checks. Here we look at the parts a program can fill in for you, and the parts it can't.
+
+A **provenance record** is a small structured note stored next to a result that says how it was produced. The engine attaches one to every registered measure: the measure and its revision number, a hash of the parameters, the engine version, the seed (for randomized measures), the thread count, how long it took, and a reference to the graph it ran on. A **hash** is a fixed-length fingerprint of some bytes: change one byte and the fingerprint changes completely, so it is cheap evidence that two things are identical.
+
+Here is the record for the seed-3 sampled betweenness run above, next to the things a person has to add.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+run <- net_run(g, "betweenness_approx", samples = 5, seed = 3)
+prov <- net_provenance(run)
+
+# What the engine recorded.
+tibble(
+  field = c("measure", "revision", "engine", "seed", "parameter hash", "nodes", "ties", "graph hash"),
+  value = c(prov$measure, prov$revision, prov$engine, prov$seed, substr(prov$params_hash, 1, 8),
+            prov$graph$n, prov$graph$m,
+            if (is.null(prov$graph$content)) NA else substr(prov$graph$content, 1, 16))
+)
+
+# What it did not: the data file and the software, recorded by hand.
+tibble(
+  field = c("data file", "file hash", "R", "knappnet", "dplyr"),
+  value = c("krackhardt/edges.csv", rlang::hash_file("data/krackhardt/edges.csv"), R.version.string,
+            as.character(packageVersion("knappnet")), as.character(packageVersion("dplyr")))
+)
+```
+
+::: {.code-output}
+```text
+(R output goes here)
+```
+:::
+
+## Python
+
+```python
+import struct
+import sys
+
+def graph_hash(n, directed, sources, targets):
+    """The engine's content hash, rebuilt from its documented layout: BLAKE2b-256 of the ties, in the order stored."""
+    h = hashlib.blake2b(digest_size=32)
+    h.update(b"knappnet graph content 1")
+    h.update(bytes([directed, 0]))                     # directed? weighted?
+    h.update(struct.pack("<QQ", n, len(sources)))      # number of nodes, number of ties
+    h.update(np.array(sources, dtype="<u4").tobytes()) # every tie's source, then every tie's target
+    h.update(np.array(targets, dtype="<u4").tobytes())
+    return h.hexdigest()
+
+with open("data/krackhardt/edges.csv", "rb") as f:
+    raw = f.read()
+record = {
+    "data": "krackhardt/edges.csv, relation advice",
+    "file_sha256": hashlib.sha256(raw).hexdigest()[:16],
+    "graph_hash": graph_hash(21, 1, [a - 1 for a, b in advice], [b - 1 for a, b in advice])[:16],
+    "measure": "betweenness_centrality(k=5, seed=3, normalized=False)",
+    "library": f"networkx {nx.__version__}, numpy {np.__version__}, python {sys.version_info.major}.{sys.version_info.minor}",
+}
+for key, value in record.items():
+    print(f"{key:<12} {value}")
+```
+
+::: {.code-output}
+```text
+data         krackhardt/edges.csv, relation advice
+file_sha256  42c02a3815b52628
+graph_hash   ad4fe3bd37923e66
+measure      betweenness_centrality(k=5, seed=3, normalized=False)
+library      networkx 3.7, numpy 2.5.3, python 3.13
+```
+:::
+
+## Rust
+
+```rust
+use knappnet::provenance::ENGINE_VERSION;
+
+let run = compute_betweenness_approx(&g, &BetweennessApprox { samples: 5, seed: 3, ..Default::default() }, &Exec::default())?;
+let p = &run.provenance;
+let hex = |bytes: &[u8], k: usize| bytes.iter().take(k).map(|b| format!("{b:02x}")).collect::<String>();
+println!("measure {} revision {} engine {ENGINE_VERSION} seed {:?}", p.measure, p.revision, p.seed);
+println!("parameter hash {}", hex(&p.params, 4));
+println!("graph: {} nodes, {} ties, hash known before asking: {}", g.node_count(), g.edge_count(), p.graph.content().is_some());
+let digest = hex(&g.content_hash(), 8);
+println!("graph hash {digest}, known after asking: {}", p.graph.content().is_some());
+```
+
+::: {.code-output}
+```text
+measure betweenness_approx revision 1 engine 0.0.1 seed Some(3)
+parameter hash 7bee3a7c
+graph: 21 nodes, 190 ties, hash known before asking: false
+graph hash ad4fe3bd37923e66, known after asking: true
+```
+:::
+
+:::
+
+Three things in the output.
+
+**The graph hash is the same in two languages.** The engine's content hash covers the network as the engine holds it: whether ties have direction, whether they have weights, the number of nodes and of ties, then every tie's source and every tie's target in the order stored. The Python tab rebuilds that hash from the documented layout and gets the same 16 hexadecimal characters the Rust tab prints, so the hash is a checkable fact and not a private number. The layout carries a version tag ("knappnet graph content 1"), so treat a hash as comparable only between runs of the same tag. Notice what is in it: ties as positions. Change the order of the rows and the hash changes, which is why the previous section matters.
+
+**The R graph hash is missing.** In the R tab the `graph hash` row is `NA`. I looked into why, and it is a gap in the engine's interface, not an error in your analysis. The engine computes a graph's content hash lazily, because hashing a very large graph costs more than computing a simple measure on it. A provenance record carries the hash only if something has already asked for it. The Rust tab shows exactly that: before `content_hash()` is called the record says it is unknown, and after the call the same record knows it. R's runtime path never makes that call, and the C interface that R goes through has no function to ask for the hash, so R cannot trigger it, and the field stays empty. Until that is fixed, do what the R tab does for the data: hash the file with `rlang::hash_file()`, and write the other fields in yourself. The other fields (measure, revision, parameter hash, seed, engine version) are filled in correctly in all languages, and the parameter hash printed by R and Rust is the same, so a result computed in R can be matched to the same call made from Rust.
+
+**The engine does not know what you did around it.** It cannot record which file the ties came from, which rows you dropped, which package versions were loaded, or which random choices you made in your own code. The Python tab shows the minimum record for a library with no provenance of its own: the file's hash, the network's hash, the call with its seed, and the versions. Keep a record like it beside every table you hand to anybody, in a file, not in your head.
+
+### Cache keys, and the size of the network
+
+The engine uses the same ingredients for a different job. Its result cache is keyed on the graph, the measure, its revision, the parameter hash and the engine version, so a stored result is reused only if everything that could change it is the same. Anything you build to remember results (a notebook cache, a pipeline step) should key on the same list: the data hash, the code version, the parameters and the seed. If any of them changes, the stored answer is stale and must be computed again.
+
+This is also what "reproducibility at scale" comes down to. A large network makes three things more expensive, and each has the same answer.
+
+- **Hashing the data** costs a pass over every tie. Do it once, store it with the data, and compare it on load.
+- **Sampled methods** (the sampled betweenness above, sampled paths, random walks) need their sample size and seed recorded, because they are the methods whose output moves most between runs.
+- **Parallel runs**. The engine's documentation says its results do not depend on the number of threads, and it records the thread count in the provenance anyway. Where a tool does not make that promise, sums added in a different order differ in the last digits, as the betweenness comparison above showed. The next section is about what to do about that.
+
+## Comparing outputs across tools {#sec-tolerance}
+
+Suppose two tools disagree. The first question is not "which is right?" but "do they disagree by more than they should?" Floating-point numbers are not exact, and iterative methods stop before they have converged. A comparison needs a **tolerance**, a gap below which two numbers count as the same, chosen on purpose.
+
+Three kinds of difference look alike and are not.
+
+1. **Rounding.** Two correct programs add the same numbers in different orders and differ around $10^{-15}$ for values near 1. Use an absolute tolerance around $10^{-9}$ for scores that run from 0 to 1, and a relative one for scores that are large.
+2. **Stopping rules.** An iterative method (eigenvector centrality, PageRank) stops when the change per round is small enough. A looser stopping rule leaves a larger error. NetworkX's PageRank stops at a tolerance of $10^{-6}$ by default, and the error against the exact answer can be larger than that number suggests.
+3. **Scale and convention.** The same ranking scaled differently differs by a lot and agrees perfectly once rescaled. Eigenvector centrality is the classic: igraph scales so that the largest score is 1, NetworkX so that the scores have unit length.
+
+The test below takes all three on Zachary's club. The **oracle** is an independent calculation that does not use either tool: for eigenvector centrality, the leading eigenvector of the adjacency matrix; for PageRank, the exact solution of the linear equations that define it, $(I - d P^{\top}) x = \frac{1 - d}{n}\mathbf{1}$, with $P$ the matrix of tie shares ($P_{ij} = A_{ij} / k_i$, where $k_i$ is $i$'s degree) and $d = 0.85$. Gaps smaller than $10^{-12}$ are shown as $10^{-12}$, since the digits below that are noise.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# The oracle: the adjacency matrix, its leading eigenvector (unit length), and the exact PageRank solution.
+A <- matrix(0, 34, 34)
+A[cbind(karate_ties$source, karate_ties$target)] <- 1
+A <- A + t(A)
+top <- abs(eigen(A, symmetric = TRUE)$vectors[, 1])
+oracle_eigen <- top / sqrt(sum(top^2))
+oracle_rank <- solve(diag(34) - 0.85 * t(A / rowSums(A)), rep(0.15 / 34, 34))
+gap <- \(a, b) max(abs(as.numeric(a) - as.numeric(b)))
+
+tibble(
+  check = c("eigenvector, igraph's scale", "eigenvector, unit length", "pagerank, tol 1e-6", "pagerank, tol 1e-12"),
+  gap = c(gap(net_eigen(forward), oracle_eigen), gap(net_eigen(forward, convention = "networkx"), oracle_eigen),
+          gap(net_pagerank(forward, tol = 1e-6), oracle_rank), gap(net_pagerank(forward, tol = 1e-12), oracle_rank))
+) |>
+  mutate(close_at_1e9 = gap < 1e-9, gap = signif(pmax(gap, 1e-12), 2))
+```
+
+::: {.code-output}
+```text
+(R output goes here)
+```
+:::
+
+## Python
+
+```python
+# The oracle: the adjacency matrix, its leading eigenvector (unit length), and the exact PageRank solution.
+A = nx.to_numpy_array(forward, nodelist=members)
+vectors = np.linalg.eigh(A)[1]
+oracle_eigen = np.abs(vectors[:, -1]) / np.linalg.norm(vectors[:, -1])
+oracle_rank = np.linalg.solve(np.eye(34) - 0.85 * (A / A.sum(axis=1)[:, None]).T, np.full(34, 0.15 / 34))
+gap = lambda a, b: max(1e-12, float(np.abs(np.asarray(a) - np.asarray(b)).max()))
+
+eig = nx.eigenvector_centrality_numpy(forward)
+eig = np.array([eig[m] for m in members])  # NetworkX scales to unit length
+rank = lambda tol: np.array([nx.pagerank(forward, tol=tol)[m] for m in members])
+checks = [
+    ("eigenvector, igraph's scale", eig, oracle_eigen / oracle_eigen.max()),  # compared without rescaling
+    ("eigenvector, rescaled alike", eig / eig.max(), oracle_eigen / oracle_eigen.max()),
+    ("pagerank, tol 1e-6 (default)", rank(1e-6), oracle_rank),
+    ("pagerank, tol 1e-12", rank(1e-12), oracle_rank),
+]
+print(f"{'check':<31}{'gap':>9}  close at 1e-9")
+for label, got, want in checks:
+    print(f"{label:<31}{gap(got, want):>9.1e}  {np.allclose(got, want, rtol=0, atol=1e-9)}")
+```
+
+::: {.code-output}
+```text
+check                                gap  close at 1e-9
+eigenvector, igraph's scale      6.3e-01  False
+eigenvector, rescaled alike      1.0e-12  True
+pagerank, tol 1e-6 (default)     4.5e-06  False
+pagerank, tol 1e-12              1.0e-11  True
+```
+:::
+
+## Rust
+
+```rust
+use knappnet::metrics::eigenvector::{compute_eigenvector_centrality, EigenScale, EigenvectorOptions};
+use knappnet::metrics::spectral::{compute_pagerank, PagerankOptions};
+
+// The oracle, written out: power iteration for the eigenvector (on A + I, which keeps it from
+// oscillating) and PageRank iterated from its definition until nothing moves.
+let mut degree = vec![0.0; 34];
+for &(a, b) in &karate_ties { degree[a as usize] += 1.0; degree[b as usize] += 1.0; }
+let mut oracle_eigen = vec![1.0; 34];
+for _ in 0..2000 {
+    let mut next = oracle_eigen.clone();
+    for &(a, b) in &karate_ties { next[a as usize] += oracle_eigen[b as usize]; next[b as usize] += oracle_eigen[a as usize]; }
+    let norm = next.iter().map(|v| v * v).sum::<f64>().sqrt();
+    oracle_eigen = next.iter().map(|v| v / norm).collect();
+}
+let mut oracle_rank = vec![1.0 / 34.0; 34];
+for _ in 0..2000 {
+    let mut next = vec![0.15 / 34.0; 34];
+    for &(a, b) in &karate_ties {
+        next[b as usize] += 0.85 * oracle_rank[a as usize] / degree[a as usize];
+        next[a as usize] += 0.85 * oracle_rank[b as usize] / degree[b as usize];
+    }
+    oracle_rank = next;
+}
+let gap = |a: &[f64], b: &[f64]| a.iter().zip(b).map(|(p, q)| (p - q).abs()).fold(0.0, f64::max).max(1e-12);
+let eigen = |scale| compute_eigenvector_centrality(&forward, EigenvectorOptions { scale, ..Default::default() });
+let rank = |tol: f64| compute_pagerank(&forward, &PagerankOptions { tol, ..Default::default() });
+
+println!("{:<31}{:>9}  close at 1e-9", "check", "gap");
+for (label, got, want) in [
+    ("eigenvector, igraph's scale", eigen(EigenScale::Max)?.values, &oracle_eigen),
+    ("eigenvector, unit length", eigen(EigenScale::Unit)?.values, &oracle_eigen),
+    ("pagerank, tol 1e-6", rank(1e-6)?, &oracle_rank),
+    ("pagerank, tol 1e-12", rank(1e-12)?, &oracle_rank),
+] {
+    let g = gap(&got, want);
+    println!("{label:<31}{g:>9.1e}  {}", g < 1e-9);
+}
+```
+
+::: {.code-output}
+```text
+check                                gap  close at 1e-9
+eigenvector, igraph's scale       6.3e-1  false
+eigenvector, unit length         1.0e-12  true
+pagerank, tol 1e-6                2.5e-7  false
+pagerank, tol 1e-12              1.0e-12  true
+```
+:::
+
+:::
+
+Read the table row by row. In R and Rust the first row compares the engine's default eigenvector scale (largest score 1) with an oracle of unit length, so the gap is large and the check fails: the numbers are not wrong, they are in different units. The second row asks for the other scale and the gap is at the rounding floor. In the Python tab the same lesson runs the other way: NetworkX's unit-length answer fails against an oracle scaled to a maximum of 1, and passes once both sides are rescaled alike.
+
+The PageRank rows show the stopping rule. With a loose tolerance (NetworkX's default of $10^{-6}$ in Python, the same value in the engine) the answer is good to about six or seven digits, not nine, and a test with tolerance $10^{-9}$ fails. With a tight tolerance it passes. Neither tool has a bug. They stop at different places, so a comparison tolerance has to be looser than the loosest stopping rule in play, or you have to tighten the stopping rule first.
+
+How to choose, in practice:
+
+- Pick the tolerance *before* looking at the gap, and say what it was. A tolerance chosen after the fact only ever says that the numbers you have are close to the numbers you have.
+- Use an absolute tolerance for scores bounded by 1, a relative tolerance for scores that can be large, and both together (`rtol` and `atol`) when a score can be zero.
+- Compare after putting the two results on the same scale, same direction, same node order and same convention. Most "failures" are one of these.
+- Compare rankings separately from values. Two tools can agree on every rank and differ in the fourth decimal, which is usually fine, or agree to ten decimals and differ on a tie.
+
+### Testing against oracles
+
+A test is a comparison you can rerun. Three kinds of oracle earn their keep, in the order of how much I trust them.
+
+1. **A hand calculation on a tiny network.** Five people in a line, numbered 1 to 5, have betweenness $0, 3, 4, 3, 0$: person 3 is the only route for four pairs of others (1 and 4, 1 and 5, 2 and 4, 2 and 5), and person 2 is the only route for three pairs (1 with 3, 4 and 5). If a tool cannot reproduce numbers you can verify on paper, no amount of agreement with other tools should reassure you. @sec-getting-started starts with this habit, and it is the chapter's central one.
+2. **An independent calculation.** The linear-algebra checks above. They share no code with the tool under test, so a shared bug is unlikely.
+3. **Another tool, with the convention matched.** Useful, but two tools can share a convention and a bug, and the match is only as good as your care in matching.
+
+Put these in a test file, run it when you upgrade a package, and keep it in the project (see below). In R, `testthat::expect_equal(x, y, tolerance = 1e-9)` does the comparison; in Python, `numpy.testing.assert_allclose(x, y, rtol=0, atol=1e-9)` or `pytest.approx`; in Rust, an `assert!((a - b).abs() < 1e-9)` inside a `#[test]` function. The knappnet repository tests its measures against NetworkX, igraph, sna and hand-worked values in this way, which is why its documentation can say which convention each tool uses.
+
+## A project you can rerun
+
+Everything above is about what to record. This section is about where to put it, so that a rerun is a command and not an excavation. None of it is exotic. The advice is the same set of habits that the literature on reproducible computing keeps converging on [@peng2011reproducible; @sandve2013ten; @wilson2017good], applied to network data.
+
+### Layout
+
+One folder per analysis, with the same few places in the same order every time.
+
+```text
+karate-study/
+  README.md          what this is, how to rerun it, who to ask
+  data/
+    raw/             files exactly as received; never edited
+    clean/           files made by code from raw/, and the code that made them
+  code/
+    01-build-network.R
+    02-measures.R
+    03-report.qmd
+  tests/             hand-worked and oracle checks (see above)
+  results/           tables and figures made by the code; safe to delete and regenerate
+  renv.lock          the R packages and versions (or requirements.lock, Cargo.lock)
+  provenance.json    data hashes, seeds, conventions, versions, one record per run
+```
+
+Three rules do most of the work. **Raw data are read-only**: if you have to fix a typo, fix it in code that reads `raw/` and writes `clean/`, so the fix is visible and repeatable. **Everything in `results/` can be deleted and rebuilt** from `code/` and `data/`; if it cannot, something is missing from the record. **Numbered scripts** run in order from a clean session, so "run all" is the whole analysis and no step depends on something you did by hand.
+
+### Notebooks and Quarto
+
+A notebook mixes code, results and prose in one file, which is good for explaining and bad for reproducing, because the order you ran the cells in is not saved. Quarto (the tool this book is made with) has two settings that help. First, it runs the document from top to bottom in a fresh session, which catches hidden state. Second, it can store the results of expensive code and rerun only what changed. In the project file that is a line like `execute: freeze: auto`. Check Quarto's current documentation for the exact spelling, since options change.
+
+A short header for any analysis notebook, in any language:
+
+1. Set the seed **once, at the top**, in a cell you do not reorder, and also pass it explicitly to any call that takes one.
+2. Print the versions you rely on, in the notebook itself (`sessionInfo()` in R, the package versions in Python, the engine version in Rust), so they are in the output people read.
+3. Print the hash of every input file next to its name.
+4. Read the data from a path relative to the project folder, never from `C:\Users\you\Downloads`.
+
+### Lockfiles and containers
+
+A **lockfile** lists the exact versions of every package your analysis used. `renv.lock` does it for R (`renv::snapshot()` writes it, `renv::restore()` reads it), `uv lock` or a pinned `requirements.txt` for Python, and `Cargo.lock` for Rust (commit it, and build with `--locked` so a changed lockfile is an error). A lockfile fixes the packages. It does not fix R, Python or the operating system.
+
+A **container** goes one step further: it packages the operating system, the language and the packages as one image that runs the same on any machine with a container runtime. A minimal recipe looks like this. It is a pattern, not something this book builds, so check the base image tag against what is current.
+
+```dockerfile
+# Pin the image by version, not "latest": "latest" is a moving target.
+FROM rocker/r-ver:4.4.1
+WORKDIR /project
+COPY renv.lock renv.lock
+RUN R -e "install.packages('renv'); renv::restore()"
+COPY . .
+CMD ["Rscript", "code/02-measures.R"]
+```
+
+Containers and lockfiles solve *the same* problem from two sides, and neither solves the problems of the earlier sections. A container will happily run a script that reads sorted-by-accident data, draws from the wrong seed, or uses another tool's convention. They keep the environment still while the analysis does its work; the work still has to be reproducible.
+
+When a pinned environment is too much, the lighter habit is enough for most projects: a lockfile, the version numbers in the output, and a test file that fails loudly when an upgrade changes a number.
+
+## Sharing data without sharing people {#sec-sharing}
+
+To reproduce your result someone needs your network. That network has people in it. A **node-and-tie file with names removed** feels anonymous and usually is not, because a network identifies people by their position in it, and positions are a much richer fingerprint than most people expect. Two studies made the point sharply: attackers who could plant or already knew a small part of a network could find specific people in an "anonymized" one [@backstrom2007wherefore], and a second network with overlapping members could be used to re-identify people in the first [@narayanan2009deanonymizing].
+
+You can measure the risk on your own data before you share it. Suppose an outsider knows a member's degree, and perhaps the degrees of that member's friends. How many members are the *only* one that fits? The idea is **k-anonymity** [@sweeney2002kanonymity]: a published record is k-anonymous when at least k people share its description, so a description that fits exactly one person has $k = 1$ and identifies them. Count it for the karate club.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# What could an outsider look for? Count how many members share each description.
+degree <- rowSums(A)
+describe <- list(
+  `degree` = as.character(degree),
+  `degree and friends' degrees` = map_chr(1:34, \(m) paste(degree[m], paste(sort(degree[A[m, ] > 0]), collapse = ","), sep = "|")),
+  `degree in bands of five` = as.character(degree %/% 5)
+)
+tibble(
+  what_an_outsider_knows = names(describe),
+  unique_members = map_int(describe, \(s) sum(table(s)[s] == 1)),
+  smallest_group = map_int(describe, \(s) min(table(s)))
+)
+```
+
+::: {.code-output}
+```text
+(R output goes here)
+```
+:::
+
+## Python
+
+```python
+# What could an outsider look for? Count how many members share each description.
+degree_of = dict(forward.degree())
+descriptions = {
+    "degree": lambda m: (degree_of[m],),
+    "degree and friends' degrees": lambda m: (degree_of[m], tuple(sorted(degree_of[u] for u in forward[m]))),
+    "degree in bands of five": lambda m: (degree_of[m] // 5,),
+}
+print(f"{'what an outsider knows':<30}{'unique members':>15}{'smallest group':>16}")
+for label, describe in descriptions.items():
+    groups = Counter(describe(m) for m in members)
+    print(f"{label:<30}{sum(groups[describe(m)] == 1 for m in members):>15}{min(groups.values()):>16}")
+```
+
+::: {.code-output}
+```text
+what an outsider knows         unique members  smallest group
+degree                                      6               1
+degree and friends' degrees                23               1
+degree in bands of five                     0               2
+```
+:::
+
+## Rust
+
+```rust
+use std::collections::HashMap;
+
+// What could an outsider look for? Count how many members share each description.
+let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); 34];
+for &(a, b) in &karate_ties { neighbors[a as usize].push(b as usize); neighbors[b as usize].push(a as usize); }
+let own: Vec<usize> = neighbors.iter().map(|n| n.len()).collect();
+let descriptions: Vec<(&str, Vec<Vec<usize>>)> = vec![
+    ("degree", (0..34).map(|m| vec![own[m]]).collect()),
+    ("degree and friends' degrees", (0..34).map(|m| {
+        let mut d = vec![own[m]];
+        let mut friends: Vec<usize> = neighbors[m].iter().map(|&u| own[u]).collect();
+        friends.sort();
+        d.extend(friends);
+        d
+    }).collect()),
+    ("degree in bands of five", (0..34).map(|m| vec![own[m] / 5]).collect()),
+];
+println!("{:<30}{:>15}{:>16}", "what an outsider knows", "unique members", "smallest group");
+for (label, d) in &descriptions {
+    let mut groups: HashMap<&Vec<usize>, usize> = HashMap::new();
+    for key in d { *groups.entry(key).or_insert(0) += 1; }
+    let unique = d.iter().filter(|key| groups[key] == 1).count();
+    println!("{label:<30}{unique:>15}{:>16}", groups.values().min().unwrap());
+}
+```
+
+::: {.code-output}
+```text
+what an outsider knows         unique members  smallest group
+degree                                      6               1
+degree and friends' degrees                23               1
+degree in bands of five                     0               2
+```
+:::
+
+:::
+
+Reading the table: a few members are the only ones with their degree, and with the degrees of their friends added, most members are unique. An outsider who knew only that someone has a handful of friends with particular numbers of friends could pick that person out. Coarsening the description (here, degree in bands of five) leaves no one unique and no group smaller than two, but it also throws away detail, and bands are a rough remedy, not a guarantee. A guarantee is a harder problem than counting, and nobody should call a network anonymous because the names were dropped.
+
+Practical rules, from the least to the most protective:
+
+- **Ask whether you need to share the network at all.** Often the measures and a hash of the data are enough, and the data stay with their owner. A hash proves you ran the same data without showing it.
+- **Share a replacement network when you can**: a model fitted to the data, or a simulation with the same size, density and degrees, kept clearly separate from the real thing.
+- **Replace names by random ids**, drawn once and kept private. Do not make an id from the name with a plain hash: for a short list of known names, anyone can hash every candidate name and look for a match. A secret random id has no such shortcut.
+- **Remove or coarsen attributes** that make a person stand out (rare job titles, exact ages, small places), and test with the counting above.
+- **Check consent and ethics first**, and follow the rules of whoever collected the data. @sec-collecting-data covers what the people in the network were told.
+
+None of this guarantees privacy, and I have no number that says how much is enough. What it gives you is a habit: before sharing, ask how someone who knows a little could find someone in the file.
+
+## A checklist you can paste into a project
+
+Everything in this chapter fits on a page. Copy this into your `README.md`.
+
+1. **Data.** Raw file kept read-only; its hash recorded; the rule for turning it into a network written in code.
+2. **Network.** Directed or not; what happens to repeated ties, loops and ties both ways; ids that belong to people, starting at 0 or at 1 (say which).
+3. **Order.** Nodes sorted by id before anything that uses position; ranked lists cut with the tie in view.
+4. **Randomness.** Seed set once and passed explicitly; number of draws; the tool that drew them; results repeated with at least two other seeds.
+5. **Conventions.** One line per measure naming the convention (and every non-default parameter); never compare tools before matching them.
+6. **Tolerance.** The tolerance used to compare outputs, and what it was compared against (hand calculation, independent calculation or another tool).
+7. **Provenance.** Measure and revision, parameter hash, engine or library version, graph hash and file hash, saved next to the result.
+8. **Environment.** Lockfile committed; versions printed in the notebook; a container if others will rerun it.
+9. **Tests.** A file that checks at least one hand-worked answer and fails loudly after an upgrade.
+10. **Sharing.** Who can see the network, what an outsider who knew a little could learn, and what you removed.
+
+## Cards for programs {#sec-repro-cards}
+
+The cards that ship with this book (@sec-reporting explains them) now include three for this chapter. `reproducible-run` is the checklist above, in the form a program can check before it reports a result. `cross-tool-comparison` says how to compare two tools' numbers: match the convention, rescale, pick the tolerance first, and test the ranking separately. `sharing-network-data` says what to count and what to remove before a file leaves your hands. A program that runs knappnet should read them before it writes a sentence about a result, and should refuse to say that a result "reproduces" without the items they list.
+
+## Where tools disagree, and what we did about it
+
+A summary of what this chapter found, for the "where tools disagree" habit from the earlier chapters.
+
+- **Repeated ties and loops.** One tie list gave densities of 0.50, 0.40 and 0.30 depending on whether repeats and loops are kept. The engine reads the list as recorded, like igraph; NetworkX's `Graph` merges and keeps loops; sna and UCINET read a matrix.
+- **Random draws.** The same seed starts different streams in R, Python (`random`), NumPy and the engine. R and Rust agree because they call the same engine. NetworkX's `gnm_random_graph` and sampled betweenness (`k=`) make different draws than the engine for the same seed.
+- **Closeness on a network with pieces.** Four conventions, three different leaders (igraph F and G, NetworkX and UCINET C, sna nobody).
+- **Eigenvector scale.** igraph's largest score is 1; NetworkX's, sna's and UCINET's vector has unit length.
+- **PageRank stopping.** NetworkX's default tolerance stops with an error near $10^{-6}$ against the exact answer; the engine's default tolerance is tighter, and its tolerance can be loosened to match.
+- **Graph hash in R.** Missing from the provenance record (see above); present in Rust and reproducible in Python by hand.
+
+## Common misconceptions
+
+- **"Setting the seed makes it reproducible."** Only for the same code, the same tool and the same order of draws. It does nothing about a changed file, a reordered table or another package's recipe.
+- **"If two tools differ, one has a bug."** More often they use different conventions or stop at different tolerances. Check the convention first.
+- **"A container makes it reproducible."** It makes the environment reproducible. The analysis can still depend on row order, an unrecorded seed or a file that changed.
+- **"A hash proves the result is right."** It proves the input is the same. A wrong analysis on the right data has a perfectly good hash.
+- **"Removing the names anonymizes the network."** Positions identify people. Count the unique descriptions before you believe it.
+- **"I'll write it down later."** The seed, the data version and the convention are the three things nobody can reconstruct afterwards.
+
 ## Exercises
 
-1. TODO(exercise): a by-hand exercise on a tiny network.
-2. TODO(exercise): a coding exercise on a dataset from the appendix.
-3. TODO(exercise): an interpretation exercise.
+1. **By hand.** Five people: Ana, Ben, Chloe, Dev, Eli. The recorded ties are Ana-Ben, Ben-Chloe, Chloe-Ana, Ben-Chloe (again) and Dev-Dev. Find every person's degree and the density, as recorded and as a simple graph that keeps the loop. Check that the degrees add up to twice the number of ties.
+2. **By hand.** Three people, A, B, C, with ties A to B and B to C, read as arrows. How many ties does each person have if you read the same list as undirected pairs? Now add the arrow B to A. What changes for the arrow reading and for the pair reading?
+3. **By hand.** The Park-Miller generator starts from seed 1 and applies $s \leftarrow 16807 \, s \bmod 2147483647$. Find the first two numbers in the stream (before dividing by 2147483647), and the number after dividing, to four decimal places for the second.
+4. **Coding.** Rerun the order check on the karate club with a third listing: members sorted by name in reverse alphabetical order of the string ("9" after "34"). Does the top six by degree change again? Does Louvain with seed 1?
+5. **Coding.** In the closeness table, add a fifth reading, harmonic centrality (@sec-centrality). Is its leader one of the four from the table, and why does it avoid the problem?
+6. **Coding.** Write the hand-worked betweenness test for five people in a line, $0, 3, 4, 3, 0$, in your language of choice with a tolerance of $10^{-9}$, and run it against the engine or NetworkX.
+7. **Interpretation.** A colleague reruns your community analysis and gets four groups where you reported four, but a different member of the club is in a different group. Which questions do you ask, in order, before deciding who is right?
+8. **Interpretation.** A report says "closeness was computed in R, so the numbers match the book." Name two things that could still differ.
+9. **Interpretation.** You are asked to publish the friendship network of a 40-person department with names replaced by ids. List three checks you would run, one question you would ask the people in the network, and one thing you would offer to share instead.
+10. **Design.** Write a provenance record for your own last analysis. Which fields could you fill from the output alone, and which had to come from you?
+
+::: {.callout-note collapse="true"}
+## Answers
+
+1. As recorded: Ana 2, Ben 3, Chloe 3, Dev 2 (a loop adds 2), Eli 0; the sum is 10, twice the 5 ties; density is $5/10 = 0.50$. As a simple graph that keeps the loop: the repeated Ben-Chloe is merged, so Ana 2, Ben 2, Chloe 2, Dev 2, Eli 0, sum 8, twice the 4 ties; density $4/10 = 0.40$.
+2. Read as undirected pairs, A has 1 tie, B has 2 and C has 1. With the extra arrow B to A, the arrow reading has 3 ties (A to B, B to C, B to A) and a mutual pair, while the pair reading still has 2 ties, because A-B was already there. The arrow reading changes; the pair reading does not. That is why "how many ties" needs the reading stated.
+3. The first number is $16807 \times 1 \bmod 2147483647 = 16807$. The second is $16807^2 = 282475249$, which is below 2147483647, so it stays 282475249; divided by 2147483647 it is 0.1315 (0.13153778 before rounding). (You can check against the tabs: the first three numbers they print are 0.000, 0.132 and 0.756.)
+4. The degrees do not change, so members 4 and 32 are still tied for sixth place. In this listing member 4 comes before member 32 (as strings, "4" sorts after "32", so in reverse order it is listed first), so the top six is the same as in the forward listing: 34, 1, 33, 3, 2 and 4. The tie was settled by where each member happened to be listed, not by anything about the members. For Louvain, run it with seed 1 and compare the groups with the forward run by adjusted Rand; whatever you get is one more draw from the near-equal partitions.
+5. Harmonic centrality adds $1/d$ over everyone and treats an unreachable person as $1/\infty = 0$, so a person on a tiny island scores low without any special rule. In the split network its leader is C, the same as NetworkX's and UCINET's. It avoids the problem because it never divides by the number of people reached.
+6. In Python: build `nx.path_graph(5)` and `np.testing.assert_allclose(list(nx.betweenness_centrality(g, normalized=False).values()), [0, 3, 4, 3, 0], atol=1e-9)`. Check the numbers by hand first: the pairs of other people whose only route passes through person 3 are (1,4), (1,5), (2,4) and (2,5), giving 4; person 2 is on the routes of (1,3), (1,4) and (1,5), giving 3.
+7. First, were both runs on the same file (compare hashes) and the same order of nodes? Second, the same seed, the same tool and the same version? Third, the same resolution and weights? If all three match, the groupings are two valid draws, and you compare them with adjusted Rand and report what is stable. Only if the inputs are identical and the outputs still differ do you suspect a bug.
+8. The convention (closeness has four), the handling of repeated ties and loops, the direction, the version of the package, and the tolerance of any iterative method.
+9. Checks: how many members are unique by degree, and by degree plus friends' degrees; whether rare attributes (a unique job title) are present; whether anyone outside the department could match the network against another data set. Question to the people: whether they agreed to this use, and what they were told. Offer instead: the measures and a hash of the data, or a simulated network with the same size and degrees.
+10. Fields that come from the output: the measure, its revision, the parameter hash, the engine or library version, the seed if you passed one, and the graph hash where the tool provides it. Fields that come from you: the data file and its hash, the rule for building the network, the convention you chose, the random choices in your own code, and the checks you ran.
+:::
 
 ## Summary
 
 ::: {.callout-tip appearance="simple"}
-TODO(summary): three to five sentences, then the one-line takeaway.
+Network results fail to reproduce for eight usual reasons: how repeated ties, loops and direction are read; random draws; seeds that mean different things in different tools; the order of nodes and ties; conventions; stopping rules and rounding; software versions; and changed data. A seed makes a run repeatable in one tool, not portable across tools, and the answer should not depend on the draw. Give every node an id that belongs to the person, sort by it, and cut ranked lists with the ties in view. Compare tools with a tolerance chosen before you look, on the same scale and convention, and test against a hand-worked answer. Record the data hash, the graph hash, the parameters, the seed and the versions next to every result, and keep a lockfile, a test and, when others will rerun it, a container. Before sharing a network, count how many people an outsider could single out. The one-line takeaway: write down the seed, the convention and the data version, because nobody can reconstruct them later.
 :::
 
 ## Further reading
 
-TODO(refs): cite with `@key` from `shared/bib/references.bib`.
+For why computational results should come with their code and data, and how, @peng2011reproducible, @sandve2013ten and @wilson2017good. For the random-number generators in this chapter, @parkmiller1988random and @salmon2011parallel, and for the hash function behind the engine's graph hash, @aumasson2013blake2. For colour refinement and the structure hash, @shervashidze2011weisfeiler. For the conventions of the tools compared here, @csardi2006igraph, @hagberg2008exploring, @butts2008sna and @borgatti2002ucinet. For how identities leak from "anonymous" networks, @backstrom2007wherefore and @narayanan2009deanonymizing, and for k-anonymity, @sweeney2002kanonymity. For what to write once the result is reproducible, @sec-reporting, and for where the data came from, @sec-collecting-data.

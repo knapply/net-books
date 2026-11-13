@@ -1,0 +1,57 @@
+id = "cross-tool-comparison"
+title = "Comparing results across tools with a tolerance"
+kind = "procedure"
+chapter = "reproducibility"
+summary = "How to decide whether two tools' numbers for the same measure agree: match conventions and scale, choose the tolerance first, compare values and rankings separately, and test against an independent calculation."
+answers = "Do these two tools compute the same quantity, and do their numbers agree by more than rounding and stopping rules explain?"
+
+data_requirements = [
+  "The same network in both tools: the same ties, direction, treatment of repeated ties and loops, and the same node order or ids to match nodes by.",
+  "The convention each tool uses for the measure (normalization, disconnected networks, scale, direction), found in its documentation.",
+  "Where possible, an oracle: a hand-worked answer on a tiny network or an independent calculation such as a matrix solution.",
+]
+
+assumptions = [
+  "Both tools target the same definition of the measure once the convention is matched.",
+  "The tolerance is chosen before looking at the gap, and is looser than the loosest stopping rule of an iterative method in play.",
+  "Scores are put on the same scale and in the same direction before they are compared.",
+]
+
+readings = [
+  { context = "Differences near 1e-15 for scores of order 1", high = "Rounding from adding the same numbers in a different order; not a disagreement.", low = "Exact equality on decimals is the wrong test; use an absolute or relative tolerance." },
+  { context = "Differences of 1e-7 to 1e-5 in an iterative measure such as PageRank or eigenvector centrality", high = "A looser stopping tolerance in one tool; tighten it or loosen the comparison.", low = "Agreement to many digits only shows both stopped at a tight tolerance." },
+  { context = "Scores that differ by a constant factor but give the same ranking", high = "A scale convention, for example eigenvector centrality with largest score 1 against unit length.", low = "A change in the ranking after rescaling is a real difference in what was computed." },
+  { context = "Different leaders or different top ranks", high = "Often a convention for disconnected networks, a tie, or the treatment of repeated ties; check these before suspecting a bug.", low = "No disagreement in rank but different values may be acceptable if the report uses only ranks." },
+]
+
+pitfalls = [
+  "Comparing numbers before matching conventions. On a network with two pieces, four closeness conventions gave three different leaders.",
+  "Choosing the tolerance after seeing the gap, so the test can only pass.",
+  "Using one tolerance for scores of very different sizes; use both relative and absolute tolerance where a score can be zero.",
+  "Calling a rank-based result agreed when the values differ where a tie is cut.",
+  "Treating agreement between two tools as proof; they can share a convention and a bug.",
+]
+
+checks = [
+  "Put both results on the same scale, direction, node order and convention before comparing.",
+  "Compare against a hand-worked answer on a network small enough to check on paper.",
+  "Compare against an independent calculation that shares no code with either tool (leading eigenvector, linear solve for PageRank).",
+  "Compare rankings and values separately, and look at ties on either side of any cut.",
+  "Rerun an iterative measure with a tighter tolerance and see whether the gap shrinks.",
+]
+
+do_not_claim = [
+  "That two tools are wrong because they disagree before the convention has been matched.",
+  "That agreement within a tolerance chosen afterwards shows the tools are equivalent.",
+  "That a passed test on one small network covers every convention, such as disconnected or directed networks.",
+]
+
+report_template = "{measure} was compared between {tool_a} and {tool_b} on {network}, with conventions {convention_a} and {convention_b} matched and scores rescaled to {scale}. The largest absolute gap was {gap} against a tolerance of {tolerance} chosen beforehand, and the rankings {agree_or_not}. An independent check by {oracle} gave a gap of {oracle_gap}."
+
+related = ["reproducible-run", "closeness", "eigenvector", "pagerank"]
+sources = ["csardi2006igraph", "hagberg2008exploring", "butts2008sna", "borgatti2002ucinet", "borgatti2026xucinet"]
+
+[knappnet]
+rust = "pass the option for the convention explicitly (for example Unreachable::WassermanFaust or EigenScale::Unit) and compare with a tolerance"
+r = "net_closeness(x, convention = \"networkx\") and the other measures' `convention` argument, then compare with abs(a - b) < tol"
+python = "numpy.testing.assert_allclose(a, b, rtol = 0, atol = 1e-9) after rescaling to the same convention"

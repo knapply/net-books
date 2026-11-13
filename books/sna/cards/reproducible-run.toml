@@ -1,0 +1,59 @@
+id = "reproducible-run"
+title = "Making a network analysis reproducible"
+kind = "procedure"
+chapter = "reproducibility"
+summary = "A checklist of what to fix and what to record so that someone else, or you later, can rerun a network analysis and get the same numbers, or know exactly why they differ."
+answers = "Could another person or another tool repeat this analysis, and if the numbers differ, which of the usual causes explains it?"
+
+data_requirements = [
+  "The raw data file as received, kept unchanged, with a hash of its bytes.",
+  "The code that turns the raw file into a network: which relation, which rows dropped, direction, and what happens to repeated ties and self-loops.",
+  "Ids that belong to the nodes (names or keys from the source), not row numbers, and a statement of whether numbering starts at 0 or at 1.",
+]
+
+assumptions = [
+  "The analysis is run from a clean session by a script or a notebook that runs top to bottom, so no step depends on something done by hand.",
+  "Randomized steps take an explicit seed, and the tool that drew from it is named, because the same seed gives different draws in different tools.",
+  "A result that depends strongly on the seed or on the order of the nodes is not yet a result; it needs repeats before it is reported.",
+]
+
+readings = [
+  { context = "Rerun of the same code on the same data and the same versions", high = "Identical output, including random draws, means the record is complete for that environment.", low = "A difference means something unrecorded changed: a seed, the order of rows, a thread-dependent sum, a package version or the data." },
+  { context = "The same analysis moved to another language or package", high = "Agreement within a stated tolerance, after matching conventions, is evidence both implement the same definition.", low = "A difference is usually a convention, a stopping rule, a random-number recipe or the treatment of repeated ties and loops, before it is a bug." },
+  { context = "A result handed to a program that will describe it to people", high = "A complete provenance record lets the description state exactly what was computed and what was not.", low = "A missing seed, convention or data hash means the description should say the result cannot be repeated from the record." },
+]
+
+pitfalls = [
+  "Treating a seed as portable. Seed 1 starts different streams in R, Python, NumPy and the engine; R and Rust agree only because they call the same engine.",
+  "Using the row number as the node id, so that sorting the table changes which node is which.",
+  "Cutting a ranking at a number without looking at the tie on either side of the cut; the tied node that appears depends on the listing.",
+  "Comparing tools with == on decimals. Sums added in a different order differ in the last digits.",
+  "Assuming a container or lockfile makes the analysis reproducible; it only fixes the environment.",
+  "Relying on a graph hash from a tool that did not compute one. In the R package the provenance record's graph hash is currently missing, so hash the input file yourself.",
+]
+
+checks = [
+  "Rerun from a clean session and compare outputs with a stated tolerance.",
+  "Repeat any randomized step with at least two other seeds and report the spread.",
+  "Reorder the nodes and rerun; measures of structure should agree after lining the nodes up by id, and anything that does not is using position.",
+  "Check the top and bottom of every ranking for ties.",
+  "Recompute the data hash and the graph hash and compare them with the record.",
+  "Print the versions of the language and every package relied on, in the output itself.",
+]
+
+do_not_claim = [
+  "That a result is correct because it can be rerun; reproducible means repeatable, not right.",
+  "That a result computed with one tool's seed will match another tool's with the same seed.",
+  "That an unchanged hash shows the analysis is sound; it shows the input is the same.",
+  "That a result is reproducible if the seed, convention or data version was not recorded.",
+]
+
+report_template = "Data: {data_file} (hash {data_hash}). Network: {tie_meaning}, {directed_or_not}, {repeated_ties_rule}, ids {id_rule}. Measure: {measure} (revision {revision}, convention {convention}). Randomness: {draws} draws, seed {seed}, drawn by {tool}; repeated with seeds {other_seeds}, spread {spread}. Software: {versions}. Graph hash: {graph_hash}. Comparison tolerance: {tolerance}."
+
+related = ["cross-tool-comparison", "permutation-test", "null-models-choice", "sharing-network-data"]
+sources = ["peng2011reproducible", "sandve2013ten", "wilson2017good", "salmon2011parallel", "parkmiller1988random", "aumasson2013blake2"]
+
+[knappnet]
+rust = "g.content_hash() for the graph hash, and out.provenance (measure, revision, params, seed, engine) from a registry or typed measure call"
+r = "net_provenance(net_run(g, id, ...)) for measure, revision, parameter hash, seed and engine; the graph hash is currently NA there, so also record rlang::hash_file(path)"
+python = "hashlib.sha256 of the file, and the engine's documented BLAKE2b layout for the graph hash; record library versions by hand"
