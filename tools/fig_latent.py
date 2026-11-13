@@ -50,9 +50,17 @@ def posterior_cloud():
     c.text(464, h - 18, "the officer's side", size=12.5, anchor="start")
     c.text(w / 2, 24, "Large markers: the fitted map. Small dots: where each member sat in 40 posterior draws", size=13, fill=MUTED)
     lo, hi = min(spread, key=spread.get), max(spread, key=spread.get)
+    # Spread against number of friends, from the club's own ties.
+    degree = {}
+    with open(DATA.parent / "karate" / "edges.csv", newline="") as f:
+        for r in csv.DictReader(f):
+            for end in (int(r["source"]) - 1, int(r["target"]) - 1):
+                degree[end] = degree.get(end, 0) + 1
+    few = [spread[i] for i in spread if degree[i] <= 2]
+    many = [spread[i] for i in spread if degree[i] >= 10]
     meta = dict(chapter=22,
                 caption="The fitted map of the karate club (large markers) with 40 posterior draws of every member's position (small dots). Each draw was turned and mirrored to match the fitted map, because a map is only defined up to such moves. The cloud around a member shows how far the data let that member's place move.",
-                alt=f"A scatter of 34 large hollow markers, blue circles for Mr. Hi's side and orange squares for the officer's side, each surrounded by {n_draws} small dots of the same color. The dots lie on average {spread[lo]:.1f} map units from the fitted position for member {lo}, the tightest cloud, and {spread[hi]:.1f} units for member {hi}, the widest (root mean square distance).",
+                alt=f"A scatter of 34 large hollow markers, blue circles for Mr. Hi's side and orange squares for the officer's side, each surrounded by {n_draws} small dots of the same color. The dots lie a root-mean-square {spread[lo]:.1f} map units from the fitted position for member {lo}, the tightest cloud, and {spread[hi]:.1f} units for member {hi}, the widest. The {len(few)} members with at most two friends average {sum(few) / len(few):.1f} units, and the {len(many)} members with ten or more friends average {sum(many) / len(many):.1f}.",
                 data={"rms_spread": {str(i): round(v, 3) for i, v in spread.items()}})
     return c, meta
 
