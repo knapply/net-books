@@ -400,14 +400,11 @@ The two numbers forget different things. AUC looks at the whole ranking and does
 
 ### Imbalance, and why chance is not 0.5 for everything
 
-Networks are sparse. In the karate club we'll hide 16 ties and have 499 candidate pairs, so only about 3 in every 100 candidates are real. A rule that says "no tie" for everybody would be right 97 percent of the time and useless. So report a measure that doesn't reward that, and always say what chance is. For AUC, chance is 0.5 whatever the imbalance. For precision at k, chance is the share of candidates that are hidden ties, about 0.032 here. It would be easy to be pleased by a precision of 0.15, and it is five times chance, but it is still wrong 85 times in 100. When there are few positives, the precision-recall view tends to tell a clearer story than ROC, and it is worth plotting too [@saito2015precision].
+Networks are sparse. In the karate club we'll hide 16 ties and have 499 candidate pairs, so about 3 in every 100 candidates are real. A rule that says "no tie" for everybody would be right 97 percent of the time and useless, so always say what chance is. For AUC, chance is 0.5 whatever the imbalance. For precision at k, chance is the share of candidates that are hidden ties, about 0.032 here. A precision of 0.15 is nearly five times chance and still wrong 85 times in 100. With few positives, a precision-recall view often tells a clearer story than ROC [@saito2015precision].
 
 ### Baselines
 
-A score earns its keep only against something simple. We use two baselines throughout.
-
-- **Chance**: 0.5 for AUC and the share of true pairs for precision at k.
-- **Degree product.** The preferential attachment score is a degree-only baseline. If a fancy score doesn't beat it, the fancy score is mostly measuring how busy people are.
+A score earns its keep only against something simple. We use two baselines: **chance**, and the **degree product** (the preferential attachment score). If a fancy score doesn't beat the degree product, it is mostly measuring how busy people are.
 
 ### Hiding ties with a fixed scramble
 
@@ -670,7 +667,7 @@ Path       0.448  0.186   0.023
 
 ### The Florentine marriages are too small
 
-The Florentine marriage network from @sec-centrality has 15 families and 20 marriages [@padgett1993robust]. Hiding 10 percent hides two ties. The code above scores the other pairs and runs 100 different splits. Look at the table: mean AUCs sit near 0.5 and the standard deviations are 0.13 to 0.2, so two splits of the same network can differ by more than the gap between any two scores. With two positives, the AUC on one split can only take a handful of values, and any "winner" is a coincidence. Florentine is a lovely network for learning how the scores work by hand and a poor one for judging them. Treat the table as a warning: **a small network cannot tell you which score is better, and a single split cannot tell you how good any score is.**
+The Florentine marriage network from @sec-centrality has 15 families and 20 marriages [@padgett1993robust]. Hiding 10 percent hides two ties. The code above scores the other pairs and runs 100 different splits. Look at the table: the mean AUCs lie between 0.45 and 0.53, and the standard deviations are 0.16 to 0.20, so two splits of the same network can differ by more than the gap between any two scores. With two positives, the AUC on one split can only take a handful of values, and any "winner" is a coincidence. Florentine is a lovely network for learning how the scores work by hand and a poor one for judging them. Treat the table as a warning: **a small network cannot tell you which score is better, and a single split cannot tell you how good any score is.**
 
 ### The karate club, 100 times
 
@@ -1333,7 +1330,7 @@ Katz       0.707  0.079   0.141
 :::
 
 
-Time 1 and time 3 each have 41 pairs, and 15 pairs are tied at time 3 that were not at time 1. Looking forward, the neighbourhood scores reach AUC of 0.59 to 0.64; hiding at random inside time 3 the same scores reach about 0.72. The random split looks easier because it has seen the same moment in the network's life. The degree product is the odd one: 0.43 forward and 0.33 under random hiding, below chance. I think the reason is how the data were collected: each novice named at most about three others (a few gave tied ranks for four), so the people who already have many ties are the ones who have used up their choices, and the busy-gets-busier idea fails. That is a reading of the design, not something this code tested. The lesson for method is plain. A rule that works on one network can fail on another because the way ties form is different, and a random split can't tell you.
+Time 1 and time 3 each have 41 pairs, and 15 pairs are tied at time 3 that were not at time 1. Looking forward, the neighbourhood scores reach AUCs of 0.59 to 0.64; hiding at random inside time 3, common neighbours, Adamic-Adar and Katz reach 0.71 to 0.72. The random split looks easier because it has seen the same moment in the network's life. The degree product is the odd one: 0.43 forward and 0.33 under random hiding, below chance. I think the reason is how the data were collected: each novice named at most about three others (a few gave tied ranks for four), so the people who already have many ties are the ones who have used up their choices, and the busy-gets-busier idea fails. That is a reading of the design, not something this code tested. The lesson for method is plain. A rule that works on one network can fail on another because the way ties form is different, and a random split can't tell you.
 
 With 15 positives and 18 people the numbers are noisy, and no ordering between the scores is trustworthy. Use the table to see the *shape* of the problem: forward prediction is harder than random hiding, and the harder number is the one that matches the forecast you actually care about.
 
@@ -1376,17 +1373,15 @@ And an over-claiming one, to avoid:
 
 It reports an AUC as an accuracy, uses the best of several settings picked on the test splits, leaves out the degree baseline, and reads a mechanism into a ranking.
 
-## Common misconceptions
+## Common misconceptions, and where tools differ
 
 - **"AUC 0.7 means 70 percent accuracy."** AUC is the chance that a hidden tie beats a non-tie, not the share of pairs classified correctly.
-- **"The best score on this network is the best score."** In Florentine the winner changes with the seed, and in Sampson the degree product is below chance. Scores are better or worse on particular networks.
-- **"Embeddings are fitted without a test set, so they can't leak."** Fitting on the full network is leakage like any other. The second table of the model-based section shows it.
+- **"The best score on this network is the best score."** In Florentine the winner changes with the seed, and in Sampson the degree product is below chance.
+- **"Embeddings are fitted without a test set, so they can't leak."** Fitting on the full network is leakage like any other (the model-based section shows it).
 - **"Random hiding is the standard, so it's fine."** It is the standard, which is why it needs the caveats above.
 - **"The score tells me which ties to make."** It ranks pairs by a pattern in the data. It says nothing about cost, consent or whether a tie is wanted.
 
-## Where tools differ
-
-Different tools agree on these scores when the network is simple and undirected. In this chapter's checks the Python tab's Adamic-Adar matches NetworkX to a gap of zero, and the Rust tab's library scores match the formula (the gap printed is below $10^{-15}$). Where the conventions can matter: a pair with an empty union gets a Jaccard of 0 in knappnet and NetworkX; direction, weights and parallel ties are ignored by both, so on a directed network you must decide whether to symmetrise, as we did for Sampson, or to write a directed score yourself; and a node of degree one can never be a shared friend, which is why Adamic-Adar never divides by $\ln 1$ in an undirected simple network. knappnet's documentation says its scores follow NetworkX's conventions.
+Tools agree on these scores for simple undirected networks: the Python tab's Adamic-Adar matches NetworkX to a gap of zero, and the Rust tab's library scores match the formula. The conventions that can differ are worth knowing. A pair with an empty union gets a Jaccard of 0 in knappnet and NetworkX. Direction, weights and parallel ties are ignored by both, so on a directed network you decide whether to symmetrise, as we did for Sampson, or to write a directed score. knappnet's documentation says its scores follow NetworkX's conventions.
 
 ## Exercises
 

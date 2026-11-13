@@ -1,0 +1,64 @@
+id = "link-prediction"
+title = "Link prediction scores and their evaluation"
+kind = "measure"
+chapter = "prediction"
+summary = "A score for each pair of unconnected nodes (from shared neighbours, degrees, walks or a fitted model) and a held-out test of how well the scores rank pairs that are really tied above pairs that are not."
+answers = "Which unobserved pairs look most like the pairs that are tied, and how much better than a simple baseline does a rule do at ranking held-out ties?"
+
+data_requirements = [
+  "A network whose ties are a fair record of the relation: missing ties that are not hidden on purpose look like non-ties and lower every score.",
+  "Enough ties to hide some and still have structure left. With about twenty ties, as in the Florentine marriages, one split cannot rank scores at all.",
+  "For a forecast, ties with times, so that the split can train on the past and test on the future. Random hiding is not a forecast.",
+  "Simple undirected ties for the scores in this chapter. On a directed network you must symmetrise (and say so) or write a directed score.",
+]
+
+assumptions = [
+  "Ties form for reasons the score can see: shared neighbours (closure), popularity, or nearness in a fitted structure. A score cannot find a mechanism it does not encode.",
+  "The hidden ties are typical of the ties you want to predict. Random hiding makes them typical of the ties you already have, which is not the same thing.",
+  "Nothing used to build the score was fitted on the hidden ties. Degrees, embeddings, communities and the choice of tuning values all count.",
+  "The candidate pairs are the pairs you would ever need to rank. Counting every non-tie, most of which are far apart, makes the AUC look better than the hard cases deserve.",
+]
+
+readings = [
+  { context = "Friendship or social network", high = "A friend-of-a-friend tie is plausible and a recommendation would look reasonable to the two people.", low = "The two share no contacts and are far apart, so the rule has nothing to go on. It does not mean they would not get along." },
+  { context = "Marriage or alliance network among families", high = "The two families sit in the same neighbourhood of the network.", low = "No shared partners. Historical ties followed wealth, kin and place, which the score does not see." },
+  { context = "Office or collaboration network", high = "The two share contacts and might gain from meeting.", low = "They share no contacts, which is not evidence that they should not work together." },
+  { context = "Transport, supply or infrastructure network", high = "A link here would be consistent with the surrounding structure.", low = "Nothing about cost, demand or feasibility is in the score." },
+  { context = "Online platform that already recommends links", high = "The platform's own recommender would surface this pair. The ties you see were partly produced by earlier recommendations.", low = "The pair was not recommended, so the data hold few examples of it either way." },
+]
+
+pitfalls = [
+  "Fitting anything (degrees, an embedding, a community split, the number of dimensions) on the whole network before hiding ties. In the karate club this moved the AUC of a three-dimension embedding from about 0.75 to about 0.94.",
+  "Judging by one split. The standard deviation of the AUC across random splits of the karate club was 0.05 to 0.08, as large as most gaps between scores.",
+  "Reading AUC as accuracy, or comparing precision at k across networks without the chance level (the share of candidate pairs that are hidden ties).",
+  "Hiding ties at random when the question is about the future. In Sampson's monastery, scores looked easier under random hiding than when predicting later ties from earlier ones.",
+  "Skipping the degree-product baseline. In the karate club it scored within a few hundredths of the best neighbourhood scores.",
+  "Choosing the best of several settings on the test splits and reporting that one.",
+]
+
+checks = [
+  "Report the degree product and chance next to every score.",
+  "Repeat over many random splits (the book uses 100 with fixed seeds) and report the mean and the standard deviation.",
+  "Repeat at several hidden fractions, for example 10, 20 and 30 percent. A score that works only when very few ties are hidden will not hold up.",
+  "Recompute every fitted ingredient on the training network only, then compare with a deliberately leaked run to see how large the leak would have been.",
+  "If the ties have times, train on ties before a date and test on ties after it, and compare with random hiding.",
+  "Look at the top of the ranking, not only the AUC: list the highest-scoring pairs and ask why they score high.",
+]
+
+do_not_claim = [
+  "That a good score explains why ties form. A ranking is consistent with several mechanisms and cannot tell them apart.",
+  "That the method will work on another network, or on the same network later, without testing it there.",
+  "A precise ordering between scores whose AUCs differ by less than the spread across splits.",
+  "That a recommended pair wants to be tied, or that creating the tie would be good for them.",
+  "Anything from a small network about which score is best. With a few ties, any winner is a coincidence of the split.",
+]
+
+report_template = "We hid {fraction} of the {n_ties} ties in {network} at random, {n_splits} times with fixed seeds, scored the unconnected pairs with {score}, and ranked the hidden ties among {n_candidates} candidate pairs. The mean AUC was {auc} (standard deviation {sd}) and the mean precision at k was {p_at_k} (chance {chance}); the degree product alone scored {baseline_auc}. Nothing was fitted on the hidden ties. This ranks pairs and does not explain why they are tied."
+
+related = ["spectral-embedding", "ergm", "density", "weighted-degree"]
+sources = ["liben2007link", "adamic2003friends", "zhou2009predicting", "katz1953new", "barabasi1999emergence", "hanley1982meaning", "saito2015precision", "yang2015evaluating", "clauset2008hierarchical"]
+
+[knappnet]
+rust = "knappnet::metrics::linkpred::compute_link_scores (common neighbours, Jaccard, Adamic-Adar, resource allocation, preferential attachment); Katz and shortest path by hand"
+r = "no link-score function yet: write the matrix forms (A %*% A, and so on) as in the chapter"
+python = "networkx.jaccard_coefficient, adamic_adar_index, resource_allocation_index, preferential_attachment, or the numpy matrix forms in the chapter"

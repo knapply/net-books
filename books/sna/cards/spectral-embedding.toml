@@ -1,0 +1,59 @@
+id = "spectral-embedding"
+title = "Spectral embedding"
+kind = "model"
+chapter = "prediction"
+summary = "Coordinates for every node taken from the leading eigenvectors of the adjacency matrix or the normalised Laplacian, so that nodes in similar positions get similar coordinates."
+answers = "Can the network be summarised by a few numbers per node that keep its broad layout (who sits near whom, where it can be cut), and how much does that summary lose?"
+
+data_requirements = [
+  "A network with ties of one kind. Direction needs care: eigenvectors of a non-symmetric matrix are not orthogonal, so the chapter's method needs an undirected or symmetrised network.",
+  "Enough ties for the leading eigenvectors to mean something. Very sparse networks and small components give unstable or localised eigenvectors.",
+  "A choice of matrix (adjacency or normalised Laplacian) and of the number of dimensions, both reported.",
+]
+
+assumptions = [
+  "Position in the network is what you want to summarise. Attributes of nodes are not used.",
+  "A low number of dimensions keeps what matters. On the karate club, two dimensions kept 45 percent of the squared size of the adjacency matrix and six kept 77 percent.",
+  "The eigenvectors you use are well separated from the ones you leave out. When two eigenvalues are close, the coordinates are only defined up to a rotation.",
+  "Signs of eigenvectors are arbitrary: flipping a column does not change the embedding.",
+]
+
+readings = [
+  { context = "Friendship network with two camps (the karate club)", high = "A large positive coordinate on the Fiedler vector puts the member on one side of a likely split. The sign of that vector put 32 of 34 members on the side they took, using the normalised Laplacian.", low = "A coordinate near zero marks someone between the camps. It does not tell you which camp they will choose." },
+  { context = "Marriage or alliance network among families", high = "Families that land near each other have similar positions in the web of marriages.", low = "Families near the origin sit between clusters, or have too few ties to place." },
+  { context = "Office or communication network", high = "Two people close together in the first few dimensions are tied to similar colleagues.", low = "Distance in the embedding is not the same as how well they work together." },
+  { context = "Online platform", high = "Nearby users have similar neighbourhoods and may like similar recommendations.", low = "Users with few ties are placed by little information and can look like outliers or sit near the centre." },
+]
+
+pitfalls = [
+  "Fitting the embedding on the whole network and then testing link prediction on held-out ties: this leaks. A three-dimension embedding scored an AUC of about 0.94 when it had seen the hidden ties, against about 0.75 when it had not.",
+  "Choosing the number of dimensions by looking at the test results. Pick it on a validation split carved from the training ties.",
+  "Naming an axis after a trait (for example, calling dimension 2 'seniority') without checking it is stable and checking it against the trait.",
+  "Using the leading adjacency eigenvector as if it were a split. It is mostly a measure of how central a node is; look at the second.",
+  "Treating the embedding as final. Spectral coordinates are a summary with a stated loss, not the network.",
+]
+
+checks = [
+  "Report how much of the matrix the chosen dimensions keep (the share of squared eigenvalues).",
+  "Recompute after dropping a few percent of ties and check that coordinates, up to sign and rotation, stay similar.",
+  "Compare a spectral embedding with a cheaper baseline (degree, common neighbours) on the task you care about.",
+  "Try both the adjacency matrix and the normalised Laplacian and say which you used. They answer slightly different questions.",
+  "Check the sign split against a known grouping if you have one, and list the nodes it gets wrong.",
+]
+
+do_not_claim = [
+  "That a good embedding explains why people are tied or placed where they are.",
+  "That the embedding dimensions have names or meanings beyond the positions they summarise.",
+  "That an embedding fitted on all the ties can be tested on those same ties.",
+  "That a random-walk embedding (DeepWalk, node2vec) is better than a spectral one without testing it on your network.",
+]
+
+report_template = "We embedded {network} in {d} dimensions using the {matrix} (eigenvectors {which}), which keeps {share} of the matrix's squared size. {finding} The embedding was fitted on {fitted_on}. It summarises position in the network and does not explain it."
+
+related = ["link-prediction", "ergm"]
+sources = ["fiedler1973algebraic", "shi2000normalized", "chung1997spectral", "rohe2011spectral", "sussman2012consistent", "krzakala2013spectral", "saade2014spectral", "perozzi2014deepwalk", "grover2016node2vec", "qiu2018network"]
+
+[knappnet]
+rust = "knappnet::linalg::symmetric_eigen on the adjacency or normalised Laplacian matrix"
+r = "eigen(a, symmetric = TRUE) on the adjacency or normalised Laplacian matrix"
+python = "numpy.linalg.eigh on the adjacency or normalised Laplacian matrix"
