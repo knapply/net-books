@@ -5,6 +5,14 @@
 @sec-networks-as-data, for the difference between one-mode and two-mode data, and @sec-centrality and @sec-paths-and-cohesion, for degree, closeness, betweenness and clustering. No statistics are needed yet.
 :::
 
+::: {.callout-note title="The short version"}
+Sometimes people are linked not to each other but through something else, such as the party they both went to or the paper they both wrote. Data like that has two kinds of node, and ties run only between the two kinds. This chapter shows how to store it, measure it directly, and, when it helps, squash it into a people-to-people network, while being honest about what the squashing invents and what it hides. The big lesson is that being at the same event is not the same as knowing each other.
+:::
+
+::: {.callout-note title="Why you might care"}
+Membership data is everywhere: authors and papers, directors and boards, customers and products, accounts and hashtags. If you turn it into a friendship network without care, a crowded event can make everyone look close. These tools help you spot that and report only what the data can support.
+:::
+
 ## When people are tied through something else
 
 ::: {.callout-tip appearance="simple"}
@@ -343,7 +351,11 @@ The same warning covers anything built from triangles, and it is why two-mode da
 
 Often you want a network of the women themselves. To get one we **project**: tie two women when they share an event. In the tiny example, Ana and Ben share Choir, Ana and Cleo share Chess, and Ben and Cleo share nothing. Count the shared events and every pair gets a weight: Ana to Ben is 1, Ana to Cleo is 1, Ben to Cleo is 0.
 
-In matrix terms, multiply the incidence matrix $A$ by its transpose, $A A^{\top}$, and read off the off-diagonal. Cell $(i, j)$ of $A A^{\top}$ adds up, over every event, "did $i$ attend" times "did $j$ attend", which is the number of events they shared. (The diagonal holds each woman's own number of events, and we ignore it.) Multiply the other way, $A^{\top} A$, and you get the projection onto the *events*: Choir and Chess are tied by their one shared member, Ana. This is Breiger's *duality of persons and groups* [@breiger1974duality]: each projection tells the other half of the story.
+How many events does each pair of women share? In matrix terms, multiply the incidence matrix $A$ by its transpose, $A A^{\top}$, and read off the off-diagonal. Cell $(i, j)$ of $A A^{\top}$ adds up, over every event, "did $i$ attend" times "did $j$ attend", which is the number of events they shared. (The diagonal holds each woman's own number of events, and we ignore it.) Multiply the other way, $A^{\top} A$, and you get the projection onto the *events*: Choir and Chess are tied by their one shared member, Ana. This is Breiger's *duality of persons and groups* [@breiger1974duality]: each projection tells the other half of the story.
+
+::: {.callout-tip title="In plain words"}
+Here $A$ is the table of 1s and 0s with women as rows and events as columns, and $A^{\top}$ ("$A$ transpose") is the same table turned on its side, so that events are the rows. Multiplying them asks, for each pair of women and each event, "did both go?", and adds up the yeses. In the tiny example, Ana and Ben give 1 for Choir (both went) and 0 for Chess (only Ana went), so they share 1 event.
+:::
 
 ::: {.panel-tabset group="language"}
 
@@ -490,15 +502,19 @@ Of 153 possible pairs of women, 139 share at least one event. That is a *very* d
 
 ![The southern women. Left: who attended which of 14 events. Right: the projection onto the women, where each cell counts the events a pair shared.](../figures/davis-matrix.svg){#fig-davis-matrix fig-alt="Two grids. The left grid has 18 rows for women and 14 columns for events, with 89 blue cells. Blue cells form a band that runs from the upper left, where the first women attended events 1 to 9, to the lower right, where the last women attended events 7 to 14. The right grid has 18 rows and 18 columns shaded by the number of shared events from 0 to 7. Dark shading fills the top-left block of the first nine women and the bottom-right block of the last nine, with lighter shading elsewhere."}
 
-The right-hand grid shows the structure that the plain density number hides: two dense blocks, the first nine women and the last nine, with a thinner bridge between them. @fig-projection-network shows the same thing as a network. Drawn with every tie, it's a hairball. Drawn with only the 24 pairs that shared four or more events, two groups appear.
+The right-hand grid shows the structure that the plain density number hides: two dense blocks, the first nine women and the last nine, with a thinner bridge between them. @fig-projection-network shows the same thing as a network. Drawn with every tie, it's a hairball, a tangle of lines too thick to read. Drawn with only the 24 pairs that shared four or more events, two groups appear.
 
 ![The projection onto the women, drawn two ways. Left: every pair that shared at least one event, 139 of the 153 possible pairs, a hairball. Right: only the 24 pairs that shared four or more events, where two groups of women (the first nine listed, in blue, and the last nine, in orange) become visible: none of the strong ties crosses between them.](../figures/projection-network.svg){#fig-projection-network fig-alt="Two rings of the same 18 women, with the first nine in blue and the last nine in orange. The left ring has 139 gray lines, so many that individual ties cannot be told apart. The right ring has 24 blue lines, thicker for pairs that shared more events, and every one of them joins two women of the same color. Four women, Dorothy, Olive, Flora and Pearl, have no line."}
 
-Hold on to that contrast. The projection is convenient, because every one-mode tool from earlier chapters then applies. It is also a lossy and sometimes misleading summary, and the next section puts numbers on how.
+Hold on to that contrast. Think of two strangers on the same packed train: they were in the same place, but nobody would call them friends. The projection is convenient, because every one-mode tool from earlier chapters then applies. It is also a lossy and sometimes misleading summary, and the next section puts numbers on how.
 
 ## What a projection loses
 
 Here is a fact worth saying slowly. An event with $k$ attendees creates $k(k-1)/2$ ties in the projection. That grows with the *square* of the attendance. A party of 14 makes 91 ties. A party of 3 makes 3. So the 322 shared-event counts in the southern women data are completely determined by the event sizes, and a few big events do most of the talking. @fig-event-sizes shows how.
+
+::: {.callout-tip title="In plain words"}
+The expression $k(k-1)/2$ counts the pairs among $k$ people: each of the $k$ people pairs with the other $k - 1$, and dividing by 2 stops every pair from being counted twice. For the party of 14 that is $14 \times 13 / 2 = 91$, and for the party of 3 it is $3 \times 2 / 2 = 3$.
+:::
 
 ![Attendance at each event, and the number of pairs of women it ties together in the projection.](../figures/event-sizes.svg){#fig-event-sizes fig-alt="A bar chart of 14 events. Attendance is 3, 3, 6, 4, 8, 8, 10, 14, 12, 5, 4, 6, 3 and 3. Beneath each bar is the number of pairs the event ties: 3, 3, 15, 6, 28, 28, 45, 91, 66, 10, 6, 15, 3, 3. Events 8 and 9, with 14 and 12 attendees, are highlighted."}
 
@@ -771,6 +787,10 @@ There is a fourth, subtler cost. Many different two-mode networks have the *same
 
 Is a pair who shared a crowded event as close as a pair who shared a small one? Probably not: a party of 14 doesn't give two attendees much reason to have talked. Newman proposed weighting each shared event by $1 / (k - 1)$, where $k$ is the event's attendance, so that small events count for more [@newman2001scientific]. In the town, the choir (3 people) counts $1/2$ for each pair of its members, and the town hall (8 people) counts $1/7$. Ana and Ben share both, for $1/2 + 1/7 = 0.64$. Ana and Esi share only the town hall, for $1/7 = 0.14$.
 
+::: {.callout-tip title="In plain words"}
+Give every shared event a credit of $1/(k-1)$, where $k$ is the number of people there. The "minus one" is the number of other people you could have talked to at the event, so the more crowded the event, the less each pair earns from it. Then add the credits over all the events a pair shared. Ana and Ben earn $1/2$ from the choir and $1/7$ from the town hall, which is 0.64 in all, while Ana and Esi earn only $1/7 = 0.14$.
+:::
+
 ::: {.panel-tabset group="language"}
 
 ## R
@@ -967,7 +987,11 @@ What each reading means depends on context. A high-degree event is a *popular* e
 
 In one-mode networks, we ask how closed the neighborhoods are by counting triangles. We just saw that a two-mode network has none, so the smallest closed shape is a **four-cycle**: two women who both attended the same two events. Network scientists sometimes call it a **butterfly**. If the same pair of women keeps turning up together at different events, the network has many four-cycles.
 
-A pair of women who shared $s$ events makes $s(s-1)/2$ four-cycles, one for each pair of those events. Evelyn and Theresa, who shared 7, make 21 on their own. Robins and Alexander built a clustering coefficient for two-mode data on this idea: four times the number of four-cycles, divided by the number of three-step paths (woman, event, woman, event) in the network [@robins2004small]. Each four-cycle contains four such paths, hence the 4. In words: of all the ways to walk woman, event, woman, event, what share are closed by the first woman also having attended that last event? The ratio runs from 0 to 1.
+How do we count closed loops? A pair of women who shared $s$ events makes $s(s-1)/2$ four-cycles, one for each pair of those events. Evelyn and Theresa, who shared 7, make 21 on their own. Robins and Alexander built a clustering coefficient for two-mode data on this idea: four times the number of four-cycles, divided by the number of three-step paths (woman, event, woman, event) in the network [@robins2004small]. Each four-cycle contains four such paths, hence the 4. In words: of all the ways to walk woman, event, woman, event, what share are closed by the first woman also having attended that last event? The ratio runs from 0 to 1.
+
+::: {.callout-tip title="In plain words"}
+A four-cycle is a closed loop of four: two women who both went to the same two events. If a pair shared $s$ events, each pair of those events gives one loop, and there are $s(s-1)/2$ pairs of events (the same counting as for people at a party). With $s = 7$ that is $7 \times 6/2 = 21$. For the clustering coefficient, walk woman, event, woman, event, and ask whether the last event is one the first woman also attended. Each loop contains four such walks, so we multiply the loops by 4 before dividing by the number of walks, and the ratio runs from 0 to 1. A tiny network later in the chapter works one out on paper: 4 closed walks out of 6 gives 0.667.
+:::
 
 ::: {.panel-tabset group="language"}
 
@@ -1049,7 +1073,7 @@ There are 341 four-cycles, and a clustering coefficient of 0.468: close to half 
 
 ### Are there two groups?
 
-If the women fall into two groups, the events should too: some events draw mostly one group, some the other. Modularity (@sec-subgroups) can be adapted to two-mode data. Barber's version compares the ties *inside* each group with what the degrees of the two modes would produce by chance [@barber2007modularity].
+If the women fall into two groups, the events should too: some events draw mostly one group, some the other. Modularity (@sec-subgroups, a score for how many more ties fall inside groups than chance would put there) can be adapted to two-mode data. Barber's version compares the ties *inside* each group with what the degrees of the two modes would produce by chance [@barber2007modularity].
 
 ::: {.panel-tabset group="language"}
 
@@ -1151,7 +1175,7 @@ We chose the split ("first nine and last nine") by looking at the picture. That 
 
 A clustering of 0.468 has no scale. High compared with what? A **null model** answers: draw many random two-mode networks that keep something of yours fixed, compute the same number on each, and see where the real one falls. @sec-tests-and-null-models makes the full argument; here we need one recipe. We keep every woman's number of events and every event's number of women, and shuffle who went to what.
 
-The shuffling move is a **swap**. Pick two women and two events. If the first woman went to the first event and the second to the second, and neither went to the other's event, exchange them: now the first woman went to the second event and the second to the first. Every woman and every event has the same degree as before, so the same swaps that scramble the network leave both margins alone. The chain of swaps is a Markov chain, so we throw away a long stretch at the start and keep one network every so often, as @sec-tests-and-null-models does for one-mode networks. knappnet has no two-mode swap yet, so all three tabs write it by hand, with the same Park-Miller random numbers as that chapter, which is why they print the same digits.
+The shuffling move is a **swap**. Pick two women and two events. If the first woman went to the first event and the second to the second, and neither went to the other's event, exchange them: now the first woman went to the second event and the second to the first. Every woman and every event has the same degree as before, so the same swaps that scramble the network leave both margins alone. The chain of swaps is a Markov chain (a process where each step depends only on where it is now), so we throw away a long stretch at the start and keep one network every so often, as @sec-tests-and-null-models does for one-mode networks. knappnet has no two-mode swap yet, so all three tabs write it by hand, with the same Park-Miller random numbers as that chapter (a simple, repeatable recipe for random-looking numbers), which is why they print the same digits. This is the most technical stretch of the chapter. On a first read you can skip to the results and still have the point: a fair comparison shuffles attendance while keeping everyone's counts.
 
 Before the real data, the smallest case you can check on paper. Ana and Ben attended both Choir and Chess, and Cleo attended only Choir. There is one four-cycle, Ana-Choir-Ben-Chess. There are six three-step paths (woman, event, woman, event): each attendance contributes (the woman's other events) times (the event's other women), which is $1 \times 2$ for Ana at Choir, $1 \times 1$ for Ana at Chess, the same two for Ben, and $0 \times 2$ for Cleo. Four of the six close, so the clustering is $4 / 6 = 0.667$. The first lines of the block check this, then the real network gets the same function.
 
@@ -1383,7 +1407,7 @@ seed 15  clustering  mean    0.416  low    0.368  high    0.464  p 0.005
 
 :::
 
-The real network has 341 four-cycles. Across 200 shuffled networks with the same degrees, the count averaged about 313 (it ranged from 264 to 360 over the two chains), and the real 341 gets a p-value of 0.065 from one chain and 0.030 from the other. The clustering of 0.468 sits further out: the shuffles averaged about 0.42, the highest value in either chain was 0.469, and the p-values are 0.010 and 0.005, the smallest that 200 draws can give.
+The real network has 341 four-cycles. Across 200 shuffled networks with the same degrees, the count averaged about 313 (it ranged from 264 to 360 over the two chains), and the real 341 gets a p-value (the share of shuffled networks at least as extreme as the real one) of 0.065 from one chain and 0.030 from the other. The clustering of 0.468 sits further out: the shuffles averaged about 0.42, the highest value in either chain was 0.469, and the p-values are 0.010 and 0.005, the smallest that 200 draws can give.
 
 Three things to take from this. First, the count and the ratio disagree about how surprising the network is. The ratio also divides by the three-step paths, which the shuffles do not hold fixed, so choose your statistic before you look, not after. Second, the two chains give p-values for the count that differ by a factor of two. That is the Monte Carlo noise @sec-tests-and-null-models describes, and it is why you say "about 5 percent" and not "0.03". Third, the effect is modest: 0.468 against a typical 0.42. These women's attendance is somewhat more clustered than their degrees alone would produce, not wildly so. And the null only says "more than these degrees produce". It says nothing about why.
 
@@ -1516,7 +1540,11 @@ $$
 P(\text{shared} \ge s) = \sum_{x \ge s} \frac{\binom{a}{x} \binom{14 - a}{b - x}}{\binom{14}{b}},
 $$
 
-where $\binom{n}{k}$ is "$n$ choose $k$", the number of ways to pick $k$ things from $n$. This is the hypergeometric distribution, and it is the idea behind "backbone" extraction from projections [@tumminello2011statistically; @neal2014backbone]. By hand: two women with 2 events each out of 4 share both with probability $\binom{2}{2}\binom{2}{0} / \binom{4}{2} = 1/6$. With 139 pairs tested, some will look unlikely by luck, so we compare the number of small p-values with what luck predicts, and with a Bonferroni cutoff (divide 0.05 by the 153 possible pairs; see @sec-tests-and-null-models).
+where $\binom{n}{k}$ is "$n$ choose $k$", the number of ways to pick $k$ things from $n$. This is the hypergeometric distribution, and it is the idea behind "backbone" extraction from projections [@tumminello2011statistically; @neal2014backbone]. By hand: two women with 2 events each out of 4 share both with probability $\binom{2}{2}\binom{2}{0} / \binom{4}{2} = 1/6$. With 139 pairs tested, some will look unlikely by luck, so we compare the number of small p-values with what luck predicts, and with a **Bonferroni** cutoff (a stricter bar, which divides 0.05 by the 153 possible pairs so that running many tests doesn't hand you false alarms; see @sec-tests-and-null-models).
+
+::: {.callout-tip title="In plain words"}
+Imagine one woman attended $a$ of the 14 events, and a second woman picks her $b$ events completely at random. The formula gives the chance that they share at least $s$ events. For each possible overlap $x$, it counts the ways to choose $x$ of the first woman's $a$ events and the other $b - x$ from the $14 - a$ she missed, divided by all the ways to choose $b$ events out of 14, and then it adds up the overlaps from $s$ on. In the tiny case in the text, 2 events each out of 4: $\binom{2}{2}\binom{2}{0} / \binom{4}{2} = 1/6$. For Evelyn and Theresa, this machinery gives the p of 0.016 you'll see below. This is the hardest formula in the chapter. On a first read you can skip to the results and still have the idea: compare each pair with what chance would give.
+:::
 
 ::: {.panel-tabset group="language"}
 
@@ -1807,16 +1835,16 @@ Even a clean two-mode analysis can't tell you whether the women knew each other,
 ::: {.callout-note collapse="true"}
 ## Worked answers
 
-1. The rows of the incidence matrix are Ana (1, 1, 0), Ben (1, 0, 0), Cleo (0, 1, 1) and Dev (0, 0, 1), with columns Choir, Chess, Quiz. Projected onto the people: Ana and Ben share Choir, Ana and Cleo share Chess, Cleo and Dev share Quiz, each with weight 1, and every other pair is 0. That is a path, Ben - Ana - Cleo - Dev. Projected onto the events: Choir and Chess share Ana, Chess and Quiz share Cleo, and Choir and Quiz share nobody, another path.
-2. An event of 10 women ties $10 \times 9 / 2 = 45$ pairs. It adds a new pair only when both women of a pair that shares nothing are among the ten. There are $153 - 139 = 14$ such pairs, so it adds at most 14, and at least 31 of its 45 pairs were already tied.
-3. For the small events, $1/2 + 1/2 + 1/3 = 1.33$. For the big ones, $1/11 + 1/11 + 1/13 = 0.26$. The first pair looks about five times closer, though both share three events.
-4. In the one-meeting version all three people attend one event, so every pair shares one event. In the three-meeting version each pair shares exactly one meeting. Both projections are a triangle of weight-1 ties. The two-mode data tell them apart: one event of size 3 against three events of size 2, and the event projections (a single node against a triangle). Newman weights differ too: $1/(3-1) = 0.5$ per pair against $1/(2-1) = 1$.
-5. By plain count the strongest pair of events is 8 and 9 (9 women), then 7 and 8 (8 women). By Newman weight, with a woman's number of events as $k$, events 8 and 9 are first again (3.15), but the second pair is 9 and 11 (2.14), then 7 and 8 (1.89).
-6. With the event groups unchanged, moving Nora to the first group lowers the modularity from 0.318 to 0.250. Most of her events (6, 7, 9, 10, 11, 12, 13 and 14) belong to the second group, so more of her ties now cross groups.
-7. Twelve pairs are tied (the eight from before and four new ones), and the network is now one connected piece. The new event ties Ana and Cleo, from the first cluster, to Esi and Gus, from the second, so the two clusters no longer separate.
-8. A reply might run: "Counting co-authors is a degree in the projection, and it grows with the size of the papers, not only with the number of papers. One 50-author paper gives each author 49 co-authors. Could you report the number of papers (the two-mode degree) next to it, or the Newman strength, which equals the number of papers, and show that the ranking survives leaving out the biggest paper?"
-9. With those settings the p-values are about 0.07 for the four-cycle count and 0.02 for the clustering, close to the chapter's, which is the check you want: the answer does not depend on the seed or on how long the chain ran. (Each p-value still wobbles by a couple of hundredths with 100 draws.)
-10. Defensible: "Of the 139 pairs of women who shared at least one event, 17 shared more than a random draw of each woman's events would give at the 5 percent level, against about 7 expected by chance, and none passes a Bonferroni correction; 15 of the 17 lie inside one of the two groups." Over-claiming: "Seventeen pairs of women were close friends." The test compares counts with a null that ignores event sizes. It says nothing about friendship, and it would not survive a stricter null.
+1. Write the table first, then pair up whoever shares a column. The rows of the incidence matrix are Ana (1, 1, 0), Ben (1, 0, 0), Cleo (0, 1, 1) and Dev (0, 0, 1), with columns Choir, Chess, Quiz. Projected onto the people: Ana and Ben share Choir, Ana and Cleo share Chess, Cleo and Dev share Quiz, each with weight 1, and every other pair is 0. That is a path, Ben - Ana - Cleo - Dev. Projected onto the events: Choir and Chess share Ana, Chess and Quiz share Cleo, and Choir and Quiz share nobody, another path.
+2. A crowded event ties many pairs, but most of them were already tied. An event of 10 women ties $10 \times 9 / 2 = 45$ pairs. It adds a new pair only when both women of a pair that shares nothing are among the ten. There are $153 - 139 = 14$ such pairs, so it adds at most 14, and at least 31 of its 45 pairs were already tied.
+3. The small events make the first pair look about five times closer. For the small events, $1/2 + 1/2 + 1/3 = 1.33$. For the big ones, $1/11 + 1/11 + 1/13 = 0.26$. The first pair looks about five times closer, though both share three events.
+4. Both versions give the same triangle, so you have to look at the two-mode data. In the one-meeting version all three people attend one event, so every pair shares one event. In the three-meeting version each pair shares exactly one meeting. Both projections are a triangle of weight-1 ties. The two-mode data tell them apart: one event of size 3 against three events of size 2, and the event projections (a single node against a triangle). Newman weights differ too: $1/(3-1) = 0.5$ per pair against $1/(2-1) = 1$.
+5. Events 8 and 9 come out strongest under both weightings, and the runners-up differ. By plain count the strongest pair of events is 8 and 9 (9 women), then 7 and 8 (8 women). By Newman weight, with a woman's number of events as $k$, events 8 and 9 are first again (3.15), but the second pair is 9 and 11 (2.14), then 7 and 8 (1.89).
+6. Moving Nora makes the groups fit the ties worse. With the event groups unchanged, moving Nora to the first group lowers the modularity from 0.318 to 0.250. Most of her events (6, 7, 9, 10, 11, 12, 13 and 14) belong to the second group, so more of her ties now cross groups.
+7. The new event joins the two clusters into one. Twelve pairs are tied (the eight from before and four new ones), and the network is now one connected piece. The new event ties Ana and Cleo, from the first cluster, to Esi and Gus, from the second, so the two clusters no longer separate.
+8. Gently point out that counting co-authors also counts how big the papers are. A reply might run: "Counting co-authors is a degree in the projection, and it grows with the size of the papers, not only with the number of papers. One 50-author paper gives each author 49 co-authors. Could you report the number of papers (the two-mode degree) next to it, or the Newman strength, which equals the number of papers, and show that the ranking survives leaving out the biggest paper?"
+9. The answers barely move. With those settings the p-values are about 0.07 for the four-cycle count and 0.02 for the clustering, close to the chapter's, which is the check you want: the answer does not depend on the seed or on how long the chain ran. (Each p-value still wobbles by a couple of hundredths with 100 draws.)
+10. Say what the test shows and what it can't. Defensible: "Of the 139 pairs of women who shared at least one event, 17 shared more than a random draw of each woman's events would give at the 5 percent level, against about 7 expected by chance, and none passes a Bonferroni correction; 15 of the 17 lie inside one of the two groups." Over-claiming: "Seventeen pairs of women were close friends." The test compares counts with a null that ignores event sizes. It says nothing about friendship, and it would not survive a stricter null.
 :::
 
 ## Summary

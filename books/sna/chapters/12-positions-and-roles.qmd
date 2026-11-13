@@ -5,6 +5,14 @@
 @sec-networks-as-data, @sec-centrality and @sec-subgroups. Directed ties (@sec-networks-as-data) matter a lot here, and so does the difference between a group of people who tie to each other and a set of people who merely look alike. The later sections borrow the idea of a fair baseline from @sec-tests-and-null-models and refer ahead to @sec-latent-space and @sec-multilayer.
 :::
 
+::: {.callout-note title="The short version"}
+People who play the same part in a network don't have to know each other. Two cashiers in different stores, or two nurses on different wards, stand in the same pattern of relationships to everyone around them. This chapter gives three ways of saying "the same pattern", from strict to loose, and then shows how to squeeze a whole network down to a small map of the parts people play. The most useful lesson is a warning: the computer proposes positions, and you decide whether they mean anything.
+:::
+
+::: {.callout-note title="Why you might care"}
+If you want to know who does the same job in practice, and not who has the same title, positions are how you find out. They let you compare organizations of different sizes, spot the person doing a job that isn't on their door, and see which firms in a supply chain play the same tier.
+:::
+
 ## People who play the same part
 
 ::: {.callout-tip appearance="simple"}
@@ -39,7 +47,7 @@ Here's the network we'll use all chapter. It is a ten-person office, drawn in @f
 
 ![An office advice network. Shape and color mark the position: leaders (diamonds), managers (squares) and staff (circles). Nobody in the bottom row asks anybody else in the bottom row, and yet they have a lot in common.](../figures/office-network.svg){#fig-office-network fig-alt="Ten people in three rows. Two leaders at the top, Ada and Ben, point at each other. Three managers in the middle each point at both leaders. Five staff at the bottom each point at one manager: Flo and Gus at Cy, Hal at Dee, and Ivy and Jay at Eve."}
 
-I drew the picture in rows because I already knew the answer, which is cheating a little. Pretend instead that all you had was the list of arrows. Could you work out who plays which part? That's the job of this chapter, and we'll do it in four steps, from the strictest idea of "alike" to the loosest. First the data.
+I drew the picture in rows because I already knew the answer, which is cheating a little. Pretend instead that all you had was the list of arrows. Could you work out who plays which part? That's the job of this chapter, and we'll do it in four steps, from the strictest idea of "alike" to the loosest. First the data: the code below builds the office, and in its summary you should see 10 people and 13 arrows.
 
 ::: {.panel-tabset group="language"}
 
@@ -144,13 +152,19 @@ Directed network: 10 nodes, 13 ties (arcs)
 
 The strictest idea is **structural equivalence**. Two people are structurally equivalent when they have exactly the same ties to exactly the same others [@lorrain1971structural]. Flo and Gus are the example in this office: both go to Cy, and neither goes to, or is gone to by, anyone else. If you swapped their names on the picture, nothing about the network would change. In the matrix, their rows and columns are identical.
 
-That is rarely true to the letter in real data, so we measure *how far* two people are from it. Write down each person's **tie profile**: for every other person, whether they go to that person and whether that person goes to them. Then compare two people's profiles. The most common comparison is the **Euclidean distance** [@burt1976positions],
+That is rarely true to the letter in real data, so we measure *how far* two people are from it. Write down each person's **tie profile**: for every other person, whether they go to that person and whether that person goes to them. Then compare two people's profiles. The question is: in how many places do their two profiles disagree? The most common answer is the **Euclidean distance** [@burt1976positions],
 
 $$
 d_{ij} = \sqrt{\sum_{k \neq i, j} \left[ (a_{ik} - a_{jk})^2 + (a_{ki} - a_{kj})^2 \right]},
 $$
 
 where $a_{ik}$ is 1 if $i$ has a tie to $k$ and 0 if not. In words: go through everyone else, count how often the two people differ in who they go to and who goes to them, and take a square root. We skip $k = i$ and $k = j$, so the two people's ties to *each other* are not held against them [@wasserman1994social, chap. 9]. Zero means identical profiles. Bigger means more different.
+
+::: {.callout-tip title="In plain words"}
+This formula scores how different two people are. Read $d_{ij}$ as "the distance between person $i$ and person $j$", and $a_{ik}$ as "1 if $i$ goes to $k$, otherwise 0". For each other person $k$, the first bracket asks whether $i$ and $j$ differ in going to $k$, and the second asks whether they differ in being gone to by $k$. Squaring turns each difference into a 1 and each match into a 0, so the big sum is just the number of disagreements, and the square root turns that count back into a distance. For Cy and Dee in the office there are three disagreements (Flo and Gus go to Cy and not to Dee, and Hal goes to Dee and not to Cy), so the distance is the square root of 3, which is 1.732, the number you'll see in the output below.
+:::
+
+The code below measures every pair of people in the office. Look for zeros, which mean identical profiles, and watch how the distance grows as the profiles drift apart.
 
 ::: {.panel-tabset group="language"}
 
@@ -240,15 +254,21 @@ Notice that structural equivalence found the *pairs*, but it hasn't told us "the
 
 ### The definition, exactly
 
+Here is the same idea as a yes-or-no test: are these two people exactly alike in who they connect to? This is the formal part, so on a first read you can skip to the six-person example below and still have the idea.
+
 Let $a_{ik}$ be 1 if person $i$ has a tie to person $k$ and 0 if not. Two people $i$ and $j$ are **structurally equivalent** when
 
 $$
 a_{ik} = a_{jk} \quad \text{and} \quad a_{ki} = a_{kj} \quad \text{for every other person } k \neq i, j.
 $$
 
-In words: whoever $i$ goes to, $j$ goes to; whoever goes to $i$, goes to $j$. This is the definition of @lorrain1971structural in the form @wasserman1994social give it in chapter 9. Whether the two people's ties to *each other* ($a_{ij}$ and $a_{ji}$) should count is a convention, and this book, like the software it uses, leaves them out. Two things follow.
+In words: whoever $i$ goes to, $j$ goes to; whoever goes to $i$, goes to $j$. This is the definition of @lorrain1971structural in the form @wasserman1994social give it in chapter 9. Whether the two people's ties to *each other* ($a_{ij}$ and $a_{ji}$) should count is a convention, and this book, like the software it uses, leaves them out.
 
-First, if you list people so that equivalent ones sit next to each other, the matrix breaks into blocks that are either all 0 or all 1 (apart from the diagonal). That is the dream picture for a blockmodel, and we will see how rarely real data give it.
+::: {.callout-tip title="In plain words"}
+This is the strict test, written as a sentence. The part $a_{ik} = a_{jk}$ says "$i$ and $j$ go to the same people", the part $a_{ki} = a_{kj}$ says "$i$ and $j$ are gone to by the same people", and "for every other person $k$" means everyone except the two being compared. In the six-person example below, $a$ and $b$ pass: both go to $d$ and $e$, neither goes to $c$ or $f$, and nobody goes to either of them. Persons $a$ and $c$ fail, because $a$ goes to $e$ and $c$ doesn't.
+:::
+
+Two things follow. First, if you list people so that equivalent ones sit next to each other, the matrix breaks into blocks that are either all 0 or all 1 (apart from the diagonal). That is the dream picture for a blockmodel, and we will see how rarely real data give it.
 
 Second, the definition has a wrinkle that textbooks tend to skip. With the pair's own ties left out, "structurally equivalent" is not always transitive. Take three people in a pecking order, where $i$ goes to $j$ and to $l$, and $j$ goes to $l$. Then $i$ and $j$ are equivalent (they differ only in the one cell we skip), and so are $j$ and $l$, but $i$ and $l$ are not, because $i$ goes to $j$ and $l$ does not. Exact classes can therefore fail to be clean. One more reason to work with distances, and with clustering, instead of expecting perfect classes.
 
@@ -367,6 +387,10 @@ The three distances match the paper work: 0, 1 and 1. The correlations are 1 for
 
 The distance we have used counts the cells where two profiles differ. It is easy to explain and it has one habit you should know about: it grows with how many ties people have. A person with a hundred ties is far from nearly everyone, and two people with almost no ties are close to each other even if they tie to completely different people. Is that what you want? Sometimes. If you want to know who plays the same part regardless of how busy they are, you want the **correlation** between profiles instead. Write the profile of $i$ as the list of $a_{ik}$ and $a_{ki}$ over $k \neq i, j$, and let $r_{ij}$ be the ordinary Pearson correlation of the two lists. A correlation of 1 means the two profiles go up and down together, and $1 - r_{ij}$ is a distance you can cluster. Notice that `net_struct_equiv()` with `method = "correlation"` returns the correlation itself, not a distance, so take $1 - r$ before you cluster.
 
+::: {.callout-tip title="In plain words"}
+Write each person's tie list as a row of 0s and 1s: who they go to and who goes to them. The correlation $r_{ij}$ asks whether two such rows rise and fall together, so 1 means the same pattern no matter how many ties each person has, and $1 - r_{ij}$ is 0 for identical patterns. In the six-person example, $a$ and $b$ have correlation 1 and so distance 0, and the two near-misses have correlations of about 0.65 and 0.77, which makes distances of about 0.35 and 0.23 (one minus each, worked out by hand).
+:::
+
 The two usually agree on a clean network and can disagree on a sparse one. We will see a real case in the monastery below.
 
 ### From distances to positions: two routes
@@ -375,7 +399,7 @@ A table of distances is not a set of positions. To get positions you have to cut
 
 **Hierarchical clustering.** Start with every person alone. Repeatedly merge the two closest groups, where the distance between two groups is the average (or the largest, or the smallest) distance between their members. Stop when $k$ groups are left. That is a cut of the clustering tree, or dendrogram, and the choice of "average" is called a linkage.
 
-**CONCOR.** Breiger, Boorman and Arabie [@breiger1975algorithm] noticed something odd. Take the matrix of profile correlations and correlate its columns with each other. Do it again, and again. Every entry drifts toward $+1$ or $-1$. When they get there, the signs split the people in two. Then you do the same inside each half, which gives up to $2^{\text{depth}}$ blocks. It needs no distance and no choice of linkage, and it always splits, whether or not there is anything to find.
+**CONCOR.** Breiger, Boorman and Arabie [@breiger1975algorithm] noticed something odd. Take the matrix of profile correlations and correlate its columns with each other. Do it again, and again. Every entry drifts toward $+1$ or $-1$. When they get there, the signs split the people in two. Then you do the same inside each half, which gives up to $2^{\text{depth}}$ blocks (two after the first split, up to four after the second). It needs no distance and no choice of linkage, and it always splits, whether or not there is anything to find.
 
 The code runs both on the six-person network (where we know the answer should be $\{a, b, c\}$, $\{d, e\}$, $\{f\}$) and on the office. For the office we make three groups, the number of positions we know are there, with two linkages, and we run CONCOR to depths one and two. R and Rust use the engine's CONCOR; the Python tab writes it out. The R and Python tabs also write a shortcut for the distances (compare the full profiles, then take back the two terms we skip), and the first line of output checks that it agrees with the engine, so we can use it later in loops.
 
@@ -736,6 +760,10 @@ It is easy to read "same kinds of ties to the same kinds of people" as "same nei
 
 Nobody is asked to share a neighbour. Flo goes to Cy and Hal goes to Dee, and that's fine, because Cy and Dee are in the same class. Seen as a table of blocks, the condition says that every block of the matrix is either empty, or has at least one tie in every row and at least one in every column. We will give such a block a name in the next section. It is the reason a block with only a third of its cells filled can still be perfectly "regular."
 
+::: {.callout-tip title="In plain words"}
+Swap "the same neighbours" for "neighbours of the same kind". The letters $B$ and $C$ stand for two classes, and the condition says that if one person in class $B$ goes to someone in class $C$, everyone else in $B$ must go to someone in $C$ too, though not necessarily the same someone. In the office, Flo (staff) goes to Cy and Hal (staff) goes to Dee. Those are different people, but both are managers, so the condition holds. It would fail if Hal went to nobody in the manager class.
+:::
+
 Two more facts are worth having in your head.
 
 **There are many regular equivalences, and the algorithm returns the coarsest.** Take five people in a path, each tied to the next. Put them into three classes (the two ends, the two next to the ends, the middle person) and the split is regular. Put all five into one class and it is regular too, because everyone has a neighbour in the one class. CATREGE returns the coarsest regular split, the largest equivalence, which on the path is "everyone", and that is not a useful answer. The coarsest regular split is fine for the office because directions give the arrows enough shape to keep leaders, managers and staff apart. For an undirected network it is nearly always too coarse, which is why the chapter's earlier warning matters.
@@ -754,6 +782,10 @@ knappnet computes the categorical version (CATREGE) and not REGE, so we have no 
 Between the strictest idea and the loosest sits a third. Structural equivalence asks for the same ties to the *same people*. That is stricter than it sounds. Look again at the office. Cy goes to both leaders and has two staff, Flo and Gus. Eve goes to both leaders and has two staff, Ivy and Jay. Cy and Eve share no staff, so they are not structurally equivalent. Yet if you swapped Cy with Eve, and at the same time Flo and Gus with Ivy and Jay, every arrow in the picture would land on an arrow. The network cannot tell the two managers apart.
 
 That is **automorphic equivalence** [@everett1985role; @borgatti1992notions]. An **automorphism** is a relabeling of the people that keeps every tie: if $\pi$ sends each person $i$ to a person $\pi(i)$, then $a_{\pi(i)\,\pi(j)} = a_{ij}$ for every pair. Two people are automorphically equivalent when some automorphism sends one to the other. Dee is not equivalent to Cy, because Dee has one staff member and Cy has two, and no relabeling can change how many arrows end at someone.
+
+::: {.callout-tip title="In plain words"}
+An automorphism is a shuffle of the names that leaves the picture looking exactly the same. Read $\pi$ as the shuffle and $\pi(i)$ as "the name person $i$ gets after it". The equation says that if $i$ and $j$ were tied before the shuffle, their new names are tied after it, and the same goes for pairs that were not tied. In the office, swapping Cy with Eve while swapping Flo and Gus with Ivy and Jay moves no arrow, so that shuffle is an automorphism and Cy and Eve are automorphically equivalent.
+:::
 
 A path of five people in a row is the standard tiny example. The two ends are alike, because reversing the path swaps them. So are the two people next to the ends. The person in the middle is alone. Nobody in the path is structurally equivalent to anyone else (each has a different pair of neighbors), but there are three automorphic classes.
 
@@ -1111,6 +1143,10 @@ The office doesn't have that. The block from staff to managers has only 5 of its
 - **regular**: both,
 - **irregular**: none of the above.
 
+::: {.callout-tip title="In plain words"}
+Picture one rectangle of the table, with the people of position $r$ as rows and the people of position $s$ as columns. Null means the rectangle is empty and complete means it is full. Row-regular means every row has at least one tie, column-regular means every column has at least one, and regular means both. In the office, staff to managers has 5 ties among 15 cells, yet every staff member goes to some manager and every manager is gone to by some staff member, so it is regular even though two thirds of it is empty.
+:::
+
 A split is a regular equivalence exactly when every block is null or regular (a complete block is regular as a special case). That makes regular equivalence checkable, with ten lines of code, for any partition you like, however it was found. The tab below classifies the blocks of the office, counts how many cells would have to change to make each block all 0 or all 1, and then tests a few splits.
 
 ::: {.panel-tabset group="language"}
@@ -1327,9 +1363,17 @@ In a directed network the block from position $r$ to position $s$ and the block 
 
 A blockmodel is a claim: "these positions, and this image, describe the network." How would you check it? Count the mistakes. Take the image, which says each block should be all 0 or all 1, and count the cells where the real matrix disagrees. For one block, the fewest mistakes you can make is the smaller of its ties and its missing ties (call a block a zeroblock if it has fewer ties than non-ties, a oneblock otherwise), and the total over blocks is the **error count** of the blockmodel. It runs from 0 (perfect) up to a ceiling that depends on how sparse the network is.
 
+::: {.callout-tip title="In plain words"}
+For each block, count its ties and its missing ties, and the smaller of the two is the number of mistakes you can't avoid. Add that up over all blocks. In the office, staff to managers has 5 ties and 10 missing ones, so it costs 5 mistakes, every other block is empty or full and costs none, and the total is 5.
+:::
+
 That number needs a baseline. One is the empty image, with every block a zeroblock, which makes one mistake per tie. Another is a **null model for the labels**: keep the network exactly as it is, keep the sizes of the positions, and deal the people into positions at random. If random splits make about as few mistakes as yours, your split is not saying much.
 
 For the office the null can be exact. Ten people into positions of size 2, 3 and 5 can be dealt in $\binom{10}{2}\binom{8}{3} = 2520$ ways, and the code tries all of them. The same code prints the **log-likelihood** of the split, which needs a short word about stochastic blockmodels. If every pair in block $(r, s)$ is tied with the same probability $p_{rs}$, the likelihood of the network is $\prod p_{rs}^{t_{rs}} (1 - p_{rs})^{n_{rs} - t_{rs}}$, with $t_{rs}$ the ties and $n_{rs}$ the pairs in the block. It is largest when $p_{rs}$ is the block's density. That is the **stochastic blockmodel** of Holland, Laskey and Leinhardt [@holland1983stochastic], and a blockmodel's block densities are exactly its maximum-likelihood probabilities. The difference is what they do next: the stochastic version asks how likely the whole network is, and (as we'll see in @sec-latent-space) estimates the positions too.
+
+::: {.callout-tip title="In plain words"}
+The likelihood asks: if every pair in a block were tied by the same coin flip, how likely is the exact network we saw? Here $p_{rs}$ is the chance of a tie in the block from position $r$ to position $s$, $t_{rs}$ is how many ties it holds and $n_{rs}$ how many pairs it has. The product multiplies the chance of each tie being there ($p$) or missing ($1 - p$), and it is largest when $p_{rs}$ equals the block's observed density. For the staff-to-managers block that is 5 out of 15, or 0.33, the density in the table. The log-likelihood is the logarithm of that product, so it is negative and closer to zero is better. The count of 2,520 deals is a short sum: 45 ways to pick the two leaders, then 56 ways to pick three managers from the other eight, and 45 times 56 is 2,520. This is the hardest paragraph in the chapter. On a first read you can skip to the next heading and still have the error count, which carries the same message.
+:::
 
 ::: {.panel-tabset group="language"}
 
@@ -1669,7 +1713,7 @@ Time to use all of this on a real organization. The 21 managers of the firm in @
 
 > **Do the managers fall into a few positions in the advice network, and are those positions the organization chart?**
 
-The plan: distances between advice profiles (@sec-case-krackhardt has 190 advice ties among 21 managers), an average-linkage tree cut into four positions, a table of positions against level and department, the blockmodel of the four positions, and a second opinion from CONCOR. Why four? Because it is a tree cut with a visible kink in the number of mistakes (we'll check that two sections from now), and because it is small enough to read. It is a choice, and a different reader could make a different one.
+The plan (we compare groupings with the **adjusted Rand index**, where 1 means identical groupings and about 0 means no more agreement than chance): distances between advice profiles (@sec-case-krackhardt has 190 advice ties among 21 managers), an average-linkage tree cut into four positions, a table of positions against level and department, the blockmodel of the four positions, and a second opinion from CONCOR. Why four? Because it is a tree cut with a visible kink in the number of mistakes (we'll check that two sections from now), and because it is small enough to read. It is a choice, and a different reader could make a different one.
 
 ::: {.panel-tabset group="language"}
 
@@ -2101,6 +2145,10 @@ So the **number-of-blocks problem** comes down to three habits. Plot the mistake
 Blockmodels were invented for several relations at once. White, Boorman and Breiger's paper has "Social structure from multiple networks" in its title [@white1976social], and they used Sampson's monastery as the example. The idea is natural. A person's position is how they stand to others in *every* relation we measured: who they like, who they respect, who they take advice from. Two novices who look alike in liking alone may look different once respect is added, and the other way round.
 
 To compare people across relations, stack their profiles. If $a^{(1)}, a^{(2)}, \dots$ are the tie tables of the relations, the profile of $i$ is its row and its column in each of them, one after another, and the squared distance between two people is the sum over relations of the squared distances (the terms we skip are the same in every relation, so nothing new is needed to define it). That is the same arithmetic as before with a longer profile. Our `se_dist()` already takes a list of tie tables, and the Rust version takes a list too.
+
+::: {.callout-tip title="In plain words"}
+Stacking means laying each person's profiles from the different relations end to end, like sentences joined into one long one, and then counting disagreements along the whole length. If Flo and Hal differ in 2 cells of advice (distance 1.414) and, in an imagined second relation, in 1 more cell, the squared distances add up to 2 + 1 = 3, and the distance is the square root of 3. More relations only make the profile longer; the arithmetic stays the same.
+:::
 
 We do it for Sampson's monastery, the 18 novices of @sec-case-sampson, at the third wave, where the data hold eight relations: liking, esteem, positive influence and praise, and their negative twins (disliking, disesteem, negative influence and blame). The case chapter found that the communities in liking are *not* Sampson's groups. Positions are a different question: not "who likes whom" but "who stands where among everyone's choices." So we ask it three times: with liking alone, with the four positive relations, and with all eight. Then we compare each answer with the four groups Sampson described (Young Turks, Loyal Opposition, Outcasts and Waverers) using the adjusted Rand index, and look at 3 and 4 positions. Every combination is printed: choosing the best-looking row afterwards would be cheating.
 
@@ -2616,16 +2664,16 @@ A defensible sentence has all of that in it. For the monastery: "Stacking four p
 ::: {.callout-note collapse="true"}
 ## Worked answers
 
-1. Cy goes to Ada and Ben, and is gone to by Flo and Gus. Dee goes to Ada and Ben, and is gone to by Hal. Skipping Cy and Dee themselves, the cells that differ are: Gus's tie to Cy against none to Dee, Flo's tie to Cy against none to Dee, and Hal's tie to Dee against none to Cy. That is three cells, so the distance is $\sqrt{3} = 1.732$.
-2. With Gus going to Hal as well, Flo and Gus differ in one cell and are at distance 1. Gus and Hal are at distance $\sqrt{2}$. Only Ada and Ben (distance 0) and Ivy and Jay (distance 0) are structurally equivalent now. The regular split changes a lot. Gus now has a tie to a staff member, and Hal one from a staff member, so each leaves the staff class, and then Cy, Dee and Eve no longer see the same classes among their staff either. The coarsest regular split has 8 classes: Ada and Ben, Cy, Dee, Eve, Flo, Gus, Hal, and Ivy and Jay. One tie dissolved a clean three-position structure.
+1. Count the cells where the two profiles disagree, then take the square root. Cy goes to Ada and Ben, and is gone to by Flo and Gus. Dee goes to Ada and Ben, and is gone to by Hal. Skipping Cy and Dee themselves, the cells that differ are: Gus's tie to Cy against none to Dee, Flo's tie to Cy against none to Dee, and Hal's tie to Dee against none to Cy. That is three cells, so the distance is $\sqrt{3} = 1.732$.
+2. One new arrow is enough to break the tidy picture. With Gus going to Hal as well, Flo and Gus differ in one cell and are at distance 1. Gus and Hal are at distance $\sqrt{2}$. Only Ada and Ben (distance 0) and Ivy and Jay (distance 0) are structurally equivalent now. The regular split changes a lot. Gus now has a tie to a staff member, and Hal one from a staff member, so each leaves the staff class, and then Cy, Dee and Eve no longer see the same classes among their staff either. The coarsest regular split has 8 classes: Ada and Ben, Cy, Dee, Eve, Flo, Gus, Hal, and Ivy and Jay. One tie dissolved a clean three-position structure.
 3. Structural equivalence asks for the same people, and in a company of 400, two assistants in different departments email different people. Regular equivalence is closer to "plays the same part", but with undirected or dense email ties it may be too coarse, so you would want directed ties (who writes to whom) and perhaps a starting partition. A blockmodel needs positions from somewhere: use clustering of distances or CONCOR and then fit and judge it. Check the result against the org chart (adjusted Rand with department and level), against a fair baseline (refit on networks with the same out-degrees), and against dropping a tenth of the messages.
-4. Hamming distance counts differing cells and Euclidean distance takes the square root of the sum of squared differences. In a network of 0s and 1s every difference is 1, so the Euclidean distance is the square root of the Hamming distance, and the two order the pairs identically. They differ for weighted ties, where a difference can be bigger than 1. Single and complete linkage then give the same tree from either, but average linkage can differ, because the average of square roots is not the square root of the average.
+4. For 0s and 1s the two distances tell the same story. Hamming distance counts differing cells and Euclidean distance takes the square root of the sum of squared differences. In a network of 0s and 1s every difference is 1, so the Euclidean distance is the square root of the Hamming distance, and the two order the pairs identically. They differ for weighted ties, where a difference can be bigger than 1. Single and complete linkage then give the same tree from either, but average linkage can differ, because the average of square roots is not the square root of the average.
 5. A kind reply: "The image matrix shows that staff to managers is the only block with ties, and that nothing flows from staff to staff. It describes advice (or whatever the tie is), not how the team feels about each other. Staff may talk plenty about other things. A culture is not in this table. If you want to know about teamwork, ask about teamwork, with a measure of ties between staff on a relation that fits, such as who they work with day to day."
-6. Skip each pair in turn. For $i$ and $j$, the only other person is $l$: $i$ goes to $l$ and $j$ goes to $l$, and $l$ goes to neither, so the profiles match and the distance is 0. For $j$ and $l$, the only other person is $i$: $i$ goes to both of them and neither goes to $i$, so again 0. For $i$ and $l$, the only other person is $j$: $i$ goes to $j$ but $l$ does not, and $j$ goes to $l$ but not to $i$. That is two differing cells, and the distance is $\sqrt{2}$. So $i \equiv j$ and $j \equiv l$, but $i \not\equiv l$, and the relation is not transitive.
-7. Yes, $\{1, 5\}, \{2, 4\}, \{3\}$ is regular: the ends each have a neighbour in the next-to-ends class and in no other class, and the next-to-ends have one neighbour in the ends class and one in the middle class. Everyone in one class is regular as well, because everyone has a neighbour in that class. CATREGE returns the coarsest regular split, which is everyone in one class. The code earlier shows exactly this, and it is not a good answer because it says the path has one position, when its ends clearly differ from its middle.
-8. Two blocks have ties. From $\{a, b, c\}$ to $\{d, e\}$ there are 5 ties among 6 pairs, because $c$ has no tie to $e$, so that block is a oneblock with 1 mistake. From $\{d, e\}$ to $\{f\}$ both ties are present, and every other block is null. The total is 1 mistake. The split is a regular equivalence: every person in the first position has a tie into the second, every person in the second is reached from the first, and the same holds from the second to $\{f\}$.
-9. The friendship network has 102 ties, so the best image makes about 73 mistakes with four positions against 102 for one block. The positions are very unbalanced (one position holds 16 of the 21 managers, and two positions hold one manager each), and the adjusted Rand index with the advice positions is about $-0.05$, which is no agreement. That is the point of saying which relation positions come from: friendship and advice put these managers in different places.
-10. Ask: is 80% a share of ties explained or a squared correlation, and what is the baseline (the empty image alone explains nothing but a sparse network is mostly zeros, so a high share of pairs can be right with no positions at all)? How was 8 chosen, and does the fit leave the best of many shuffled networks behind when the whole search is repeated? Were the positions found on the same ties they are tested on? What do the positions line up with: department, level, floor? Do they survive dropping a tenth of the messages? And "roles" is a word for what people do: an email pattern says who wrote to whom. To answer, run the number-of-blocks comparison against refit networks, compare the positions with the org chart, and re-fit on random halves of the messages and report how much the positions move.
+6. Check each pair in turn, and one pair breaks the pattern. Skip each pair in turn. For $i$ and $j$, the only other person is $l$: $i$ goes to $l$ and $j$ goes to $l$, and $l$ goes to neither, so the profiles match and the distance is 0. For $j$ and $l$, the only other person is $i$: $i$ goes to both of them and neither goes to $i$, so again 0. For $i$ and $l$, the only other person is $j$: $i$ goes to $j$ but $l$ does not, and $j$ goes to $l$ but not to $i$. That is two differing cells, and the distance is $\sqrt{2}$. So $i \equiv j$ and $j \equiv l$, but $i \not\equiv l$, and the relation is not transitive.
+7. Both splits pass the test, and the computer would hand you the useless one. Yes, $\{1, 5\}, \{2, 4\}, \{3\}$ is regular: the ends each have a neighbour in the next-to-ends class and in no other class, and the next-to-ends have one neighbour in the ends class and one in the middle class. Everyone in one class is regular as well, because everyone has a neighbour in that class. CATREGE returns the coarsest regular split, which is everyone in one class. The code earlier shows exactly this, and it is not a good answer because it says the path has one position, when its ends clearly differ from its middle.
+8. Only one cell is out of place, and the split passes the regular test. Two blocks have ties. From $\{a, b, c\}$ to $\{d, e\}$ there are 5 ties among 6 pairs, because $c$ has no tie to $e$, so that block is a oneblock with 1 mistake. From $\{d, e\}$ to $\{f\}$ both ties are present, and every other block is null. The total is 1 mistake. The split is a regular equivalence: every person in the first position has a tie into the second, every person in the second is reached from the first, and the same holds from the second to $\{f\}$.
+9. The two relations put these managers in very different places. The friendship network has 102 ties, so the best image makes about 73 mistakes with four positions against 102 for one block. The positions are very unbalanced (one position holds 16 of the 21 managers, and two positions hold one manager each), and the adjusted Rand index with the advice positions is about $-0.05$, which is no agreement. That is the point of saying which relation positions come from: friendship and advice put these managers in different places.
+10. Ask what the 80% is measured against, and whether the eight was chosen fairly. Ask: is 80% a share of ties explained or a squared correlation, and what is the baseline (the empty image alone explains nothing but a sparse network is mostly zeros, so a high share of pairs can be right with no positions at all)? How was 8 chosen, and does the fit leave the best of many shuffled networks behind when the whole search is repeated? Were the positions found on the same ties they are tested on? What do the positions line up with: department, level, floor? Do they survive dropping a tenth of the messages? And "roles" is a word for what people do: an email pattern says who wrote to whom. To answer, run the number-of-blocks comparison against refit networks, compare the positions with the org chart, and re-fit on random halves of the messages and report how much the positions move.
 :::
 
 ## Summary
