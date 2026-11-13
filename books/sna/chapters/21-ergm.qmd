@@ -5,6 +5,14 @@
 @sec-tests-and-null-models, @sec-paths-and-cohesion and @sec-subgroups. We reuse Zachary's karate club from @sec-subgroups, and the ideas of homophily and closure from @sec-foundations.
 :::
 
+::: {.callout-note title="The short version"}
+An exponential random graph model, or ERGM, is a way of telling a complete story about a network. It says how likely every possible network is, based on a few counts you choose, such as how many ties there are, how many ties join people on the same side, and how many triangles there are. You then look for the weights on those counts that make networks like yours typical. The sums involved are far too big to do directly, so the chapter shows how simulation gets around them. Then you check the model by letting it draw networks of its own and asking whether they look like the real one. What comes out describes patterns in who is tied to whom, not why people chose each other.
+:::
+
+::: {.callout-tip title="Why you might care"}
+An ERGM lets you ask which of several tendencies (preferring your own side, friends of friends becoming friends, a few popular hubs) is really at work once the others are accounted for. Counting alone can't separate them. It also teaches a habit worth having: a model is easy to fit badly and easy to over-read, so you learn to check it and to word your claims carefully. This is the longest and most technical chapter in the book. The parts flagged as hard can be skimmed on a first read, and the first half alone gives you a solid working picture.
+:::
+
 ## From describing to modeling
 
 ::: {.callout-tip appearance="simple"}
@@ -18,6 +26,8 @@ Here's the kind of question a model can answer that a summary can't. In the kara
 
 The standard tool is the **exponential random graph model**, or **ERGM** (pronounced "ur-gum"). The statistician's name for the same thing is a *p-star* model, and its roots go back to Holland and Leinhardt [@holland1981exponential] and Frank and Strauss [@frank1986markov]. Modern practice is laid out in Snijders and colleagues [@snijders2006new] and in the software paper behind the R package statnet [@hunter2008ergm].
 
+Short on time? Read "The idea in one equation", then Steps 2, 3 and 4, then "Reading ERGMs honestly". Those give you the working picture. The sections on estimation, degeneracy and the second network go deeper, and the parts marked as hard can be skimmed on a first read.
+
 ## The idea in one equation
 
 An ERGM says that the chance of seeing a particular network $x$ depends on a handful of counts taken from it:
@@ -28,9 +38,15 @@ $$
 
 Each $g_j(x)$ is a **statistic**, a count of some pattern in the network: the number of ties, the number of same-side ties, the number of triangles. Each $\theta_j$ is a **coefficient** that says how much that pattern raises or lowers a network's chance. "Proportional to" means the numbers get rescaled so all possible networks' chances add up to 1. A positive coefficient says networks with *more* of that pattern are more likely than networks with less, holding the other patterns fixed. A negative coefficient says the opposite. Zero says the pattern doesn't matter.
 
+::: {.callout-tip title="In plain words"}
+Think of a judge who scores every possible network. A network earns points for each pattern it has when that pattern is rewarded, and loses points when it is penalized, and then the scores are turned into chances. Read $P(x)$ as "the chance of network $x$", the squiggly symbol as "is proportional to", $\exp$ as "$e$ raised to the power of", each $g_j(x)$ as a count taken from the network (ties, same-side ties, triangles), and each $\theta_j$ ("theta") as the weight given to that count. Tiny example: with only the number of ties counted and $\theta = -1$, a network with one tie gets weight $e^{-1} = 0.368$ against 1 for the empty network, so sparse networks are favored.
+:::
+
 A tiny example makes this concrete. Three people can be tied in $2^3 = 8$ ways. With only the number of ties as a statistic, each network's chance is proportional to $e^{\theta \cdot \text{ties}}$: the empty network gets weight 1, each single-tie network gets $e^{\theta}$, each two-tie network gets $e^{2\theta}$, and the triangle gets $e^{3\theta}$. A negative $\theta$ favors sparse networks. This is the random graph model from @sec-tests-and-null-models, where each tie appears independently, and it is the simplest ERGM. Everything else is adding more statistics.
 
 ### The normalising constant
+
+Here's the whole idea before the symbols. Every possible network gets a score. A network's chance is its score divided by the total of all the scores. The top of the fraction is easy, and the bottom is the hard part.
 
 That "proportional to" hides a number, and the number is the whole difficulty of this chapter. Write $g(y) = (g_1(y), \dots, g_k(y))$ for the list of statistics of a network $y$, and $\theta = (\theta_1, \dots, \theta_k)$ for the list of coefficients. Then the model, with the rescaling made explicit, is
 
@@ -42,11 +58,19 @@ $$
 
 Here $Y$ is the random network, $y$ is one particular network, and $\mathcal{Y}$ is the set of every network you could draw on the same people. The numerator is the **weight** of $y$. It is large when $y$ has many of the patterns with positive coefficients and few of the ones with negative coefficients. The denominator $\kappa$ (kappa), called the **normalising constant**, is the sum of the weights of *all* the networks. Dividing by it is what makes the probabilities add to 1.
 
+::: {.callout-tip title="In plain words"}
+Read $P_\theta(Y = y)$ as "the chance that the random network $Y$ turns out to be the particular network $y$". The top, $\exp\{\theta^\top g(y)\}$, is the weight: multiply each count by its coefficient, add up the products (that's what $\theta^\top g$ means), and take $e$ to that power. The bottom, $\kappa$ ("kappa"), adds up the weights of every possible network $y'$ (the big sigma means "add up over all of them"), which is what makes the chances total 1. Plug in the three-person example that comes next, with coefficients $-1$ for ties and $0.5$ for triangles: the eight weights add to $\kappa = 2.592$, and the empty network, with weight 1, has chance $1/2.592 = 0.386$.
+:::
+
 A model of this shape is an *exponential family*, which is where the "exponential" in the name comes from [@frank1986markov]. Exponential families have a handy property. The best coefficients, the ones that make the observed network as likely as possible, are the ones for which the *average* statistics of networks drawn from the model equal the statistics of the network you observed: $E_\theta[g(Y)] = g(y_{\text{obs}})$. Keep that sentence in mind. Estimation, later in the chapter, is the hunt for it.
+
+In plain words: the best coefficients are the ones for which the networks the model typically produces have, on average, the same counts as your network. It's like adjusting a recipe until the average dish tastes like the one you're trying to match.
 
 ### A model small enough to write out
 
 Three people are small enough to list every network. We use two statistics, the number of ties and the number of triangles, with $\theta_{\text{edges}} = -1$ and $\theta_{\text{triangle}} = 0.5$. Each of the three pairs is tied or not, so there are $2^3 = 8$ networks. The block computes each one's statistics, its weight, $\kappa$ and its probability. It also does two more things, which we'll use in a moment. For the pair 0-1 it works out the chance of a tie given the other two pairs, once from the table and once from the change statistics, without $\kappa$. And it counts how many networks there are for larger groups of people.
+
+Look for the eight networks with their weights, the total $\kappa$, and the two routes to the chance of a tie (from the table, and from the change statistics) giving the same number.
 
 ::: {.panel-tabset group="language"}
 
@@ -292,11 +316,13 @@ Read the first table row by row. Each network's weight is $\exp(-1 \times \text{
 
 For three people $\kappa$ is a sum of eight terms. With $n$ people there are $n(n-1)/2$ pairs, each tied or not, so $\kappa$ is a sum of $2^{n(n-1)/2}$ terms. The last table printed by the block above counts them.
 
-The karate club has 34 members and 561 pairs, so $\kappa$ would be a sum of $2^{561}$, about $10^{169}$, terms. Listing a billion networks a second would take about $10^{152}$ years, far longer than the universe has existed. Even ten people would take roughly ten hours, and ten people is a small team. So nobody computes $\kappa$ for a real network, and everything else in this chapter is a way around it. There are two ways. One is to look at *differences* between weights, where $\kappa$ cancels. The other is to *simulate*: a Markov chain can wander through the space of networks using only ratios of weights, so it never needs $\kappa$ either.
+The karate club has 34 members and 561 pairs, so $\kappa$ would be a sum of $2^{561}$, about $10^{169}$, terms. Listing a billion networks a second would take about $10^{152}$ years, far longer than the universe has existed. Even ten people would take roughly ten hours, and ten people is a small team. So nobody computes $\kappa$ for a real network, and everything else in this chapter is a way around it. There are two ways. One is to look at *differences* between weights, where $\kappa$ cancels. The other is to *simulate*: a Markov chain (a process that takes one small random step after another) can wander through the space of networks using only ratios of weights, so it never needs $\kappa$ either.
+
+You don't need to remember any of these big numbers. The point is only that the total is out of reach, so the rest of the chapter is about working without it. Think of trying to taste every possible soup before deciding how good yours is.
 
 ### Conditional log-odds and change statistics
 
-Pick one pair of people, $(i, j)$, and hold every other pair fixed at what it is in network $y$. Call the network with that tie present $y_{ij}^{+}$ and the one with it absent $y_{ij}^{-}$. Their weights are $\exp\{\theta^\top g(y_{ij}^{+})\}$ and $\exp\{\theta^\top g(y_{ij}^{-})\}$, and the same $\kappa$ sits under both. So when we ask for the odds that the tie is present, given the rest of the network, $\kappa$ cancels:
+Pick one pair of people, $(i, j)$, and hold every other pair fixed at what it is in network $y$. Call the network with that tie present $y_{ij}^{+}$ and the one with it absent $y_{ij}^{-}$. Their weights are $\exp\{\theta^\top g(y_{ij}^{+})\}$ and $\exp\{\theta^\top g(y_{ij}^{-})\}$, and the same $\kappa$ sits under both. So when we ask for the odds (the chance it's present divided by the chance it's absent) that the tie is present, given the rest of the network, $\kappa$ cancels:
 
 $$
 \log \frac{P(Y_{ij}=1 \mid y_{-ij})}{P(Y_{ij}=0 \mid y_{-ij})}
@@ -305,6 +331,10 @@ $$
 $$
 
 Here $y_{-ij}$ means "all the other pairs", and $\delta_{ij}(y) = g(y_{ij}^{+}) - g(y_{ij}^{-})$ is the **change statistic**: how much each statistic would rise if the tie were added. This is the recipe you will use on the karate club in @sec-ergm-one-tie, and it is why a coefficient reads as a log-odds multiplier *for one tie, holding the rest fixed*.
+
+::: {.callout-tip title="In plain words"}
+This says: the log-odds that one particular tie exists, given all the other ties, equals the coefficients times how much each count would rise if the tie were added. Log-odds is the logarithm of the odds, and it turns multiplying into adding, which is why the right side is a plain sum. Read $Y_{ij}=1$ as "the tie between $i$ and $j$ is there", the vertical bar as "given", and $y_{-ij}$ as every other pair as observed. Plug in the three-person example: adding the tie 0-1 when the other pairs are empty raises ties by 1 and triangles by 0, so the log-odds are $-1 \times 1 + 0.5 \times 0 = -1$ and the chance is 0.269. If both other pairs are tied, it also raises triangles by 1, so the log-odds are $-1 + 0.5 = -0.5$ and the chance is 0.378.
+:::
 
 The second table printed above checks it on three people. When neither of the other two pairs is tied, adding 0-1 creates no triangle, the change statistics are (1, 0), the log-odds are $-1$, and the chance is $e^{-1}/(1 + e^{-1}) = 0.269$. The table of weights gives the same 0.269: $0.368 / (1 + 0.368)$. When both other pairs are tied, adding 0-1 closes a triangle, the change statistics are (1, 1), the log-odds are $-1 + 0.5 = -0.5$, and both routes give 0.378.
 
@@ -315,6 +345,8 @@ Look at the "d ties" and "d triangles" columns of that table. Adding a tie alway
 A term is **dyad-independent** if its change statistic for a pair never depends on the other pairs. Edges, same-attribute ties, and anything that just weights a tie by its two people's attributes are of this kind. A model built only from such terms makes every pair an independent coin flip with its own probability, so it is a logistic regression on the pairs and can be fitted exactly. That's Step 2 below.
 
 A term is **dyad-dependent** if its change statistic does depend on other pairs. Triangles, stars, degree terms and shared partners all are, and so is *mutual* in a directed network, because the arc from $i$ to $j$ and the arc back interact. These are the terms that let ties depend on ties, which is the whole reason to use an ERGM instead of a logistic regression. They are also the terms that make $\kappa$ impossible to avoid, force simulation, and cause the degeneracy trouble we meet later.
+
+Here's a picture. Independent coin flips are like people each deciding privately what to order. Dependent ties are like a table where what one person orders changes what the next person wants. The second is closer to real friendships, and much harder to analyze.
 
 ## Choosing statistics
 
@@ -330,6 +362,8 @@ The smoother version is **geometrically weighted edgewise shared partners**, or 
 ![Common ERGM statistics. Each panel shows the pattern that is counted. Shared partners are the people two tied nodes both know.](../figures/ergm-terms.svg){#fig-ergm-terms fig-alt="Six small drawings of network patterns. Edges: two nodes joined by a line. Same side: two nodes of the same shape joined by a line, and two of different shapes not joined. Two-star: one node joined to two others. Triangle: three nodes all joined. Shared partners: two tied nodes with three common neighbors, with a note that each extra shared partner counts less. Degree spread: a hub with many ties beside nodes with few."}
 
 ## Step 1: the data
+
+First we load the karate club: 34 members, 78 friendships, and which side each member took. Look for 78 ties among 561 possible pairs and an even split of 17 and 17.
 
 ::: {.panel-tabset group="language"}
 
@@ -466,9 +500,11 @@ Undirected network: 34 nodes, 78 ties
 :::
 
 :::
+
+That's the data: a sparse network (78 of 561 pairs are tied, a density of 0.139) split evenly into two sides. Everything that follows tries to explain why those 78 pairs are tied and not others.
 ## Step 2: a model where every tie is its own coin flip
 
-Start with the simplest model that includes homophily: edges, and same-side ties. Neither statistic mentions how ties relate to *each other*, so under this model each pair of people is an independent coin flip, with one chance for same-side pairs and another for cross-side pairs. That makes the model something you can fit with ordinary **logistic regression** on the 561 pairs. This is called **maximum pseudo-likelihood**, or MPLE [@strauss1990pseudolikelihood; @wasserman1996logit], and for a model like this one it is the exact answer, not an approximation.
+Start with the simplest model that includes homophily: edges, and same-side ties. Neither statistic mentions how ties relate to *each other*, so under this model each pair of people is an independent coin flip, with one chance for same-side pairs and another for cross-side pairs. That makes the model something you can fit with ordinary **logistic regression** (a standard method for predicting a yes-or-no outcome, here "tied or not") on the 561 pairs. This is called **maximum pseudo-likelihood** (a shortcut that treats each pair as its own coin flip), or MPLE [@strauss1990pseudolikelihood; @wasserman1996logit], and for a model like this one it is the exact answer, not an approximation.
 
 You can even do it by hand, which is worth doing once. Of the 561 pairs, 272 are on the same side and 289 are on opposite sides. Among same-side pairs, 67 are tied. Among opposite-side pairs, only 11 are. So:
 
@@ -478,6 +514,8 @@ You can even do it by hand, which is worth doing once. Of the 561 pairs, 272 are
 | Same side | 272 | 67 | 0.246 | $\ln(67/205) = -1.118$ |
 
 The edges coefficient is the log-odds for opposite-side pairs, $-3.230$. The same-side coefficient is the *difference*, $-1.118 - (-3.230) = 2.111$. Let's see whether the computer agrees.
+
+Look for the two coefficients in the output matching the hand-made table: $-3.230$ and $2.111$.
 
 ::: {.panel-tabset group="language"}
 
@@ -583,7 +621,11 @@ But this model has a gap, and the next step finds it.
 
 If friends of friends tend to be friends, then whether Ana and Cleo are tied depends on whether both are tied to Ben. A model that includes GWESP builds that dependence in: the chance of a tie now depends on *the rest of the network*. The pairs are no longer independent coin flips, and the trick that gave us exact answers by logistic regression stops working. The pseudo-likelihood still gives estimates, but its standard errors can't be trusted for dependent models [@hunter2008ergm].
 
+It's the difference between flipping 561 separate coins and playing a game where each coin's bias depends on how the other coins landed. The second game is harder to analyze, and it's the more realistic one for friendships.
+
 The reliable approach is **Monte Carlo maximum likelihood**, or MCMLE. It works by simulation. Start with a guess for the coefficients. Simulate lots of networks from the model with those coefficients. Compare the average statistics of the simulated networks with the statistics of the real one. If the simulated networks have too few triangles, raise the coefficient for triangles, and try again. When the simulated averages match the observed counts, you've found the estimate [@hunter2006inference]. It is a clever idea, and it is slower, and the answers carry a little randomness, so we fix the seed.
+
+This sounds like the hard part and it's conceptually simple: guess, simulate, compare, adjust, repeat. Think of adjusting an oven until a test bake matches the picture on the box. Look for the observed and simulated shared-partner statistic agreeing, and for the coefficients with their standard errors.
 
 ::: {.panel-tabset group="language"}
 
@@ -674,11 +716,15 @@ Read the coefficients as **conditional log-odds**: the log-odds of a tie, given 
 
 Don't overread the number: the effect isn't "0.7 per friend in common," because the shared-partner statistic discounts each additional partner. It is a statement about the shape of closure in the whole network, and its sign and rough size are what you report.
 
+Put simply: some of the same-side friendships are really friends-of-friends, and the model now gives closure its share of the credit, which shrinks the same-side coefficient.
+
 ## Step 4: checking the model
 
 A fitted model is a claim, so test it against the data. The standard check is **goodness of fit**: simulate many networks from the fitted model and see whether they look like the real one on features the model *wasn't fit to*. If the real network sits in the middle of the simulated ones, the model captures the pattern. If it sits far out, the model is missing something [@hunter2008goodness].
 
 We'll check three features we didn't include: the number of triangles, and the number of two-stars and three-stars (people with two or three friends, counted every way). We'll do it twice, once for the simple model and once for the shared-partner model. A trick keeps the code short: build one model that lists the extra statistics, and give those extra statistics a coefficient of zero so they only get *counted*, never *used*.
+
+Look at how many triangles, two-stars and three-stars each model produces on average, compared with the real club's 45, 528 and 1,764.
 
 ::: {.panel-tabset group="language"}
 
@@ -774,6 +820,8 @@ three-stars   1764.0          472.6          668.8
 
 The simple model, with edges and sides only, produces fewer than half the real triangles (about 22 against 45). Adding shared partners nearly fixes triangles (about 42), as it should, since that is what the term is for. Now look at the stars. Both models fall short, and the three-stars are far off even in the better model: about 669 against 1,764. The karate club has two hubs, Mr. Hi and the officer, with 16 and 17 friends each, and a model with no term for how unevenly ties are spread can't make hubs. The natural next move is to add a degree term, refit and check again. Modeling is a loop, and each check suggests the next model. The R tab simulates with the ergm package, so its averages differ slightly from these.
 
+Put simply: the model gets triangles about right and gets hubs badly wrong.
+
 @fig-ergm-gof shows the same comparison as percentages of the real counts.
 
 ![How well each model reproduces features of the karate club it was not fit to. Each dot is the average over simulated networks as a percent of the real count, so 100 means a perfect match.](../figures/ergm-gof.svg){#fig-ergm-gof fig-alt="A dot chart with three rows: triangles, two-stars and three-stars. For triangles, the edges-and-side model is at 48 percent and the model with shared partners at 94 percent. For two-stars, the dots are at 65 and 74 percent. For three-stars, they are at 27 and 38 percent. A vertical line marks 100 percent."}
@@ -784,9 +832,15 @@ The coefficients are easy to quote and easy to misread, so let's use them once, 
 
 The recipe has three steps. For a pair of people who aren't tied yet, work out how much each statistic in the model would go up if the tie were added. These are the **change statistics**. Multiply each by its coefficient and add the results: that sum is the **conditional log-odds** of the tie, given every other tie in the network. Then the logistic function turns the log-odds into a probability, $1 / (1 + e^{-x})$.
 
+::: {.callout-tip title="In plain words"}
+The logistic function is a squasher: it takes any number, positive or negative, and turns it into a chance between 0 and 1. Plug in $x = 0$ and you get $1/(1 + 1) = 0.5$, a coin flip. Plug in $x = -1$ and you get $1/(1 + e^{1}) = 0.269$, the chance from the three-person example.
+:::
+
 For our model the change statistics are easy to state. Adding any tie raises the edge count by 1. It raises the same-side count by 1 if the two people are on the same side, and by 0 if not. The shared-partner statistic is the fiddly one. A new tie between two people who have friends in common creates triangles, and the GWESP count goes up by an amount that depends on how many partners the two share and on how many partners the existing ties around them already have. We'll let the code count it by adding the tie and recounting.
 
 We'll compare two pairs, both untied in the real club and both with exactly two friends in common. Members 2 and 12 are on the same side. Members 8 and 14 are on opposite sides. Holding the shared partners equal means the only thing that differs is the side.
+
+Look for each pair's log-odds and the chance it turns into.
 
 ::: {.panel-tabset group="language"}
 
@@ -911,6 +965,8 @@ Now the cautions, because a tidy probability invites over-reading. The 0.300 is 
 
 Choosing terms is choosing hypotheses. Each term is a way ties could depend on something, and the coefficient says how strongly, once the other terms are in. The table lists the terms you will meet most, by their statnet names, with the social mechanism each can stand for. "Can stand for" is deliberate: the model sees a pattern, and the mechanism is your interpretation of it. Morris, Handcock and Hunter [-@morris2008specification] describe the full menu in the ergm package, and Lusher, Koskinen and Robins [-@lusher2013exponential] discuss how to choose among them for social settings.
 
+The table is a menu, not something to memorize. On a first read, skim the first and third columns (the term and the mechanism it can stand for) and come back when you're choosing terms.
+
 | Term | What it counts | A mechanism it can stand for | Dyad-independent? |
 | --- | --- | --- | --- |
 | `edges` | Ties | Baseline density, the intercept | Yes |
@@ -942,7 +998,13 @@ $$
 
 where $N_d(y)$ is the number of people with degree exactly $d$ and $\alpha$ is the decay [@hunter2007curved]. The idea is the same as for GWESP below: the first ties of a person count a lot, and each extra tie counts a bit less.
 
+::: {.callout-tip title="In plain words"}
+This is a score that rewards people for having ties, with diminishing returns. Read $N_d(y)$ as the number of people with exactly $d$ ties, $\alpha$ ("alpha") as the decay, and the curly bracket as the credit a person with $d$ ties earns, which climbs toward 1 as $d$ grows. Plug in $\alpha = 0.5$, the decay this chapter uses: $e^{0.5} = 1.6487$ and $1 - e^{-0.5} = 0.3935$. A person with 1 tie earns $1.6487 \times (1 - 0.3935) = 1.0$ credit, and one with 2 ties earns $1.6487 \times (1 - 0.1548) = 1.393$ (the same weights the next subsection computes for shared partners). The second tie adds only 0.39.
+:::
+
 ### Closure: shared partners, GWESP and GWDSP
+
+This is the most technical term in the chapter. On a first read, hold on to the picture: a tie that closes more triangles counts for more, but each extra triangle counts for less.
 
 For a pair $(i, j)$, the **shared partners** are the people tied to both. A tie with $k$ shared partners sits inside $k$ triangles. The **edgewise shared partner** distribution counts, for each $k$, how many *ties* have exactly $k$ shared partners; call that count $\text{ESP}_k(y)$. The geometrically weighted version is
 
@@ -954,7 +1016,13 @@ $$
 
 where $k_{ij}$ is the number of shared partners of the tie $(i, j)$ and $\alpha$ is the **decay** [@snijders2006new; @hunter2007curved]. A tie with no shared partners counts 0. A tie with one counts exactly 1, whatever the decay. Each further partner adds less than the one before, and the total approaches $e^{\alpha}$ and no more.
 
+::: {.callout-tip title="In plain words"}
+This gives each tie credit for the triangles it sits in, with diminishing returns, and adds the credits up. Read $k_{ij}$ as the number of shared partners of the tie $(i,j)$, $w_\alpha(k)$ as the credit for a tie with $k$ shared partners, and $\alpha$ as the decay. With $\alpha = 0.5$ the credit is 0 for no partners, exactly 1 for one partner, and 1.3935 for two. In the four-person example just below, four ties have one shared partner (4 credits of 1) and the tie 1-2 has two (1.3935), so the statistic is $4 + 1.3935 = 5.3935$.
+:::
+
 Here it is on a four-person network you can check on paper: a square with one diagonal. The ties are 0-1, 0-2, 1-2, 1-3 and 2-3. The tie 1-2 has two shared partners, 0 and 3. The other four ties have one each. With decay 0.5 that gives $4 \times 1 + 1.3935 = 5.3935$.
+
+Look for the 5.3935 from the hand count, and for the weights table that shows each extra shared partner counting for less.
 
 ::: {.panel-tabset group="language"}
 
@@ -1105,7 +1173,11 @@ decay     k=1    k=2    k=3    k=5   k=10   limit
 :::
 
 
-The weights table, drawn in @fig-gwesp-weights, is the whole story of the decay. With a **small decay** the first shared partner does nearly all the work, and the limit is close to 1: the statistic then roughly counts the *number of ties that sit in at least one triangle*. With a **large decay** each partner counts nearly in full, and the statistic approaches *three times* the number of triangles (each triangle is counted once per tie, so $\sum_{\text{ties}} k_{ij} = 3 \times$ triangles; in the little example, $1+1+2+1+1 = 6 = 3 \times 2$). In between you get a smooth discount. Practitioners often try values around 0.25 to 1, and with the decay *fixed*, as here, the model is an ordinary exponential family. If you let the data choose the decay it becomes a *curved* exponential family, which is harder to fit [@hunter2006inference].
+The weights table, drawn in @fig-gwesp-weights, is the whole story of the decay. With a **small decay** the first shared partner does nearly all the work, and the limit is close to 1: the statistic then roughly counts the *number of ties that sit in at least one triangle*.
+
+With a **large decay** each partner counts nearly in full, and the statistic approaches *three times* the number of triangles (each triangle is counted once per tie, so $\sum_{\text{ties}} k_{ij} = 3 \times$ triangles; in the little example, $1+1+2+1+1 = 6 = 3 \times 2$).
+
+In between you get a smooth discount. Practitioners often try values around 0.25 to 1, and with the decay *fixed*, as here, the model is an ordinary exponential family. If you let the data choose the decay it becomes a *curved* exponential family, which is harder to fit [@hunter2006inference].
 
 **GWDSP**, the geometrically weighted *dyadwise* shared partner statistic, uses the same weights, but it sums over *all* pairs of people, tied or not. It measures how often pairs have common contacts, whatever their own tie status, and it is sometimes added next to GWESP so that closure is not confused with a general tendency to have overlapping contacts.
 
@@ -1117,13 +1189,15 @@ The raw `triangle` and `kstar(2)` counts are the oldest ERGM terms, the "Markov"
 
 ### Directed terms
 
-In a directed network each pair has two possible ties, and new patterns appear. Here is a four-person digraph with six ties: 0 and 1 name each other, plus $1 \to 2$, $0 \to 2$, $2 \to 3$ and $3 \to 1$. Count by hand before you run the code.
+In a directed network each pair has two possible ties, and new patterns appear. Here is a four-person digraph (a network whose ties have a direction) with six ties: 0 and 1 name each other, plus $1 \to 2$, $0 \to 2$, $2 \to 3$ and $3 \to 1$. Count by hand before you run the code.
 
 - **mutual**: the pair 0-1 has a tie each way. One mutual pair.
 - **out-2-stars** (`ostar(2)`): people who *send* at least two ties. Persons 0 and 1 each send two, so there are 2.
 - **in-2-stars** (`istar(2)`): people who *receive* at least two ties. Persons 1 and 2 each receive two, so there are 2.
 - **transitive triples** (`ttriple`): $i \to j$, $j \to k$ and the shortcut $i \to k$. We have $0 \to 1 \to 2$ with $0 \to 2$, and $1 \to 0 \to 2$ with $1 \to 2$. That's 2.
 - **cyclic triples** (`ctriple`): $i \to j \to k \to i$. We have $1 \to 2 \to 3 \to 1$. That's 1.
+
+Check your hand counts against the output: one mutual pair, two out-2-stars, two in-2-stars, two transitive triples and one cyclic triple.
 
 ::: {.panel-tabset group="language"}
 
@@ -1211,6 +1285,8 @@ Out-stars say that some people send more ties than others (activity), and in-sta
 
 Steps 2 and 3 fitted models in two ways and glossed over the difference. This section takes the two methods apart, because which one you used decides how far to trust the standard errors.
 
+This section is more technical. If you'd rather skip it, the take-away is a rule: trust pseudo-likelihood only for models whose ties are independent, and for anything else use the Monte Carlo fit and check it by simulating.
+
 ### Pseudo-likelihood: when it is fine and when it misleads
 
 The conditional log-odds recipe suggests a shortcut. Treat each pair's conditional probability $p_{ij} = P(Y_{ij}=1 \mid y_{-ij})$ as if the pairs were independent, and maximize
@@ -1223,7 +1299,13 @@ $$
 
 That is a logistic regression of every pair's tie (0 or 1) on its change statistics. It needs no simulation and no $\kappa$, and it runs in a blink. This is the **maximum pseudo-likelihood estimate**, or MPLE [@strauss1990pseudolikelihood; @wasserman1996logit].
 
+::: {.callout-tip title="In plain words"}
+This is the score that the pseudo-likelihood shortcut tries to make as large as possible. Read $y_{ij}$ as 1 if the pair is tied and 0 if not, $p_{ij}$ as the model's chance that it's tied, and the big sigma as "add up over every pair". For each pair only one term is active: if the pair is tied we add $\log p_{ij}$, and if not we add $\log(1 - p_{ij})$. Maximizing the total means choosing $\theta$ so that tied pairs get high chances and untied pairs get low ones. The last line says the chances come from the change statistics (logit is the log-odds). Plug in the pair 0-1 from the three-person example, where the chance of a tie is 0.269: if it's tied it contributes $\log 0.269 = -1.31$, and if it's not it contributes $\log 0.731 = -0.31$ (worked by hand).
+:::
+
 For a model with only dyad-independent terms the change statistics never depend on other pairs, the "pretend the pairs are independent" step is true, and the MPLE *is* the maximum likelihood estimate, with correct standard errors. That's why Step 2 was exact. For a model with dyad-dependent terms the step is false. The change statistics are computed from the same network, so the 561 rows of the regression are not 561 independent pieces of evidence, and nothing guarantees either the coefficients or the standard errors. Here is the Step 3 model fitted both ways, followed by a test that matters more than any table of coefficients: simulate from each fit and see whether the networks look like the real club.
+
+Look at the two sets of coefficients and standard errors side by side. Then compare each fit's simulated networks (average ties, same-side ties and shared-partner statistic) with the real club's 78, 67 and 82.9.
 
 ::: {.panel-tabset group="language"}
 
@@ -1353,9 +1435,13 @@ simulated at MCMLE   [77.7, 66.8, 82.5]
 
 The two fits disagree a lot. The shared-partner coefficient is 0.335 by pseudo-likelihood and 0.697 by Monte Carlo maximum likelihood, and the pseudo-likelihood standard error (0.102) is far smaller than the Monte Carlo one (0.174). The simulation shows who is right. Networks drawn from the pseudo-likelihood estimate average 67.8 ties, 58.3 same-side ties and a shared-partner statistic of 52.2. The club has 78, 67 and 82.9. Networks drawn from the Monte Carlo estimate average 77.7, 66.8 and 82.5. That is what "maximum likelihood" means for an exponential family: the fitted model reproduces the statistics it was fitted to, on average. The pseudo-likelihood fit does not.
 
+Put simply: the shortcut gave a confident, wrong answer, and the simulation-based fit gave the right one, because its simulated networks look like the club.
+
 So use the MPLE for three things: models with only dyad-independent terms, a quick first look at a new specification, and starting values for the Monte Carlo fit. Don't report its standard errors for a model with closure or degree terms, and check any dependent-model MPLE you do keep by simulating from it, as above. The card `mple-vs-mcmle` has the checklist.
 
 ### Monte Carlo maximum likelihood, step by step
+
+This is the most technical subsection. On a first read you can skip to the five-step list below the formula. You'll still have the whole idea: guess, simulate, compare, adjust, repeat.
 
 The log-likelihood is $\ell(\theta) = \theta^\top g(y_{\text{obs}}) - \log \kappa(\theta)$, and $\kappa$ is out of reach. Geyer and Thompson [@geyer1992constrained] noticed that the *difference* in log-likelihood between $\theta$ and a reference value $\theta_0$ can be written as an average over networks drawn at $\theta_0$:
 
@@ -1364,6 +1450,10 @@ $$
 $$
 
 Replace the expectation by an average over $M$ networks $y_1, \dots, y_M$ simulated from the model at $\theta_0$, and you have a function of $\theta$ you can maximize. The recipe, as in Snijders [-@snijders2002markov] and Hunter and Handcock [-@hunter2006inference]:
+
+::: {.callout-tip title="In plain words"}
+This says how much better a new guess $\theta$ does than the guess $\theta_0$ we simulated from, and it can be estimated from simulations alone. Read $g(y_{\text{obs}})$ as the counts in the real network, $g(Y)$ as the counts in a random network drawn at $\theta_0$, and $E$ as "the average over such networks". The first term rewards a $\theta$ that pushes the model toward the real counts. The second is a brake that stops $\theta$ from running off too far. Plug in $\theta = \theta_0$: both terms are 0, because nothing has changed, so the difference is 0. Moving away from $\theta_0$ is worth it only if this number goes up.
+:::
 
 1. Start from a guess $\theta_0$, usually the MPLE.
 2. Simulate $M$ networks at $\theta_0$ with a Markov chain that toggles one tie at a time.
@@ -1382,6 +1472,8 @@ Three settings control the sampler, and they answer three different worries.
 - **Sample size** is how many draws you keep per round. More draws make the averages, and so the estimate, steadier.
 
 How much simulation is enough? Refit the same model several times with different random seeds. If the estimates move around more than you want to report, you need more simulation. The block below refits the Step 3 model with four seeds at each of three sample sizes.
+
+Look at how the standard deviation across seeds shrinks from 64 to 512 to 4,096 draws per round.
 
 ::: {.panel-tabset group="language"}
 
@@ -1478,6 +1570,8 @@ Read each cell as the average coefficient over four seeds, with the standard dev
 
 Several checks tell you whether the chain and the fit can be trusted.
 
+There are three checks. If you remember only one habit, make it this: look at a trace plot, and always simulate from the fitted model.
+
 **The stopping statistic.** At the final round, how far is each simulated mean statistic from the observed one, in units of its simulated standard deviation? The Step 3 fit ended with a largest ratio of 0.064, below the 0.1 cut-off, with 8,192 draws per round.
 
 **Trace plots.** Plot a statistic against the draw number. A healthy chain looks like a fuzzy horizontal band with no trend, centered on the observed value, with no long flat stretches and no sudden jumps. A chain that drifts is still burning in. A chain with flat stretches is sticking: a stretch where nothing changes means the sampler is stuck, which is what near-degenerate models do. A chain that jumps between two bands is bimodal, which points to degeneracy.
@@ -1489,6 +1583,12 @@ $$
 $$
 
 independent ones, the **effective sample size** [@geyer1992practical]. In practice you sum the $\rho_k$ up to the first lag where it is not positive. The block below runs one chain of 2,000 draws of the shared-partner statistic at the fitted coefficients, recording every step, every 16th, 128th and 1,024th.
+
+::: {.callout-tip title="In plain words"}
+This tells you how many truly independent draws a run of correlated draws is worth. Read $M$ as the number of draws, $\rho_k$ ("rho") as the correlation between draws $k$ steps apart, and the sum as "add up those correlations". If neighboring draws are unrelated, the sum is 0 and the draws are worth all $M$. If each draw is nearly a copy of the previous one, the correlations are large, the bottom is large, and the draws are worth only a few. It's like polling 2,000 people who all copy their neighbor's answer: you really asked a handful. In the block's results, 2,000 draws recorded at every step are worth about 3 independent ones, and recorded at every 1,024th step, about 1,140.
+:::
+
+Look at how the effective size and the lag-1 correlation change as the interval grows.
 
 ::: {.panel-tabset group="language"}
 
@@ -1593,6 +1693,8 @@ A last point on what the fit does *not* check. A converged chain says the simula
 
 A model is **degenerate** when almost all of its probability sits on a few extreme networks, typically the empty one and the complete one, and the networks that look like yours get almost none [@handcock2003assessing]. It is **near-degenerate** when your kind of network has some probability but the model strongly prefers extremes, so that the chain flips between them. Schweinberger [-@schweinberger2011instability] studies why this happens in general. The short version is the feedback you met in the catalogue: if each tie makes the next one more likely, the process runs away.
 
+Think of a thermostat that can only be on full blast or off: the room is never at the temperature you wanted. A degenerate model is like that, with the empty network and the complete network playing the part of "off" and "on".
+
 The symptoms, roughly in the order you will notice them:
 
 1. **The fit fails.** Monte Carlo maximum likelihood stops with a complaint about the simulated statistics being constant or collinear, or never converges, or returns standard errors that are enormous.
@@ -1601,6 +1703,8 @@ The symptoms, roughly in the order you will notice them:
 4. **Tiny changes break the fit.** A different starting point or seed gives a very different answer.
 
 Here are the first three on the karate club. The "Markov" model has ties, same-side ties, 2-stars and triangles. We fit it by pseudo-likelihood, simulate from the fit, and then try Monte Carlo maximum likelihood. Then we strip the problem to its core: ties and triangles only, with the ties coefficient fixed at $-3.5$ and the triangle coefficient slowly increased.
+
+Look for how many ties the simulated networks have (the real club has 78), and for the sweep at the end, where a small change in the triangle coefficient flips everything.
 
 ::: {.panel-tabset group="language"}
 
@@ -1764,7 +1868,13 @@ Monte Carlo maximum likelihood fails: the simulated statistics are collinear or 
 :::
 
 
-The Markov model's pseudo-likelihood estimates, simulated, give networks with 558 to 561 ties. There are only 561 pairs, so these are nearly complete graphs, from a model fitted to a club with 78 ties. (The R tab simulates from the same estimates with its own sampler and lands at the other extreme, 5 to 31 ties, nearly empty. Which end a degenerate model falls to depends on the sampler and the starting point, which is part of what makes it unreliable.) Monte Carlo maximum likelihood cannot even start (the Rust tab prints the engine's error message), because it cannot find any variation in the draws it needs. The sweep at the end shows the mechanism. With the triangle coefficient at 1.0 or 1.1, every one of the 200 draws has fewer than 100 ties, with an average near 17. At 1.2 and 1.3, every draw has more than 400 ties, and the average is 561, the complete graph. There are no in-between networks at all. A small change in a coefficient flips the whole model from a nearly empty world to a complete one. The exact tipping point depends on the sampler; the Python tab, which uses a different toggling rule, puts it between 1.2 and 1.3. Real fits that are *near*-degenerate look like this just before the flip: very high autocorrelation, huge standard errors, and results that hang on the seed.
+The Markov model's pseudo-likelihood estimates, simulated, give networks with 558 to 561 ties. There are only 561 pairs, so these are nearly complete graphs, from a model fitted to a club with 78 ties. (The R tab simulates from the same estimates with its own sampler and lands at the other extreme, 5 to 31 ties, nearly empty. Which end a degenerate model falls to depends on the sampler and the starting point, which is part of what makes it unreliable.) Monte Carlo maximum likelihood cannot even start (the Rust tab prints the engine's error message), because it cannot find any variation in the draws it needs.
+
+The sweep at the end shows the mechanism. With the triangle coefficient at 1.0 or 1.1, every one of the 200 draws has fewer than 100 ties, with an average near 17. At 1.2 and 1.3, every draw has more than 400 ties, and the average is 561, the complete graph. There are no in-between networks at all. A small change in a coefficient flips the whole model from a nearly empty world to a complete one. The exact tipping point depends on the sampler; the Python tab, which uses a different toggling rule, puts it between 1.2 and 1.3.
+
+Real fits that are *near*-degenerate look like this just before the flip: very high autocorrelation, huge standard errors, and results that hang on the seed.
+
+Put simply: with raw triangles the model has two modes, empty and full, and nothing in between, so it can't describe a real network.
 
 **What to do about it.** Throwing more iterations at a degenerate model does not help. Instead:
 
@@ -1779,6 +1889,8 @@ One more honest note. A model that fits without trouble is not thereby non-degen
 
 Step 4 checked triangles and stars. The general procedure, from Hunter, Goodreau and Handcock [-@hunter2008goodness], is the same for any statistic.
 
+Think of buying a suit. The tailor guarantees only the measurements you gave, so you check the arms and shoulders you didn't mention. Goodness of fit does the same: it checks features the model wasn't told to match.
+
 1. Choose statistics that matter for your question and that the model did **not** fit. Fitted statistics will match by construction, so matching them is no evidence.
 2. Simulate many networks from the fitted model.
 3. Compute each statistic in every simulated network, and see where the observed network's value falls among them.
@@ -1791,6 +1903,8 @@ The usual choices are:
 - for directed networks, the **triad census** (@sec-triads-and-motifs), which tests the full set of three-person patterns.
 
 The block below simulates 400 independent networks from the Step 3 fit and compares the observed degree and shared-partner counts. For each statistic it reports the real value, the average over simulated networks, the range holding 95 percent of the simulated values, and a Monte Carlo p-value: twice the smaller of the share of simulated values at or below the real one and the share at or above it, capped at 1.
+
+Look for statistics where the real value falls outside the simulated 95 percent range, and for the p-value beside each.
 
 ::: {.panel-tabset group="language"}
 
@@ -1971,6 +2085,8 @@ Some cautions on reading these p-values:
 
 In the ergm package, `gof(fit)` does this for degree, shared partners and geodesic distance, and `plot()` of the result draws one box-and-whisker display per statistic: the horizontal axis is the value (degree 0, 1, 2, ...) and the vertical axis is the share of nodes or ties. The boxes show the simulated networks, and a line joins the observed values. You read it by looking for places where the observed line leaves the boxes and whiskers. A line that runs through the middle of the boxes is a good fit. A line that exits at a few places points to what to add. A line that runs along the edge of the whiskers all the way across says the model is missing something systematic.
 
+In everyday terms: the boxes are the model's idea of "normal", and the line is your network. You're checking whether your network looks like a normal member of the family.
+
 ### Simulating from the fitted model
 
 Simulation is more than a check. Once a model is fitted you can use it to ask what-if questions, such as "what would the club look like with no same-side preference?" Set the same-side coefficient to 0 (or double it), keep the others, and simulate. The averages show how much that one term does *within the model*. Two warnings: the answers are about the model, not about the club's future, and a change of one coefficient moves the others' effects too, because the terms interact through the dependence. Exercise 9 asks you to try it.
@@ -1980,6 +2096,8 @@ Simulation is more than a check. Once a model is fitted you can use it to ask wh
 One network can flatter a method. So let's fit a second one, and this time a *directed* one with two relations. You met the 21 managers of a small manufacturing firm in @sec-centrality and @sec-network-regression. Krackhardt [-@krackhardt1987cognitive] asked each of them to name the colleagues they go to for advice and the ones they count as friends. We use what each manager reported about themselves, which is the form in the UCINET data set and in Wasserman and Faust [-@wasserman1994social].
 
 The question: **do the same mechanisms organize friendship and advice?** The mechanisms we can test are reciprocity (do ties get returned?), department (do ties stay inside a department?) and closure (do ties land among people who already share contacts?). Before modeling, we look at the numbers the model will have to explain. Then we fit one model to both relations: edges, mutual, same department and directed GWESP with decay 0.5, each by pseudo-likelihood and by Monte Carlo maximum likelihood, so you can see the gap that the dependence makes.
+
+Look at the descriptive table first (ties, density, reciprocity and department). Then look at the fits for friendship and for advice, and for each term ask whether its coefficient is several standard errors from zero.
 
 ::: {.panel-tabset group="language"}
 
@@ -2180,7 +2298,11 @@ First the descriptive table. Friendship has 102 ties among 420 possible ordered 
 
 Now the fits. Start with friendship, by Monte Carlo maximum likelihood. Reciprocity has coefficient 0.85 (standard error 0.38), so, holding the other terms fixed, returning a friendship tie has odds about 2.3 times as high ($e^{0.85}$). Same department is 0.68 (0.21), about 2.0 times the odds, with an approximate 95 percent range of 1.3 to 3.0 times. Closure is 0.72 (0.17), clearly positive. Reciprocity, department and closure each seem to be at work.
 
-Now advice. Reciprocity is 0.15 (0.28), same department 0.19 (0.23) and closure 0.47 (0.44). None of them is clearly different from zero. With 21 managers that is not a finding that the effects are absent. The approximate 95 percent range for closure runs from about $-0.4$ to $1.4$, wide enough to hold the friendship value of 0.72, and the ranges for reciprocity and department also reach clearly positive values. The pseudo-likelihood fit would have told a different story. It gives closure as 0.82 with a standard error of 0.19, more than four standard errors from zero, and the Monte Carlo fit says 0.47 with a standard error of 0.44, which is about one. Only the second accounts for the dependence between ties. This is the same lesson as in the karate club, with a more dramatic ending: the cheap fit would have sent you off to report closure in advice networks. Advice is also a dense network (density 0.45), and the standard error of its edges term is large (0.97). In a dense network the density and closure terms can trade off against each other, which probably adds to the uncertainty here, but the model cannot say.
+Now advice. Reciprocity is 0.15 (0.28), same department 0.19 (0.23) and closure 0.47 (0.44). None of them is clearly different from zero. With 21 managers that is not a finding that the effects are absent. The approximate 95 percent range for closure runs from about $-0.4$ to $1.4$, wide enough to hold the friendship value of 0.72, and the ranges for reciprocity and department also reach clearly positive values.
+
+The pseudo-likelihood fit would have told a different story. It gives closure as 0.82 with a standard error of 0.19, more than four standard errors from zero, and the Monte Carlo fit says 0.47 with a standard error of 0.44, which is about one. Only the second accounts for the dependence between ties. This is the same lesson as in the karate club, with a more dramatic ending: the cheap fit would have sent you off to report closure in advice networks.
+
+Advice is also a dense network (density 0.45), and the standard error of its edges term is large (0.97). In a dense network the density and closure terms can trade off against each other, which probably adds to the uncertainty here, but the model cannot say.
 
 A fair question is whether friendship and advice *differ*. Reciprocity is 0.85 for friendship and 0.15 for advice, a difference of 0.70. Treating the two fits as independent, the standard error of the difference would be about 0.47, so the difference is about 1.5 standard errors. They are not independent, since the same 21 people answered both questions, which means even that rough figure is shaky. Differences between models are claims that need their own test.
 
@@ -2191,6 +2313,10 @@ A fair question is whether friendship and advice *differ*. Reciprocity is 0.85 f
 ### Comparing models with AIC and BIC
 
 Suppose you have several candidate specifications and want a number to rank them. The **Akaike information criterion**, $\text{AIC} = -2 \log L + 2k$, and the **Bayesian information criterion**, $\text{BIC} = -2 \log L + k \log N$, both reward fit ($\log L$ is the maximized log-likelihood) and charge for each of the $k$ coefficients. Lower is better. For three *dyad-independent* models of friendship, the log-likelihood is exact, so the criteria are well defined: edges only, then adding same department, then also same level (16 of the 21 managers are at level 3, so "same level" is mostly "both are ordinary managers").
+
+::: {.callout-tip title="In plain words"}
+Both criteria are fit scores with a fine for complexity. Read $\log L$ as the log-likelihood (how well the model fits, with higher better), $k$ as the number of coefficients, and $N$ as the number of pairs. Multiplying by $-2$ flips it so that lower is better. AIC fines you 2 per coefficient, and BIC fines you $\log N$ per coefficient, about 6.0 for our 420 pairs (the natural log of 420, worked by hand). Check against the table below: the edges-only model has AIC 467.7 and BIC 471.7, and the difference of 4.0 is $(6.04 - 2) \times 1$ coefficient.
+:::
 
 ::: {.panel-tabset group="language"}
 
@@ -2303,6 +2429,8 @@ Both criteria fall at each step: AIC from 467.7 to 453.8 to 444.8, and BIC from 
 ### Stress checks: drop ties and refit
 
 Do the friendship estimates depend on a few ties? One honest test is to take ties away at random, as if respondents had forgotten some, refit, and see how far the coefficients move. The block drops a random 10 of the 102 friendship ties, refits by Monte Carlo maximum likelihood, and repeats ten times.
+
+Look at the range of each coefficient across the ten refits, compared with its value from the full data.
 
 ::: {.panel-tabset group="language"}
 
@@ -2537,16 +2665,16 @@ ERGM output is easy to over-read, because it looks like a regression table. Five
 ::: {.callout-note collapse="true" appearance="simple"}
 ## Worked answers
 
-1. With only an edges term, each pair is an independent coin. A tied pair has weight $e^{-1} = 0.368$ and an untied pair has weight 1, so $P(\text{tie}) = 0.368 / (1 + 0.368) = 0.269$, the same as the logistic function of $-1$.
-2. If side did not matter, each pair would be tied with probability $78/561 = 0.139$, so $272 \times 0.139 = 37.8$ of the same-side pairs. The observed 67 is 29.2 more, about 1.8 times as many.
-3. A reasonable set is edges; same-gender, same-grade and same-sport ties (homophily, three separate hypotheses); a reciprocity term if friendship is named by the student; GWESP for closure; and a geometrically weighted degree term so that a few very popular students do not distort the rest. Check goodness of fit on the degree distribution, the shared-partner distribution and geodesic distances, none of which the model fits directly. If grade and gender are strongly entangled with sport, say so, since the coefficients are conditional on each other.
-4. With decay 0.25 the closure coefficient is 0.89 (standard error 0.24) and with decay 1.0 it is 0.45 (0.10), against 0.70 (0.17) at decay 0.5. The same-side coefficient barely moves: 1.56, 1.53 and 1.54. The closure coefficient moves because the *statistic* changes its scale with the decay (the observed values are 75.0, 82.9 and 97.2 at decays 0.25, 0.5 and 1.0), so coefficients of curved terms cannot be compared across decays. To see which features the simulations get right, repeat the Step 4 comparison for each fit.
-5. For example: "Thank you for sharing this. A coefficient of 1.2 means that, holding the other terms in the model fixed, a tie between two students of the same gender has about 3.3 times the odds of a tie between students of different gender. That describes the pattern in this one network. It cannot separate preference from other reasons, such as shared classes or clubs, and a small p-value says the estimate is far from zero, not that the effect is large or general. The model also needs a goodness-of-fit check before its coefficients are believed." ($e^{1.2} = 3.3$.)
-6. The triangle's weight is $e^{-3 + 0.5} = e^{-2.5} = 0.0821$ and $\kappa = 2.5917$, so the probability is $0.0821 / 2.5917 = 0.032$. With $\theta_{\text{triangle}} = 0$ the pairs are independent with tie probability 0.269, so the full triangle has probability $0.269^3 = 0.019$. The positive triangle coefficient makes the triangle more probable (0.032 against 0.019), but it still costs three ties.
-7. The weight of a tie with $k$ shared partners is $e^{0.5}\{1 - (1 - e^{-0.5})^k\}$ with $e^{0.5} = 1.6487$ and $1 - e^{-0.5} = 0.3935$. For $k = 3$ that is $1.6487 \times (1 - 0.0609) = 1.548$. For $k = 2$ it is $1.6487 \times (1 - 0.1548) = 1.393$, so the third partner adds $0.155$. The first partner adds 1.0, the second 0.393 and the third 0.155: each extra partner adds 0.3935 times what the one before did.
-8. Increase the interval (the steps between kept draws), which attacks the autocorrelation directly, and the burn-in if the trace still drifts at the start. More draws help too, but only in proportion to the effective size. Check it by recomputing the effective size and the lag-1 correlation, by looking at the trace plot for a fuzzy, trend-free band, and by refitting with another seed to see whether the estimates agree. In our block, raising the interval from 1 to 1,024 moved the effective size of 2,000 draws from about 3 to about 1,140.
-9. In a Rust run with seed 1, the average number of ties falls from about 78 to about 12, and the same-side ties from 67 to about 6. The edges coefficient ($-3.92$) was fitted to balance the other terms *including* the same-side term. Take that term away and nothing offsets the strongly negative baseline, so the density collapses. A coefficient is a statement given the others, and you cannot zero it and keep the rest of the model's behavior.
-10. The pseudo-likelihood fit returns a transitive-triple coefficient of about 0.28 with a standard error of about 0.04, which looks wonderfully precise. The Monte Carlo fit stops with an error that the simulated statistics are constant or collinear, which is the degeneracy of the raw triple count in a Markov-type model. Replace the raw count with directed GWESP (as in this chapter), check the fit with simulation, and treat the pseudo-likelihood standard error as unreliable.
+1. In short: about 0.269. With only an edges term, each pair is an independent coin. A tied pair has weight $e^{-1} = 0.368$ and an untied pair has weight 1, so $P(\text{tie}) = 0.368 / (1 + 0.368) = 0.269$, the same as the logistic function of $-1$.
+2. In short: about 38 same-side ties if side didn't matter, so 67 is far more. If side did not matter, each pair would be tied with probability $78/561 = 0.139$, so $272 \times 0.139 = 37.8$ of the same-side pairs. The observed 67 is 29.2 more, about 1.8 times as many.
+3. In short: edges, three same-attribute terms, closure and degree terms, then check degrees, shared partners and distances. A reasonable set is edges; same-gender, same-grade and same-sport ties (homophily, three separate hypotheses); a reciprocity term if friendship is named by the student; GWESP for closure; and a geometrically weighted degree term so that a few very popular students do not distort the rest. Check goodness of fit on the degree distribution, the shared-partner distribution and geodesic distances, none of which the model fits directly. If grade and gender are strongly entangled with sport, say so, since the coefficients are conditional on each other.
+4. In short: the same-side coefficient barely moves, but the closure coefficient changes with the decay because the statistic's scale changes. With decay 0.25 the closure coefficient is 0.89 (standard error 0.24) and with decay 1.0 it is 0.45 (0.10), against 0.70 (0.17) at decay 0.5. The same-side coefficient barely moves: 1.56, 1.53 and 1.54. The closure coefficient moves because the *statistic* changes its scale with the decay (the observed values are 75.0, 82.9 and 97.2 at decays 0.25, 0.5 and 1.0), so coefficients of curved terms cannot be compared across decays. To see which features the simulations get right, repeat the Step 4 comparison for each fit.
+5. In short: say what the coefficient means in odds, and what it can't tell you. For example: "Thank you for sharing this. A coefficient of 1.2 means that, holding the other terms in the model fixed, a tie between two students of the same gender has about 3.3 times the odds of a tie between students of different gender. That describes the pattern in this one network. It cannot separate preference from other reasons, such as shared classes or clubs, and a small p-value says the estimate is far from zero, not that the effect is large or general. The model also needs a goodness-of-fit check before its coefficients are believed." ($e^{1.2} = 3.3$.)
+6. In short: 0.032 with the triangle coefficient, and 0.019 without it. The triangle's weight is $e^{-3 + 0.5} = e^{-2.5} = 0.0821$ and $\kappa = 2.5917$, so the probability is $0.0821 / 2.5917 = 0.032$. With $\theta_{\text{triangle}} = 0$ the pairs are independent with tie probability 0.269, so the full triangle has probability $0.269^3 = 0.019$. The positive triangle coefficient makes the triangle more probable (0.032 against 0.019), but it still costs three ties.
+7. In short: about 1.548 with three partners, which is 0.155 more than with two. The weight of a tie with $k$ shared partners is $e^{0.5}\{1 - (1 - e^{-0.5})^k\}$ with $e^{0.5} = 1.6487$ and $1 - e^{-0.5} = 0.3935$. For $k = 3$ that is $1.6487 \times (1 - 0.0609) = 1.548$. For $k = 2$ it is $1.6487 \times (1 - 0.1548) = 1.393$, so the third partner adds $0.155$. The first partner adds 1.0, the second 0.393 and the third 0.155: each extra partner adds 0.3935 times what the one before did.
+8. In short: lengthen the interval, and the burn-in if the trace still drifts. Increase the interval (the steps between kept draws), which attacks the autocorrelation directly, and the burn-in if the trace still drifts at the start. More draws help too, but only in proportion to the effective size. Check it by recomputing the effective size and the lag-1 correlation, by looking at the trace plot for a fuzzy, trend-free band, and by refitting with another seed to see whether the estimates agree. In our block, raising the interval from 1 to 1,024 moved the effective size of 2,000 draws from about 3 to about 1,140.
+9. In short: the number of ties collapses from about 78 to about 12, because the other terms were balanced against the one you removed. In a Rust run with seed 1, the average number of ties falls from about 78 to about 12, and the same-side ties from 67 to about 6. The edges coefficient ($-3.92$) was fitted to balance the other terms *including* the same-side term. Take that term away and nothing offsets the strongly negative baseline, so the density collapses. A coefficient is a statement given the others, and you cannot zero it and keep the rest of the model's behavior.
+10. In short: pseudo-likelihood looks precise while Monte Carlo fails, a sign of degeneracy, so switch to directed GWESP. The pseudo-likelihood fit returns a transitive-triple coefficient of about 0.28 with a standard error of about 0.04, which looks wonderfully precise. The Monte Carlo fit stops with an error that the simulated statistics are constant or collinear, which is the degeneracy of the raw triple count in a Markov-type model. Replace the raw count with directed GWESP (as in this chapter), check the fit with simulation, and treat the pseudo-likelihood standard error as unreliable.
 
 :::
 

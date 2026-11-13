@@ -5,13 +5,21 @@
 @sec-tests-and-null-models, which introduced QAP and the idea of relabeling people, and @sec-centrality, where we first met Krackhardt's 21 managers.
 :::
 
+::: {.callout-note title="The short version"}
+Why do people turn to each other for advice? You can ask that with a regression, which is a way of seeing which other things (friendship, being someone's boss, working in the same department) go along with an outcome. The trouble is that the rows of a network table are pairs of people, and pairs that share a person aren't independent, so the usual p-values are far too confident. The fix keeps the regression as it is and builds the p-values by shuffling who is who, which respects the tangle. A second kind of question puts a number on each person, such as years at the firm, and asks whether people resemble the people they're tied to. Both come with an honest warning about what a significant result does not show.
+:::
+
+::: {.callout-tip title="Why you might care"}
+Most network studies are really asking "why do these people connect?" Here you learn to compare several possible explanations at once, and to say how much to trust each one. The same habits protect you from the most common mistake: reporting a pattern as solid when the test was fooled by the tangle of ties. Two parts of this chapter are technical (the logistic fit check and the network effects model). Each is flagged, and you can skim either on a first read and still have the main message.
+:::
+
 ## Who goes to whom for advice?
 
 Twenty-one managers at a small manufacturing firm were asked, one at a time, "Whom do you go to for advice?" David Krackhardt collected the answers, along with who counts as whose friend and who reports to whom on the company's chart [@krackhardt1987cognitive]. You met these managers in @sec-centrality. The advice answers make a 21 by 21 table: a 1 in row $i$, column $j$ if manager $i$ goes to manager $j$.
 
 Now ask the next question, the one that usually matters: *why*? Do people go to their friends? To their bosses? To someone in their own department, or someone at their own level? Does it matter how far apart two people are in age or in years at the firm?
 
-That is a regression question: one outcome (an advice tie from $i$ to $j$, yes or no) and several things that might go with it. The trouble is that the rows of this data set are not people. They are *pairs* of people, and pairs that share a person are not independent of each other. @sec-tests-and-null-models showed you how QAP handles that for one predictor. This chapter does it for many predictors at once, and then turns to a second kind of question: an outcome measured on *people* (how long each manager has been at the firm) that might resemble the outcomes of the people they are tied to.
+That is a regression question (regression is a way of asking how an outcome changes as other things change): one outcome (an advice tie from $i$ to $j$, yes or no) and several things that might go with it. The trouble is that the rows of this data set are not people. They are *pairs* of people, and pairs that share a person are not independent of each other. @sec-tests-and-null-models showed you how QAP handles that for one predictor. This chapter does it for many predictors at once, and then turns to a second kind of question: an outcome measured on *people* (how long each manager has been at the firm) that might resemble the outcomes of the people they are tied to.
 
 By the end you'll be able to:
 
@@ -20,6 +28,8 @@ By the end you'll be able to:
 - fit a logistic version, and know which problem the permutation test solves and which it leaves alone;
 - fit a network effects model for a person-level outcome and read its coefficient $\rho$;
 - say, in one honest sentence, what a significant coefficient does not show.
+
+Short on time? Read "What goes wrong with ordinary regression", the four-person example, the advice table, and "What a significant coefficient does not show". The logistic section and the network effects section are the technical corners, and each can be skimmed on a first read.
 
 ## Regression when observations are not independent
 
@@ -40,6 +50,8 @@ Notice that `level_gap` keeps its sign, because "asking up" and "asking down" ar
 ## Code lives next to the idea
 Each block runs on its own tab, and the tabs of a chapter run top to bottom as one script, so later blocks reuse what earlier ones built. knappnet has `net_mrqap` for the permutation regression; for the logistic and the network effects models it has nothing yet, so those are written by hand in all three languages, and I say so where it happens.
 :::
+
+The code builds the three relations and the four similarity matrices from the data files, then counts how many pairs of pairs share a person. Look for the numbers 16,170 and 77 in the output.
 
 ::: {.panel-tabset group="language"}
 
@@ -227,13 +239,17 @@ The advice network is dense: 190 of the 420 possible ties are there, a density o
 
 ## What goes wrong with ordinary regression
 
-Ordinary least squares will happily fit a line to 420 rows. The coefficients it gives are fine as descriptions: they are the best straight-line summary of how the outcome moves with each predictor. What breaks is the *standard error*, and with it the p-value.
+Ordinary least squares, the standard way of drawing the best straight-line fit, will happily fit a line to 420 rows. The coefficients it gives are fine as descriptions: they are the best straight-line summary of how the outcome moves with each predictor. What breaks is the *standard error* (the estimate of how much a coefficient would wobble if you could rerun the study), and with it the p-value.
 
 Ordinary standard errors assume that the leftover variation in one row says nothing about the leftover variation in another. In network data it does. Suppose manager 15 asks a lot of people for advice. All of the 20 rows where 15 is the asker are pulled up together. If a predictor also happens to be high in those rows (say 15 has an unusual level, so the level gap is large in all of them), regression sees 20 pieces of evidence where there is really one. The effective sample size is closer to the number of *people* than the number of *pairs*, and an ordinary test overstates how much it knows.
+
+Picture polling a household of five about what's for dinner. If you counted the five answers as five independent opinions, you'd think you had a crowd, when really you have one household that talks to itself. A manager who asks many people for advice is that household.
 
 How badly? Here's an experiment you can run yourself. Make two matrices that are unrelated by construction: in each, a pair's value is its sender's own "sociability" (drawn once per person) plus fresh noise for the pair. There is no connection between the two matrices, so a test at the 5 percent level should call the correlation significant in about 5 percent of runs. Do it 200 times, and test each correlation two ways: with the ordinary test, and with QAP using 99 relabelings.
 
 The random numbers come from a small generator written into the code (Park-Miller), so that all three languages draw exactly the same data and agree to the last digit.
+
+The code makes 200 pairs of unrelated matrices and tests each pair two ways. Look for each test's false-alarm rate: an honest test says "significant" in about 5 percent of runs.
 
 
 ::: {.panel-tabset group="language"}
@@ -376,6 +392,8 @@ The ordinary test cried wolf in 73 of 200 runs, a false-alarm rate of 36.5 perce
 
 Before the real data, a case small enough to do on paper. Four people: Ana, Ben, Cleo and Dev. Three pairs are tied: Ana-Ben, Ana-Cleo and Cleo-Dev. Ana and Ben are in one group, Cleo and Dev in another. Is a tie more likely inside a group?
 
+This is the most hands-on part of the chapter: four people, six pairs, everything checkable on paper. If the rest ever feels abstract, come back here.
+
 There are $\binom{4}{2} = 6$ pairs:
 
 | pair | tie? | same group? |
@@ -387,7 +405,7 @@ There are $\binom{4}{2} = 6$ pairs:
 | Ben-Dev | 0 | 0 |
 | Cleo-Dev | 1 | 1 |
 
-Both same-group pairs are ties, so the average of the response is 1 among them. Among the four other pairs, one of four is a tie, so the average is 0.25. For a 0-or-1 predictor, the regression slope is the difference between those two averages, $1 - 0.25 = 0.75$, and the intercept is 0.25. The correlation between the two columns is
+Both same-group pairs are ties, so the average of the response is 1 among them. Among the four other pairs, one of four is a tie, so the average is 0.25. For a 0-or-1 predictor, the regression slope is the difference between those two averages, $1 - 0.25 = 0.75$, and the intercept is 0.25. How closely do the two columns move together? The correlation between the two columns is
 
 $$
 r = \frac{N n_{11} - n_y n_x}{\sqrt{n_y (N - n_y)\, n_x (N - n_x)}} = \frac{6 \cdot 2 - 3 \cdot 2}{\sqrt{3 \cdot 3 \cdot 2 \cdot 4}} = \frac{6}{\sqrt{72}} \approx 0.707,
@@ -395,11 +413,17 @@ $$
 
 where $N = 6$ pairs, $n_y = 3$ tied pairs, $n_x = 2$ same-group pairs and $n_{11} = 2$ pairs that are both.
 
+::: {.callout-tip title="In plain words"}
+This is the correlation worked out by counting. Read $N$ as the number of pairs (6), $n_y$ as the number of tied pairs (3), $n_x$ as the number of same-group pairs (2), and $n_{11}$ as the number of pairs that are both tied and same-group (2). The top is "$N$ times the number that are both, minus the number of ties times the number of same-group pairs": $6 \times 2 - 3 \times 2 = 6$. The bottom is a square root that rescales the answer to run from $-1$ to 1: $\sqrt{3 \times 3 \times 2 \times 4} = \sqrt{72}$. So $r = 6/\sqrt{72}$, about 0.707, a strong positive link. That makes sense, because both same-group pairs are ties.
+:::
+
 Now relabel the people, which is what QAP does. There are $4! = 24$ ways to do it. The same-group pairs always form two disjoint pairs, so relabeling can only turn them into one of three arrangements: {Ana-Ben, Cleo-Dev}, {Ana-Cleo, Ben-Dev} or {Ana-Dev, Ben-Cleo}. Each comes up 8 times in 24. They overlap the three ties in 2, 1 and 0 pairs, giving correlations 0.707, 0 and $-0.707$. So the share of relabelings at least as high as ours is $8/24 = 1/3$.
 
 Two lessons. First, the exact p-value here is one third, and *it can never be smaller with four people*, however strong the pattern looks. A permutation test cannot see more evidence than the number of distinct relabelings allows. Second, nothing in this calculation used a formula for how the correlation is "supposed" to be distributed. It just counted.
 
 The code does it all three ways. knappnet can enumerate every relabeling exactly (up to ten people), and the by-hand version loops over all 24.
+
+Look for the slope 0.75, the correlation 0.707, and the three counts of relabelings (8 each) in the output.
 
 
 ::: {.panel-tabset group="language"}
@@ -541,6 +565,12 @@ $$
 
 and its p-value is the share of relabelings (the same permutation applied to the rows and columns of $x$) whose correlation is at least as far from zero as the observed one. Here is advice against friendship, all 420 ordered pairs.
 
+::: {.callout-tip title="In plain words"}
+This is the same correlation as before, written for any number of pairs. Read $y_{ij}$ as the advice value for the pair (0 or 1) and $x_{ij}$ as the predictor value (say, friendship). The bars, $\bar y$ and $\bar x$, are the averages. Each term on top is "how far this pair's advice sits from average advice, times how far its friendship sits from average friendship", added up over all pairs, so it is large and positive when the two tend to be above average together. The bottom rescales by how spread out each list is, so the answer lands between $-1$ and 1. On the four-person example it gives the same 0.707 as the counting version.
+:::
+
+Look for the correlation and the share of relabelings that land at least as far from zero.
+
 
 ::: {.panel-tabset group="language"}
 
@@ -611,7 +641,7 @@ The correlation between advice and friendship is 0.155, and about 3 percent of r
 
 ## Multiple regression QAP
 
-**Multiple regression QAP**, or MRQAP, is an ordinary linear regression on the pairs, with the p-values replaced by permutation p-values [@krackhardt1988predicting]. The model is
+**Multiple regression QAP**, or MRQAP, is an ordinary linear regression on the pairs, with the p-values replaced by permutation p-values [@krackhardt1988predicting]. The question it answers is: what goes along with advice, once the other things are accounted for? The model is
 
 $$
 y_{ij} = \beta_0 + \beta_1 x_{ij1} + \beta_2 x_{ij2} + \dots + \beta_K x_{ijK} + \varepsilon_{ij},
@@ -619,7 +649,11 @@ $$
 
 where $y_{ij}$ is the response for the pair $(i, j)$ (1 if $i$ goes to $j$ for advice), $x_{ijk}$ is predictor $k$ for that pair, $\beta_k$ is its coefficient, and $\varepsilon_{ij}$ is whatever is left over. The coefficients are fitted by least squares, exactly as in any regression. Nothing about *estimating* them changes.
 
-What changes is the test. The null hypothesis for predictor $k$ is "$\beta_k = 0$": this pair-level pattern has no relationship with the response once the other predictors are accounted for. The permutation scheme has to build a reference distribution for $\beta_k$'s t statistic under that null, while keeping everything else about the data as it is. There are two ways.
+::: {.callout-tip title="In plain words"}
+This is a recipe for the outcome of one pair, built by adding weighted ingredients. Read $y_{ij}$ as the advice value for the pair (manager $i$, manager $j$), $\beta_0$ as the baseline (the "intercept"), $x_{ijk}$ as the value of predictor $k$ for that pair, $\beta_k$ as how much the outcome moves when that predictor goes up by one (a "coefficient"), and $\varepsilon_{ij}$ ("epsilon") as the leftover the predictors can't explain. Plug in a coefficient from the real fit below: reporting has $\beta = 0.434$, so a pair where $i$ reports to $j$ has a chance of an advice tie about 0.434 higher, or 43 percentage points, than an otherwise similar pair.
+:::
+
+What changes is the test. The null hypothesis (the "nothing is going on" claim that the test tries to knock down) for predictor $k$ is "$\beta_k = 0$": this pair-level pattern has no relationship with the response once the other predictors are accounted for. The permutation scheme has to build a reference distribution for $\beta_k$'s t statistic (the coefficient divided by its standard error, a score for how many wobbles it sits from zero) under that null, while keeping everything else about the data as it is. There are two ways.
 
 **Y-permutation** (Krackhardt's original). Relabel the people in the response, refit the model, and record each coefficient's t statistic. Repeat many times. The trouble: relabeling the response breaks its relationship with *every* predictor, including the ones that really do matter. The reference distribution then describes "nothing is related to anything", not "predictor $k$ is unrelated, given the rest", and it can mislead when predictors overlap.
 
@@ -632,7 +666,11 @@ What changes is the test. The null hypothesis for predictor $k$ is "$\beta_k = 0
 
 The leftover part carries no linear overlap with the other predictors, so relabeling it leaves the relationship between the response and the *other* predictors alone and breaks only the one under test. Dekker, Krackhardt and Snijders compared the variants in simulations and recommended double semi-partialling, the variant whose error rates they found held up best when predictors are correlated and when the network has strong person effects [@dekker2007sensitivity]. I did not repeat their simulations here.
 
+This is the hardest paragraph in the chapter, and on a first read you can skim to the next heading. The picture to keep: take the part of, say, friendship that the org chart and other predictors can't explain, shuffle only that, and see how big a coefficient luck alone produces. Everything else stays put, so the test is aimed at one predictor at a time.
+
 Now the real model: advice on friendship, reporting, same department, level gap, age gap and tenure gap, with 5,000 relabelings. We fit it twice, once with each method. (The R and Rust tabs use the same random generator and agree exactly; the Python tab draws its own relabelings, so its p-values differ a little.)
+
+Look at the t statistics next to the permutation p-values: they tell quite different stories.
 
 
 ::: {.panel-tabset group="language"}
@@ -768,7 +806,9 @@ Read the table one row at a time. The response is 0 or 1, so a coefficient is a 
 - **level_gap, 0.083.** For each step down the hierarchy that the asker is from the person asked, the chance goes up about 8 points. People ask up. The t statistic is 2.72, which an ordinary test would call clearly significant. The permutation p-value is about 0.27.
 - **tenure_gap, $-0.009$.** Each extra year of difference in tenure lowers the chance by about 1 point, so 10 years apart is about 9 points lower. The permutation p-value is about 0.10.
 - **same_dept and age_gap** are small and nowhere near significant.
-- **intercept, 0.539.** The chance of an advice tie for a pair that is not friends, not in a reporting line, in different departments, at the same level, with the same age and tenure. That's a baseline for a rather artificial pair, not a finding. R-squared is 0.113.
+- **intercept, 0.539.** The chance of an advice tie for a pair that is not friends, not in a reporting line, in different departments, at the same level, with the same age and tenure. That's a baseline for a rather artificial pair, not a finding. R-squared (the share of the ups and downs in the outcome that the predictors account for) is 0.113.
+
+Put plainly: advice here flows along reporting lines, and the other five patterns are too weak to tell apart from luck in a firm this size.
 
 The two columns of p-values, double semi-partialling and Y-permutation, agree closely here (no gap above about 0.01). That's common when predictors overlap little. They can part ways when predictors overlap a lot.
 
@@ -784,7 +824,7 @@ The level gap is built from two people's levels, so it varies mostly *by person*
 
 ## How the permutation test is built, and how many relabelings to use
 
-Under double semi-partialling, one relabeling means: draw a random reordering of the $n$ people; apply it to the rows and columns together of the leftover matrix for predictor $k$; refit; and record the t statistic $t^*_{k}$. After $B$ relabelings the p-value is
+Under double semi-partialling, one relabeling means: draw a random reordering of the $n$ people; apply it to the rows and columns together of the leftover matrix for predictor $k$; refit; and record the t statistic $t^*_{k}$. After $B$ relabelings the p-value, which answers "how often does luck alone push the score this far from zero?", is
 
 $$
 p_k = \frac{\#\{b : |t^*_{kb}| \ge |t_k|\}}{B},
@@ -792,7 +832,13 @@ $$
 
 where $t_k$ is the observed t statistic and $t^*_{kb}$ is the statistic from relabeling $b$. knappnet and the R package `sna` report this count-over-$B$ share. Many authors add one to the top and the bottom, $(1 + \#)/(1 + B)$, which counts the observed data as one of the relabelings and keeps the p-value from being exactly zero. Either way, when none of the draws gets as far as the observed value, report "below $1/B$".
 
+::: {.callout-tip title="In plain words"}
+This counts how often shuffled data gives a score at least as far from zero as the real one. Read $t_k$ as the real score for predictor $k$, $t^*_{kb}$ as the score from shuffle number $b$, the vertical bars as "ignore the sign", the hash sign as "how many", and $B$ as the number of shuffles. For example, if 850 of 5,000 shuffles reached the real score, then $p = 850/5000 = 0.17$, which is about the friendship p-value in the table below.
+:::
+
 The p-value is itself an estimate from random draws. If the true share is $p$, then $B$ random relabelings give an estimate with standard deviation about $\sqrt{p(1-p)/B}$. Here is the friendship p-value with 100, 1,000 and 10,000 relabelings, each with three different seeds, next to that formula's prediction (evaluated at the first seed's p-value).
+
+Look at how far the p-value wanders with only 100 relabelings, compared with 10,000. The wobble formula is the same one you met in the previous chapter.
 
 
 ::: {.panel-tabset group="language"}
@@ -868,7 +914,11 @@ What does the p-value say? It says: if this predictor had no linear relationship
 
 Not every response is yes or no. Often you have a count or a strength: how many times two people met, how much two countries trade. The set-up is the same, and the coefficients keep their ordinary regression meaning: *the change in the expected response for a one-unit increase in the predictor*.
 
+Think of counting how many phone calls two people made, rather than just noting whether they ever spoke. You keep more of the story, and the regression reads the same way.
+
 To try it, collapse advice to the *pair*: for each pair of managers, count how many of the two possible advice ties exist, 0, 1 or 2. That is undirected, so each pair is used once (210 pairs, "graph mode"), and the predictors have to be symmetric too. Friendship becomes the number of friendship ties in the pair (0 to 2), reporting becomes "one reports to the other", and the level gap becomes an absolute difference, since there is no longer an asker.
+
+Look at how the coefficients now read as changes in the expected number of advice ties inside a pair, and compare their p-values with the directed model.
 
 
 ::: {.panel-tabset group="language"}
@@ -976,17 +1026,23 @@ Compare this with the directed model. The friendship p-value went from about 0.1
 
 ## Logistic network regression, and its limits
 
-For a yes-or-no response the standard tool is logistic regression, which models the **log-odds** of a tie:
+For a yes-or-no response the standard tool is logistic regression, which models the **log-odds** of a tie. Odds are the chance of something divided by the chance of its opposite, so a 75 percent chance is odds of 3 to 1, and the log-odds are the logarithm of that. The question the formula answers: how do the predictors shift the odds of an advice tie?
 
 $$
 \log \frac{\pi_{ij}}{1 - \pi_{ij}} = \beta_0 + \beta_1 x_{ij1} + \dots + \beta_K x_{ijK},
 $$
 
-where $\pi_{ij}$ is the chance of a tie from $i$ to $j$ and the other symbols are as before. The odds are $\pi/(1-\pi)$, and $e^{\beta_k}$ is the factor by which the *odds* are multiplied when predictor $k$ goes up by one. The model can't predict a probability outside 0 and 1, which fixes the linear model's one awkward habit. Fitting uses Newton's method, which is a short loop around a weighted least squares step.
+where $\pi_{ij}$ is the chance of a tie from $i$ to $j$ and the other symbols are as before. The odds are $\pi/(1-\pi)$, and $e^{\beta_k}$ is the factor by which the *odds* are multiplied when predictor $k$ goes up by one. The model can't predict a probability outside 0 and 1, which fixes the linear model's one awkward habit. Fitting uses Newton's method, which is a short loop around a weighted least squares step: in everyday terms, a loop that keeps improving a guess until it stops changing.
+
+::: {.callout-tip title="In plain words"}
+This is the same add-up-the-ingredients recipe as before, except that it builds the log-odds of a tie instead of the tie itself. Read $\pi_{ij}$ ("pi") as the chance that $i$ goes to $j$ for advice, so the left side is the log of "chance of a tie divided by chance of no tie". Each coefficient $\beta_k$ says how much the log-odds move when predictor $k$ goes up by one. Exponentiating turns that into a multiplier on the odds. In the table below, reporting has log-odds 2.89, and $e^{2.89} \approx 18$, so a reporting pair's odds of an advice tie are about 18 times as large. That's a multiplier on odds, not on chance.
+:::
 
 The permutation test works the same way as before: relabel what is left of predictor $k$ after the others are removed, refit, and compare the z statistic (coefficient divided by its usual logistic standard error) with its relabeled values. I use 400 relabelings, since each one is a full logistic fit. knappnet doesn't have this model yet, so all three tabs are written by hand, and the R reference is `sna::netlogit`.
 
-After the table comes a fit check, because there is a question the permutation test cannot answer: does the model describe the network? We compare two things the model could be expected to reproduce. One is the number of pairs of managers who go to each other for advice. The other is the *spread* of how many people each manager goes to, measured as the standard deviation of out-degree. The model's expected values come from the fitted probabilities, assuming ties are independent given the predictors.
+After the table comes a fit check, because there is a question the permutation test cannot answer: does the model describe the network? We compare two things the model could be expected to reproduce. One is the number of pairs of managers who go to each other for advice. The other is the *spread* of how many people each manager goes to, measured as the standard deviation (a typical distance from the average) of out-degree (how many people each manager goes to). The model's expected values come from the fitted probabilities, assuming ties are independent given the predictors.
+
+Look at the odds ratios and permutation p-values first, then at the fit check below them, which sets what we observed beside what the model expects.
 
 
 ::: {.panel-tabset group="language"}
@@ -1248,7 +1304,11 @@ Start with the odds ratios. The odds of an advice tie are about 18 times as larg
 
 Now the fit check. Mutual pairs are fine: 45 observed against 42.5 expected. The spread of out-degree is not: the standard deviation is 5.45 in the data and the model expects 2.75, about half. Managers differ enormously in how many colleagues they ask, far more than the six predictors can account for. The model has no term for sociability, so it treats two managers with the same predictor values as equally likely to ask the same number of people.
 
+It's like a model that predicts everyone asks about the same number of people, when in reality some managers ask a handful and others ask many. The predictors can't see that difference, so the model can't reproduce it.
+
 That gap is the point of this section. The permutation test protects the *test* from this misfit: relabeling keeps each manager's bundle of rows intact, so the p-value still answers "could chance in a bundled network produce a z this far from zero?" What it can't do is repair the *model*. The coefficients are averages over a misfit. The likelihood-based standard errors (hence the z statistics), the deviance and information criteria such as AIC are not to be trusted, and an odds ratio does not describe any particular manager. I'm also not aware of simulation evidence for double semi-partialling in logistic models like the evidence in @dekker2007sensitivity for linear ones, so treat these p-values as a sensible approximation.
+
+In everyday terms: the permutation test keeps the p-values honest, but it can't turn a poor model into a good one.
 
 When ties depend on other ties (popularity, sociability, reciprocity, closure) the honest next step is a model that says how. That's the job of ERGMs, @sec-ergm, and of latent space and block models, @sec-latent-space.
 
@@ -1256,7 +1316,9 @@ When ties depend on other ties (popularity, sociability, reciprocity, closure) t
 
 So far the response was a pair. Now give each manager a number: how many years they've been at the firm. Do managers' tenures resemble the tenures of the people they go to for advice, beyond what their own age and level explain? That question is about **network autocorrelation**: whether values of connected people are more alike than their attributes can account for.
 
-The **network effects model** (also called the network autoregressive model or the network autocorrelation model) is
+This is the hardest part of the chapter. If it gets heavy, skim to the next heading. You'll still have the plain-language idea: people may resemble the people they're tied to, and the model puts one number on how much. Think of asking whether your own habits track the average habits of your closest friends, over and above what your age and job would predict.
+
+The **network effects model** (also called the network autoregressive model or the network autocorrelation model) says that each person's outcome is partly their own attributes at work and partly the average outcome of the people they're tied to. In symbols:
 
 $$
 y = \rho\, W y + X \beta + \varepsilon,
@@ -1264,7 +1326,13 @@ $$
 
 where $y$ holds the $n$ outcomes, one per person; $X$ is a table of each person's own attributes, with a column of ones for the intercept; $\beta$ holds their coefficients; and $\varepsilon$ is independent noise with variance $\sigma^2$. The matrix $W$ is an $n \times n$ **weight matrix**: $w_{ij}$ says how much person $j$ counts as a neighbor of person $i$. Standardize each row to add to 1, and $(Wy)_i$ is the *average outcome of $i$'s neighbors*. The number $\rho$ is the **network effect**: how far a person's outcome moves with their neighbors' average, once their own attributes are accounted for. With $\rho = 0$ this is ordinary regression.
 
+::: {.callout-tip title="In plain words"}
+Read it as: a person's outcome equals a number ($\rho$, pronounced "rho") times the average outcome of their neighbors, plus their own attributes weighted by coefficients, plus noise. Here $y$ is the list of outcomes (each manager's tenure), $Wy$ is the list of neighbor averages, $X\beta$ is the contribution of a person's own attributes (such as age and level), and $\varepsilon$ is leftover noise. Tiny example on the four-person path with outcomes $y = (1, 2, 4, 3)$: Ben's neighbors are Ana (outcome 1) and Cleo (outcome 4), so the average outcome of Ben's neighbors is $(1 + 4)/2 = 2.5$. If $\rho$ were 0.5, that neighbor average would add $0.5 \times 2.5 = 1.25$ to Ben's expected outcome, on top of his own attributes.
+:::
+
 The model comes from spatial statistics, where $W$ says which regions border which [@ord1975estimation; @anselin1988spatial]. Doreian discussed how this kind of dependence enters social data, as an effect of neighbors' outcomes or as correlated disturbances [@doreian1980linear], and Leenders studied how the choice of $W$ shapes what you find [@leenders2002modeling].
+
+Think of trying to measure how much a crowd's mood affects you while your mood is also affecting the crowd. The influence runs both ways, and plain regression can't untangle it.
 
 Why not just regress $y$ on $Wy$ and $X$ with least squares? Because $y$ is on both sides: your outcome depends on your neighbors', which depend on yours. Least squares ignores that loop and gives a biased estimate of $\rho$. Moving the $y$ terms to the left, $(I - \rho W)y = X\beta + \varepsilon$, shows the way out: for a given $\rho$, *filter* the outcome by $(I - \rho W)$, and the filtered outcome follows an ordinary regression. The likelihood needs one extra piece, the log of the determinant of $(I - \rho W)$, which accounts for the filtering:
 
@@ -1274,6 +1342,10 @@ $$
 
 For any fixed $\rho$, the best $\beta$ is a least squares fit of the filtered outcome on $X$, and the best $\sigma^2$ is the residual sum of squares divided by $n$. Plugging those in leaves a function of $\rho$ alone, the **profile log-likelihood**, and a one-dimensional search finds its peak. That is maximum likelihood in a few lines. With a row-standardized $W$, $\rho$ lives between $-1$ and $1$.
 
+::: {.callout-tip title="In plain words"}
+A likelihood is a score for how well a guess about $\rho$, the coefficients and the noise explains the data. The best guess is the one that makes the score highest. Read $n$ as the number of people, $\sigma^2$ as the noise level, and the double bars with a square as "the sum of the squared leftovers" once you filter the outcomes by $(I - \rho W)$ and take away the attribute part. The last term, with the determinant (a single number that summarizes how a matrix stretches things), is a correction that accounts for the filtering, and the computer works it out for you. In the four-person path example just below, the score is $-6.122$ at $\rho = 0$ and $-6.059$ at $\rho = 0.5$. The second is a little higher, so $\rho = 0.5$ explains these four people slightly better than $\rho = 0$.
+:::
+
 Here it is on four people along a path, Ana - Ben - Cleo - Dev, with outcomes $y = (1, 2, 4, 3)$ and an intercept only. Each person's neighbors get equal weight, so Ben's row of $W$ is $(\tfrac12, 0, \tfrac12, 0)$ and Ana's is $(0, 1, 0, 0)$. At $\rho = 0.5$ the filtered outcome $(I - \rho W)y$ is, by hand,
 
 - Ana: $1 - 0.5 \cdot 2 = 0$;
@@ -1281,7 +1353,9 @@ Here it is on four people along a path, Ana - Ben - Cleo - Dev, with outcomes $y
 - Cleo: $4 - 0.5 \cdot \tfrac{2 + 3}{2} = 2.75$;
 - Dev: $3 - 0.5 \cdot 4 = 1$.
 
-The eigenvalues of this $W$ are $1, \tfrac12, -\tfrac12, -1$, so $\det(I - \rho W) = (1 - \rho^2)(1 - \rho^2/4)$, which at $\rho = 0.5$ is $0.75 \times 0.9375 = 0.703125$. With $\rho = 0$ and an intercept only, the filtered outcome is $y$ itself, with mean 2.5, residual sum of squares 5, and $\sigma^2 = 1.25$, so $\ell = -2\,(\ln(2\pi \cdot 1.25) + 1) = -6.122$. The code does all of this and finds the peak.
+The eigenvalues of this $W$ (numbers that summarize how the matrix stretches things; you can take them on trust) are $1, \tfrac12, -\tfrac12, -1$, so $\det(I - \rho W) = (1 - \rho^2)(1 - \rho^2/4)$, which at $\rho = 0.5$ is $0.75 \times 0.9375 = 0.703125$. With $\rho = 0$ and an intercept only, the filtered outcome is $y$ itself, with mean 2.5, residual sum of squares 5, and $\sigma^2 = 1.25$, so $\ell = -2\,(\ln(2\pi \cdot 1.25) + 1) = -6.122$. The code does all of this and finds the peak.
+
+The code does the path example from scratch. Look for the filtered outcome, the determinant and the log-likelihood that we worked out by hand.
 
 
 ::: {.panel-tabset group="language"}
@@ -1432,6 +1506,8 @@ The first three lines match the hand work: the filtered outcome $(0, 0.75, 2.75,
 Now the managers. The outcome is tenure, in years. The weights come from advice: row $i$ of $W$ spreads weight equally over the managers $i$ goes to, so $(Wy)_i$ is the average tenure of $i$'s advisers. The predictors are the manager's own age and level. We ask: beyond their own age and level, do managers whose advisers have long tenure have long tenure themselves?
 
 The fit is the profile search from above, plus three summaries. The first is a likelihood ratio test of $\rho = 0$: twice the log-likelihood gain, compared with a chi-square curve with one degree of freedom. The second is a 95 percent profile interval for $\rho$: every value of $\rho$ whose log-likelihood is within 1.92 of the peak (half of the chi-square cutoff 3.84). The third is the same model under other plausible weight matrices, each compared with $\rho = 0$ by the same likelihood ratio.
+
+Look at the best $\rho$, its interval, and especially the last table, where the weight matrix changes. If the likelihood ratio and chi-square words are new, here is all you need: the test asks whether allowing a network effect improves the fit by more than luck would, and the interval is the range of $\rho$ values the data can't rule out.
 
 
 ::: {.panel-tabset group="language"}
@@ -1610,6 +1686,8 @@ And what would a positive $\rho$ mean even if it were solid? Tenure isn't someth
 ## Stress checks
 
 Before believing the pair-level regression, push on it twice. First, drop a random tenth of the advice ties (19 of 190) and refit. Second, keep how many people each manager goes to but choose the people at random, so the *spread of out-degree* is preserved while the pattern of who is asked is destroyed. If a coefficient reflects something real about who asks whom, the second version should wipe it out, and the first shouldn't move it much. Same model, 1,000 relabelings, same seed.
+
+Look at how much each coefficient moves between the real fit, the fit with ties dropped, and the fit with shuffled recipients.
 
 
 ::: {.panel-tabset group="language"}
@@ -1813,16 +1891,16 @@ Tools disagree in smaller ways, and the differences are worth knowing.
 ::: {.callout-note collapse="true"}
 ## Worked answers
 
-1. The same-group pairs are Ana-Cleo and Ben-Dev, and the ties are Ana-Ben, Ana-Cleo and Cleo-Dev. Among the same-group pairs the tie average is $\tfrac{1 + 0}{2} = 0.5$, and among the other four pairs it is $\tfrac{2}{4} = 0.5$, so the slope is 0. The overlap $n_{11}$ is 1, so $r = (6 \cdot 1 - 3 \cdot 2)/\sqrt{72} = 0$. The relabelings give the same three values as before, 0.707, 0 and $-0.707$, 8 times each, so the share at least as high as 0 is $16/24 = 0.667$.
-2. A pair $(i, j)$ touches $2(n-1)$ ordered pairs through $i$ (those with $i$ as sender or receiver) and $2(n-1)$ through $j$. The two ordered pairs $(i, j)$ and $(j, i)$ are counted in both, so the union is $4(n-1) - 2$, and removing the pair itself leaves $4n - 7$. For $n = 21$ that is 77, matching the output. For $n = 4$ it is 9, out of 11 other ordered pairs.
-3. "Each step down the hierarchy that the asker is below the person asked goes with about 8 percentage points more chance of an advice tie, holding friendship, reporting, department and the age and tenure gaps fixed; the permutation p-value is about 0.27, so we can't distinguish this from chance in a network this size." The ordinary test treats the 420 pairs as independent, but the level gap is a row effect plus a column effect, so a few managers' levels are being counted 20 times each.
-4. $W$ has rows $(0, 1, 0)$, $(\tfrac12, 0, \tfrac12)$ and $(0, 1, 0)$. Then $(I - 0.4W)y$ is Ana: $2 - 0.4 \cdot 4 = 0.4$; Ben: $4 - 0.4 \cdot \tfrac{2 + 3}{2} = 3$; Cleo: $3 - 0.4 \cdot 4 = 1.4$. The determinant is $(1 - \rho)(1 - 0\rho)(1 + \rho) = 1 - \rho^2 = 0.84$.
-5. From the table, at 1,000 relabelings the p-value moves by about 0.01 to 0.02 around 0.17 across seeds, as the formula ($\approx 0.012$) predicts. At 50,000 the formula gives about 0.002, so seeds should agree to the second decimal. Your exact digits depend on the generator.
-6. With friendship as the response, same department stands out: a coefficient of about 0.195 and a permutation p-value well below 0.01, while advice (about 0.09), reporting (about 0.15) and level gap are not distinguishable from chance. Advice follows the reporting lines, friendship follows the departments. R-squared is about 0.10.
-7. $\rho$ is about $-0.09$ and the likelihood ratio is about 0.04, which is nothing. There's no sign that managers' ages resemble their advisers' ages beyond what tenure and level explain.
-8. 18 is an odds ratio, not a ratio of chances. In the data, 19 of 20 reporting pairs (95 percent) have an advice tie, against $(190 - 19)/(420 - 20) = 42.75$ percent of the other pairs: reporting pairs are about 2.2 times as likely to have a tie. The odds are 19 to 1 against about 0.75 to 1, a raw odds ratio of about 25, and the fitted 18 is that ratio after holding the other predictors fixed. Odds ratios blow up when the base rate is high, and they say nothing about "times as likely" in chances.
-9. Choosing the weight matrix by the result is a way to find a $\rho$ you like: with five matrices the same data gave $+0.54$, $+0.18$, $-0.12$, $-0.57$ and $+0.07$. Pick $W$ from a theory of how neighbors would matter, before fitting; report all that you tried, with likelihood ratios and intervals, and treat a sign that flips as a finding about the weight matrix, not the network.
-10. "Departments are associated with friendship in this firm: friends are about 20 percentage points more likely to be in the same department, holding advice, reporting, level, age and tenure differences fixed (permutation p below 0.01). This describes the firm's pattern of ties; it does not show that departments cause friendships, which may have formed before people joined or for other reasons."
+1. In short: the slope and the correlation are both 0, and the share is two thirds. The same-group pairs are Ana-Cleo and Ben-Dev, and the ties are Ana-Ben, Ana-Cleo and Cleo-Dev. Among the same-group pairs the tie average is $\tfrac{1 + 0}{2} = 0.5$, and among the other four pairs it is $\tfrac{2}{4} = 0.5$, so the slope is 0. The overlap $n_{11}$ is 1, so $r = (6 \cdot 1 - 3 \cdot 2)/\sqrt{72} = 0$. The relabelings give the same three values as before, 0.707, 0 and $-0.707$, 8 times each, so the share at least as high as 0 is $16/24 = 0.667$.
+2. In short: the count is four times the number of people, minus seven, which gives 77 for the 21 managers and 9 for four people. A pair $(i, j)$ touches $2(n-1)$ ordered pairs through $i$ (those with $i$ as sender or receiver) and $2(n-1)$ through $j$. The two ordered pairs $(i, j)$ and $(j, i)$ are counted in both, so the union is $4(n-1) - 2$, and removing the pair itself leaves $4n - 7$. For $n = 21$ that is 77, matching the output. For $n = 4$ it is 9, out of 11 other ordered pairs.
+3. In short: report the size, then say that luck could easily produce it in a network this size. "Each step down the hierarchy that the asker is below the person asked goes with about 8 percentage points more chance of an advice tie, holding friendship, reporting, department and the age and tenure gaps fixed; the permutation p-value is about 0.27, so we can't distinguish this from chance in a network this size." The ordinary test treats the 420 pairs as independent, but the level gap is a row effect plus a column effect, so a few managers' levels are being counted 20 times each.
+4. In short: the filtered values are 0.4, 3 and 1.4, and the determinant is 0.84. $W$ has rows $(0, 1, 0)$, $(\tfrac12, 0, \tfrac12)$ and $(0, 1, 0)$. Then $(I - 0.4W)y$ is Ana: $2 - 0.4 \cdot 4 = 0.4$; Ben: $4 - 0.4 \cdot \tfrac{2 + 3}{2} = 3$; Cleo: $3 - 0.4 \cdot 4 = 1.4$. The determinant is $(1 - \rho)(1 - 0\rho)(1 + \rho) = 1 - \rho^2 = 0.84$.
+5. In short: the p-value wobbles by about 0.01 to 0.02 at 1,000 relabelings and about 0.002 at 50,000. From the table, at 1,000 relabelings the p-value moves by about 0.01 to 0.02 around 0.17 across seeds, as the formula ($\approx 0.012$) predicts. At 50,000 the formula gives about 0.002, so seeds should agree to the second decimal. Your exact digits depend on the generator.
+6. In short: department stands out for friendship, while advice follows reporting lines. With friendship as the response, same department stands out: a coefficient of about 0.195 and a permutation p-value well below 0.01, while advice (about 0.09), reporting (about 0.15) and level gap are not distinguishable from chance. Advice follows the reporting lines, friendship follows the departments. R-squared is about 0.10.
+7. In short: there is no sign of a network effect for age. $\rho$ is about $-0.09$ and the likelihood ratio is about 0.04, which is nothing. There's no sign that managers' ages resemble their advisers' ages beyond what tenure and level explain.
+8. In short: 18 is a ratio of odds, not of chances, so "times as likely" is wrong. 18 is an odds ratio, not a ratio of chances. In the data, 19 of 20 reporting pairs (95 percent) have an advice tie, against $(190 - 19)/(420 - 20) = 42.75$ percent of the other pairs: reporting pairs are about 2.2 times as likely to have a tie. The odds are 19 to 1 against about 0.75 to 1, a raw odds ratio of about 25, and the fitted 18 is that ratio after holding the other predictors fixed. Odds ratios blow up when the base rate is high, and they say nothing about "times as likely" in chances.
+9. In short: picking the weight matrix by its result lets you find the answer you wanted. Choosing the weight matrix by the result is a way to find a $\rho$ you like: with five matrices the same data gave $+0.54$, $+0.18$, $-0.12$, $-0.57$ and $+0.07$. Pick $W$ from a theory of how neighbors would matter, before fitting; report all that you tried, with likelihood ratios and intervals, and treat a sign that flips as a finding about the weight matrix, not the network.
+10. In short: say "associated with", give the size, and don't claim a cause. "Departments are associated with friendship in this firm: friends are about 20 percentage points more likely to be in the same department, holding advice, reporting, level, age and tenure differences fixed (permutation p below 0.01). This describes the firm's pattern of ties; it does not show that departments cause friendships, which may have formed before people joined or for other reasons."
 :::
 
 ## Summary

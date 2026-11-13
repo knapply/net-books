@@ -2,7 +2,15 @@
 
 ::: {.callout-note appearance="simple"}
 ## Prerequisites
-@sec-networks-as-data, @sec-paths-and-cohesion and @sec-ego-networks. We reuse the ten-person friendship network and the idea of an E-I split into two groups. Later sections also use Krackhardt's managers (@sec-triads-and-motifs) and the Florentine families (@sec-small-worlds).
+@sec-networks-as-data, @sec-paths-and-cohesion and @sec-ego-networks. We reuse the ten-person friendship network and the idea of an E-I split into two groups (comparing the ties inside a group with the ties that cross between groups). Later sections also use Krackhardt's managers (@sec-triads-and-motifs) and the Florentine families (@sec-small-worlds).
+:::
+
+::: {.callout-note title="The short version"}
+You compute a number from a network and it looks interesting. Is it a real pattern, or the kind of thing luck produces in a small network? A statistical test answers that by asking how often you'd see a number this big if only luck were at work. The catch is that in a network "luck" has to be defined carefully, because the ties are tangled together: whatever is true of one person touches many ties at once. So we build the luck ourselves, by shuffling who is who, or by drawing lots of random networks that share some feature with yours, and then we see where the real number lands among them. This chapter shows how to do that, how many shuffles you need, and how to say what you found without claiming more than the evidence allows.
+:::
+
+::: {.callout-tip title="Why you might care"}
+Almost every claim about a network ("our team is cliquish", "friends sit near each other", "this group is unusually tight") is really a claim that something is more than chance. The easy test will say yes too often, and you'll end up reporting patterns that aren't there. With the tools here you'll know when a pattern is worth reporting, and exactly what sentence to write about it.
 :::
 
 ## How surprised should we be?
@@ -16,6 +24,8 @@ You compute a number and it looks interesting. In the friendship network from @s
 
 That's what a statistical test is for. It asks how often a number this large would turn up if nothing but chance were at work. Everything depends on what you mean by "chance," and that's where network data fight back.
 
+A p-value is that "how often" written as a number: the share of chance-only worlds that match or beat what you saw. A small p-value means the result would be surprising if only chance were at work.
+
 By the end of the chapter you will be able to:
 
 - explain, and show with a simulation, why an ordinary test on pairs of people is overconfident;
@@ -25,11 +35,15 @@ By the end of the chapter you will be able to:
 - recognize a degenerate null and a bootstrap that cannot be trusted;
 - write the sentence the evidence supports, and not the one next to it.
 
+Short on time? Read "Why independence fails", "What a null model is" and "Saying it carefully". Those three give you the ideas, and the rest shows the machinery. The sections on tails, tests from start to finish, and bootstrapping are where the chapter turns technical, and each can be skimmed on a first read.
+
 ## Why independence fails
 
 Most of the tests you've met, such as a correlation test or a regression, rest on one assumption: the observations are *independent*, like separate coin flips. They tell you how much a correlation could wobble from luck alone if each row of data had no connection to any other.
 
 Network data break that assumption by construction. Ten people make 45 pairs. But the pair Ana-Ben and the pair Ana-Cleo both involve Ana. If Ana is sociable, she has many ties, and all of those ties are affected at once. If Ana is on the other floor from most people, all of *her* pairs differ from the pattern at once. The 45 pairs are not 45 independent coin flips. They are 45 pieces of evidence about ten people, and the evidence is bundled.
+
+Here's an everyday picture. At a party of ten, one guest is a chatterbox, so nine of the 45 possible pairs involve a person who talks to everyone. Counting those nine pairs as nine separate pieces of evidence about sociability is like counting one witness nine times because they told the same story nine times.
 
 The practical effect is that an ordinary test counts the evidence as though it were larger than it is, so it is **overconfident**: it reports small p-values for patterns that chance in the network could produce fairly often. The fix is not to give up on testing. It's to choose a better definition of chance, one that keeps the bundling intact.
 
@@ -40,9 +54,11 @@ Two families of answer do that, and they're the two halves of this chapter.
 
 ### Watching it fail
 
-Let's watch the overconfidence happen, not just take it on trust. We invent worlds where we know the answer is "no relationship" and count how often a test says "yes" anyway. In each of 500 invented worlds, 20 people each have two things. The first is a **sociability**: some people are outgoing and some are quiet, so a tie between two people becomes more likely when both are sociable. (We draw it from a logistic distribution multiplied by a *scale*; with scale 0 everyone is equally sociable.) The second is a number with nothing to do with the ties, say their age, drawn separately. We then ask "do ties go between people of similar age?" The honest answer is no, by construction.
+Let's watch the overconfidence happen, not just take it on trust. We invent worlds where we know the answer is "no relationship" and count how often a test says "yes" anyway. In each of 500 invented worlds, 20 people each have two things. The first is a **sociability**: some people are outgoing and some are quiet, so a tie between two people becomes more likely when both are sociable. (We draw it from a logistic distribution, a bell-shaped curve for making random numbers, multiplied by a *scale* that dials how uneven people are; with scale 0 everyone is equally sociable.) The second is a number with nothing to do with the ties, say their age, drawn separately. We then ask "do ties go between people of similar age?" The honest answer is no, by construction.
 
-We test that two ways, with a 5 percent cutoff. The **ordinary** test treats the 190 pairs as independent: it correlates "is there a tie" with "age gap" and calls the result significant when the t statistic is beyond 1.973, the 5 percent cutoff on 188 degrees of freedom. The **relabeling** test (QAP, which comes next) shuffles who has which age 99 times, recomputes the correlation each time, and calls the result significant when at most 4 of the 99 shuffles reach it. A test that holds its promise rejects in about 5 percent of these worlds. The random numbers come from the same small generator as in @sec-network-regression (Park-Miller), so all three tabs print the same numbers.
+We test that two ways, with a 5 percent cutoff. The **ordinary** test treats the 190 pairs as independent: it correlates "is there a tie" with "age gap" and calls the result significant when the t statistic (the ordinary test's score for how far the correlation sits from zero) is beyond 1.973, the 5 percent cutoff on 188 degrees of freedom (a bookkeeping number for how much data the test believes it has). The **relabeling** test (QAP, which comes next) shuffles who has which age 99 times, recomputes the correlation each time, and calls the result significant when at most 4 of the 99 shuffles reach it. A test that holds its promise rejects in about 5 percent of these worlds. The random numbers come from the same small generator as in @sec-network-regression (Park-Miller), so all three tabs print the same numbers.
+
+Don't worry about the t statistic or the degrees of freedom: treat the ordinary test as a black box that comes with a promise. When you run the block below, look at the share of worlds that each test calls significant in each row. An honest test shows about 5 percent.
 
 ::: {.panel-tabset group="language"}
 
@@ -232,7 +248,11 @@ Two cautions, so you don't over-learn this. Overconfidence is not automatic: wit
 
 A **null model** is a rule for making random networks. You choose which features of your network the rule keeps, the rule scrambles everything else, and you compare your statistic with its values across many scrambled networks. "Null" doesn't mean "nothing is happening". It means "nothing is happening beyond what we held fixed".
 
+Think of asking whether a coin is loaded. Before you can say yours is odd, you have to say what a fair coin is. A null model is the network version of a fair coin, and "fair" depends on what you decide to keep fixed.
+
 That makes *what you hold fixed* the question you are asking. Take one network and one statistic, say the share of friendships that stay inside a department. Hold fixed the number of friendships and scramble who is friends with whom, and you ask: is there more department loyalty than ties placed at random would give? Hold fixed each person's number of friends too, and you ask: more than busy people alone would give? Hold fixed the whole network and shuffle the department labels, and you ask: given exactly this web of friendships, does it line up with departments? Each is a fair question with its own p-value. None is "the" null model, and a p-value reported without its null leaves the reader to guess the question.
+
+The table below is a reference you can return to. On a first read, skim just the first and third columns (the name and the question it answers) and skip the rest. You'll still have the key idea: different nulls answer different questions.
 
 | Null model | What it holds fixed | The question it answers | Watch out for |
 | --- | --- | --- | --- |
@@ -245,6 +265,8 @@ That makes *what you hold fixed* the question you are asking. Take one network a
 | QAP relabeling [@krackhardt1987qap] | Both matrices exactly; people are relabeled in one | Do two relations line up more than their own structure allows? | With $n$ people there are only $n!$ relabelings; four people can never give a p-value below one third (@sec-network-regression) |
 | Space-preserving | Where people are, or how long ties are | More than geography alone gives? | When distance is the mechanism, the null already contains the finding (@sec-space-honest) |
 
+A few symbols in that table, read aloud. The letter $n$ is the number of people, $m$ is the number of ties, and $p$ is the chance that any one pair is tied. So $G(n,p)$ means "random networks on $n$ people where each pair is tied with chance $p$", and $G(n,m)$ means "random networks on $n$ people with exactly $m$ ties". A *Markov chain*, in the swaps row, is just a process that takes one small step after another, each step starting from wherever the last one ended.
+
 Two things the table can't show. First, a null is also a *sampler*: a sampler that doesn't draw evenly from the set it claims (a pairing that throws away awkward draws, a swap chain stopped too early) answers a slightly different question. We look at both below. Second, passing a null means "no evidence of more than this null produces". It is not a claim that the network was made that way, and a null that fits says nothing about whether another one would.
 
 ## Building a permutation distribution
@@ -255,15 +277,21 @@ A **permutation test** is the plainest way to turn "what is held fixed" into a p
 2. Say what could be shuffled without changing the story if there were no pattern. In QAP it is who is who: relabel the people, and every pair involving someone moves with them.
 3. Compute $T$ on the real data. Call it $T_{\text{obs}}$.
 4. Shuffle $B$ times and compute $T$ each time, giving $T_1, \dots, T_B$. A histogram of these is the **permutation distribution**: what $T$ looks like once the pattern is broken and everything else is kept.
-5. Report the share of shuffles at least as extreme, counting the real data as one of them:
+5. Report the share of shuffles at least as extreme, counting the real data as one of them. In ordinary terms, the question is: how often does luck alone do at least as well as what we saw? The formula counts exactly that:
 
 $$
 p = \frac{1 + \#\{b : T_b \ge T_{\text{obs}}\}}{B + 1}.
 $$
 
+::: {.callout-tip title="In plain words"}
+This computes the p-value, the share of shuffles that did at least as well as the real data. Read the top as "one (for the real data itself) plus the number of shuffles whose statistic $T_b$ was at least as big as the real $T_{\text{obs}}$", where the curly braces with a hash sign just mean "how many". Read the bottom as "the number of shuffles, $B$, plus one". Tiny example: shuffle 99 times, and suppose 4 shuffles reach the real value. Then $p = (1 + 4)/(99 + 1) = 5/100 = 0.05$. If none reach it, $p = 1/100 = 0.01$, never zero.
+:::
+
 The two 1s are not fudge. The real data is one of the possible shuffles (the one that changes nothing), so it belongs in the count. A p-value can then never be zero, and the smallest you can report with $B$ draws is $1/(B+1)$ [@phipson2010permutation].
 
 When the number of shuffles is small, skip the random draws and list them all; the share is then exact. Here is the smallest example you can check on paper. Six people: two triangles joined by a single tie. They sit on two floors of three, and the real floors put each triangle on its own floor, so 6 of the 7 ties stay inside a floor. There are 20 ways to choose which three people are on floor A (the other three are on floor B). For each one, count the ties inside a floor.
+
+The code lists all 20 splits and counts the ties that stay inside a floor for each. Look at how often the top count, 6, shows up: that tells you the best any pattern could do.
 
 ::: {.panel-tabset group="language"}
 
@@ -361,7 +389,11 @@ The **quadratic assignment procedure**, or QAP, was introduced by Hubert and Sch
 
 Do that thousands of times and you get the distribution of the association you would see if the two matrices had no relationship, but each kept its own internal structure. Then ask where your observed value falls.
 
+Here's a picture. Draw ten dots and put the friendship lines on one transparent sheet and the floors on another. Relabeling is like keeping the friendship sheet still and re-deciding which person sits at which dot on the other sheet. Each sheet looks exactly the same as before; only the matching between the two changes.
+
 Our two matrices are the friendship ties and a "same floor" matrix: a 1 for each pair of people on the same floor, and a 0 otherwise. The question is whether friends tend to be on the same floor. First the data.
+
+This first block only builds the two matrices and counts their pairs. Check that the counts match the sentence just after it.
 
 ::: {.panel-tabset group="language"}
 
@@ -474,7 +506,13 @@ Of the 45 pairs, 18 are friends and 20 are on the same floor (ten on each floor)
 
 The statistic is the ordinary Pearson correlation between the two matrices, read as two lists of 45 numbers, one entry per pair. The correlation of two 0-1 lists is a standard measure of association, and tells you how much knowing a pair is on the same floor tells you about whether they are friends. QAP then compares it with the correlations from many relabelings.
 
+::: {.callout-tip title="In plain words"}
+A correlation is a score from $-1$ to 1 for how closely two lists rise and fall together. At 0, knowing one list tells you nothing about the other. Near 1, the two move together almost perfectly. Here the two lists are "is this pair friends?" and "is this pair on the same floor?", so a positive number means friends tend to be same-floor pairs.
+:::
+
 Because the network is undirected, we tell the test to read each pair once (graph mode), not twice.
+
+Look for two things in the output: the observed correlation, and the share of relabelings that reach it.
 
 ::: {.panel-tabset group="language"}
 
@@ -560,7 +598,9 @@ Read the last line as the p-value. If the floors had nothing to do with friendsh
 
 ### Seeing the reference distribution
 
-The relabelings are worth looking at, not just summarizing. They show you what "no relationship" looks like for *this* pair of networks. A useful comparison is with what an ordinary correlation test would assume. That test treats the 45 pairs as independent, which makes the typical wobble of a correlation about $1/\sqrt{N - 1}$ for $N$ pairs.
+The relabelings are worth looking at, not just summarizing. They show you what "no relationship" looks like for *this* pair of networks. A useful comparison is with what an ordinary correlation test would assume. That test treats the 45 pairs as independent, which makes the typical wobble of a correlation about $1/\sqrt{N - 1}$ for $N$ pairs. In words: one divided by the square root of one less than the number of pairs. For our 45 pairs that is one over the square root of 44, about 0.151.
+
+Look at how wide the relabeled correlations spread compared with that textbook width of 0.151.
 
 ::: {.panel-tabset group="language"}
 
@@ -635,9 +675,15 @@ The picture to hold in mind is @fig-qap-null: a chart of the relabeled correlati
 
 Often one pattern isn't enough. Maybe friends share floors, *and* friends share a book club, and you want to know whether each matters once the other is accounted for. **Multiple regression QAP**, or MRQAP, extends the idea to a regression with several predictor matrices [@krackhardt1988predicting]. The coefficients are ordinary regression coefficients, so they have the usual meaning. What changes is how the p-values are calculated: by permutation, using relabelings, so the bundling is respected.
 
+Think of MRQAP as a fair way to split the credit. If friends tend to share floors and also tend to share a book club, which of the two is doing the work? Regression asks that question about each predictor with the others held in place.
+
 The default method for the permutation is called double semi-partialling [@dekker2007sensitivity]. In a regression with several correlated predictors, a simple relabeling of the outcome can give misleading p-values, so this method relabels what's left of each predictor once the others have been removed. You don't need to remember the details to use it, but it's the reason the default is safe when predictors overlap.
 
+That name is a mouthful, and this is the technical corner of the chapter. On a first read you can skip to the next paragraph. You'll still have the key picture: before shuffling a predictor, the method washes out the part of it that overlaps with the other predictors, so the shuffle disturbs only what belongs to that predictor alone.
+
 Our second predictor is an invented one: a book club that people in even positions (Ana, Cleo, Eli, Gus, Ivo) belong to, and people in odd positions (Ben, Dev, Fay, Hana, Jo) don't. It's a stand-in for any other attribute you might want to control for.
+
+The table will list each predictor with its coefficient, a t score and a permutation p-value. Look at which p-values are small, and how the floor coefficient reads next to the invented book club.
 
 ::: {.panel-tabset group="language"}
 
@@ -768,16 +814,22 @@ R-squared 0.194 on 45 pairs
 
 :::
 
-Read the coefficients as you would in any regression. The outcome is 0 or 1, so a coefficient is a difference in the share of pairs that are friends. Holding the book club fixed, pairs on the same floor are about 0.34 more likely to be friends, with a permutation p-value of 0.006. The book club coefficient is negative, -0.24, and its p-value of 0.08 is not small. That attribute is invented (even versus odd position), so its sign says nothing about the world and only shows how it happens to line up with the floors and the ties. R-squared is 0.194: the two predictors together account for about a fifth of the variation in who is tied to whom. Because the permutations are random, the p-values move a little with the seed. With 5,000 draws, don't read anything into the third decimal place. The Python tab draws its own random relabelings, so its p-values can differ in the last digits.
+Read the coefficients as you would in any regression. The outcome is 0 or 1, so a coefficient is a difference in the share of pairs that are friends. Holding the book club fixed, pairs on the same floor are about 0.34 more likely to be friends, with a permutation p-value of 0.006. The book club coefficient is negative, -0.24, and its p-value of 0.08 is not small. That attribute is invented (even versus odd position), so its sign says nothing about the world and only shows how it happens to line up with the floors and the ties. R-squared, the share of the ups and downs in the outcome that the predictors account for, is 0.194: the two predictors together account for about a fifth of the variation in who is tied to whom. Because the permutations are random, the p-values move a little with the seed. With 5,000 draws, don't read anything into the third decimal place. The Python tab draws its own random relabelings, so its p-values can differ in the last digits.
 ## How many draws, and which tail
 
-Every p-value from random draws is itself an estimate. Call the true share $p$ (what unlimited draws would give) and the number of draws $B$. The count of draws in the tail is a binomial count, so the estimate $\hat p$ wobbles from run to run with standard deviation
+Every p-value from random draws is itself an estimate, so a natural question is how much it would change if you reran the draws. Here is the answer in symbols. Call the true share $p$ (what unlimited draws would give) and the number of draws $B$. The count of draws in the tail is a binomial count (like the number of heads in $B$ coin flips), so the estimate $\hat p$ wobbles from run to run with standard deviation
 
 $$
 \text{sd}(\hat p) = \sqrt{\frac{p(1-p)}{B}}.
 $$
 
-This is the **Monte Carlo error**. For the friendship-and-floor test above we can find the true $p$, because ten people have only $10! = 3{,}628{,}800$ relabelings and the engine can count them all. Then we rerun the test with 100 different seeds at 100, 1,000 and 10,000 relabelings, and compare the spread of the estimates with the formula. (The tabs of the QAP section print the plain share, which can be exactly zero. In the tables from here on, a p-value from draws is $(1 + \text{hits})/(B + 1)$, except in the next block, whose subject is the plain share.)
+::: {.callout-tip title="In plain words"}
+This says how much a p-value estimated from random draws wobbles from run to run. Read $\hat p$ ("p hat") as the p-value we estimated, $p$ as the true share, and $B$ as the number of draws. The wobble is the square root of "$p$ times one minus $p$, divided by $B$". Plug in $p = 0.0238$ and $B = 1{,}000$: the wobble is $\sqrt{0.0238 \times 0.9762 / 1000} = 0.0048$, the number the chapter checks below. More draws shrink the wobble, but slowly: ten times the draws cuts it only to about a third (by hand, divide by the square root of ten).
+:::
+
+That wobble is the **Monte Carlo error**, the name for any error that comes from using random draws in place of an exact count. For the friendship-and-floor test above we can find the true $p$, because ten people have only $10! = 3{,}628{,}800$ relabelings and the engine can count them all. Then we rerun the test with 100 different seeds at 100, 1,000 and 10,000 relabelings, and compare the spread of the estimates with the formula. (The tabs of the QAP section print the plain share, which can be exactly zero. In the tables from here on, a p-value from draws is $(1 + \text{hits})/(B + 1)$, except in the next block, whose subject is the plain share.)
+
+The code counts every one of the 3,628,800 relabelings to get the true share, then reruns the random version many times. Look at the "lowest" and "highest" columns: with few draws they range widely, and with many they huddle around the exact share.
 
 ::: {.panel-tabset group="language"}
 
@@ -900,15 +952,21 @@ The exact share is 0.0238, so the 0.0218 from 10,000 draws earlier was a little 
 
 Choose $B$ so that the Monte Carlo error is small next to the distance between your p-value and the threshold you care about. For a p-value near 0.05, an error of 0.005 (a tenth of it) needs $B = 0.05 \times 0.95 / 0.005^2 = 1{,}900$ draws, and an error of 0.001 needs about 47,500. Say how many draws you used and the seed. The Python tab draws its own relabelings, so its middle columns differ a little from the other two; the exact share and the formula column do not.
 
+In plain words, rearrange the wobble formula to ask how many draws you need. The number of draws is "$p$ times one minus $p$", divided by the square of the wobble you can tolerate. For a p-value near 0.05 and a tolerated wobble of 0.005, that is $0.0475 / 0.000025 = 1{,}900$ draws, the figure above.
+
 **Which tail?** An **upper-tail** (or one-sided) p-value asks for draws at least as large as the observed value, and fits the question "more than chance?". A **lower-tail** one asks for draws at most as large. A **two-sided** p-value asks for draws at least as far from the null's centre as the observed value, in either direction. For a symmetric null it is about double the one-sided value; for a lopsided one there is no single doubling rule, so this chapter counts the draws at least as far from the null's average as the real value, which is one common choice. Decide the tail before you look. Choosing the one-sided tail after you see which way the data lean halves your p-value for free. The tables below print all three: "p high", "p low" and "p two-sided".
+
+In plain words: "upper tail" asks whether the real value is unusually high, "lower tail" whether it is unusually low, and "two-sided" whether it is unusual in either direction.
 
 ## Null models for one network
 
-QAP asks whether two patterns are related. A different question is whether a single network has a *feature* more than you'd expect. In the friendship network, transitivity was 0.579 (@sec-paths-and-cohesion). Is that high?
+QAP asks whether two patterns are related. A different question is whether a single network has a *feature* more than you'd expect. In the friendship network, transitivity (the share of friend-of-a-friend pairs who are themselves friends) was 0.579 (@sec-paths-and-cohesion). Is that high?
 
 You can't say without a comparison. High compared to *what*? The answer is a **null model**: a recipe for drawing random networks that share some features with yours and are random in every other way. Draw many, compute the feature on each, and see where yours falls. The choice of recipe is the choice of what you hold fixed, and it changes the answer.
 
 The simplest recipe holds fixed only the number of people and the number of ties, and places the ties at random. This is the classic random graph model of Erdős and Rényi [@erdos1959random] (a close cousin, where each tie appears independently with the same probability, is due to Gilbert [@gilbert1959random]). Testing against it is sometimes called a **conditional uniform graph** test, because the draws are uniform among all networks with the stated size and number of ties. Phil Murphy's tutorial walks through the statnet version [@murphyrpubs536741].
+
+The code draws 2,000 random networks with the same number of people and ties, and checks how clustered each is. Look at the average and at the share of draws as clustered as ours, 0.579.
 
 ::: {.panel-tabset group="language"}
 
@@ -1014,6 +1072,8 @@ random networks at least as clustered  0.0045
 Random networks with the same size and number of ties average a transitivity of 0.372, and well under one percent of them (0.0045) are as clustered as the friendship network's 0.579. Against this yardstick, our friends are unusually clustered. The share comes from 2,000 random draws, so another seed might give 0.008 instead. Read it as "around half a percent to one percent." The Python tab draws different random networks, so its average and share can differ slightly.
 That null model is easy to beat, and the reason is instructive. Real networks have people with very different numbers of ties, and a few sociable people are enough to create triangles. A model that gives everyone about the same degree has no way to produce that, so real networks can look "more clustered than random" for that reason alone. A fairer comparison keeps each person's degree fixed too. That is the **configuration model**, which draws random networks in which everyone has exactly the degree they have in your data [@molloy1995critical; @newman2001random]. A related approach starts from your own network and repeatedly swaps pairs of ties, which also keeps every degree [@maslov2002specificity].
 
+Here is the picture behind the configuration model. Give each person one "stub" per friend, a half-tie dangling out of them. Then pair the stubs at random, like people picking dance partners out of a hat. Everyone ends up with exactly the number of ties they started with, but who's tied to whom is scrambled. The code does this 2,000 times; look again at the average clustering and the share that reach 0.579.
+
 ::: {.panel-tabset group="language"}
 
 ## R
@@ -1112,7 +1172,11 @@ Holding every degree fixed sounds simple, and two details decide whether it mean
 
 **Swapping ties.** Start from your real network. Pick two ties, $a$-$b$ and $c$-$d$, and replace them with $a$-$d$ and $c$-$b$ unless that makes a loop or repeats a tie. Every degree survives each swap, and repeated swaps can reach every simple network with those degrees [@fosdick2018configuring]. But the networks along one chain are correlated: each is a small change from the one before. So there are two practical questions. How many swaps until the chain has forgotten where it started? And, if you keep several networks from one chain, how far apart should they be? (@sec-small-worlds restarts from the real network with a new seed for every draw, which sidesteps the second question.)
 
+Swapping is like two couples at a dance trading partners: everyone still dances with the same number of people, but who dances with whom has changed.
+
 One way to look at the first question: count the share of the real ties still present after $k$ accepted swaps, averaged over 100 chains. At zero swaps it is 1. For independent random networks with the same degrees it settles at a level above zero, because the degrees force some of the real ties to appear. That level, from stub matching, is the last column.
+
+Look at how the share of original ties still present falls as the swaps pile up, and where it levels off. That's the point where the chain has forgotten its start.
 
 ::: {.panel-tabset group="language"}
 
@@ -1295,11 +1359,15 @@ Three cautions. This is one summary of one small network: a chain can have forgo
 
 Time to do one properly, from question to sentence, with Krackhardt's 21 managers [@krackhardt1987cognitive]. The attribute is department, one of four (the CEO is alone in department 0). @sec-homophily does the karate club's version of the same idea.
 
+This is the longest section because it walks the whole recipe once, start to finish. If you'd like to skim, read the five numbered steps and the paragraphs after the output, and skip the code. You'll still have the shape of a careful test.
+
 1. **The question, written before looking.** Do managers' ties stay inside their department more than chance would give? Asked separately of advice ties and friendship ties.
 2. **The statistic.** The share of ties that join two people in the same department.
 3. **Two nulls, because they ask different things.** *Relabel departments*: keep the network exactly, shuffle who sits in which department (5,000 times). *Random ties*: keep departments, place the same number of ties at random among the 21 managers (2,000 networks).
 4. **The tail.** Upper, because the question is "more than chance". We print all three anyway.
-5. **The p-value.** $(1 + \text{hits})/(B + 1)$, as above, plus the effect size, plus a stress check.
+5. **The p-value.** $(1 + \text{hits})/(B + 1)$, as above, plus the effect size (how big the pattern is, not only whether it's unlikely), plus a stress check.
+
+The code runs both nulls on both relations. Look first at the table of within-department shares, which are the effect sizes, and then at the p-values.
 
 ::: {.panel-tabset group="language"}
 
@@ -1603,18 +1671,30 @@ The tails behave as the question suggests. For friendship, "p low" is near 1 (al
 
 **A small p-value is not a big effect.** The friendship correlation is 0.20, which accounts for about 4 percent of the variation in who is tied to whom ($0.20^2 = 0.04$). The p-value of about 0.001 says 37 percent would be hard to get by chance. The effect size says the pattern is 15 percentage points above chance, with most ties still crossing departments (63 percent do). Both are true and neither replaces the other. And a p-value mixes effect size with the amount of data: the ordinary statistic is $t = r\sqrt{(N-2)/(1-r^2)}$ for $N$ pairs, so the same correlation of 0.1 gives $t = 2.05$ over 420 pairs and $t = 6.5$ over 4,200. Bigger networks make smaller effects "significant". Report the effect and the p-value together.
 
+::: {.callout-tip title="In plain words"}
+This is the ordinary test's score, and it shows why more data makes small effects look "significant". Read $r$ as the correlation and $N$ as the number of pairs. The score $t$ grows with $r$ and with the square root of $N$. Plug in $r = 0.1$: over 420 pairs $t = 2.05$, and over 4,200 pairs $t = 6.5$ (the numbers above). The pattern is exactly as weak in both, but ten times the data makes it look far more "significant". That's why you report the effect size too.
+:::
+
 The last line is the stress check. Leaving out 10 of the 102 friendships at random, 200 times, moves the within-department share between 0.326 and 0.413, and the relabeling p-value stays at most 0.05 in all 200 drops. A tenth of the ties missing at random does not erase the finding. It would not guard against ties that are missing for a reason, such as people who left the survey.
 
 ### How many things did you test?
 
-We tested friendship against department because we planned to. Suppose you also check level, age and tenure, for both relations: eight tests. If nothing were going on, each has a 5 percent chance of passing at the 5 percent level, and the chance that at least one passes is $1 - 0.95^8 = 34$ percent (if the tests were independent). Two common fixes shrink that. **Holm's method** [@holm1979simple] controls the chance of *any* false alarm. **Benjamini-Hochberg** [@benjamini1995controlling] controls the *share* of false alarms among the results you call significant, which is gentler and the usual choice when you screen many. With $m$ tests and sorted p-values $p_{(1)} \le \dots \le p_{(m)}$, the adjusted values are
+Here's a dartboard picture. Throw one dart and hitting something is unlikely. Throw eight at random and it's likely that one lands somewhere interesting. Each extra test is another dart.
+
+We tested friendship against department because we planned to. Suppose you also check level, age and tenure, for both relations: eight tests. If nothing were going on, each has a 5 percent chance of passing at the 5 percent level, and the chance that at least one passes is $1 - 0.95^8 = 34$ percent (if the tests were independent). Two common fixes shrink that. **Holm's method** [@holm1979simple] controls the chance of *any* false alarm. **Benjamini-Hochberg** [@benjamini1995controlling] controls the *share* of false alarms among the results you call significant, which is gentler and the usual choice when you screen many. With $m$ tests and sorted p-values $p_{(1)} \le \dots \le p_{(m)}$, the adjusted values are given by the two formulas below. The question they answer is: if I look at $m$ things, how should I inflate each p-value so that the whole set stays honest?
 
 $$
 p^{\text{Holm}}_{(i)} = \min\Big(1, \max_{j \le i} (m - j + 1)\, p_{(j)}\Big), \qquad
 p^{\text{BH}}_{(i)} = \min\Big(1, \min_{j \ge i} \tfrac{m}{j}\, p_{(j)}\Big).
 $$
 
+::: {.callout-tip title="In plain words"}
+Both formulas take your $m$ p-values, sorted from smallest to largest, where $p_{(i)}$ means the $i$-th smallest. Holm multiplies the smallest by $m$, the next by $m - 1$, and so on down to 1, never lets an adjusted value drop below an earlier one (the "max over $j \le i$"), and caps everything at 1. Benjamini-Hochberg multiplies the $j$-th smallest by $m/j$, then works from the largest down so that no adjusted value exceeds a later one (the "min over $j \ge i$"), again capped at 1. Plug in the chapter's eight tests: the smallest raw p-value, 0.0016, becomes $8 \times 0.0016 = 0.013$ under both, the number you'll see in the table below.
+:::
+
 Holm is valid whatever the dependence between tests; Benjamini-Hochberg is proved for independent tests and, in later work, for a common kind of positive dependence, which is plausible here but not guaranteed. Our eight tests share ties and relabelings, so they are not independent. Each test is a QAP correlation between a relation and a similarity pattern: same department, same level, closeness in age, closeness in tenure.
+
+The block runs all eight tests and prints the raw and adjusted p-values side by side. Look at how many stay below 0.05 after adjustment.
 
 ::: {.panel-tabset group="language"}
 
@@ -1816,6 +1896,8 @@ Four of the eight raw p-values are below 0.05: friendship with department (0.001
 
 Back to the Florentine families of @sec-small-worlds: 15 families, 20 marriages. Take four statistics and two nulls (random ties, and random networks with the same degrees from stub matching), 2,000 draws each. For each pair we print the observed value, the null's average and spread, the **z-score** (distance from the null's average in standard deviations, @sec-triads-and-motifs), the **percentile** (the share of draws at or below the observed value), the **skewness** of the draws (0 for a symmetric bell, negative for a long tail to the left), and the two-sided p-value.
 
+These are two ways to say how unusual a value is. A z-score is a ruler: how many typical wobbles above or below the average. A percentile is a rank, like a class ranking: what share of the random networks fall at or below you. When the draws form a neat bell the two agree, and when they don't, trust the rank. Look for rows where the two disagree.
+
 ::: {.panel-tabset group="language"}
 
 ## R
@@ -1993,7 +2075,7 @@ z -3.6356, share of draws at most 12 0.0150
 
 :::
 
-Nothing here is surprising, and that is the finding. No two-sided p-value is below 0.23. Transitivity (0.191) is in the middle of both nulls. Degree assortativity of $-0.375$ (families with many marriages marry families with few) is 1.1 to 1.2 standard deviations below the null's average, percentile 0.13: in the direction of a hub-and-spokes pattern, but well within what 15 families and 20 marriages produce by chance. A small network gives a wide null, so only large effects show. The honest summary is "no evidence against these nulls", not "no pattern": with 20 ties this test has little power.
+Nothing here is surprising, and that is the finding. No two-sided p-value is below 0.23. Transitivity (0.191) is in the middle of both nulls. Degree assortativity of $-0.375$ (families with many marriages marry families with few) is 1.1 to 1.2 standard deviations below the null's average, percentile 0.13: in the direction of a hub-and-spokes pattern, but well within what 15 families and 20 marriages produce by chance. A small network gives a wide null, so only large effects show. The honest summary is "no evidence against these nulls", not "no pattern": with 20 ties this test has little power (little ability to spot a pattern even when one exists).
 
 The z-score and the percentile agree when the null is roughly bell-shaped, as for assortativity (skewness between about $-0.1$ and 0.14). They stop agreeing when it isn't. Look at the largest component under the same-degree null: the skewness is about $-2.7$, because most draws are connected (15 families) and a few break off a small piece. Suppose the largest component had been 12 families. Its z-score would be about $-3.6$, which a normal curve would call rarer than one in a thousand. But only 1.5 percent of the draws (between 0.014 and 0.015, depending on the engine) are at most 12, about one in 70. A z-score assumes a bell shape; the draws don't have one. So read the percentile or the p-value from the draws, show z only for scale, and look at the skewness (or a histogram) whenever the null is lopsided or takes few distinct values. The latter explains the two-sided p-value of 1.000 for transitivity under same degrees: with the degrees fixed, the number of connected triples is fixed, so transitivity moves only in steps of one triangle (about 0.06), and the observed value sits among the middle steps.
 
@@ -2001,9 +2083,15 @@ The z-score and the percentile agree when the null is roughly bell-shaped, as fo
 
 **Too weak.** A null that ignores something obvious in the data makes ordinary patterns look remarkable. In @sec-small-worlds the karate club's transitivity of 0.256 looks nearly twice as clustered as random ties (0.135), but against networks with the same degrees the average is 0.225 and 13 percent of draws are at least as clustered. Reporting only the easy comparison is a quiet way of overselling.
 
+It's like beating a field of people who never trained and then calling yourself fast.
+
 **Too strong.** A null that holds fixed the thing you are studying cannot find it. If your question is whether a few managers attract most of the advice, a null that fixes every manager's number of advice-seekers has answered it before you start. Fixing more is not safer; it changes the question.
 
+It's like asking whether a coin lands heads more often than a coin that's glued to heads.
+
 **Degenerate.** The worst case is a null that fixes the statistic itself. Take the largest number of marriages any family has (the Medici, with 6), against the two Florentine nulls from above.
+
+This is like setting a thermometer to 20 degrees and then using it to prove the room is 20 degrees. Look at the spread and the p-value in the output: that's where the symptom shows.
 
 ::: {.panel-tabset group="language"}
 
@@ -2083,10 +2171,14 @@ Against random ties, a family with 6 marriages is not unusual (average 5.3, uppe
 
 The **bootstrap** [@efron1979bootstrap] has a different job from a permutation test. A permutation test asks whether a pattern is more than a null produces. The bootstrap asks how much an *estimate* would move with different data from the same source: resample the data with replacement, recompute the estimate each time, and read the uncertainty off the spread. For ordinary data it works because the rows are independent units. A network has no such units, and the two obvious ways to resample one both go wrong.
 
+The usual picture of resampling is pulling names out of a hat again and again to see how much your answer jiggles. That works when each name is an independent piece of data. A network isn't a hat of independent names, because ties belong to two people at once.
+
 - **Resample people.** Draw $n$ people with replacement and keep the ties among those drawn. A person drawn twice becomes two copies who are not tied to each other, so the resampled network is sparser by construction.
-- **Resample ties.** Draw $m$ ties with replacement from the real $m$. A tie drawn twice is still one tie, so each resample keeps only about $1 - 1/e \approx 63$ percent of the distinct ties.
+- **Resample ties.** Draw $m$ ties with replacement from the real $m$. A tie drawn twice is still one tie, so each resample keeps only about $1 - 1/e \approx 63$ percent of the distinct ties (each tie has about a 37 percent chance, $1/e$, of never being drawn at all).
 
 To measure the damage we need a case where the truth is known, so we invent 100 networks of 24 people in which every pair is tied with probability 0.2. The true density is 0.2. For each network we draw 100 resamples of each kind and take the 2.5th and 97.5th percentiles of the resampled densities as a 95 percent interval. A method that works would cover 0.2 in about 95 of the 100 networks.
+
+The code builds 100 networks whose true density we know, and checks how often each resampling method's interval contains it. Look at how often the intervals cover 0.2: a method that works lands near 95 out of 100.
 
 ::: {.panel-tabset group="language"}
 
@@ -2258,7 +2350,11 @@ ties resampled           0.010        0.203          0.022           0.129      
 
 :::
 
-Resampling ties collapses: the resampled density averages 0.129 against an observed 0.203 (the 63 percent in action), the bootstrap standard deviation is only 0.008, and the intervals contain the truth in 1 network of 100. Resampling people is off in a different way. Its centre is a little low (0.195, from the copies that are never tied) and its spread is far too large: the average bootstrap standard deviation is 0.039, against a real spread of 0.022 in the observed densities across networks. It "covers" the truth in all 100 networks, but only by being 1.8 times too wide. The reason is that resampling people re-draws their *degrees*, and degrees vary more than a pair-by-pair coin flip does. In a network with a different structure the same method could come out too narrow. Its width is not a property of how the data were collected, so it cannot be trusted in either direction.
+Resampling ties collapses: the resampled density averages 0.129 against an observed 0.203 (the 63 percent in action), the bootstrap standard deviation is only 0.008, and the intervals contain the truth in 1 network of 100.
+
+Resampling people is off in a different way. Its centre is a little low (0.195, from the copies that are never tied) and its spread is far too large: the average bootstrap standard deviation is 0.039, against a real spread of 0.022 in the observed densities across networks. It "covers" the truth in all 100 networks, but only by being 1.8 times too wide.
+
+The reason is that resampling people re-draws their *degrees*, and degrees vary more than a pair-by-pair coin flip does. In a network with a different structure the same method could come out too narrow. Its width is not a property of how the data were collected, so it cannot be trusted in either direction.
 
 What to do instead depends on the question. If you want to know whether a pattern is more than a baseline gives, use a null model, as above. If you want uncertainty for the parameters of a model, simulate networks from the fitted model and refit (a parametric bootstrap; see @sec-ergm). And if you really did sample people at random from a population, as in the egocentric designs of @sec-ego-networks, resampling the sampled people's own summaries can be legitimate; the failure here is using the bootstrap for whole-network structure.
 
@@ -2331,16 +2427,16 @@ The ideas of this chapter come back with more machinery. @sec-network-regression
 ::: {.callout-note collapse="true"}
 ## Worked answers
 
-1. At least one relabeling lines the two matrices up exactly, so the relabeling distribution contains the value 1, the largest correlation possible. If the matrices as given are aligned, the observed correlation is 1, and the exact p-value is the number of relabelings that reach 1, divided by 24, so at least 1/24. If they are not aligned, the observed correlation is lower and the p-value is larger. A correlation of two 0-1 matrices only asks whether the *same pairs* are tied in both; the names of the people don't enter, which is why a matrix and a relabeled copy of itself can match perfectly.
-2. With about 22 relabelings in the tail of 1,000, the count wobbles by about $\sqrt{22} \approx 4.7$, so the share by about 0.005, or roughly 20 to 25 in 1,000. The formula gives $\sqrt{0.0218 \times 0.9782 / 1000} = 0.0046$. The chapter's exact share, 0.0238, sits inside that range.
-3. Use QAP (or, equivalently, a label permutation) for "do people tend to advise within their own profession?": build a same-profession matrix, keep the advice network and that matrix as they are, and relabel people. Use a null model for a question about the advice network alone, such as "is there more reciprocity than networks with the same number of ties, or the same in- and out-degrees, would give?". In each case say what is held fixed.
-4. At 10,000 relabelings the p-value should move by about 0.0015 between seeds (the chapter's table), so the third decimal is noise. The exhaustive version gives 0.0238 for the chapter's friendship and floor data.
-5. Ask: clustering by which measure (global or average local)? Compared with what (random ties, same degrees, something else), how many draws, which seed? Was this one test of many? Is the network complete or a sample, and who is missing? How big is the effect (the clustering itself, not only the p-value)? Would the conclusion survive dropping a tenth of the ties?
-6. There are $\binom{8}{4} = 70$ ways to choose floor A. The real split and its mirror image always reach the observed count, so the smallest p-value is $2/70 = 0.029$. With floors of three and five there is no mirror image (swapping the labels would make floors of five and three), so each of the $\binom{8}{3} = 56$ splits counts once and the smallest p-value is $1/56 = 0.018$.
-7. The standard deviation is $\sqrt{0.05 \times 0.95 / 1000} = 0.0069$, so about plus or minus 0.007 (a p-value of 0.05 could come back as 0.04 or 0.06). For an error of 0.002 you need $0.05 \times 0.95 / 0.002^2 \approx 11{,}900$ draws.
-8. Holm: $5 \times 0.001 = 0.005$; $4 \times 0.012 = 0.048$; $3 \times 0.030 = 0.09$; $2 \times 0.040 = 0.08$, raised to 0.09 so the values never decrease; $1 \times 0.200 = 0.2$. Two are below 0.05 (0.005 and 0.048). Benjamini-Hochberg: $p \times 5 / \text{rank}$ gives 0.005, 0.030, 0.050, 0.050, 0.200, and taking the running minimum from the largest down leaves them the same. Two are below 0.05 (0.005 and 0.030); the two at 0.050 are not below it.
-9. Of the 20 reporting ties, 16 (80 percent) stay inside a department, against about 22 percent expected, and the relabeling p-value is the smallest 5,000 draws allow, about 0.0002. The four ties that leave a department all go to the CEO, who is alone in department 0. The test is "significant" and also nearly empty of information: the reporting structure is the organization chart that defines departments.
-10. Ask which random networks: the same number of ties only, or the same degrees as well? In @sec-small-worlds the karate club looks nearly twice as clustered as random ties give (0.256 against 0.135) but only a little above networks with its degrees (0.225, with 13 percent of draws at least as clustered). Ask for the percentile and the number of draws, not only z, because a z-score of 8 from a lopsided null means little; ask how big the difference is in transitivity itself; and note that "small world" also needs short distances, which a transitivity z-score says nothing about. To answer, rerun with degree-preserving swaps, report percentiles and the number of draws, and give the clustering and the distances themselves.
+1. In short: yes, a matrix and a relabeled copy of itself can match perfectly. At least one relabeling lines the two matrices up exactly, so the relabeling distribution contains the value 1, the largest correlation possible. If the matrices as given are aligned, the observed correlation is 1, and the exact p-value is the number of relabelings that reach 1, divided by 24, so at least 1/24. If they are not aligned, the observed correlation is lower and the p-value is larger. A correlation of two 0-1 matrices only asks whether the *same pairs* are tied in both; the names of the people don't enter, which is why a matrix and a relabeled copy of itself can match perfectly.
+2. In short: the share would wobble by about half a percentage point, so anything from about 20 to 25 in 1,000 would not be surprising. With about 22 relabelings in the tail of 1,000, the count wobbles by about $\sqrt{22} \approx 4.7$, so the share by about 0.005, or roughly 20 to 25 in 1,000. The formula gives $\sqrt{0.0218 \times 0.9782 / 1000} = 0.0046$. The chapter's exact share, 0.0238, sits inside that range.
+3. In short: test a relationship between two patterns with QAP, and a feature of one network with a null model. Use QAP (or, equivalently, a label permutation) for "do people tend to advise within their own profession?": build a same-profession matrix, keep the advice network and that matrix as they are, and relabel people. Use a null model for a question about the advice network alone, such as "is there more reciprocity than networks with the same number of ties, or the same in- and out-degrees, would give?". In each case say what is held fixed.
+4. In short: barely, and the third decimal is noise. At 10,000 relabelings the p-value should move by about 0.0015 between seeds (the chapter's table), so the third decimal is noise. The exhaustive version gives 0.0238 for the chapter's friendship and floor data.
+5. In short: ask what it was compared with, how many draws, and how big the effect is. Ask: clustering by which measure (global or average local)? Compared with what (random ties, same degrees, something else), how many draws, which seed? Was this one test of many? Is the network complete or a sample, and who is missing? How big is the effect (the clustering itself, not only the p-value)? Would the conclusion survive dropping a tenth of the ties?
+6. In short: the smallest possible p-value is about 0.029 for two floors of four, and about 0.018 for floors of three and five. There are $\binom{8}{4} = 70$ ways to choose floor A. The real split and its mirror image always reach the observed count, so the smallest p-value is $2/70 = 0.029$. With floors of three and five there is no mirror image (swapping the labels would make floors of five and three), so each of the $\binom{8}{3} = 56$ splits counts once and the smallest p-value is $1/56 = 0.018$.
+7. In short: about plus or minus 0.007, and roughly 11,900 draws for an error of 0.002. The standard deviation is $\sqrt{0.05 \times 0.95 / 1000} = 0.0069$, so about plus or minus 0.007 (a p-value of 0.05 could come back as 0.04 or 0.06). For an error of 0.002 you need $0.05 \times 0.95 / 0.002^2 \approx 11{,}900$ draws.
+8. In short: two of the five tests pass under each method, but the adjusted values are bigger than the raw ones. Holm: $5 \times 0.001 = 0.005$; $4 \times 0.012 = 0.048$; $3 \times 0.030 = 0.09$; $2 \times 0.040 = 0.08$, raised to 0.09 so the values never decrease; $1 \times 0.200 = 0.2$. Two are below 0.05 (0.005 and 0.048). Benjamini-Hochberg: $p \times 5 / \text{rank}$ gives 0.005, 0.030, 0.050, 0.050, 0.200, and taking the running minimum from the largest down leaves them the same. Two are below 0.05 (0.005 and 0.030); the two at 0.050 are not below it.
+9. In short: most reporting ties stay inside departments, because reporting lines are what define departments. Of the 20 reporting ties, 16 (80 percent) stay inside a department, against about 22 percent expected, and the relabeling p-value is the smallest 5,000 draws allow, about 0.0002. The four ties that leave a department all go to the CEO, who is alone in department 0. The test is "significant" and also nearly empty of information: the reporting structure is the organization chart that defines departments.
+10. In short: a big z-score doesn't tell you what was compared against or how big the difference is. Ask which random networks: the same number of ties only, or the same degrees as well? In @sec-small-worlds the karate club looks nearly twice as clustered as random ties give (0.256 against 0.135) but only a little above networks with its degrees (0.225, with 13 percent of draws at least as clustered). Ask for the percentile and the number of draws, not only z, because a z-score of 8 from a lopsided null means little; ask how big the difference is in transitivity itself; and note that "small world" also needs short distances, which a transitivity z-score says nothing about. To answer, rerun with degree-preserving swaps, report percentiles and the number of draws, and give the clustering and the distances themselves.
 :::
 
 ## Summary
