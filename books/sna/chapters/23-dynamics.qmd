@@ -5,6 +5,19 @@
 @sec-time, where we described networks that change without modeling them, and @sec-ergm, whose effects reappear here. We reuse the office advice network from @sec-positions-and-roles and Sampson's monastery data from @sec-multilayer. The checks later in the chapter lean on the idea of a null model from @sec-tests-and-null-models.
 :::
 
+::: {.callout-note title="The short version"}
+Networks change, and this chapter is about explaining how. We look at two kinds of records. In the first, a group is surveyed a few times, like a class each autumn, and we ask how friendships come and go between surveys. In the second, we have a log of timed events, like emails, and we ask what makes the next message likely. Both models are stories about small steps: one person changes one tie, or one message is sent. We can run those stories forward on a computer and see what the coefficients actually do, and we are careful about what they can and can't prove.
+:::
+
+::: {.callout-note title="Why you might care"}
+If you have ever wondered whether people answer a message because they are polite, or just because they talk a lot, you are asking this chapter's question. These models let you separate habits from coincidences, spot when a friendly-looking result is really caused by a few chatty people, and avoid claiming a reason the data can't support.
+:::
+
+::: {.callout-note title="A note for first-time readers"}
+Two formulas appear in this chapter. Each one is followed by a plain-words callout and a tiny hand example with real numbers. If a formula looks scary, read the callout and keep going: the ideas are small, even when the notation is big.
+:::
+
+
 ## From describing change to modeling it
 
 ::: {.callout-tip appearance="simple"}
@@ -64,6 +77,11 @@ p_j \;=\; \frac{\exp(\text{gain from option } j)}{\sum_h \exp(\text{gain from op
 $$
 
 where "no change" has gain 0. Better options are likelier but never certain: people don't perfectly maximize.
+
+::: {.callout-tip title="In plain words"}
+This formula answers: when an actor is about to make a move, how likely is each option? Every option gets a score called its gain. Take the number $e$ raised to that gain, which turns any score into a positive weight. The probability of option $j$ is its weight divided by the sum of all the weights (that is what the big sigma sign means: "add these up over every option $h$"). It is like a raffle where better options hold more tickets but nobody is guaranteed to win. In Cy's example, dropping the tie to Ada has gain $+2$, so it holds $e^{2} = 7.389$ tickets out of $17.668$ in total, which is a $0.418$ chance.
+:::
+
 
 We'll use two effects. **Outdegree** is a cost (coefficient $-2$) for every tie an actor keeps, so ties don't survive for free. **Reciprocity** is a bonus (coefficient $+1.5$) for a tie that is returned. So for an actor, starting a tie to someone who already asks them for advice has gain $-2 + 1.5 = -0.5$, and starting a tie to someone who doesn't has gain $-2$. Dropping an existing tie to someone who doesn't reciprocate has gain $+2$, since the cost goes away, and dropping a reciprocated tie has gain $+2 - 1.5 = +0.5$.
 
@@ -930,6 +948,11 @@ We matched three counts by eye on a grid. In a real study you *estimate* the coe
 
 Each coefficient is a *log multiplier on the weight* of an option, other things equal. Take reciprocity, with coefficient $\beta$. When an actor considers starting a tie, an option that would be returned weighs $e^{\beta}$ times as much as an otherwise identical option that would not. With $\beta = 1$ that is 2.7 times, with $\beta = 1.5$ it is 4.5 times. It is *not* the probability that a tie forms, and it is not a multiplier on a probability unless the options are few. How a coefficient reads depends on what the tie means.
 
+::: {.callout-tip title="In plain words"}
+A coefficient is a dial on a weight. If you turn the reciprocity dial to $\beta = 1$, an option that would be returned weighs $e^{1} = 2.7$ times as much as an identical option that wouldn't be. At $\beta = 1.5$ it is $e^{1.5} = 4.5$ times. This is a multiplier on the raffle tickets, not the chance that something happens.
+:::
+
+
 | Effect | Positive coefficient | Negative coefficient |
 | --- | --- | --- |
 | Outdegree | Rare: people keep adding ties. | The usual case: ties are costly or limited, so networks are sparse. Its size is mostly a statement about density, and it moves with the other effects. |
@@ -963,6 +986,11 @@ For a sender $s$ and receiver $r$, the rate of the next message is $\exp(\beta_1
 - **Inertia**: how many times $s$ has already written to $r$. A positive coefficient says people repeat themselves, a negative coefficient says they spread their messages around.
 - **Reciprocity**: how many times $r$ has already written to $s$. A positive coefficient says people reply.
 
+::: {.callout-tip title="In plain words"}
+The rate of a message from sender $s$ to receiver $r$ is $\exp(\beta_1 x_1 + \beta_2 x_2 + \dots)$. Read $x_1, x_2, \dots$ as running counts from the past (how many times $s$ wrote to $r$, how many times $r$ wrote to $s$), and each $\beta$ as a dial that says how much that count matters. Then $\exp$ turns the total into a positive speed. A dial of zero means the count is ignored. A positive dial speeds the pair up, a negative one slows it down. Example from the four-message story below: reciprocity has $\beta = \ln 3$, so one earlier message from the receiver multiplies the rate by 3.
+:::
+
+
 The model takes each event in order and asks: given everything before, how likely was it that *this* pair, out of all possible pairs, was the one that came next? The product of those probabilities is the **partial likelihood** [@cox1972regression], and it is maximized to estimate $\beta$. Only the *order* of the events matters in this version, not the exact timing.
 
 ### Step 3: the same arithmetic by hand, on four messages
@@ -983,6 +1011,15 @@ $$
 $$
 
 where $R_k$ is the **risk set**, the set of pairs who could have sent the $k$-th message. Here it is all ordered pairs of distinct people, and the numerator is the observed pair. The code below does exactly this sum, then asks the computer for the coefficient that makes it largest.
+
+::: {.callout-tip title="In plain words"}
+This formula is the score of a whole log of messages, and the code below finds the dial settings that make it biggest. For each event $k$, look at who actually sent it and take the observed pair's weight, then subtract the logarithm of the total weight of every pair that could have sent it. The first piece, $\boldsymbol\beta^\top \mathbf{x}_k(s_k, r_k)$, is "the observed pair's dials times its counts." The second is "the log of the sum over the risk set $R_k$ of the same thing," which is the whole raffle. The big sigma in front adds up the events one after another. It is a running score of "how surprised was the model by each message, given the past?" With the four messages and $\beta = \ln 3$: event 1 contributes $\ln(1/6) = -1.792$, event 2 contributes $\ln(3/8) = -0.981$, event 3 $\ln(3/10) = -1.204$ and event 4 $\ln(1/16) = -2.773$, and they add to $-6.749$. A log of the likelihood is simply "the log-likelihood", a score where closer to zero is better.
+:::
+
+::: {.callout-note title="This is the hard part"}
+Partial likelihood is the most technical idea in the chapter. On a first read you can skip to the next heading. You will still have the working picture: each message is a draw from a raffle where pairs with a relevant past hold more tickets, and the model looks for the dial settings that would have made the observed messages least surprising.
+:::
+
 
 ::: {.panel-tabset group="language"}
 
@@ -1171,6 +1208,9 @@ fitted coefficient +0.864 (se 0.894), log-likelihood -6.715
 
 All three tabs reproduce the table: 0.1667, 0.3750, 0.3000 and 0.0625, and a log-likelihood of $-6.749$ against $-7.167$ with no effect. The fitted coefficient on four messages is $+0.864$ with a standard error of 0.894, which is a way of saying that four messages tell us almost nothing. That is what the standard error is for.
 
+A standard error is the typical size of the wobble in an estimate, so a coefficient less than about two standard errors from zero is hard to tell from nothing.
+
+
 ### Step 4: fit the model
 
 We use the eighty messages from @sec-time. They weren't recorded from real people: we generated them from a known rule, in which each reply is more likely than a fresh message, and repeating the same message to the same person is less likely than average. Using invented data lets us do something real data never allows: compare the estimates with the truth.
@@ -1312,6 +1352,11 @@ The truth we used was $-1.0$ and $+1.0$. The estimates ($-0.75$ and $+0.76$) are
 ### Step 5: more effects, and whether they earn their place
 
 Replies and repeats are two of many things a past can say. A sender who has been busy lately may keep being busy (**sender activity**, the number of messages they have sent so far), and a receiver who has been written to a lot may keep being written to (**receiver popularity**). We add both to the model and ask whether the data want them. The yardstick is the **likelihood ratio**: twice the gain in log-likelihood from adding $q$ effects, compared with a chi-squared distribution with $q$ degrees of freedom. For $q = 2$ the chance of a value at least $x$ by luck alone is $e^{-x/2}$, which makes it easy to check by hand.
+
+::: {.callout-tip title="In plain words"}
+The likelihood ratio is a way to ask "did adding these effects help more than luck would?" Take the log-likelihood with the extra effects, subtract the one without, and double it: call that $x$. If the extras did nothing, $x$ would still turn out above zero some of the time, and the chi-squared distribution says how often. For two added effects that chance is $e^{-x/2}$, so for a value $x = 2$, worked out here by hand, the chance of a gain at least that big from luck alone is $e^{-1} = 0.37$, which is very ordinary. A small chance means the effects earned their place.
+:::
+
 
 ::: {.panel-tabset group="language"}
 
@@ -1731,6 +1776,11 @@ Misconceptions to drop:
 
 The cautions from @sec-time about windows, edges and clocks apply to models as well. Here are the ones that are specific to the two models in this chapter.
 
+::: {.callout-note title="Take a breath"}
+This section is a list of habits that keep you from over-claiming. There are no new formulas. Skim it once, and come back to it when you have a result you want to report.
+:::
+
+
 **The SAOM story is a story.** Actors who "decide" one tie at a time are a modeling device. It lets us simulate and estimate, but it doesn't claim that people reason that way or that changes are never coordinated.
 
 **A model of waves can't see inside a wave.** The SAOM treats the change between two observations as the result of many small, unobserved steps. If the waves are far apart, those steps are guesses, and effects that happen fast (a tie that appears and vanishes between waves) are invisible.
@@ -1783,16 +1833,16 @@ For time-respecting paths, reach, earliest arrival and burstiness, see @sec-time
 ::: {.callout-note collapse="true"}
 ## Worked answers
 
-1. The weights are $e^{1} = 2.718$, $e^{0} = 1$ and $e^{-1} = 0.368$, which add to 4.086. The probabilities are 0.665, 0.245 and 0.090.
-2. With no reciprocity bonus, each of Cy's two ties has gain $+2$ and weight $e^{2} = 7.389$. Doing nothing weighs 1. Starting a tie to any of the seven others has gain $-2$, weight 0.135, so those add to 0.947. The total is $14.778 + 1 + 0.947 = 16.725$ and the chance of dropping the tie to Ada is $7.389 / 16.725 = 0.442$, a little higher than the 0.418 with the bonus, because the bonus makes starting a tie to Flo or Gus attractive and takes some probability from dropping.
-3. In 2,000 simulated periods with a reciprocity coefficient of 3 you should get about 13 ties and about 4.7 mutual pairs (your last digit will differ). The number of ties changed rises a little, to about 15, because more ties exist during the period and every one of them can be dropped or added again. Changes count both lost and gained ties.
-4. With reciprocity alone the coefficient is about $+0.44$ (se 0.14), well below the $+0.76$ of the two-effect fit. The two counts travel together: a pair with replies tends to have repeats too, and repeats lower the rate, so leaving inertia out hides part of the reply effect.
-5. The coefficient says that, given the other effect in the model, each earlier message from the receiver multiplies a pair's rate by 2.13 relative to pairs without one. It is a multiplier on a rate, not "2.13 times more likely", and a pair with two earlier replies gets $2.13^2$. It does not say why: politeness, a shared project or a manager's rule can all produce it. And as the shuffled-order check showed, most of it may reflect *which* pairs are active, not the timing of replies.
-6. The model supports a pattern: that, across the changes between the two waves, students with a friend in common were likelier to become friends than the model's other effects predict, if a transitivity effect was included and was clearly positive. "Decide" is the modeling story, since the SAOM has actors choosing one tie at a time, and a year is a long gap, so the order and reasons are guesses. Shared classes or neighborhoods can produce the same pattern.
-7. Event 4 (Cy to Ada): Ben to Ada weighs $2^2 = 4$, Ada to Ben weighs 2, and the other four pairs weigh 1. The total is $4 + 2 + 4 = 10$ and the probability is $1/10 = 0.1$, higher than $1/16$ because a smaller multiplier makes the pairs with replies less dominant.
-8. For a returned tie, 43 had a tie later and 15 did not: odds $43/15 = 2.87$. For a one-way tie, $32/22 = 1.45$. The ratio is 1.97. For no tie with the other novice naming him, $15/39 = 0.385$, against $23/423 = 0.054$ for no tie either way: a ratio of 7.1. Forming shows the stronger pattern here. These are pooled counts of overlapping pairs, so treat them as descriptions.
-9. The shuffled inertia coefficients average about $+0.29$ with a central range of roughly $+0.25$ to $+0.34$, and the observed $+0.26$ sits inside it. The shuffle keeps who is chatty, so it cannot separate a habit of repeating from sender activity. What it does show is that the inertia is explained by *who* writes, which is the point.
-10. Decide who is at risk at each moment (people who have left or not yet joined must be out of the risk set, so the risk set changes over time, which the code here does not do); whether old messages should fade (a window or decay, and report which); include sender activity and receiver popularity so that habits are not confused with chatty people; consider team membership as a pair-level effect. Report coefficients with standard errors, the same model on two halves of the year, a shuffled-order comparison, whether a few pairs dominate, and how much of the log comes from automated messages if you can tell.
+1. With three options, the best one gets about two thirds of the chance. The weights are $e^{1} = 2.718$, $e^{0} = 1$ and $e^{-1} = 0.368$, which add to 4.086. The probabilities are 0.665, 0.245 and 0.090.
+2. Without the reciprocity bonus, the chance of dropping the tie to Ada rises a little to 0.442. With no reciprocity bonus, each of Cy's two ties has gain $+2$ and weight $e^{2} = 7.389$. Doing nothing weighs 1. Starting a tie to any of the seven others has gain $-2$, weight 0.135, so those add to 0.947. The total is $14.778 + 1 + 0.947 = 16.725$ and the chance of dropping the tie to Ada is $7.389 / 16.725 = 0.442$, a little higher than the 0.418 with the bonus, because the bonus makes starting a tie to Flo or Gus attractive and takes some probability from dropping.
+3. A stronger reciprocity bonus keeps more mutual pairs. In 2,000 simulated periods with a reciprocity coefficient of 3 you should get about 13 ties and about 4.7 mutual pairs (your last digit will differ). The number of ties changed rises a little, to about 15, because more ties exist during the period and every one of them can be dropped or added again. Changes count both lost and gained ties.
+4. Leaving out the repeating effect makes the reply effect look weaker. With reciprocity alone the coefficient is about $+0.44$ (se 0.14), well below the $+0.76$ of the two-effect fit. The two counts travel together: a pair with replies tends to have repeats too, and repeats lower the rate, so leaving inertia out hides part of the reply effect.
+5. The coefficient says that a reply raises a pair's rate, and it says nothing about why. The coefficient says that, given the other effect in the model, each earlier message from the receiver multiplies a pair's rate by 2.13 relative to pairs without one. It is a multiplier on a rate, not "2.13 times more likely", and a pair with two earlier replies gets $2.13^2$. It does not say why: politeness, a shared project or a manager's rule can all produce it. And as the shuffled-order check showed, most of it may reflect *which* pairs are active, not the timing of replies.
+6. The model supports a pattern in the changes, and the word decide is the modeling story. The model supports a pattern: that, across the changes between the two waves, students with a friend in common were likelier to become friends than the model's other effects predict, if a transitivity effect was included and was clearly positive. "Decide" is the modeling story, since the SAOM has actors choosing one tie at a time, and a year is a long gap, so the order and reasons are guesses. Shared classes or neighborhoods can produce the same pattern.
+7. With a smaller multiplier, the fourth message has a probability of 0.1. Event 4 (Cy to Ada): Ben to Ada weighs $2^2 = 4$, Ada to Ben weighs 2, and the other four pairs weigh 1. The total is $4 + 2 + 4 = 10$ and the probability is $1/10 = 0.1$, higher than $1/16$ because a smaller multiplier makes the pairs with replies less dominant.
+8. Forming ties follows the reciprocity pattern more strongly than keeping them. For a returned tie, 43 had a tie later and 15 did not: odds $43/15 = 2.87$. For a one-way tie, $32/22 = 1.45$. The ratio is 1.97. For no tie with the other novice naming him, $15/39 = 0.385$, against $23/423 = 0.054$ for no tie either way: a ratio of 7.1. Forming shows the stronger pattern here. These are pooled counts of overlapping pairs, so treat them as descriptions.
+9. The shuffle cannot tell a habit from simply chatty people, and this one looks ordinary under it. The shuffled inertia coefficients average about $+0.29$ with a central range of roughly $+0.25$ to $+0.34$, and the observed $+0.26$ sits inside it. The shuffle keeps who is chatty, so it cannot separate a habit of repeating from sender activity. What it does show is that the inertia is explained by *who* writes, which is the point.
+10. Write the decisions down before fitting: who is at risk, how long the past counts, and which busy-person effects to include. Decide who is at risk at each moment (people who have left or not yet joined must be out of the risk set, so the risk set changes over time, which the code here does not do); whether old messages should fade (a window or decay, and report which); include sender activity and receiver popularity so that habits are not confused with chatty people; consider team membership as a pair-level effect. Report coefficients with standard errors, the same model on two halves of the year, a shuffled-order comparison, whether a few pairs dominate, and how much of the log comes from automated messages if you can tell.
 :::
 
 ## Summary

@@ -5,6 +5,19 @@
 @sec-tests-and-null-models and @sec-ergm. We reuse Zachary's karate club from @sec-subgroups, and the idea of positions from @sec-positions-and-roles.
 :::
 
+::: {.callout-note title="The short version"}
+Some networks hide a pattern you can't see directly. This chapter gives you two ways to dig it out. The first gives every person a spot on an invisible map and says that people standing close together are more likely to be friends. The second sorts people into groups and says the chance of a tie depends only on which two groups the people belong to. In the karate club, the map pulls the two sides apart without being told about them, while the group-sorting model prefers a small circle of five busy members over the two sides. Both are good guesses with limits, and the chapter shows how to check how far to trust them.
+:::
+
+::: {.callout-note title="Why you might care"}
+If you have ever wondered whether a network has "hidden camps" or "inner circles," or you want to predict who might connect next, these are the tools. They also keep you honest: they show how much of a pattern is real and how much is just the busiest people standing out.
+:::
+
+::: {.callout-note title="A note for first-time readers"}
+This chapter has some formulas. Every one comes with a plain-words callout and a tiny example you can check on paper. If a formula looks scary, read the callout under it and carry on: you will not lose the thread.
+:::
+
+
 ## Two ways to say "these people are alike"
 
 ::: {.callout-tip appearance="simple"}
@@ -29,6 +42,11 @@ $$
 \log \frac{P(\text{tie between } i \text{ and } j)}{1 - P(\text{tie between } i \text{ and } j)} \;=\; \alpha \;-\; \lVert z_i - z_j \rVert .
 $$
 
+::: {.callout-tip title="In plain words"}
+This computes how likely two people are to be friends, given how far apart they stand on the map. Read it left to right. The big fraction inside the logarithm is the odds of a tie (the chance it happens divided by the chance it doesn't), and the logarithm of the odds is called the log-odds. The symbol $z_i$ is just "person $i$'s spot on the map," and the double bars $\lVert z_i - z_j \rVert$ mean "the distance between the two spots." $\alpha$ is a baseline number. So the sentence says: log-odds of a tie equals the baseline minus the distance. Plug in Ana and Ben from the next paragraph: $\alpha = 2$, distance 1, so the log-odds are $2 - 1 = 1$, which is a chance of 0.73. Think of it like a radio signal: strongest when you stand next to the transmitter, fading steadily as you walk away.
+:::
+
+
 The number $\alpha$ is the log-odds of a tie between two people standing on the same spot. Every step apart lowers the log-odds by one. Given the map, ties are independent coin flips, one per pair.
 
 A tiny example by hand. Put Ana at 0, Ben at 1 and Cleo at 4 on a line, with $\alpha = 2$.
@@ -42,6 +60,9 @@ A tiny example by hand. Put Ana at 0, Ben at 1 and Cleo at 4 on a line, with $\a
 Ana and Ben are probably friends. Ben and Cleo are a toss-up leaning no, and Ana and Cleo probably aren't. Notice something useful: because distance obeys the triangle inequality (going from Ana to Cleo through Ben is never shorter than going straight), the model builds in a taste for *transitivity*. If Ana is near Ben and Ben is near Cleo, then Ana can't be very far from Cleo. Friends of friends tend to be friends, without a triangle term anywhere in the model.
 
 ### Step 1: the data
+
+
+The next block builds the karate club from its list of friendships. Look for 34 members and 78 ties, since every later step uses them.
 
 ::: {.panel-tabset group="language"}
 
@@ -149,6 +170,9 @@ Undirected network: 34 nodes, 78 ties
 :::
 
 :::
+
+That block builds the 34 members and 78 friendships. The thing to look for is the tie count and the number of members, which the later steps rely on. Nothing is fitted yet.
+
 
 ### Step 2: fit a map
 
@@ -300,6 +324,9 @@ Mr. Hi at (3.64, -0.52), the officer at (-3.78, -0.31)
 :::
 
 The R and Python tabs fit the same model with their own optimizers, which climb a different hill of the likelihood than the Rust search does, so their digits differ from the ones shown here.
+
+Don't be alarmed by a long list of numbers here. The fit is a search, like walking uphill in fog to find the highest point, and the only thing to read from the output is the final score and the baseline.
+
 
 The log-likelihood of $-122.33$ is a score for how well this map explains the 78 ties and 483 non-ties: closer to zero is better. The baseline of 3.06 says two members standing on top of each other would have a chance of a tie of about 96 percent. @fig-latent-map draws the map.
 
@@ -488,9 +515,19 @@ Again, the R and Python optimizers end at different hills, so their log-likeliho
 
 Going from one dimension to two raises the log-likelihood from $-160$ to $-122$, a big gain for 34 more numbers. Three dimensions look better still, at $-84$, but look at $\alpha$: it jumped to nearly 14. That is a warning sign. With enough room, the model can place members so that ties and non-ties separate almost perfectly, and then the likelihood has no peak: it keeps rising as the positions spread out and $\alpha$ grows. In a longer search it climbed past $-59$ with $\alpha$ near 100. A fit like that is memorizing the network, and a map that memorizes tells you nothing. With only 34 people, two dimensions is as far as the data will carry us. In larger networks you would compare models by how well they predict ties left out of the fit.
 
+::: {.callout-tip title="An everyday picture"}
+A map that memorizes is like a student who learns last year's exam answers by heart. They score perfectly on that exam and know nothing about the subject. A good map should explain the ties and still be able to say something about ties it hasn't seen.
+:::
+
+
 ### Choosing the dimension with evidence {#sec-latent-dimension}
 
 "Pick the dimension by prediction" is the right answer, and @sec-prediction shows how to hold ties out and score them. Before you spend that effort, two quick rules of thumb can tell you whether the extra dimension is earning its keep. Both start from the log-likelihood $\ell$ and charge a price per free number $k$: AIC adds $2k$ to $-2\ell$, and BIC adds $k \ln N$ [@schwarz1978estimating], where $N$ is the number of pairs (here $34 \times 33 / 2 = 561$). Lower is better. A map in $d$ dimensions has $34d$ positions, minus $d$ shifts and $d(d-1)/2$ turns that change nothing, plus $\alpha$.
+
+::: {.callout-tip title="In plain words"}
+These two rules are price tags. You start with how badly the model fits, which is $-2\ell$ (smaller is better, and $\ell$ is the log-likelihood score from before). Then each rule adds a charge for every free number the model uses: AIC charges 2 per number, and BIC charges $\ln N$ per number, where $N$ is the count of pairs of members, 561 here. It is like comparing two cars: the faster one costs more, so you ask whether the speed is worth the price. With the chapter's numbers, adding a second dimension buys a drop of about 76 in $-2\ell$ but adds 32 free numbers, which cost $2 \times 32 = 64$ under AIC (a bargain) and $32 \times \ln 561 = 203$ under BIC (too dear).
+:::
+
 
 ::: {.panel-tabset group="language"}
 
@@ -706,6 +743,11 @@ Five of the six rows give one log-likelihood, $-122.33$, and a largest change in
 
 An ERGM gets closure by being told to count triangles. A latent space model gets it from geometry, through the triangle inequality: $\lVert z_i - z_k \rVert \le \lVert z_i - z_j \rVert + \lVert z_j - z_k \rVert$. If $i$ is near $j$ and $j$ is near $k$, then $i$ cannot be far from $k$, so the third tie of the triangle is likely too. Homophily works the same way when members with a shared trait end up close: ties between them become likelier without any "same trait" term. We can measure how much closure a fitted map buys by adding up, over every triple, the chance that all three ties are present.
 
+::: {.callout-tip title="In plain words"}
+The long inequality says that going straight from person $i$ to person $k$ is never longer than going through $j$ on the way. That is the same as the everyday fact that the shortcut is never longer than the detour. In the tiny example, Ana to Cleo directly is 4, and through Ben is $1 + 3 = 4$, so the detour is no shorter. The consequence for friendship: if Ana and Ben are near, and Ben and Cleo are near, Ana and Cleo cannot be far, so a tie between them is likely too.
+:::
+
+
 ::: {.panel-tabset group="language"}
 
 ## R
@@ -789,6 +831,11 @@ The club has 45 triangles. A model where every pair has the same chance (0.139, 
 ### How sure is the map? {#sec-latent-uncertainty}
 
 So far we fitted by maximum likelihood: one best map. The Bayesian way fits a *cloud* of maps. Give every coordinate and $\alpha$ a prior (here a normal with standard deviation 10, deliberately vague), and ask for the posterior, which says how plausible each map is after seeing the ties. Nobody can write that posterior down, so we sample from it with a random-walk Metropolis chain: nudge one member, keep the nudge with probability $\min(1, \text{ratio of posterior values})$, move on to the next member, then nudge $\alpha$, and repeat [@hoff2002latent]. Many draws form a picture of the uncertainty.
+
+::: {.callout-tip title="In plain words"}
+Instead of asking for the one best map, we ask for many plausible maps, weighted by how well each explains the ties. "Prior" means what you believed before seeing any ties (here, very little). "Posterior" means what is plausible after seeing them. The sampling step is like a blindfolded hiker taking many small steps around a hilly landscape, spending more time on high ground: the places visited most often are the most plausible maps. If this paragraph feels heavy, skip to the results. You will still be able to follow the story.
+:::
+
 
 Think about what to measure, though. Positions are only defined up to turns, mirror images and shifts, so averaging the draws of one member's coordinates mixes unlike things. Distances do not have that problem, so we summarize those: the distance between the two leaders, whether member 2 (the one the block model could not place firmly) sits nearer Mr. Hi or the officer, and $\alpha$.
 
@@ -998,6 +1045,11 @@ The distance model is the simplest member of a family.
 - **Clusters and mixtures.** Let the positions come from a few clouds, so that members fall into soft groups on the map [@handcock2007model]. This is a latent space model with a block model laid on top, which is why the two pictures of this chapter are less far apart than they look.
 - **Random sender and receiver effects.** For directed ties, give each member a sender effect $s_i$ and a receiver effect $r_j$ on the log-odds, on top of the distance: $\operatorname{logit} P_{i \to j} = \alpha + s_i + r_j - \lVert z_i - z_j \rVert$ [@krivitsky2009representing]. This is what lets the model produce hubs, and we are about to see why a plain map cannot.
 
+::: {.callout-tip title="In plain words"}
+These are variations, and you do not need to learn them to follow the rest. Each one changes the rule for how position turns into tie chance. The "$z_i \cdot z_j$" is a dot product, which is large when two positions point the same way and negative when they point opposite ways. The $\beta\,x_{ij}$ term adds something you measured about the pair (for example, whether they work in the same office). The $s_i$ and $r_j$ terms are a personal "likes to reach out" number for each sender and a personal "gets reached" number for each receiver. If you remember one thing: every variant is the same map idea with an extra dial.
+:::
+
+
 ## Stochastic block models: same group, same story
 
 Now the second picture. Suppose every member belongs to one of a few groups, and the chance that two members are tied depends only on their groups. Maybe the groups are tied closely inside and sparsely between, like the two camps in the karate club. Maybe one group is a set of hubs that everybody else ties to. A block model allows any pattern of rates between groups.
@@ -1017,6 +1069,9 @@ The length of the best such message is the **description length** of a grouping 
 This builds in a fair penalty for complexity. A grouping must pay for itself, and the model chooses the number of groups for you instead of asking you to guess. The shortest total wins.
 
 ### Step 5: find the best grouping
+
+
+Here the code asks the block model to find its own best grouping. Look at who ends up in which group, and at the final description length, which is the score to beat later.
 
 ::: {.panel-tabset group="language"}
 
@@ -1215,6 +1270,9 @@ This is a surprise, and a useful one. The model did not find the two camps. It f
 On the left, the sides do divide the network: dense blocks along the diagonal and a thin scatter between. On the right, the model's grouping shows a different pattern: a small, dense block of hubs, strips of ties running from the hubs to everyone, and a big, sparse block of everyone else. Both are real structure. The question is which is *more* of the story, and the description length answers it.
 
 ### Step 6: compare groupings
+
+
+This step scores three groupings side by side. Look at the last column, the total cost, where shorter is better.
 
 ::: {.panel-tabset group="language"}
 
@@ -1443,11 +1501,21 @@ Both models agree on the part that matters here: they found no evidence, among t
 
 ### The model written down {#sec-sbm-definition}
 
+
+::: {.callout-note title="The hard part"}
+This section writes the block model out in symbols and does the arithmetic by hand. It is the most technical stretch of the chapter. On a first read you can skip to "Choosing the number of blocks." You will still have the ideas: groups, a table of tie chances between groups, and a score for how well a grouping explains the ties.
+:::
+
 Let $z_i \in \{1, \dots, K\}$ be the block of member $i$. A **stochastic block model** says that, given the blocks, every pair is tied independently, with a chance that depends only on the two blocks:
 
 $$
 P(\text{tie between } i \text{ and } j) = \omega_{z_i z_j}.
 $$
+
+::: {.callout-tip title="In plain words"}
+This says how a block model decides whether two people are tied. Each person has a group (the block), written $z_i$, such as "hub" or "everyone else." The Greek letter $\omega$ (omega) is a small table of chances, one for each pair of groups. To get the chance that $i$ and $j$ are tied, you look up the row for $i$'s group and the column for $j$'s group. Picture a school dance where the chance two kids dance together depends only on their grades, not on who they are. In the karate club's hub grouping, a hub with another hub has chance 0.50, and two members of the large group have 0.05.
+:::
+
 
 The $K \times K$ table of the $\omega_{rs}$ is the **block probability matrix**. It is the "image" of the blockmodels in @sec-positions-and-roles, with probabilities in place of 0s and 1s, and the idea of putting probabilities there is Holland, Laskey and Leinhardt's [@holland1983stochastic]. Nowicki and Snijders [@nowicki2001estimation] showed how to estimate the blocks and the table together. If the blocks are known, estimating $\omega$ is counting. Let $m_{rs}$ be the number of ties between blocks $r$ and $s$ and $n_{rs}$ the number of pairs that could be tied between them ($n_r (n_r - 1)/2$ inside block $r$, and $n_r n_s$ between two blocks). Then
 
@@ -1455,6 +1523,11 @@ $$
 \hat\omega_{rs} = \frac{m_{rs}}{n_{rs}}, \qquad
 \ell = \sum_{r \le s} \Big[ m_{rs} \ln \hat\omega_{rs} + (n_{rs} - m_{rs}) \ln (1 - \hat\omega_{rs}) \Big],
 $$
+
+::: {.callout-tip title="In plain words"}
+The question here is: given a grouping, what chance should I give each pair of groups, and how good a score does that earn? The first part, $\hat\omega_{rs} = m_{rs}/n_{rs}$, is just counting. Take the number of ties that actually exist between group $r$ and group $s$ ($m_{rs}$), and divide by the number of pairs that could have been tied ($n_{rs}$). It is the share of possible friendships that are real. The second part, $\ell$, is a score. For every pair of groups, add up a reward for each tie that happened (weighted by how likely the model said it was) and for each non-tie. The big sigma sign means "add these up over every pair of groups," and the little hat on $\omega$ means "estimated from the data." Example: for the two triangles joined by a single tie, the share between the groups is $1/9 = 0.111$. The inside-group shares are $6/6 = 1$.
+:::
+
 
 and $\ell$ is the log-likelihood, the same kind of score as for the map. A tiny example you can do on paper: six people, two triangles (1-2-3 and 4-5-6) joined by the single tie 3-4. With one block, 7 of 15 pairs are tied, so $\hat\omega = 7/15 = 0.467$ and $\ell = 7 \ln (7/15) + 8 \ln (8/15) = -10.36$. With the two triangles as blocks, the six ties inside are 6 of 6 possible ($\hat\omega = 1$, which adds nothing to $\ell$), and between the blocks 1 of 9 pairs is tied, so $\hat\omega = 1/9$ and $\ell = \ln (1/9) + 8 \ln (8/9) = -3.14$. The two-block model explains the network 7.2 nats better, and it needs three numbers in place of one. The code does this for any grouping, then scores four groupings of the karate club.
 
@@ -1703,15 +1776,28 @@ Likelihood alone can't choose $K$, because more blocks never fit worse. In the t
 - **ICL**, the integrated completed likelihood, also pays for the labels [@biernacki2000assessing; @daudin2008mixture]. We use the common form $-2\big(\ell + \sum_i \ln \hat\pi_{z_i}\big) + k \ln N + (K - 1) \ln n$, where $\hat\pi_r = n_r / n$ is the share of members in block $r$.
 - **Description length** is the chapter's earlier yardstick, in nats, with a Bayesian code for the labels and the block-to-block ties [@peixoto2017nonparametric].
 
+::: {.callout-tip title="In plain words"}
+These are three scoring rules for choosing the number of groups, and the one thing to remember is that each is "fit minus a price for complexity." In BIC, $k$ is the number of probabilities in the table (for $K$ groups, $K(K+1)/2$), and $N$ is the number of pairs of members. ICL does the same, plus a charge for naming who is in which group: $\hat\pi_r$ is just the share of members in group $r$, and $n$ is the total number of members. For example, with two groups of 17 each, every member's share is $17/34 = 0.5$. Lower scores are better in all three. You do not need to compute these by hand: the code does it, and the chapter reads the results for you.
+:::
+
+
 For the four groupings: BIC reads 458.7, 416.0, 377.8 and 376.0, ICL reads 458.7, 466.6, 409.7 and 451.7, and the description length reads 234.7, 241.0, 215.3 and 231.2. All three agree that hubs-and-the-rest beats the club's two sides. They disagree on two things. BIC says the sides are better than nothing (416.0 against 458.7), while ICL and the description length say they are worse than nothing, because naming 34 members costs more than the sides save. And BIC barely prefers the three-block grouping (376.0 against 377.8) that ICL and the description length reject by a wide margin.
 
 The honest limits are these. No criterion finds "the true $K$": each finds the most economical description under one model, and a different model (degree-corrected, below) gives a different answer. The search over groupings is a heuristic, so a criterion can only rank what the search found. And there is a floor below which blocks cannot be recovered by anyone: when groups differ only a little, no method does better than guessing, a result that has been worked out for sparse networks with equal-sized groups [@decelle2011asymptotic; @abbe2018community]. In this chapter, naming the club's sides costs 28.6 nats and the sides save 26.8 on the ties, so with 34 people and 78 ties they do not pay for themselves.
 
 **Mixed membership, in words.** A block model puts each member in exactly one block. The mixed-membership version gives each member a *mixture*, say 70 percent block A and 30 percent block B, and each tie draws a block for each end separately [@airoldi2008mixed]. It suits people who play different roles with different partners (a colleague at work, a rival on the team), where a single block would have to pick one. It costs more numbers, and it needs more ties to pin them down.
 
+Think of a person who is a colleague at work and a rival on the weekend team: one label would miss half of them.
+
+
 ### Degree correction, and why it matters {#sec-sbm-dc}
 
 In the plain model, all members of a block have the same expected number of ties, so a handful of busy members either get a block of their own (as the five hubs did) or are misfiled. The degree-corrected model of Karrer and Newman [@karrer2011stochastic] gives each member $i$ a propensity $\theta_i$ and makes the expected number of ties between $i$ and $j$ proportional to $\theta_i \theta_j \omega_{z_i z_j}$. Popularity is then a property of the member, and blocks are free to mean something else. We fitted it to the club in Step 8, and @sec-case-karate puts a two-block degree-corrected fit next to the club's factions, so we will not repeat that here. What we can add is a test of how much of a plain block fit is only degrees.
+
+::: {.callout-tip title="In plain words"}
+In the degree-corrected model each person gets a personal popularity number, $\theta_i$ (theta). The chance of a tie between two people is the product of their two popularities times the table entry for their groups. So two popular people in groups that like each other are very likely to tie, and two quiet people in groups that rarely tie are very unlikely to. Think of it as a party: your group sets the vibe, and your own outgoingness decides how many people you actually talk to.
+:::
+
 
 ### Stress tests: is the structure more than degrees? {#sec-sbm-stress}
 
@@ -2188,6 +2274,11 @@ The two models answer different questions.
 
 ## Reading these models honestly
 
+
+::: {.callout-note title="Take a breath"}
+The rest of the chapter is about reading these models sensibly. There are no new formulas, only habits that keep you from over-claiming.
+:::
+
 **Structure is not cause.** A map or a grouping describes a pattern in the ties. People can sit near each other or in the same group because they like each other, because they share an office, or because someone introduced them. The model can't tell these apart.
 
 **There is no single right map or grouping.** Latent space fits have many local peaks, as we saw. Block-model fits are searches too, which is why we asked for five restarts. Report how many restarts you ran and whether they agreed.
@@ -2269,16 +2360,16 @@ A defensible sentence for the club: "A two-dimensional latent space model fitted
 ::: {.callout-note collapse="true"}
 ## Worked answers
 
-1. The log-odds are $\alpha - d$: Ana and Ben (distance 2) have log-odds 0, so a chance of 0.50. Ben and Cleo (distance 1) have log-odds 1, so 0.73. Ana and Cleo (distance 3) have log-odds $-1$, so 0.27. Ben and Cleo are the most likely pair and Ana and Cleo the least.
-2. At distance 3 the log-odds are $0.06$, so the chance is $1/(1 + e^{-0.06}) = 0.515$, a coin flip. At distance 6 the log-odds are $-2.94$ and the chance is $1/(1 + e^{2.94}) = 0.05$. Three steps of distance take a pair from even odds to about one in twenty.
+1. The nearer the pair, the likelier the tie, so Ben and Cleo win. The log-odds are $\alpha - d$: Ana and Ben (distance 2) have log-odds 0, so a chance of 0.50. Ben and Cleo (distance 1) have log-odds 1, so 0.73. Ana and Cleo (distance 3) have log-odds $-1$, so 0.27. Ben and Cleo are the most likely pair and Ana and Cleo the least.
+2. A distance of 3 leaves the pair at roughly even odds, and doubling it makes a tie unlikely. At distance 3 the log-odds are $0.06$, so the chance is $1/(1 + e^{-0.06}) = 0.515$, a coin flip. At distance 6 the log-odds are $-2.94$ and the chance is $1/(1 + e^{2.94}) = 0.05$. Three steps of distance take a pair from even odds to about one in twenty.
 3. The model did not get the club wrong; it answered a different question. It was asked for the shortest description of the ties, and the five hubs buy more than the two sides do: naming the sides costs 28.6 nats and saves 26.8 on the ties. The sides are real. What the model says is that, from these 78 ties, they are a softer signal than who is busy. Also say that a little under half of the hub block's gain turns up in networks with the same degrees and no groups, so even the hubs block is partly a statement about degrees.
-4. With the engine's search, seed 2 and one restart gave the same five-hub grouping and the same description length, 215.3, as seeds 3, 4 and 5. On a network this small the search always lands in the same place. The greedy searches in the R and Python tabs are less steady, which is why they restart, and on a larger network restarts matter for any search. Report how many you ran and whether they agreed.
-5. Members 0 and 33 alone against everyone else give 225.2, which is 9.9 nats longer than the fitted 215.3 and still shorter than the 234.7 of one group. Two leaders are most of the story, but members 1, 2 and 32 are also busy and belong with them.
-6. Fit the map without grade, and then with grade as a covariate: $\operatorname{logit} P_{ij} = \alpha + \beta\,|\text{grade}_i - \text{grade}_j| - \lVert z_i - z_j \rVert$. If friendships follow grade, $\beta$ is clearly negative and the map has less to do. To guard against memorizing, hold out a random tenth of the pairs, fit on the rest, and compare the held-out log-likelihood of each model; watch $\alpha$ for runaway values; and check the fit with simulated networks as in this chapter.
-7. Inside the blocks: $\{1,2\}$, $\{3,4\}$ and $\{5,6\}$ are each one tied pair, so $\hat\omega = 1$. Between $\{1,2\}$ and $\{3,4\}$, 2 of 4 pairs are tied (1-3 and 2-3), so 0.5. Between $\{3,4\}$ and $\{5,6\}$, 2 of 4 (4-5 and 4-6), so 0.5. Between $\{1,2\}$ and $\{5,6\}$, none, so 0. The log-likelihood is $4 \ln 0.5 + 4 \ln 0.5 = -5.55$. That is worse than the two triangles' $-3.14$, and it needs six numbers instead of three. The triangles are the better description on both counts.
-8. AIC: $-2 \times (-160.2) + 2 \times 34 = 388.4$ for one dimension and $244.7 + 132 = 376.7$ for two, so AIC prefers two. BIC: $320.4 + 34 \ln 561 = 535.6$ and $244.7 + 66 \ln 561 = 662.4$, so BIC prefers one. Next, report both, and settle it with held-out ties or a goodness-of-fit check, because the rules disagree about how much a free number should cost.
-9. In Python, the mean distance between the leaders was 7.8, 8.2 and 8.4 for 100, 200 and 400 sweeps. It keeps creeping up, so the chains had not settled. Run longer from several starts and look at trace plots before quoting an interval.
-10. Ask how "seniority" was matched to the axis, since a map can be turned or mirrored without changing the fit, so no axis is "horizontal" in any lasting sense. Then check: correlate the fitted positions with seniority after fitting (the direction of best agreement, not the axis), or put seniority in as a covariate and see how much the map changes. Add the uncertainty: refit from other starts or draw posterior chains, and see whether the pattern survives.
+4. Starting again from a different seed gave the same grouping, so the search is steady here. With the engine's search, seed 2 and one restart gave the same five-hub grouping and the same description length, 215.3, as seeds 3, 4 and 5. On a network this small the search always lands in the same place. The greedy searches in the R and Python tabs are less steady, which is why they restart, and on a larger network restarts matter for any search. Report how many you ran and whether they agreed.
+5. Putting only the two leaders in a group is a worse story than the five hubs. Members 0 and 33 alone against everyone else give 225.2, which is 9.9 nats longer than the fitted 215.3 and still shorter than the 234.7 of one group. Two leaders are most of the story, but members 1, 2 and 32 are also busy and belong with them.
+6. Compare a model with grade in it against one without, and check on ties the model has not seen. Fit the map without grade, and then with grade as a covariate: $\operatorname{logit} P_{ij} = \alpha + \beta\,|\text{grade}_i - \text{grade}_j| - \lVert z_i - z_j \rVert$. If friendships follow grade, $\beta$ is clearly negative and the map has less to do. To guard against memorizing, hold out a random tenth of the pairs, fit on the rest, and compare the held-out log-likelihood of each model; watch $\alpha$ for runaway values; and check the fit with simulated networks as in this chapter.
+7. The three-block version explains the network worse than the two triangles, and it costs more numbers. Inside the blocks: $\{1,2\}$, $\{3,4\}$ and $\{5,6\}$ are each one tied pair, so $\hat\omega = 1$. Between $\{1,2\}$ and $\{3,4\}$, 2 of 4 pairs are tied (1-3 and 2-3), so 0.5. Between $\{3,4\}$ and $\{5,6\}$, 2 of 4 (4-5 and 4-6), so 0.5. Between $\{1,2\}$ and $\{5,6\}$, none, so 0. The log-likelihood is $4 \ln 0.5 + 4 \ln 0.5 = -5.55$. That is worse than the two triangles' $-3.14$, and it needs six numbers instead of three. The triangles are the better description on both counts.
+8. AIC says two dimensions, BIC says one, and that disagreement is itself the finding. AIC: $-2 \times (-160.2) + 2 \times 34 = 388.4$ for one dimension and $244.7 + 132 = 376.7$ for two, so AIC prefers two. BIC: $320.4 + 34 \ln 561 = 535.6$ and $244.7 + 66 \ln 561 = 662.4$, so BIC prefers one. Next, report both, and settle it with held-out ties or a goodness-of-fit check, because the rules disagree about how much a free number should cost.
+9. The distance between the leaders keeps creeping up, so the chains had not settled. In Python, the mean distance between the leaders was 7.8, 8.2 and 8.4 for 100, 200 and 400 sweeps. It keeps creeping up, so the chains had not settled. Run longer from several starts and look at trace plots before quoting an interval.
+10. A claim about a horizontal axis needs checking, because axes can be turned freely. Ask how "seniority" was matched to the axis, since a map can be turned or mirrored without changing the fit, so no axis is "horizontal" in any lasting sense. Then check: correlate the fitted positions with seniority after fitting (the direction of best agreement, not the axis), or put seniority in as a covariate and see how much the map changes. Add the uncertainty: refit from other starts or draw posterior chains, and see whether the pattern survives.
 :::
 
 

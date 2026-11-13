@@ -5,6 +5,19 @@
 @sec-latent-space and @sec-tests-and-null-models. We reuse the karate club from @sec-subgroups, the Florentine marriages from @sec-centrality, and Sampson's monastery, and we lean on ties that have a time stamp from @sec-time.
 :::
 
+::: {.callout-note title="The short version"}
+Link prediction asks whether you can guess which pairs of people are tied when you can't see the tie. The way to find out is to hide a slice of the real ties, give every unconnected pair a score, and check whether the hidden ties ended up near the top of the ranking. Simple scores, like counting shared friends, work modestly well on the karate club, and a plain "how busy are these two people" score works almost as well, which is a useful reality check. The chapter's biggest lesson is about honesty: if any step of your method has already seen the hidden ties, the result looks far better than it really is. A good score ranks pairs, but it never explains why people are tied.
+:::
+
+::: {.callout-note title="Why you might care"}
+Friend suggestions, "people you may know," finding missing links in a records database, and flagging suspicious connections all run on this idea. Knowing how it is tested lets you spot when a claim like "our method is 95 percent accurate" is too good to be true.
+:::
+
+::: {.callout-note title="A note for first-time readers"}
+There are several formulas here, mostly small. Each is followed by a plain-words callout with numbers from a six-person network you can check on paper. The spectral embedding section is the hardest part of the chapter, and it says so when you get there. You can skip it and still follow the rest.
+:::
+
+
 ## Can you guess a tie you can't see?
 
 Imagine you hold a network with some ties blacked out. Someone shows you a pair of people and asks: are these two tied? You can't look it up. What would you check?
@@ -53,6 +66,9 @@ The trick of the exercise is that you know the answer, because you hid it yourse
 
 Notation used throughout. $A$ is the adjacency matrix of the training network, with $A_{ij} = 1$ if $i$ and $j$ are tied and $0$ otherwise. $N(i)$ is the set of people tied to $i$ (the neighbours of $i$), and $k_i = |N(i)|$ is the degree of $i$.
 
+In plain words: $A$ is a table of 0s and 1s with a 1 wherever two people are tied. $N(i)$ is just person $i$'s list of friends, and $k_i$ is how many friends that is.
+
+
 ## Scores from neighbourhoods and paths
 
 ### Six people and eight empty pairs
@@ -73,11 +89,21 @@ $$
 
 The matrix form is worth a moment. $(A^2)_{ij}$ counts walks of length two from $i$ to $j$, and a walk of length two goes through a shared neighbour.
 
+::: {.callout-tip title="In plain words"}
+Common neighbours answers: how many friends do these two people share? The bars around $N(i) \cap N(j)$ mean "count the people who are in both lists." The matrix form $(A^2)_{ij}$ gives the same number by counting walks that go from $i$ to a friend and from that friend on to $j$. Example from the six-person network: Ana's friends are Ben and Cy, Dee's friends are Ben, Cy and Eli, so they share two people, and the score is 2.
+:::
+
+
 **Jaccard** divides the shared friends by everyone either person knows, so that two people with long friend lists are not rewarded for overlap that is small by comparison.
 
 $$
 \mathrm{Jaccard}(i, j) = \frac{|N(i) \cap N(j)|}{|N(i) \cup N(j)|}.
 $$
+
+::: {.callout-tip title="In plain words"}
+Jaccard answers: what share of everybody either person knows do they both know? The top counts the people in both lists, and the bottom counts the people in at least one list (the $\cup$ sign means "joined together"). Example: Ben knows Ana, Cy and Dee, and Eli knows Dee and Fay. One person is shared, and four different people are known between them, so the score is $1/4$. For Ana and Dee it is $2/3$, worked out by hand the same way.
+:::
+
 
 **Adamic-Adar** gives each shared friend a weight that shrinks as that friend's degree grows. Adamic and Adar introduced it for web pages, scoring pairs by the rare things they share [@adamic2003friends].
 
@@ -85,11 +111,21 @@ $$
 \mathrm{AA}(i, j) = \sum_{w \in N(i) \cap N(j)} \frac{1}{\ln k_w}.
 $$
 
+::: {.callout-tip title="In plain words"}
+Adamic-Adar answers: how many shared friends do they have, where a shared friend who knows few people counts for more? The big sigma sign means "add up over every shared friend $w$," and $k_w$ is that friend's number of friends. Each shared friend contributes $1/\ln k_w$, where $\ln$ is the natural logarithm, so bigger friend lists give smaller contributions. Example: Ben and Eli share only Dee, who has three friends, so the score is $1/\ln 3 = 0.910$. Dee and Fay share only Eli, who has two friends, so the score is $1/\ln 2 = 1.443$, which is higher. It is like trusting an introduction from someone who knows only a few people more than one from someone who knows everyone.
+:::
+
+
 **Resource allocation** is the same idea with a steeper penalty: each shared friend $w$ has one unit to give and splits it among their $k_w$ friends. It comes from Zhou, Lü and Zhang's work on link prediction in networks as flow [@zhou2009predicting].
 
 $$
 \mathrm{RA}(i, j) = \sum_{w \in N(i) \cap N(j)} \frac{1}{k_w}.
 $$
+
+::: {.callout-tip title="In plain words"}
+Resource allocation is the same question with a harsher penalty. Each shared friend $w$ hands out one unit of attention, split evenly among their $k_w$ friends, and the pair collects what comes to both. Example: Ben and Eli's shared friend Dee has three friends, so the score is $1/3$. Dee and Fay's shared friend Eli has two, so the score is $1/2$.
+:::
+
 
 **Preferential attachment** ignores who the two people know and multiplies how many people each knows. It encodes the idea that popular people attract ties, the mechanism of the growth model of Barabási and Albert [@barabasi1999emergence], and Liben-Nowell and Kleinberg used it as a score too [@liben2007link].
 
@@ -97,11 +133,21 @@ $$
 \mathrm{PA}(i, j) = k_i \, k_j.
 $$
 
+::: {.callout-tip title="In plain words"}
+Preferential attachment answers: how busy are these two people? It just multiplies the two friend counts and ignores who they know. Example: Ana has two friends and Dee has three, so the score is $2 \times 3 = 6$. Ben (three friends) and Eli (two) also score 6. The rule says the rich get richer: popular people attract new ties.
+:::
+
+
 **Katz** counts all walks between the two people, short walks heavily and long walks lightly. Katz proposed it as a status index [@katz1953new]; here it is a pair score. The number $\beta$ is a discount per step and must be small enough that the sum converges, which means smaller than one over the largest eigenvalue of $A$.
 
 $$
 \mathrm{Katz}(i, j) = \sum_{\ell = 1}^{\infty} \beta^{\ell} \, (A^{\ell})_{ij} = \big[(I - \beta A)^{-1} - I\big]_{ij}.
 $$
+
+::: {.callout-tip title="In plain words"}
+Katz answers: how many ways are there to get from one person to the other, with short routes counting far more than long ones? $A^{\ell}$ counts the routes (walks) that take exactly $\ell$ steps, and $\beta^{\ell}$ shrinks their count by a small discount for every step. The sigma adds up all lengths, one step, two steps, and so on. The second form is the same sum written in one go, where $I$ is the identity matrix (a table with 1s on the diagonal) and the $-1$ in the exponent means "the matrix inverse." You don't have to follow that part, since the code does it. Example: with $eta = 0.05$, Ana and Dee have two routes of length two, so they get about $0.05^2 \times 2 = 0.005$ from those, plus a sliver from longer ones.
+:::
+
 
 **Shortest path** scores a pair by minus the number of steps between them: nearer is more likely. Unreachable pairs get the lowest score we can give.
 
@@ -400,11 +446,21 @@ $$
 
 where $P$ is the set of hidden ties, $Q$ is the set of candidate pairs that are not tied, and $s$ is the score. A tiny check: if the hidden ties score $\{3, 1\}$ and the non-ties score $\{2, 1, 0\}$, the hidden 3 beats all three, the hidden 1 loses to 2, draws with 1 and beats 0, so the sum is $3 + 1.5 = 4.5$ out of 6 comparisons and the AUC is $0.75$.
 
+::: {.callout-tip title="In plain words"}
+The AUC answers "if I draw one hidden tie and one non-tie at random, how often does the hidden tie score higher?" The double sigma tells you to try every hidden tie against every non-tie ($|P|$ and $|Q|$ are the number of each). The symbol $\mathbf{1}(\cdot)$ is a switch that is 1 when the statement inside is true and 0 otherwise. So a win counts 1 and a draw counts one half. Dividing by the number of comparisons turns the total into a share. The example in the paragraph above does exactly this: 4.5 wins out of 6 gives 0.75.
+:::
+
+
 **Precision at k** answers a different question: if I take the $k$ highest-scoring pairs and call them predictions, what fraction are right? We set $k$ to the number of hidden ties, so a perfect ranking scores 1. Ties at the cut-off need care. If three pairs share the score at the cut-off and only two seats are left, we give each of the three an equal share of the seats. That is the code's rule, and it makes the number the same on every run.
 
 $$
 \text{precision at } k = \frac{\#\{\text{hidden ties among the top } k\}}{k}.
 $$
+
+::: {.callout-tip title="In plain words"}
+Precision at $k$ is the share of your top $k$ guesses that were really hidden ties. The symbol $\#\{\cdots\}$ just means "how many." Example by hand: if you guess the top 2 pairs and 1 of them is a hidden tie, the precision is $1/2 = 0.5$.
+:::
+
 
 The two numbers forget different things. AUC looks at the whole ranking and does not care whether the hits sit at the very top; precision at k looks only at the top and does not care what happens below it.
 
@@ -419,6 +475,9 @@ A score earns its keep only against something simple. We use two baselines: **ch
 ### Hiding ties with a fixed scramble
 
 To compare scores fairly, and to compare languages, every split must be reproducible. We don't want random number generators that differ between R, Python and Rust. So the code uses a fixed scramble: a short formula $h(u, v, \text{seed})$ that turns two ids and a seed into a number that looks random. Sort the ties by their number and hide the first 20 percent. The scramble is not a good random number generator for anything else, but it spreads ties around well enough for this job, and it makes the three languages hide exactly the same ties. The code below also holds the scores for the rest of the chapter.
+
+Think of it as shuffling a deck in exactly the same way every time, so that R, Python and Rust are all dealt the same hand. The formula is not a serious random number generator, just a reproducible shuffle.
+
 
 ::: {.panel-tabset group="language"}
 
@@ -834,6 +893,9 @@ Four things to read off the tables.
 
 Hiding ties at random is what everybody does first, and it is a fair default, but it can flatter a method in at least four ways.
 
+Think of studying for an exam when somebody has left the answers in your notes. You'll do wonderfully, and it will tell nobody anything.
+
+
 1. **The score has seen the answer.** If any step of the pipeline is fitted on the full network, such as a degree count, an embedding, or a community detection, the hidden ties are already inside it. We measure how much in the section on model-based scores, and the answer is a lot.
 2. **The positives are not typical pairs.** A random tie is more likely to join two busy people than a random non-tie is. A score that only rewards busy people will look good for a reason that has nothing to do with the structure you care about. This is why the degree-product baseline matters.
 3. **Negatives are not equally easy.** Most non-ties are between people far apart in every sense. Ranking them below a tie is easy. The pairs that matter in practice, the ones you'd actually recommend, are the hard ones. An AUC computed over all non-ties is dominated by easy cases. Precision at k is less so.
@@ -847,12 +909,20 @@ Yang, Lichtenwalter and Chawla document how much the choice of test pairs and me
 
 An **embedding** gives every person a short list of numbers, their coordinates, so that people with similar positions in the network get similar coordinates. The attraction is practical. Coordinates can be plotted, clustered, compared and fed into any method that works on numbers. Distances between coordinates become scores for pairs.
 
+Think of coordinates as a postcode for each person: people in the same neighbourhood of the network get similar postcodes, so you can ask "who lives near whom" with simple arithmetic.
+
+
 The oldest way to build one is spectral. Take a matrix that describes the network, find its **eigenvectors** (special directions that the matrix only stretches), and use the entries of the first few as coordinates. Two matrices are common:
 
 - the **adjacency matrix** $A$, whose large-eigenvalue eigenvectors tell you who is connected to whom, with the first dominated by the busiest region;
 - the **normalised Laplacian** $L = I - D^{-1/2} A D^{-1/2}$, where $D$ is the diagonal matrix of degrees, whose *small*-eigenvalue eigenvectors tell you where the network can be cut into pieces. The eigenvector for the smallest eigenvalue is trivial (it is $D^{1/2}\mathbf{1}$, where $\mathbf{1}$ is a vector of ones). The next one is the **Fiedler vector** [@fiedler1973algebraic], and its signs split the network in two. Using such eigenvectors for clustering and partitioning is the idea behind normalised cuts [@shi2000normalized], and the Laplacian itself is treated at length by Chung [@chung1997spectral].
 
 Dividing by $D$ before taking the Laplacian means that busy people don't dominate. Which of the two matrices you choose changes what the coordinates mean, and it is a choice to report.
+
+::: {.callout-tip title="In plain words"}
+The Laplacian is a second table describing the network, built from the first. $D$ is a table with each person's number of friends on its diagonal. $D^{-1/2}$ means "one over the square root of each of those numbers," and the formula scales the connection table so that very busy people don't swamp everyone else. The $I$ is the identity matrix, a table with 1s on the diagonal and 0s elsewhere. If you are not comfortable with matrices, treat this as a recipe the code follows, and read on for what it finds.
+:::
+
 
 ### Six people, two triangles, one bridge
 
@@ -861,6 +931,11 @@ A hand-checkable example. Two triangles joined by one tie: members 1, 2, 3 form 
 Look for an eigenvector of the adjacency matrix that is antisymmetric, $x = (a, a, b, -b, -a, -a)$. Member 1 has neighbours 2 and 3, so $\lambda a = a + b$. Member 3 has neighbours 1, 2 and 4, so $\lambda b = 2a - b$. From the first, $b = (\lambda - 1)a$. Put that in the second: $(\lambda + 1)(\lambda - 1) = 2$, so $\lambda = \sqrt{3} \approx 1.732$. The fully symmetric eigenvector gives $(\lambda - 1)^2 = 2$ and $\lambda = 1 + \sqrt{2} \approx 2.414$, the largest.
 
 For the Laplacian $D - A$ (the unnormalised one is easier on paper), the same antisymmetric form gives $\lambda a = 2a - (a + b) = a - b$ at member 1 and $\lambda b = 3b - (2a - b) = 4b - 2a$ at member 3. Eliminating gives $\lambda^2 - 5\lambda + 2 = 0$, so the smallest nonzero eigenvalue is $(5 - \sqrt{17})/2 \approx 0.438$, and $b = (1 - \lambda)a \approx 0.562\,a$. So the Fiedler vector is proportional to $(1, 1, 0.562, -0.562, -1, -1)$: positive on one triangle, negative on the other, and closest to zero at the two members who hold the bridge. Check that the code agrees.
+
+::: {.callout-tip title="In plain words"}
+This is the hard part of the chapter, and you can skip to the next heading on a first read. You will still have the point: in a network made of two clumps joined by a bridge, one special set of numbers (the Fiedler vector) is positive on one clump and negative on the other, so its signs sort the people into the two groups. The algebra above only shows that this really works on a six-person example. Read the answer off: the vector is about $(1, 1, 0.562, -0.562, -1, -1)$. The two triangles get opposite signs, and the two people holding the bridge sit nearest to zero.
+:::
+
 
 ::: {.panel-tabset group="language"}
 
@@ -1101,6 +1176,11 @@ The full latent-space fit is expensive to repeat 100 times, so we use cheap cous
 
 - **Block score.** Split the training network in two by the sign of the second adjacency eigenvector, count the tie density inside each block and between blocks, and score each pair by the density of its two blocks. It is a two-block stochastic block model with the blocks found spectrally. It has no notion of degree, which Karrer and Newman added in the degree-corrected version [@karrer2011stochastic].
 - **Low-rank score (embedding).** Keep the $d$ largest eigenvalues (by size) of the training adjacency matrix and rebuild the matrix from them: $\hat A = \sum_{t=1}^{d} \lambda_t u_t u_t^{\top}$, where $\lambda_t$ is the $t$-th eigenvalue and $u_t$ its eigenvector. Score each pair by its entry $\hat A_{ij}$. This is the dot-product cousin of the latent space model: each person has coordinates $\sqrt{|\lambda_t|}\,u_{t,i}$, and the score is the (signed) dot product. We try $d = 2, 3, 6$.
+
+
+::: {.callout-tip title="In plain words"}
+The low-rank score keeps only the biggest few patterns of the training table and rebuilds a simplified copy of it. $\lambda_t$ is the strength of pattern number $t$, $u_t$ is the list of numbers that says how much each person takes part in that pattern, and the sigma adds the $d$ patterns together. $\hat A_{ij}$ (A-hat) is the simplified table's entry for the pair, used as the score. It is like compressing a photo: you keep the big shapes and lose the fine detail, and then check whether the compressed picture still hints at the hidden pixels.
+:::
 
 The second half of the code answers the leakage question of the last section. We compute the degree product and the three-dimension embedding twice: once from the training network, and once from the *full* network (including the hidden ties), then evaluate on the same hidden ties. The second is a leak, on purpose.
 
@@ -1491,16 +1571,16 @@ Tools agree on these scores for simple undirected networks: the Python tab's Ada
 ::: {.callout-note collapse="true"}
 ## Worked answers
 
-1. Cy's friends are Ana, Ben and Dee; Eli's are Dee and Fay. The shared friend is Dee, so CN is 1. The union is {Ana, Ben, Dee, Fay}, so Jaccard is 1/4. Dee has three friends, so AA is $1/\ln 3 = 0.910$ and RA is $1/3$. These match the Cy-Eli row.
-2. Resource allocation prefers Dee-Fay (0.5 against 0.333), because its shared friend Eli has two friends to share a unit among and Ben-Eli's shared friend Dee has three.
-3. The hidden 3 beats 2, 1 and 0 (3 wins). The hidden 1 loses to 2, draws with 1 and beats 0 (1.5 wins). The AUC is 4.5/6 = 0.75.
-4. The cut-off score is 3. One pair is above it (score 5) and it is a hit. Three pairs tie at 3 and one of them is a hit, and 1 seat is left, so each gets a third of a seat: the hit counts $1 \times 1/3$. Precision is $(1 + 1/3)/2 = 0.667$.
-5. At member 1 (neighbours 2 and 3): $\lambda a = a + b$, so $b = (\lambda - 1)a$. At member 3 (neighbours 1, 2 and 4): $\lambda b = 2a - b$, so $(\lambda + 1) b = 2a$. Substituting, $(\lambda + 1)(\lambda - 1) = 2$, so $\lambda^2 = 3$ and $b = (\sqrt{3} - 1)a$.
-6. As $\beta$ shrinks, Katz is dominated by walks of length two, so the ranking approaches common neighbours with longer walks breaking ties. For $\beta$ at or above $1/\lambda_{\max}$ the series diverges: the matrix inverse exists only by accident and its entries no longer count walks.
-7. For seed 1 the ten pairs with Jaccard 1.0 are all pairs among members 15, 16, 19, 21 and 23. Each of them is tied only to members 33 and 34, so their neighbourhoods are identical. None of these pairs is a hidden tie. Jaccard rewards identical small neighbourhoods, and here it finds five people who all know the same two hubs and not each other.
-8. Build the time-2 network with the same helper, and use the pairs tied at time 3 but not at time 2 as positives. Compare the AUC with the time-1 value of 0.644 for Adamic-Adar. With so few new pairs, expect the difference to be within noise, and report it that way.
-9. Four to ask: which ties were hidden, and were they chosen at random or by time? Was anything, such as an embedding or a degree count, fitted using the hidden ties? How many positives are there compared with the number of candidate pairs, and what is chance for the metric? How does the method compare with the degree product and with common neighbours?
-10. A defensible sentence: "Over 100 random splits that each hid 20 percent of the ties, the three-dimension embedding ranked a hidden friendship above a non-friendship about 75 percent of the time, but the choice of three dimensions was made on the same splits, so this is an optimistic estimate; common neighbours scored about 66 percent and the degree product about 69 percent." An over-claiming one: "The embedding recovers the hidden social structure of the club."
+1. Cy and Eli share one friend, Dee, and every score follows from that. Cy's friends are Ana, Ben and Dee; Eli's are Dee and Fay. The shared friend is Dee, so CN is 1. The union is {Ana, Ben, Dee, Fay}, so Jaccard is 1/4. Dee has three friends, so AA is $1/\ln 3 = 0.910$ and RA is $1/3$. These match the Cy-Eli row.
+2. Dee and Fay score higher, because their shared friend is less busy. Resource allocation prefers Dee-Fay (0.5 against 0.333), because its shared friend Eli has two friends to share a unit among and Ben-Eli's shared friend Dee has three.
+3. The hidden ties win 4.5 of the 6 comparisons, so the AUC is 0.75. The hidden 3 beats 2, 1 and 0 (3 wins). The hidden 1 loses to 2, draws with 1 and beats 0 (1.5 wins). The AUC is 4.5/6 = 0.75.
+4. Precision is about 0.667, because the tied score gets split. The cut-off score is 3. One pair is above it (score 5) and it is a hit. Three pairs tie at 3 and one of them is a hit, and 1 seat is left, so each gets a third of a seat: the hit counts $1 \times 1/3$. Precision is $(1 + 1/3)/2 = 0.667$.
+5. The check is a short piece of algebra at two members. At member 1 (neighbours 2 and 3): $\lambda a = a + b$, so $b = (\lambda - 1)a$. At member 3 (neighbours 1, 2 and 4): $\lambda b = 2a - b$, so $(\lambda + 1) b = 2a$. Substituting, $(\lambda + 1)(\lambda - 1) = 2$, so $\lambda^2 = 3$ and $b = (\sqrt{3} - 1)a$.
+6. As the discount shrinks, Katz ranks pairs like common neighbours. As $\beta$ shrinks, Katz is dominated by walks of length two, so the ranking approaches common neighbours with longer walks breaking ties. For $\beta$ at or above $1/\lambda_{\max}$ the series diverges: the matrix inverse exists only by accident and its entries no longer count walks.
+7. Jaccard gives a perfect score to five people who know only the same two hubs, and none of them are tied. For seed 1 the ten pairs with Jaccard 1.0 are all pairs among members 15, 16, 19, 21 and 23. Each of them is tied only to members 33 and 34, so their neighbourhoods are identical. None of these pairs is a hidden tie. Jaccard rewards identical small neighbourhoods, and here it finds five people who all know the same two hubs and not each other.
+8. Predicting from time 2 is probably about as hard, and with so few new pairs the difference will be noise. Build the time-2 network with the same helper, and use the pairs tied at time 3 but not at time 2 as positives. Compare the AUC with the time-1 value of 0.644 for Adamic-Adar. With so few new pairs, expect the difference to be within noise, and report it that way.
+9. Ask what was hidden, what was fitted on it, what chance is, and what the baseline did. Four to ask: which ties were hidden, and were they chosen at random or by time? Was anything, such as an embedding or a degree count, fitted using the hidden ties? How many positives are there compared with the number of candidate pairs, and what is chance for the metric? How does the method compare with the degree product and with common neighbours?
+10. A defensible sentence says what the number is and what it is not. A defensible sentence: "Over 100 random splits that each hid 20 percent of the ties, the three-dimension embedding ranked a hidden friendship above a non-friendship about 75 percent of the time, but the choice of three dimensions was made on the same splits, so this is an optimistic estimate; common neighbours scored about 66 percent and the degree product about 69 percent." An over-claiming one: "The embedding recovers the hidden social structure of the club."
 :::
 
 ## Summary
