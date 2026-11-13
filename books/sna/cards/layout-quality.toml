@@ -1,0 +1,54 @@
+id = "layout-quality"
+title = "Scoring a layout"
+kind = "measure"
+chapter = "visualization"
+summary = "Scale-free stress says how well distances on the page match steps in the network, so layouts of one network can be compared on a number instead of on taste."
+answers = "How faithfully does this picture show who is near whom in the network, and is it better than another picture of the same network?"
+
+data_requirements = [
+  "A connected network, or a layout and distances computed within each component, because distance between components is undefined.",
+  "Coordinates for every node and the graph distances between every pair of nodes.",
+  "Distances that mean something for the tie: steps for an unvalued network, or cost for a valued one where a stronger tie is a shorter step.",
+]
+
+assumptions = [
+  "Graph distance in steps is the right idea of closeness for the question. For influence that fades with each step it is; for ties that are the same for everyone it may not be.",
+  "A flat page can hold the distances. Most networks cannot, so some stress remains for every layout, and a score of zero is not the goal.",
+  "The score is read next to other layouts of the same network. Stress of different networks is not comparable without more care.",
+]
+
+readings = [
+  { context = "Comparing layouts of one small network", high = "A high scale-free stress (karate club: 0.292 for a circle and 0.377 for random positions) means page distance says little about steps in the network.", low = "A low value (0.068 for the stress layout and 0.089 for a force layout) means near on the page tends to mean near in the network." },
+  { context = "Checking a layout before showing groups", high = "If stress is high, do not read groups off the picture; a group that appears may be produced by the layout.", low = "If stress is low and the groups also appear in a sorted matrix, the picture and the matrix agree, which is stronger than either alone." },
+  { context = "Large networks", high = "Exact stress needs every pair of nodes. For thousands of nodes sample pairs or use a sparse approximation and say so.", low = "A low sampled value is a hint, not a guarantee." },
+]
+
+pitfalls = [
+  "Comparing raw stress between drawings of different sizes: raw stress changes with the size of the drawing (the karate stress layout drawn ten times larger goes from 37.9 to 42,409.3), so rescale or use the scale-free version first.",
+  "Treating the crossing count as the quality score. In the karate club the stress layout has 86 crossings and the force layout 72, though the stress layout scores better.",
+  "Reading the score as proof of groups. A layout can score well and still hide structure the distances do not carry.",
+  "Computing stress on a disconnected network and letting infinite distances in.",
+]
+
+checks = [
+  "Rescale the layout by any factor and confirm the score does not change.",
+  "Score a random layout and a circle of the same network as a floor, so a number has something to be compared with.",
+  "Rerun the layout from several seeds and report the range of scores, not the best one.",
+  "Check that the same two or three pairs you describe in the text are near (or far) in both the picture and the distance table.",
+]
+
+do_not_claim = [
+  "That two groups are far apart in the network because they are far apart on the page.",
+  "That a layout with the lowest stress is the true shape of the network; a network has no true shape.",
+  "That the picture's axes, its centre or its orientation mean anything.",
+]
+
+report_template = "The {n}-node network was drawn with a {layout} layout. Its scale-free stress is {stress}, against {random_stress} for random positions. Distances on the page are therefore {fidelity} guides to steps in the network; no axis has a meaning."
+
+related = ["visual-encoding", "layout-stability", "geodesic-distance"]
+sources = ["gansner2005graph", "kamada1989algorithm", "borg2005modern", "brandes2009experimental"]
+
+[knappnet]
+rust = "layout_stress_majorization for the layout and layout_stress for the raw score; compute_distances for the distance table; divide by the best common scale to get the scale-free version"
+r = "net_layout(g, method = \"stress\", seed = 1) and net_layout_stress(g, layout); net_distances(g) for the table"
+python = "nx.kamada_kawai_layout(G) as the closest NetworkX layout; compute the score from nx.all_pairs_shortest_path_length"

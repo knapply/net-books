@@ -1918,7 +1918,7 @@ FIGURES = {
 
 
 import importlib
-for _name in ["fig_classic", "fig_two_mode", "fig_multilayer", "fig_time", "fig_space", "fig_paths", "fig_triads", "fig_signed", "fig_homophily", "fig_network_regression", "fig_small_worlds", "fig_diffusion", "fig_prediction", "fig_reporting", "fig_case_sampson", "fig_case_karate", "fig_centrality", "fig_ergm", "fig_ego", "fig_positions", "fig_latent", "fig_dynamics", "fig_collecting", "fig_foundations", "fig_networks_data", "fig_getting_started"]:
+for _name in ["fig_classic", "fig_two_mode", "fig_multilayer", "fig_time", "fig_space", "fig_paths", "fig_triads", "fig_signed", "fig_homophily", "fig_network_regression", "fig_small_worlds", "fig_diffusion", "fig_prediction", "fig_reporting", "fig_case_sampson", "fig_case_karate", "fig_centrality", "fig_ergm", "fig_ego", "fig_positions", "fig_latent", "fig_dynamics", "fig_collecting", "fig_foundations", "fig_networks_data", "fig_getting_started", "fig_visualization"]:
     try:
         FIGURES.update(importlib.import_module(_name).FIGURES)
     except ImportError:
