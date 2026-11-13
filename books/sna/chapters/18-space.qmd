@@ -5,6 +5,16 @@
 Networks as data, Centrality, and Paths, distance and cohesion.
 :::
 
+::: {.callout-note appearance="simple"}
+## The short version
+When people or places have locations, distance quietly shapes who is tied to whom: nearby pairs are tied far more often than distant ones. That means a network can look clustered, or split into regions, just because neighbors tend to be connected. This chapter shows how to measure distances properly on a round Earth, how to see how fast the chance of a tie drops as distance grows, and how to build a network from locations alone. It ends with three quick checks that help you separate what the network adds from what plain geography already explains.
+:::
+
+::: {.callout-note appearance="simple"}
+## Why you might care
+Anyone who studies neighbors, commuters, trade, flights or online communities with locations runs into this. If you skip the geography you may credit "community" or "culture" with what is really nearness, and a network you build from locations will change a lot depending on one cutoff you chose. Knowing the traps keeps your conclusions honest.
+:::
+
 ## Introduction
 
 Some ties cost something to keep up. A friendship across town is easier to maintain than one across an ocean. A road between two cities has to be built. A flight needs two airports and fuel. Even an email is more likely to go to the person two desks away than to the colleague in another country. Whenever nodes have places, distance leaks into the ties, and the network you see is partly a map in disguise.
@@ -28,11 +38,15 @@ A **coordinate** says where a node is. There are two common kinds, and mixing th
 
 Why does it matter? Because a degree is not a fixed length. One degree of latitude is always about 111 km, but one degree of longitude shrinks as you move away from the equator, to nothing at the poles. If you treat longitude and latitude as x and y and measure with Pythagoras, the distances you get are wrong, more wrong the further from the equator you are.
 
-The standard fix is the **great-circle distance**: the length of the shortest path along the surface of a sphere. The haversine formula computes it. For two points with latitudes $\varphi_1, \varphi_2$ and longitudes $\lambda_1, \lambda_2$ (in radians) on a sphere of radius $R$:
+The standard fix is the **great-circle distance**: the length of the shortest path along the surface of a sphere, like the path a plane flies, or a string pulled tight across a globe. The question the haversine formula answers is: how many kilometers apart are two places given their latitude and longitude? For two points with latitudes $\varphi_1, \varphi_2$ and longitudes $\lambda_1, \lambda_2$ (in radians) on a sphere of radius $R$:
 
 $$
 d = 2R \arcsin\sqrt{\sin^2\!\left(\tfrac{\varphi_2-\varphi_1}{2}\right) + \cos\varphi_1\cos\varphi_2\,\sin^2\!\left(\tfrac{\lambda_2-\lambda_1}{2}\right)}
 $$
+
+::: {.callout-tip title="In plain words"}
+This is the hardest-looking formula in the chapter. On a first read you can skim it and still keep the result: it gives the straight-over-the-surface distance between two places. Here is how to read it aloud. The Greek letters $\varphi$ (phi) and $\lambda$ (lambda) are the two points' latitude and longitude, and $R$ is the radius of the Earth. Inside the square root, the first piece measures how far apart the two latitudes are, and the second measures how far apart the longitudes are, shrunk by the cosines of the latitudes, which is the "longitude squeezes toward the poles" effect from above. The square root and "arcsin" (the inverse of the sine function) turn that combination into an angle, and multiplying by $2R$ turns the angle into kilometers. Try it with two points on the equator, one degree of longitude apart: the answer is about 111.2 km, which is the number the code below prints. At 60 degrees north the same one degree gives 55.6 km.
+:::
 
 The formula goes back to a classic note by Sinnott [@sinnott1984virtues], and knappnet uses it with the mean Earth radius of the Geodetic Reference System 1980, 6371.0088 km [@moritz2000geodetic]. The Earth is not a perfect sphere, so great-circle distances can be off by up to about half a percent against ellipsoidal ones. For network questions about countries, towns or people that is far below the other uncertainties, but it is good to know the number is an approximation.
 
@@ -445,7 +459,7 @@ Two thirds (66%) of the pairs closer than 500 km share a border. Between 500 and
 
 Raw counts would have told a different story. The 500 to 1,000 km band holds slightly more ties (100) than the 0 to 500 km band (98), because it contains twice as many pairs. A pair within 500 km is still twice as likely to be tied. This is why decay is a *rate*, ties per available pair, and not a count.
 
-The shape matters because people model it. A tie probability that falls like $e^{-d/s}$ (exponential) has a characteristic range $s$ beyond which ties are rare. One that falls like $d^{-b}$ (a power law) keeps a heavy tail of long ties, which changes how quickly information can cross the whole network. R's `net_distance_decay` turns distances into weights of either form, and the review by Barthelemy [-@barthelemy2011spatial] describes how these choices shape spatial networks. Choose bands wide enough that each holds plenty of pairs; 500 km is a convenience here, not a law.
+The shape matters because people model it. A tie probability that falls like $e^{-d/s}$ (exponential, which just means it halves again and again at a steady pace) has a characteristic range $s$, a typical distance beyond which ties are rare. One that falls like $d^{-b}$ (a power law, which falls fast at first and then very slowly) keeps a heavy tail of long ties, which changes how quickly information can cross the whole network. R's `net_distance_decay` turns distances into weights of either form, and the review by Barthelemy [-@barthelemy2011spatial] describes how these choices shape spatial networks. Choose bands wide enough that each holds plenty of pairs; 500 km is a convenience here, not a law.
 
 ## Flows and the gravity idea {#sec-space-gravity}
 
@@ -455,9 +469,15 @@ $$
 F_{ij} = k \, \frac{P_i P_j}{d_{ij}^{\,b}},
 $$
 
-where $P_i$ and $P_j$ are the sizes (say, populations), $d_{ij}$ is the distance, $b$ says how quickly flow fades with distance, and $k$ is a constant that fixes the units. The name is borrowed from Newton: two big things close together pull hard on each other. The model is intuitive. A town of 100,000 sends more commuters to a neighbor than a hamlet does, and sends more to a town 10 km away than to one 100 km away.
+where $P_i$ and $P_j$ are the sizes (say, populations), $d_{ij}$ is the distance, $b$ says how quickly flow fades with distance, and $k$ is a constant that fixes the units. The name is borrowed from Newton: two big things close together pull hard on each other.
 
-Taking logs turns the product into a sum, so you can estimate $b$ with a straight-line fit: plot $\log(F_{ij} / (P_i P_j))$ against $\log d_{ij}$, and the slope is $-b$.
+::: {.callout-tip title="In plain words"}
+The flow $F_{ij}$ between two places is the product of their two sizes, divided by the distance raised to a power, times a fixed constant. Bigger places mean more flow, farther apart means less, and $b$ sets how harshly distance bites. With $b = 2$, doubling the distance cuts the flow to a quarter. Take the by-hand case from exercise 1: two towns of 20 and 40 thousand people, 50 km apart. Ignoring $k$, the score is $20 \times 40 / 50^2 = 0.32$. A pair of 10 and 20 thousand at the same distance scores $10 \times 20 / 50^2 = 0.08$, a quarter as much.
+:::
+
+The model is intuitive. A town of 100,000 sends more commuters to a neighbor than a hamlet does, and sends more to a town 10 km away than to one 100 km away.
+
+(The next paragraph is a little technical. On a first read you can skim to "Our real country data has no flows"; you'll still know what the model says.) Taking logs turns the product into a sum, so you can estimate $b$ with a straight-line fit: plot $\log(F_{ij} / (P_i P_j))$ against $\log d_{ij}$, and the slope is $-b$.
 
 Our real country data has no flows, so we use a small *invented* set: twelve made-up towns on a 100 km by 100 km square, with populations in thousands, and the daily commuters between every pair. I made the commuter counts with a gravity rule with exponent 2 and a dose of random noise. This is only to show what a gravity fit looks like; it says nothing about any real region. The towns are planar (x and y in kilometers), so distances are ordinary straight lines.
 
@@ -1074,7 +1094,7 @@ Read this as two answers to two questions. Topological centrality says where a n
 
 Spatial data invites a kind of over-reading that ordinary network data does not. This section names the traps and gives three checks you can run on any spatial network before you report a result.
 
-**Space can make structure by itself.** If nearby nodes are more likely to be tied, then two nodes that are both tied to a third are likely to be near each other too, and so likely to be tied: a triangle with no social process behind it, only geometry. A network can look clustered, or fall into regions, simply because it is a nearby network. The same goes for attributes. Nearby places tend to resemble each other (similar income, similar weather, similar language), and this **spatial autocorrelation** means that observations are not independent: a sample of 100 neighboring places holds less information than 100 independent ones, so tests that assume independence report p-values that are too small. Anselin [-@anselin1988spatial] is the classic treatment of spatial dependence in statistics.
+**Space can make structure by itself.** If nearby nodes are more likely to be tied, then two nodes that are both tied to a third are likely to be near each other too, and so likely to be tied: a triangle with no social process behind it, only geometry. A network can look clustered, or fall into regions, simply because it is a nearby network. The same goes for attributes. Nearby places tend to resemble each other (similar income, similar weather, similar language), and this **spatial autocorrelation** means that observations are not independent: a sample of 100 neighboring places holds less information than 100 independent ones, so tests that assume independence report p-values (the chance of a result at least this striking if nothing real were going on) that are too small. Anselin [-@anselin1988spatial] is the classic treatment of spatial dependence in statistics.
 
 **The unit is a choice.** Natural Earth's France is one unit with a dot in Paris, which put two ties across the Atlantic. Redraw the units, merge counties into regions or split a country into provinces, and the network and every number from it change. This is called the **modifiable areal unit problem**. Aggregating to areas is sometimes forced on you, but it is never neutral.
 
@@ -1459,13 +1479,13 @@ Where tools differ, in this chapter: every deterministic number (distances, band
 ::: {.callout-note collapse="true" appearance="simple"}
 ## Worked answers
 
-1. The distances are AB = 50, BC = 50 and AC = 60 km. A 55 km radius joins A-B and B-C, not A-C. The gravity scores are $10 \cdot 20 / 50^2 = 0.08$ for A-B, $20 \cdot 40 / 50^2 = 0.32$ for B-C and $10 \cdot 40 / 60^2 = 0.11$ for A-C, so B-C should have the largest flow, and it is in the radius network.
-2. In bands of 250 km the share of pairs that are tied is 0.889 (36 pairs), 0.584 (113), 0.350 (143) and 0.281 (178). In share points the fall is 0.31, 0.23 and 0.07, steepest at the start; as a ratio each step multiplies the share by 0.66, 0.60 and 0.80, so it is not steeper inside the first 500 km. Without the Egypt to Israel tie there are 26 pieces instead of 25, and the largest has 100 units instead of 150: the 50 units of Africa are cut off from Eurasia.
+1. The two biggest towns, B and C, should have the largest flow, and the 55 km radius network does join them. The distances are AB = 50, BC = 50 and AC = 60 km. A 55 km radius joins A-B and B-C, not A-C. The gravity scores are $10 \cdot 20 / 50^2 = 0.08$ for A-B, $20 \cdot 40 / 50^2 = 0.32$ for B-C and $10 \cdot 40 / 60^2 = 0.11$ for A-C, so B-C should have the largest flow, and it is in the radius network.
+2. The chance of a tie does not fall faster inside the first 500 km. In bands of 250 km the share of pairs that are tied is 0.889 (36 pairs), 0.584 (113), 0.350 (143) and 0.281 (178). In share points the fall is 0.31, 0.23 and 0.07, steepest at the start; as a ratio each step multiplies the share by 0.66, 0.60 and 0.80, so it is not steeper inside the first 500 km. Without the Egypt to Israel tie there are 26 pieces instead of 25, and the largest has 100 units instead of 150: the 50 units of Africa are cut off from Eurasia.
 3. Two explanations without culture: people on the same floor are on the same team (the floor is a proxy for work), and people choose or are assigned floors by tenure or by who they already know. Run Check 1 first: compare with networks that keep how many ties fall in each distance class (same floor, same building, different building) and ask whether the "silo" is bigger than that.
 4. Show how each defining number moves across a sweep of thresholds (25, 50, 100, 200 meters), and say what the phone's location error is: if it is about 30 meters, a 50 meter contact is mostly noise. Report which conclusions survive the sweep.
-5. On the equator, $d = R \pi / 2 = 6371.0088 \times 1.5708 = 10{,}007.6$ km. At 60 degrees north the haversine term is $\cos^2 60^\circ \sin^2 45^\circ = 0.25 \times 0.5 = 0.125$, so $d = 2R \arcsin\sqrt{0.125} = 4{,}604.5$ km. That is less than half of the equatorial distance (5,003.8 km): the shortest path between two points on the same parallel bends toward the pole, where meridians are closer.
-6. For $r = 2$ the pairs 0-1 (distance 1) and 1-3 (distance 2) are joined, so the network is the path 0-1-3 and the town at 7 is alone. For 1-nearest: 0 points to 1, 1 to 0, 3 to 1 (distance 2, against 3 to 0 and 4 to 7), and 7 to 3. "Either" keeps 0-1, 1-3 and 3-7, one piece with 7 attached. "Mutual" keeps only 0-1, because only 0 and 1 point at each other, and leaves 3 and 7 alone. So the radius network and the mutual one isolate 7, and "either" never does.
-7. The exponent stays between 2.14 and 2.20 across the 66 refits. Dropping only the largest flow (Cedar to Fenwick, 1,428 commuters) gives 2.15. So the 2.17 is stable to any one pair, which is what you want to show. It says nothing about whether the form is right, since these data were built from it.
+5. The 60 degrees north pair is a little less than half as far apart as the equator pair. On the equator, $d = R \pi / 2 = 6371.0088 \times 1.5708 = 10{,}007.6$ km. At 60 degrees north the haversine term is $\cos^2 60^\circ \sin^2 45^\circ = 0.25 \times 0.5 = 0.125$, so $d = 2R \arcsin\sqrt{0.125} = 4{,}604.5$ km. That is less than half of the equatorial distance (5,003.8 km): the shortest path between two points on the same parallel bends toward the pole, where meridians are closer.
+6. The radius network and the mutual rule both leave the town at 7 alone, and the "either" rule never does. For $r = 2$ the pairs 0-1 (distance 1) and 1-3 (distance 2) are joined, so the network is the path 0-1-3 and the town at 7 is alone. For 1-nearest: 0 points to 1, 1 to 0, 3 to 1 (distance 2, against 3 to 0 and 4 to 7), and 7 to 3. "Either" keeps 0-1, 1-3 and 3-7, one piece with 7 attached. "Mutual" keeps only 0-1, because only 0 and 1 point at each other, and leaves 3 and 7 alone. So the radius network and the mutual one isolate 7, and "either" never does.
+7. The exponent hardly moves, so no single pair drives it. It stays between 2.14 and 2.20 across the 66 refits. Dropping only the largest flow (Cedar to Fenwick, 1,428 commuters) gives 2.15. So the 2.17 is stable to any one pair, which is what you want to show. It says nothing about whether the form is right, since these data were built from it.
 8. The fit does not show a mechanism (it describes the pattern, and size and distance may stand in for jobs, roads and housing), and it does not give a law, because 435 pairs from 30 towns are not independent observations: each town appears in 29 pairs, so the usual standard errors are too small. Ask for the exponent with an interval that accounts for that (for example by resampling towns, not pairs), and for the fit with a sensible alternative such as travel time in place of distance.
 :::
 

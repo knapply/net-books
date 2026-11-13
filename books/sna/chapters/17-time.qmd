@@ -5,6 +5,16 @@
 @sec-networks-as-data, @sec-paths-and-cohesion and @sec-centrality (we use in-degree). This chapter describes networks that change; it does not fit models of change. For those, see @sec-dynamics.
 :::
 
+::: {.callout-note appearance="simple"}
+## The short version
+Networks change, and there are several ways to write that change down: as a few snapshots, as a pile of everything so far, as a list of dated contacts, or as ties with start and end dates. Each choice answers some questions and quietly throws away others. The big surprise is that order matters: news can only pass along contacts that happen one after another, so a picture that ignores time will tell you that people can reach each other when they never could. This chapter shows how to ask who could have reached whom, how to see whether contacts come in bursts, and how to report all of it honestly.
+:::
+
+::: {.callout-note appearance="simple"}
+## Why you might care
+If you ever ask how fast a rumor, a virus or a piece of news could travel through a group, the answer depends on who talked to whom first. Treat a year of contacts as one flat picture and you will overestimate how connected people are. Knowing the difference keeps you from calling a team "well connected" or "poorly connected" because of how you sliced the calendar.
+:::
+
 ## Introduction
 
 Suppose a friend hands you two files. One is a survey: every autumn for three years, a class of students named the classmates they like. The other is a log: who emailed whom, with a timestamp on every message. Both are "networks over time". But they answer different questions, and if you treat them the same way you can get answers that sound sensible and are wrong.
@@ -497,7 +507,7 @@ Now look at the last line. Piled together, the three waves hold 88 distinct choi
 
 ### A stress check: how much carry-over is chance?
 
-That 35 of 55 choices carried over from wave 1 to wave 2 sounds like a lot, but "a lot" needs a yardstick. Here is one that needs no simulation. Suppose each novice, in each wave, picked his friends at random among the other 17. A novice who named $a$ people in one wave and $b$ in the next would be expected to repeat $a b / 17$ of them. Add that up over the novices.
+That 35 of 55 choices carried over from wave 1 to wave 2 sounds like a lot, but "a lot" needs a yardstick. Here is one that needs no simulation. Suppose each novice, in each wave, picked his friends at random among the other 17. A novice who named $a$ people in one wave and $b$ in the next would be expected to repeat $a b / 17$ of them. Read that as: the chance that any one of his second-wave picks was also a first-wave pick is $a/17$, and he makes $b$ picks. For a novice who named 3 and 3, that is $3 \times 3 / 17 \approx 0.53$ repeats (worked by hand here, not taken from the code). Add that up over the novices.
 
 ::: {.panel-tabset group="language"}
 
@@ -584,17 +594,30 @@ Dev's story is different. Dev tells Cleo at time 2, who tells Ben at 3, who tell
 
 ### The definition, precisely
 
-Here is the idea in symbols. A **contact** is a triple $(u, v, t)$: $u$ and $v$ were in touch at time $t$ (for a directed log, $u$ to $v$). A **time-respecting path** from $s$ to $z$ is a chain of contacts $(u_1, v_1, t_1), \dots, (u_k, v_k, t_k)$ where $u_1 = s$, $v_k = z$, each contact starts where the last one ended ($v_i = u_{i+1}$), and the times never go backwards:
+::: {.callout-note appearance="simple"}
+## A harder part
+This section turns the passing-a-note idea into symbols. On a first read you can skim to "Counting reach" and you'll still have the plain idea: a message can only travel along contacts that happen in order. Think of train connections: you can only change trains if the second train leaves after the first one arrives.
+:::
+
+The question these symbols answer is: when can news get from one person to another, if it can only move forward in time? Here is the idea in symbols. A **contact** is a triple $(u, v, t)$: $u$ and $v$ were in touch at time $t$ (for a directed log, $u$ to $v$). A **time-respecting path** from $s$ to $z$ is a chain of contacts $(u_1, v_1, t_1), \dots, (u_k, v_k, t_k)$ where $u_1 = s$, $v_k = z$, each contact starts where the last one ended ($v_i = u_{i+1}$), and the times never go backwards:
 
 $$
 t_1 \le t_2 \le \dots \le t_k .
 $$
+
+::: {.callout-tip title="In plain words"}
+The little numbers hang off the contacts in the chain: the first contact happens at time $t_1$, the second at $t_2$, and so on up to the last at $t_k$. The rule says each time is at least as late as the one before. Take Ana telling Ben at time 1 and Ben telling Cleo at time 3: $1 \le 3$, so that chain is allowed. Now try Ana to Ben at time 1, then Ben to Cleo at time 3, then Cleo to Dev at time 2: the last step has $3 \le 2$, which is false, so the chain breaks. That is exactly why Ana can't reach Dev.
+:::
 
 A **strict** path asks for $t_1 < t_2 < \dots < t_k$, so nobody can pass something on in the very instant they receive it. From these we define, for a person $s$ in a network of $n$ people:
 
 - the **influence set** $I(s)$, everyone $s$ can reach by a time-respecting path, and the **reach** $r(s) = |I(s)|$ not counting $s$ themself;
 - the **earliest arrival** $a_s(z)$, the smallest last time $t_k$ over all time-respecting paths from $s$ to $z$ (infinite if there is none);
 - the **reach ratio** $R = \sum_s r(s) \,/\, \bigl(n(n-1)\bigr)$, the share of ordered pairs that are connected.
+
+::: {.callout-tip title="In plain words"}
+The influence set is "the list of people you could get news to." The reach is the length of that list, not counting you. The earliest arrival is "the soonest the news could possibly get to person $z$," and it is "never" (infinity) if there's no way. The reach ratio adds up everyone's reach and divides by the number of ordered pairs of different people, $n(n-1)$, which is the most reach the group could have. In the six-person example, $n = 6$ so $n(n-1) = 30$, Dev's reach is 5, Ana's is 2, and $a_{\text{Dev}}(\text{Ana}) = 5$ because Dev's news gets to Ana at time 5. Across everyone the reaches add to 17, so $R = 17/30 \approx 0.57$ (the counts appear in the table below).
+:::
 
 A four-person check you can do on paper. Ana meets Ben at time 1, Ben meets Cleo at time 1, and Cleo meets Dev at time 2. If same-time contacts may chain, Ana reaches Ben and Cleo at time 1 and Dev at time 2, so $r(\text{Ana}) = 3$. If they may not (strict), Ana reaches Ben and then is stuck, because Ben's meeting with Cleo is at the same instant Ben heard the news: $r(\text{Ana}) = 1$. Dev, in either version, reaches only Cleo, because Cleo's other contacts are earlier. The two rules give a different answer for the same data, and we come back to this in the section on clock time (it is exercise 10).
 
@@ -835,13 +858,17 @@ In every row the number is about what the recorded contacts allow, and the oppos
 
 ## Bursty contacts and waiting times
 
-Contact data has a second feature that static networks can't show: *when* events happen. People don't write emails like a metronome. They send a flurry, then go quiet. Goh and Barabási [@goh2008burstiness] gave a simple number for this. Take the waiting times between events, the *gaps* (also called inter-event times), and compare their spread to their average:
+Contact data has a second feature that static networks can't show: *when* events happen. People don't write emails like a metronome. They send a flurry, then go quiet. Goh and Barabási [@goh2008burstiness] gave a simple number for this. Take the waiting times between events, the *gaps* (also called inter-event times), and compare how much they vary to their average. The question the formula answers is: do the events tick along like a clock, arrive at random, or come in clumps?
 
 $$
 B \;=\; \frac{\sigma - \mu}{\sigma + \mu},
 $$
 
-where $\mu$ is the mean gap and $\sigma$ its standard deviation. If events come at perfectly even intervals, $\sigma = 0$ and $B = -1$. If they arrive at random with no memory, $B$ is around 0. If they come in clumps separated by long silences, $\sigma$ is large and $B$ approaches $+1$. A second number, $M$, is the correlation between each gap and the next, and measures *memory*: whether short gaps tend to follow short gaps.
+where $\mu$ is the mean gap and $\sigma$ its standard deviation (a typical distance of a gap from the average gap). If events come at perfectly even intervals, $\sigma = 0$ and $B = -1$. If they arrive at random with no memory, $B$ is around 0. If they come in clumps separated by long silences, $\sigma$ is large and $B$ approaches $+1$. A second number, $M$, is the correlation between each gap and the next, and measures *memory*: whether short gaps tend to follow short gaps.
+
+::: {.callout-tip title="In plain words"}
+Read $B$ as a dial from $-1$ to $+1$. Take the average wait, $\mu$, and the usual wobble around it, $\sigma$. If the wobble is zero, the top of the fraction is $0 - \mu$ and the bottom is $\mu$, so $B = -1$: a clock. If the wobble is as big as the average wait, the top is zero and $B = 0$: no pattern, like random arrivals. If the wobble is much bigger than the average, $B$ climbs toward $+1$: clumps and long silences. A small worked case, which we do by hand in exercise 3: gaps of 1, 1, 1, 1, 1 and 7 hours have $\mu = 2$ and $\sigma \approx 2.24$, so $B \approx 0.06$.
+:::
 
 ::: {.panel-tabset group="language"}
 
@@ -1487,14 +1514,14 @@ On tools, we found this much ourselves. NetworkX has no time-respecting path fun
 
 1. With Cleo-Dev at 7, Ana reaches Ben at 1, Cleo at 3 and now Dev at 7: three people. Eli reaches Dev at 4 and Fay at 6, and now Cleo at 7: three people. Dev already reached all five and still does.
 2. No in either direction. Cleo and Dev meet at time 2, before Cleo can have heard anything from Ana (Ben hears at 1, Cleo at 3). From Dev: Cleo at 2, Ben at 3, and Ben's next meeting with Ana is at 5, outside the wave. The snapshot, one connected piece, claims both directions.
-3. $\mu = 12/6 = 2$. The variance is $(5 \cdot 1 + 25)/6 = 5$, so $\sigma = \sqrt 5 \approx 2.236$, and $B = (2.236 - 2)/(2.236 + 2) \approx 0.06$. One long gap among regular ones still gives a $B$ near 0, so $B$ is a poor detector of a single outage.
-4. Five of the 18 novices change in-degree by two or more between time 1 and time 3 (Albert 6 to 2, Boniface 1 to 6, John Bosco 2 to 4, Romuald 9 to 4, Winfrid 4 to 2). That is movement for more than a quarter of the novices, but a single correlation (0.45) cannot say whether it is drift or noise: at time 1 six novices share an in-degree of 2 and five share 1, so the ranks have many ties, and with only 18 people the correlation itself is uncertain. Look at the carried-over choices (35 of 55 against 10 expected by chance) and at who moves.
+3. One long gap among regular ones barely moves $B$. In detail, $\mu = 12/6 = 2$. The variance is $(5 \cdot 1 + 25)/6 = 5$, so $\sigma = \sqrt 5 \approx 2.236$, and $B = (2.236 - 2)/(2.236 + 2) \approx 0.06$. One long gap among regular ones still gives a $B$ near 0, so $B$ is a poor detector of a single outage.
+4. About a quarter of the novices change a lot, which is not enough on its own to call the ranking stable or unstable. Five of the 18 novices change in-degree by two or more between time 1 and time 3 (Albert 6 to 2, Boniface 1 to 6, John Bosco 2 to 4, Romuald 9 to 4, Winfrid 4 to 2). That is movement for more than a quarter of the novices, but a single correlation (0.45) cannot say whether it is drift or noise: at time 1 six novices share an in-degree of 2 and five share 1, so the ranks have many ties, and with only 18 people the correlation itself is uncertain. Look at the carried-over choices (35 of 55 against 10 expected by chance) and at who moves.
 5. Windows of 6 hours have a mean density of 0.037 (37 windows) and windows of 48 hours 0.268 (5 windows). They fall below and above our values of 0.072 (12 hours), 0.136 (24 hours) and 0.321 (72 hours), in order: wider windows hold more of the log, so more pairs show up.
 6. The density is fixed in large part by the questionnaire, which asked everyone for three names. It could not have moved much. Look at carry-over (35 of 55 and 40 of 57), at changes in who is most chosen, and at the rank correlation of in-degree.
 7. Start with moving the window: the first week is one window. Say that the sentence describes one week, that the whole log may look different, that missing contacts and the start of the log both lower reach, and that "poorly connected" needs a yardstick, such as the shifted-time check.
 8. Ask the same question with `start = 72, end = 144` and shifts of 1 to 79. The shifted values average 0.51 and range from 0.36 to 0.73, and 21 of the 79 shifts are as low as 0.46 or lower. So 0.46 is on the low side but not unusual: the dip in the middle window is within what the timing alone can produce.
 9. Ask how many events each is based on (seven messages gives six gaps, and $B$ is biased low and very noisy with so few), whether they share a daily rhythm, and whether the measure was computed the same way. A fair comparison uses similar event counts or a null with the same number of events.
-10. Chaining allowed: Ana 3, Ben 3, Cleo 3, Dev 1, so $R = 10/12 = 0.83$. Chaining forbidden: Ana 1 (Ben only), Ben 3 (Ana and Cleo at time 1, then Dev at 2), Cleo 2 (Ben at 1, Dev at 2), Dev 1, so $R = 7/12 = 0.58$.
+10. Forbidding same-time chaining cuts the reach ratio from about 0.83 to about 0.58. Chaining allowed: Ana 3, Ben 3, Cleo 3, Dev 1, so $R = 10/12 = 0.83$. Chaining forbidden: Ana 1 (Ben only), Ben 3 (Ana and Cleo at time 1, then Dev at 2), Cleo 2 (Ben at 1, Dev at 2), Dev 1, so $R = 7/12 = 0.58$.
 :::
 
 ## Summary
