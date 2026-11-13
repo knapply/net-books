@@ -1,0 +1,58 @@
+id = "gwesp"
+title = "Geometrically weighted edgewise shared partners (GWESP)"
+kind = "measure"
+chapter = "ergm"
+summary = "An ERGM statistic that adds up, over the ties of a network, a weight that grows with the number of shared partners of each tie and levels off, so closure counts with diminishing returns."
+answers = "Are ties more likely to sit inside triangles (to join people who already have contacts in common) than the other terms in the model would give?"
+
+data_requirements = [
+  "A network with ties that can be present or absent; undirected, or directed with a stated shared-partner convention (outgoing two-paths by default in ergm and knappnet).",
+  "A decay value fixed in advance, or a curved-model fit that estimates it.",
+  "As for any ERGM: one complete network with a clear boundary.",
+]
+
+assumptions = [
+  "The decay is a modeling choice; the coefficient is only meaningful together with the decay used.",
+  "Closure, as counted, can come from many causes; the statistic cannot tell them apart.",
+  "Other terms that explain clustering (group membership, degree spread) are in the model; otherwise GWESP absorbs them.",
+  "For fits by simulation, the chain has converged and the model is not degenerate.",
+]
+
+readings = [
+  { context = "Friendship or advice among colleagues", high = "Ties tend to land between people who already know the same people, beyond what group terms explain; consistent with introduction, trust or shared settings.", low = "No extra closure; ties are no more embedded than the other terms imply." },
+  { context = "Collaboration or co-authorship", high = "Collaborations cluster in tight teams; consistent with joint projects and shared advisers.", low = "Collaborations are spread across otherwise unconnected people." },
+  { context = "Online follower or contact networks", high = "Tie formation follows existing contacts, which can reflect recommendation systems and not only social closure.", low = "Ties form mainly through other mechanisms, for example popularity or interest groups." },
+  { context = "Transport or infrastructure networks", high = "Links often join places that already share neighbors, which may reflect geography and not a social mechanism.", low = "Links join otherwise unconnected places, as in long-haul hubs." },
+]
+
+pitfalls = [
+  "Reading the coefficient as a per-triangle effect; with diminishing returns it is not.",
+  "Comparing GWESP coefficients across different decay values or different networks.",
+  "Fitting raw triangle counts instead, which risks a degenerate model.",
+  "Interpreting a positive coefficient as introductions or trust, when the same pattern comes from shared settings or from groups that were already forming.",
+  "Leaving out group terms, so that group-driven clustering is credited to closure.",
+]
+
+checks = [
+  "Refit with two or three decay values; the sign and rough significance of closure should not depend on the decay.",
+  "Simulate from the fit and compare the triangle count and the edgewise shared-partner distribution with the observed ones.",
+  "Compare with a model that has the group terms but no GWESP, and see how much of the coefficient on groups moves.",
+  "Check the chain's effective sample size and the Monte Carlo variation across seeds.",
+]
+
+do_not_claim = [
+  "That people introduced their friends to each other.",
+  "That each additional triangle multiplies the odds by the exponentiated coefficient.",
+  "That closure explains the network; goodness of fit on other features may still be poor.",
+  "That the effect carries over to other networks or other decay values.",
+]
+
+report_template = "An ERGM with {terms} and geometrically weighted edgewise shared partners (decay {decay}) was fitted to one network of {n} {node_type} and {m} ties by {method}. The shared-partner coefficient is {estimate} (standard error {se}), meaning ties between people with common contacts are more likely than the other terms predict. Refits with decay {other_decays} gave {robustness_summary}. This describes a pattern in this network and not why the ties formed."
+
+related = ["ergm", "clustering", "triad-census", "mple-vs-mcmle"]
+sources = ["snijders2006new", "hunter2006inference", "hunter2007curved", "morris2008specification"]
+
+[knappnet]
+rust = "knappnet::ergm::Term::Gwesp(decay)"
+r = "ergm::gwesp(0.5, fixed = TRUE)"
+python = "none (no mainstream Python ERGM package; the statistic itself is a few lines of numpy)"

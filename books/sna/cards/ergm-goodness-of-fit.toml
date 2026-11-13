@@ -1,0 +1,56 @@
+id = "ergm-goodness-of-fit"
+title = "Goodness of fit for ERGMs (comparing simulated and observed networks)"
+kind = "measure"
+chapter = "ergm"
+summary = "A check of a fitted ERGM that simulates many networks from the model and compares statistics the model did not fit, such as the degree and shared-partner distributions, with the observed network."
+answers = "Does a network drawn from this fitted model look like the network I observed, on the features I care about?"
+
+data_requirements = [
+  "A fitted ERGM, with coefficients from a converged fit.",
+  "Simulations from the fitted model: a few hundred independent networks are typical.",
+  "Statistics chosen in advance that matter for the question and were not directly fitted.",
+]
+
+assumptions = [
+  "The simulated networks are a fair sample from the fitted model, which needs adequate burn-in and interval.",
+  "The statistics compared are informative about features the model could get wrong.",
+  "Statistics that were fitted will match by construction, and carry no evidence about fit.",
+]
+
+readings = [
+  { context = "Degree distribution", high = "Observed counts near the middle of the simulated ranges: the spread of ties across people is reproduced. A few degrees far outside the range show where popularity or inactivity is mis-modeled.", low = "Not applicable: the reading is by gap, not by level." },
+  { context = "Edgewise shared partners", high = "The observed counts sit inside the simulated ranges: closure at the level of ties is reproduced, not only in total.", low = "An observed excess at high shared-partner counts means the model underestimates the tightest clusters." },
+  { context = "Geodesic distances", high = "A matching distance distribution says the network has about the same global shape as the model produces.", low = "Many observed pairs unreachable or far apart, but not in the simulations, points to missing structure such as groups." },
+  { context = "A small p-value for one statistic out of many", high = "A specific discrepancy worth looking at; with many statistics a few small p-values are expected even for a good model.", low = "A large p-value for one statistic only shows that statistic gave no sign of a gap." },
+]
+
+pitfalls = [
+  "Comparing statistics that the model fitted, which match by construction.",
+  "Reading a single small or large p-value as a verdict on the whole model.",
+  "Ignoring that p-values from many correlated statistics are not independent tests.",
+  "Using too few simulations, so ranges and p-values are unstable.",
+  "Judging by the average only; compare ranges and the shape of the distribution.",
+]
+
+checks = [
+  "Rerun with a different seed and more simulations; the flagged statistics should be stable.",
+  "Compare at least the degree, shared-partner and geodesic distributions, and for directed data the triad census.",
+  "Look at where a failing statistic fails (which degrees, which counts) before deciding what term to add.",
+  "Refit with the added term and check again; a fix that cures one statistic can break another.",
+]
+
+do_not_claim = [
+  "That a model with no small p-values is correct.",
+  "That a model that fails on one statistic is useless; it may only be missing one pattern.",
+  "That a good fit on this network says the model will fit other networks.",
+]
+
+report_template = "Goodness of fit was assessed on {statistics} using {nsim} networks simulated from the fitted model. The observed values fell {summary_inside} the simulated 95 percent ranges, with {n_flagged} of {n_total} statistics outside them ({flagged_list}). This is a check of fit on features not in the model, not a test that the model is correct."
+
+related = ["ergm", "mple-vs-mcmle", "gwesp", "triad-census"]
+sources = ["hunter2008goodness", "hunter2008ergm", "handcock2003assessing"]
+
+[knappnet]
+rust = "knappnet::ergm::simulate with a statistics model, then compare with compute_statistics"
+r = "ergm::gof(fit) or simulate(fit, monitor = ...)"
+python = "none (no mainstream Python ERGM package; simulation of the fitted model needs the Rust or R tab)"

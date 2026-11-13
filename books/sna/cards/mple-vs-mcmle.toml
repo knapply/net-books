@@ -1,0 +1,58 @@
+id = "mple-vs-mcmle"
+title = "Pseudo-likelihood (MPLE) versus Monte Carlo maximum likelihood (MCMLE) for ERGMs"
+kind = "model"
+chapter = "ergm"
+summary = "Two ways to estimate an ERGM: a fast logistic regression on change statistics (MPLE) and a simulation-based maximum likelihood (MCMLE); they agree when ties are modeled as independent and can disagree badly when they depend on each other."
+answers = "Which estimation method can I trust for this model, and how do I check an estimate I did get?"
+
+data_requirements = [
+  "The same data as the ERGM itself: one complete network with a clear boundary and node attributes known for every node.",
+  "For MCMLE, enough computing time to run a Markov chain; the fit may need seconds to hours depending on size and terms.",
+  "A fixed random seed and recorded simulation settings (burn-in, interval, draws per round) so the fit can be repeated.",
+]
+
+assumptions = [
+  "MPLE equals the maximum likelihood estimate, with valid standard errors, only when every term is dyad-independent (edges, same-attribute ties, attribute main effects).",
+  "For models with dependence terms (shared partners, stars, triangles, mutual), MPLE treats pairs as independent when they are not, so its standard errors can be too small and its coefficients biased.",
+  "MCMLE is only as good as the simulation: the chain must mix well enough that the simulated statistics are a fair sample of the model.",
+  "MCMLE standard errors describe statistical uncertainty given the model; they usually leave out the Monte Carlo error of the sampler.",
+]
+
+readings = [
+  { context = "MPLE and MCMLE agree to within their standard errors", high = "Dependence terms add little in this network, or the model is dyad-independent; either estimate can be reported, with the Monte Carlo fit preferred for dependent models.", low = "Not applicable: agreement is the reassuring case." },
+  { context = "MPLE coefficient and standard error much smaller than MCMLE's for a dependence term", high = "The pseudo-likelihood overstates how well the dependence term is known; report the Monte Carlo fit, and treat any significance claim from MPLE as unsupported.", low = "If MPLE standard errors are larger instead, check the chain for poor mixing before believing either." },
+  { context = "Statistics of networks simulated from the estimate versus the observed statistics", high = "Close agreement on every fitted statistic is what a maximum likelihood fit must show; gaps mean the fit has not converged or the model is degenerate.", low = "Large gaps, as for a pseudo-likelihood estimate of a closure model, mean the estimate does not reproduce the data it was fitted to." },
+  { context = "Estimates change with the random seed", high = "Large changes mean too little simulation (draws per round, interval or burn-in) or a near-degenerate model; refit with more simulation or change the specification.", low = "Changes small compared with the standard errors are expected and harmless." },
+]
+
+pitfalls = [
+  "Reporting MPLE standard errors for a model with closure or degree terms.",
+  "Believing that a converged MCMLE is a good model; convergence is about the simulation, not about fit.",
+  "Using too short an interval between draws, so the effective sample size is a small fraction of the draws.",
+  "Treating the small Monte Carlo wobble between seeds as the statistical standard error, or ignoring it.",
+  "Running a fit once with one seed and reporting digits that a second seed would change.",
+]
+
+checks = [
+  "Simulate from the fitted coefficients and compare the average of every fitted statistic with its observed value.",
+  "Refit with at least three seeds; the coefficients should agree to well within their standard errors.",
+  "Compute the effective sample size of each statistic along one chain at the estimate; very low values mean the interval is too short or the model is near-degenerate.",
+  "For dependent models, fit by MPLE as well and look at the gap; a large gap says how much dependence matters, and which estimate to trust is settled by simulation, not by the MPLE.",
+  "Run a goodness-of-fit check on statistics the model did not fit (see the ergm-goodness-of-fit card).",
+]
+
+do_not_claim = [
+  "That an MPLE standard error for a dependent model measures real uncertainty.",
+  "That agreement between two seeds shows the model fits the network.",
+  "That a failed MCMLE is a software fault; it often means the model is degenerate for these data.",
+]
+
+report_template = "The model was fitted by {method} with {draws} draws per round after a burn-in of {burnin} and an interval of {interval}, seed {seed}. {convergence_summary}. Across {n_seeds} seeds the coefficient of {term} varied by {seed_sd}, small relative to its standard error of {se}. {mple_comparison}"
+
+related = ["ergm", "gwesp", "ergm-goodness-of-fit"]
+sources = ["strauss1990pseudolikelihood", "wasserman1996logit", "geyer1992constrained", "hunter2006inference", "hunter2008ergm", "hummel2012improving"]
+
+[knappnet]
+rust = "knappnet::ergm::{fit_mple, fit_mcmle, simulate}"
+r = "ergm::ergm(net ~ ..., estimate = \"MPLE\") versus ergm::ergm(net ~ ..., control = control.ergm(seed = 1))"
+python = "none (no mainstream Python ERGM package; MPLE is a logistic regression on change statistics, which can be written by hand)"
