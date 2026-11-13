@@ -449,8 +449,8 @@ The model produces a degree distribution with a long right tail, and Barabási a
 
 ```r
 # Two networks of 2,000 people with about four ties each: ties at random, and growth with preferential attachment.
-random <- net_random_gnm(2000, 4000, seed = 1)[[1]]
-grown <- net_random_pref(2000, 2, seed = 1)[[1]]
+random <- net_random_gnm(2000, 4000, seed = 1)
+grown <- net_random_pref(2000, 2, seed = 1)
 describe_degrees <- \(g) {
   d <- sort(net_degree(g))
   tibble(
@@ -574,7 +574,7 @@ A useful consequence of the pairing story (before any throwing out): the expecte
 
 $$\frac{k_i k_j}{2m - 1},$$
 
-because each of $i$'s $k_i$ stubs is matched with one of $j$'s $k_j$ stubs with probability $k_j/(2m-1)$. In the karate club the two busiest members have 17 and 16 ties, and $m = 78$, so we'd expect $17 \times 16 / 155 = 1.75$ ties between them. They are tied once. Degree alone makes that tie *likely*, which is the point of this baseline: the tie between the two most connected members is exactly what a degree-preserving random network predicts.
+because each of $i$'s $k_i$ stubs is matched with one of $j$'s $k_j$ stubs with probability $k_j/(2m-1)$. In the karate club the two busiest members have 17 and 16 ties, and $m = 78$, so the pairing story expects $17 \times 16 / 155 = 1.75$ ties between them: they would very likely be tied. In the data they aren't tied at all, and they sit on opposite sides of the split (the `faction` column in the club's node file). That's a small piece of information a degree-only baseline hands you for free: two hubs that, by degree, ought to be neighbours aren't. It's one pair, so don't build much on it, but it shows how a baseline tells you where your network departs from it, and that departure is the finding.
 
 ### A worked comparison
 
@@ -868,7 +868,7 @@ Duncan Watts and Steven Strogatz answered with a small construction [@watts1998c
 
 Put $n$ people on a ring. Tie each person to the $k$ people nearest to them on the ring, $k/2$ on each side. That's the **ring lattice**. Then visit each tie and, with probability $p$, rewire it: keep one end where it is and move the other end to a person chosen at random (avoiding loops and repeats). With $p = 0$ nothing changes. With $p = 1$ every tie is rewired and the network is essentially random. The interesting action is in between.
 
-By hand: $n = 8$, $k = 4$, $p = 0$. Each person is tied to the two nearest on each side. Look at person 0: the neighbours are 1, 2, 6 and 7. Which of the six pairs among these four are tied? The pairs 1-2, 6-7 and 7-1 are (each pair sits within two places of each other on the ring); 1-6, 2-6 and 2-7 are not. So three of the six pairs are tied, and clustering is $3/6 = 0.5$ for every person. The general formula for a ring lattice is
+By hand: $n = 8$, $k = 4$, $p = 0$. Each person is tied to the two nearest on each side. Look at person 0: the neighbours are 1, 2, 6 and 7. Which of the six pairs among these four are tied? Three are: 1-2, 6-7 and 7-1 (each of these pairs sits within two places of each other on the ring). The other three, 1-6, 2-6 and 2-7, are not. So clustering is $3/6 = 0.5$ for every person. The general formula for a ring lattice is
 
 $$C(0) = \frac{3(k-2)}{4(k-1)},$$
 
@@ -884,11 +884,11 @@ Now the experiment itself. Take 1,000 people, $k = 10$, and sweep $p$ from 0.000
 
 ```r
 # The ring lattice by hand: 8 people on a ring, each tied to the 2 nearest on each side (k = 4), no rewiring.
-ring8 <- net_random_small_world(8, 4, 0, seed = 1)[[1]]
+ring8 <- net_random_small_world(8, 4, 0, seed = 1)
 tibble(clustering = net_avg_clustering(ring8), mean_distance = net_mean_distance(ring8))
 
 # 1,000 people, k = 10, rewiring probability p; 10 random networks for each p.
-ring <- net_random_small_world(1000, 10, 0, seed = 1)[[1]]
+ring <- net_random_small_world(1000, 10, 0, seed = 1)
 c0 <- net_avg_clustering(ring)
 l0 <- net_mean_distance(ring)
 tibble(c0, l0)
@@ -1107,7 +1107,7 @@ The quotients are 1.88 for the karate club, 1.12 for the Florentine marriages an
 ```r
 # The same recipe, a growing network: ring lattices with k = 10 and p = 0.05, three sizes.
 c(100, 400, 1600) |>
-  map(\(n) quotient(net_random_small_world(n, 10, 0.05, seed = 1)[[1]], reps = 20) |>
+  map(\(n) quotient(net_random_small_world(n, 10, 0.05, seed = 1), reps = 20) |>
     mutate(n, c_ratio = C / C_rand, l_ratio = L / L_rand, .before = 1)) |>
   list_rbind() |>
   select(n, c_ratio, l_ratio, Q)
@@ -1315,7 +1315,7 @@ For the random network the estimator is just as happy to give an answer: $\hat\a
 
 Broido and Clauset applied this kind of procedure to a large collection of real networks and found that strong evidence for scale-free structure was rare, with social networks at best weakly scale-free [@broido2019scalefree]. The lesson for us is not that heavy tails are rare, since many real networks are plainly heavy tailed, but that "scale-free" is a strong claim about the shape of the whole tail and needs to be supported as one.
 
-A defensible sentence: "The degree distribution is right skewed, with a maximum of 17 against a mean of 4.6; we don't claim a power-law form." An over-claiming sentence: "The karate club is a scale-free network." With 34 members and five of them in the tail, neither the data nor the fitting procedure could support it.
+A defensible sentence: "The degree distribution is right skewed, with a maximum of 17 against a mean of 4.6; we don't claim a power-law form." An over-claiming sentence: "The karate club is a scale-free network." With 34 members, only seven of whom have six or more ties, neither the data nor the fitting procedure could support it.
 
 ## Baselines, not explanations
 
