@@ -1,0 +1,56 @@
+id = "tidy-network-data"
+title = "Tidy network data and join checks"
+kind = "procedure"
+chapter = "networks-as-data"
+summary = "Keep a node table and a tie table, check that ids line up and counts match what you know, and treat matrices and lists as views."
+answers = "Is this network held in a form where ids, ties and attributes can be checked, shared and rebuilt by someone else?"
+
+data_requirements = [
+  "A node table with one row per node and a unique id column, including nodes that have no ties.",
+  "A tie table with one row per tie: source, target, and any columns about the tie (weight, relation, time).",
+  "A written statement of whether ties are directed, and the meaning of any value.",
+]
+
+assumptions = [
+  "Ids are unique and stable, and the same id means the same person in every file.",
+  "Every id in the tie table appears in the node table, and the other way round only for nodes that truly have no ties.",
+  "Empty cells mean the tie is absent, not that the answer is missing, unless there is a column that says so.",
+]
+
+readings = [
+  { context = "Survey with nomination slots", high = "A long table with one row per nomination is the data; the slot (first, second) is not a variable.", low = "A wide table with names in slots treats empty slots as data and makes counts misleading." },
+  { context = "Several relations among the same people", high = "One tie table with a relation column holds them all and can be filtered.", low = "Several files with the same ids invite mismatched rows." },
+  { context = "Two-mode data", high = "One row per attendance or membership, with a column for each mode.", low = "A rectangular incidence matrix is a view, and loses columns about the attendance (date, role)." },
+  { context = "Log from a platform or sensor", high = "One row per event, kept long, with a time stamp, so any aggregation can be redone.", low = "A pre-aggregated matrix cannot be re-cut by time or by event type." },
+]
+
+pitfalls = [
+  "Phantom nodes from spelling, case or whitespace: a roster plus a set difference finds them.",
+  "Using an id as a position without subtracting one, or reading codes such as 007 as numbers.",
+  "Dropping isolates because the tie table cannot contain them.",
+  "Joining an attribute table with duplicated or missing ids and not checking the row count.",
+  "Reading a matrix with rows and columns swapped, which reverses every direction.",
+]
+
+checks = [
+  "Compare the number of distinct ids in the ties with the roster, and list the difference both ways.",
+  "Check the join: rows in the node table equal the number of nodes, ids are unique, nobody in a tie is missing a row.",
+  "Check row sums, column sums and the grand total of a matrix against the number of ties in the file.",
+  "Round-trip the network through the formats you will share (edge list, matrix, adjacency list) and compare ties.",
+  "Record how ties were counted: parallel ties, loops, and direction.",
+]
+
+do_not_claim = [
+  "That a network that loads without an error is correct.",
+  "That the matrix, the list and the tie table can be used interchangeably when the ties carry values, direction or time that one of them drops.",
+]
+
+report_template = "The network has {n} nodes (roster of {roster}) and {m} ties, read from {source}. Ties are {directed_or_not}; parallel ties were {handled} and loops were {loops}. {unmatched} ids were not on the roster and were {resolved}."
+
+related = ["tie-definition", "network-data-ethics", "boundary-specification"]
+sources = ["wickham2023r", "wasserman1994social", "butts2008network"]
+
+[knappnet]
+rust = "Graph::from_edges(n, &from, &to, weights, directed) after mapping ids to positions; io::read_str for files"
+r = "net_frame(edges, nodes, directed = TRUE); net_join(g, attributes); net_read() and net_write() for files"
+python = "nx.from_pandas_edgelist(edges, source, target, create_using=nx.DiGraph) and nx.set_node_attributes"

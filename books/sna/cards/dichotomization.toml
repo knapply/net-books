@@ -1,0 +1,55 @@
+id = "dichotomization"
+title = "Turning valued ties into present or absent"
+kind = "procedure"
+chapter = "networks-as-data"
+summary = "Pick a threshold on a tie's value to make a binary network, report it, and check how much the result depends on it."
+answers = "If a measure needs present-or-absent ties, which value of the threshold is defensible, and how sensitive are the results to it?"
+
+data_requirements = [
+  "A valued network where the value has a known meaning (strength, count or distance).",
+  "A reason, from the setting, why ties below some value should count as absent.",
+]
+
+assumptions = [
+  "A tie below the threshold is not a tie. For counts of events, a single event may be noise or may be real.",
+  "Values are comparable across pairs: two messages between close colleagues and two messages between strangers are equal here.",
+  "The direction of the value is known. Strengths are kept when above the threshold; distances are kept when below.",
+]
+
+readings = [
+  { context = "Co-occurrence or contact counts (karate club settings)", high = "A tie kept at a high threshold marks a pair that interacted in many settings; the kept network is the strong-ties skeleton.", low = "A low threshold keeps nearly everything, including pairs seen together once." },
+  { context = "Communication volume in an organization", high = "A high threshold keeps regular channels and drops one-off messages.", low = "A threshold of one counts every contact, including mass emails." },
+  { context = "Transport or distance networks", high = "For distances, a high cutoff keeps long links too.", low = "A short cutoff keeps only near neighbors, a proximity network." },
+  { context = "Similarity scores (for example profile similarity)", high = "A high threshold keeps only very similar pairs.", low = "A low threshold produces a dense network in which nearly everyone is tied." },
+]
+
+pitfalls = [
+  "Choosing the threshold that makes the network look the way you expected.",
+  "Not reporting the threshold, or reporting it without the number of ties and pieces it leaves.",
+  "Treating the threshold as neutral: in the karate club ties valued 1 to 7, a threshold of 3 splits 34 members into 7 pieces, a threshold of 2 does not.",
+  "Using a threshold on a distance as if it were a strength.",
+  "Throwing away the values when a method that uses them exists.",
+]
+
+checks = [
+  "Recompute the result at the neighboring thresholds. A conclusion that only holds at one threshold is a feature of that threshold.",
+  "Track the number of ties, the density and the number of components against the threshold (karate: 78, 72, 48, 21, 9, 2 ties and 1, 1, 7, 19, 25, 32 pieces for thresholds 1 to 6).",
+  "Look for a natural gap in the distribution of values before choosing a cut.",
+  "Compare with a method that keeps the values (weighted measures).",
+]
+
+do_not_claim = [
+  "That ties below the threshold do not exist.",
+  "That the threshold is a property of the network rather than a choice of the analyst.",
+  "That a network built at one threshold is comparable with one built at another.",
+]
+
+report_template = "Ties were kept when {value_meaning} was at least {threshold}, leaving {ties} of {all_ties} ties and {pieces} connected pieces (largest {largest} of {n}). Results at thresholds {neighbors} are {similar_or_not}."
+
+related = ["tie-definition", "symmetrization-rules", "components", "weighted-degree"]
+sources = ["zachary1977information", "wasserman1994social", "newman2018networks"]
+
+[knappnet]
+rust = "Filter the edge rows by the threshold, then Graph::from_edges and find_components"
+r = "net_dichotomize(g, threshold, op = \">=\"), then net_density() and net_components()"
+python = "H = nx.Graph((a, b) for a, b, w in G.edges(data=\"weight\") if w >= k), after adding all nodes"
