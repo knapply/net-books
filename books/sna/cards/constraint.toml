@@ -1,0 +1,63 @@
+id = "constraint"
+title = "Burt's constraint"
+kind = "measure"
+chapter = "ego-networks"
+summary = "How much of a person's attention is tied up in contacts who are themselves tied to each other, directly or through other contacts."
+answers = "Are this person's contacts a closed circle that all hear the same things, or do they live in different parts of the network, leaving room to broker between them?"
+
+data_requirements = [
+  "Ties must stand for something that can carry news, help or influence between people. If they only record similarity or shared membership, redundancy between contacts has no meaning.",
+  "The ties among a person's contacts must be recorded, from a whole network or from an ego survey that asked which contacts know each other. For exact values you also need how many contacts each contact has.",
+  "Every person scored needs at least one contact. With none the value is undefined and the functions return NaN.",
+  "In directed data, decide how arcs become ties. The functions count a mutual pair as a tie of strength 2 and a one-way arc as 1, so a person's contacts are everyone they name and everyone who names them.",
+]
+
+assumptions = [
+  "A person's attention is divided among contacts in proportion to tie strength, equally when ties are unweighted.",
+  "Contacts who know each other are redundant sources for the person. A tie among contacts that was not recorded is read as 'they do not know each other'.",
+  "The boundary is right. Contacts outside the data are not seen, so they can neither add to nor reduce the redundancy.",
+  "Tie weights, if used, are strengths (larger means closer). A tool that reads weights as distances gives a different number.",
+]
+
+readings = [
+  { context = "Office, who asks whom for help", high = "Few contacts who all know each other: a close team with trust and quick agreement, and little news from outside. Or someone who depends on one gatekeeper.", low = "Contacts spread across teams, so the person is placed to carry news between them. Or a job that simply requires talking to everyone." },
+  { context = "Online platform, who replies to whom", high = "An account inside a closed community, where the same things are heard repeatedly.", low = "Repliers from different communities. Also true of a public account whose repliers will never meet; the value shows structure, not relationship." },
+  { context = "Neighborhood or community, who helps whom", high = "A household inside one close-knit set of families: strong mutual help and few links beyond it.", low = "Someone who knows people on several streets. Also possible for a newcomer who belongs to no circle yet." },
+  { context = "Marriage or alliance network among families", high = "A family whose partners are linked to one another, so the family offers little that they do not already have.", low = "A family whose partners are not linked to each other. In the Florentine marriage network the Medici have the lowest constraint, 0.210, but a family with six partners usually has a low value." },
+]
+
+pitfalls = [
+  "Reading low constraint as power, influence or good performance. It describes an opportunity in the pattern of ties, not what the person did with it.",
+  "Ignoring that constraint follows the number of contacts. In the Florentine marriage network about a third of degree-preserving random networks give the family with six partners a constraint as low as the Medici's 0.210.",
+  "Comparing constraint computed from ego networks alone with whole-network values. From ego networks alone it is at least as high for unweighted, undirected ties: the mean was 0.499 against 0.292 for the 21 managers' friendships.",
+  "Dropping reciprocity without saying so. In the managers' friendship relation four of 21 have no mutual friend, so a mutual-only constraint is undefined for them and the least constrained managers change.",
+  "Treating a person with one contact as a broker. Their constraint is 1, the value for being entirely tied to one person.",
+  "Taking 1 as an upper bound. Constraint from an ego network alone reached 1.12 for one manager.",
+  "Mixing conventions between programs. They differ on self-loops, on people without contacts and on how arcs are combined; compare them on a small network whose values you can check by hand first.",
+]
+
+checks = [
+  "Recompute after removing each of the person's contacts in turn. If the person stops being the least constrained, the ranking depends on one contact (in the Florentine data, Guadagni overtook the Medici when any of three of their six partners was removed).",
+  "Recompute after removing each tie in turn, or a random 5 to 10 percent of ties several times. A stable ranking is defensible, an unstable one is not.",
+  "Compare with random networks that keep every node's number of contacts. If the person's value is ordinary there, it follows from how many contacts the person has.",
+  "Compare with the number of contacts and with effective size. Constraint and effective size can disagree about who is best placed.",
+  "If directed, run the arcs-counted-both-ways, either-names-the-other and mutual-only versions and report which one you used.",
+  "If you have strengths, run with and without them. In the karate club the rank correlation was 0.970 but the level of constraint rose for the most central members.",
+]
+
+do_not_claim = [
+  "That the person has power or influence, or will perform better, without evidence about outcomes.",
+  "That brokers do better in your setting. Studies disagree: some found advantages of spanning structural holes and others found none or the opposite.",
+  "That two people differ when the gap is within what removing one contact changes.",
+  "That a value computed from a sample of ego networks equals the whole-network value.",
+]
+
+report_template = "In this {tie_meaning} network of {n} {node_type}, {node} has constraint {value} (effective size {effective_size} from {contacts} contacts; rank {rank} of {n}, 1 meaning least constrained). Constraint describes how far a person's contacts are tied to each other. It does not show influence or performance. The ranking is {stable_or_not} when {perturbation}, and the value is {higher_or_lower} than expected in networks with the same degrees ({null_summary}). Ties were {direction_rule} and {weights_rule}."
+
+related = ["effective-size", "degree", "density", "betweenness", "brokerage-roles"]
+sources = ["burt1992structural", "burt2004structural", "borgatti1997structural", "everett2005ego", "ahuja2000collaboration", "coleman1988social", "uzzi2005collaboration"]
+
+[knappnet]
+rust = "compute_constraint(&graph, StructuralHoleOptions::default())"
+r = "net_constraint(g)"
+python = "networkx.constraint(G)"

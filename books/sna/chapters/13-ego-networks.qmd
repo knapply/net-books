@@ -2,7 +2,7 @@
 
 ::: {.callout-note appearance="simple"}
 ## Prerequisites
-@sec-networks-as-data and @sec-centrality. We use the ten-person friendship network again, and the idea of betweenness from @sec-centrality comes back in a new form. The weak-ties argument from @sec-foundations is the backdrop for the whole chapter.
+@sec-networks-as-data and @sec-centrality. We use the ten-person friendship network again, and the idea of betweenness from @sec-centrality comes back in a new form. The weak-ties argument from @sec-foundations is the backdrop for the whole chapter. Later sections use three classic data sets (Krackhardt's managers, the Florentine families and the karate club) and the idea of a null network from @sec-tests-and-null-models. The organization example is worked in full in @sec-case-krackhardt; here the managers serve only to check ego measures.
 :::
 
 ## The view from one person
@@ -16,7 +16,7 @@ Every chapter so far has looked at the network from above, like a map. This one 
 
 Those questions are worth asking because two people with the same number of friends can live in very different worlds. One person's friends are all friends with each other, the way a family at a dinner table is. Another person's friends have never met, and the second person is the only thing connecting them. The first person hears the same news from everyone. The second person hears different news from different worlds, and decides what to pass on.
 
-That difference is the subject of this chapter. We'll start with the simplest way to look at a person's surroundings, the **ego network**. Then we'll meet Ronald Burt's idea of **structural holes**, and two ways of measuring them. Then we'll add the groups people belong to, and ask what kind of broker a person is. We'll finish with a simple index for how much a person's ties stay inside their own group.
+That difference is the subject of this chapter. We'll start with the simplest way to look at a person's surroundings, the **ego network**. Then we'll meet Ronald Burt's idea of **structural holes**, and two ways of measuring them. Then we'll add the groups people belong to, and ask what kind of broker a person is. We'll finish with a simple index for how much a person's ties stay inside their own group. Along the way we check the formulas by hand, ask what survives when you see only a sample of egos, and try to break a classic result with stress checks.
 
 ## Ego networks
 
@@ -43,6 +43,7 @@ Ego networks are also how most surveys see networks. You can't usually interview
 ```r
 library(knappnet)
 library(dplyr)
+library(purrr)
 
 # The ten-person friendship network. People are numbered from zero in Rust; here the
 # ties are written as those numbers and turned into names.
@@ -190,6 +191,144 @@ Jo           1     0      NaN       1       0.000
 :::
 
 Read it against the picture. Dev has six contacts and eight ties among them, density 0.533. Hana has three contacts and one tie, density 0.333, and two pieces: Fay and Gus together, and Ivo alone. Cleo and Eli have density 1.000, because their three friends all know each other, which is the family-dinner-table pattern. And Jo has a single contact, so there are no pairs of alters and the density is undefined (NaN, for "not a number").
+
+### How far out does an ego network reach?
+
+"The ego network" hides a choice, and books don't all make it the same way, so here are the three versions this chapter uses. Take Hana from @fig-ego-networks.
+
+- The **1-step** network is the star: Hana, her three alters, and the three ties between her and each of them. Nothing else.
+- The **1.5-step** network adds the ties *among* the alters. For Hana that is one more tie, between Fay and Gus. This is the version drawn in @fig-ego-networks and summarized in the table above. It is also what a survey gets when it asks the respondent "which of these people know each other?".
+- The **2-step** network adds the alters' own contacts: everyone within two steps of ego, and every tie among all of them.
+
+Some authors give these labels differently (a few call the middle one "1-step"), so check what a paper means. For Hana the 2-step network has nine alters and 15 ties among them. Add Hana, and that is everyone in the network. In a ten-person network two steps reach nearly everybody, which is a warning about the 2-step view: in a small or dense network it stops being "your neighborhood" and turns into the whole network.
+
+Whether ego counts as one of the people changes the density too. With $n$ alters and $t$ ties among them, the density *without* ego is
+
+$$
+\text{density} = \frac{t}{\binom{n}{2}} = \frac{2t}{n(n-1)},
+$$
+
+the share of possible pairs of alters that are tied. It is undefined when $n < 2$, because there are no pairs. If you count ego as a member, every alter is tied to ego, so there are $t + n$ ties among $n + 1$ people:
+
+$$
+\text{density with ego} = \frac{t + n}{\binom{n+1}{2}}.
+$$
+
+This is never smaller than the first, because it adds $n$ ties to the count and $n$ pairs to the possible pairs, and every one of those pairs is tied. For Hana, $n = 3$ and $t = 1$, so the density is $1/3 = 0.333$ without ego and $4/6 = 0.667$ with ego. The "with ego" version says mostly how small the network is, so use it only when you know which one a source means.
+
+**Ego betweenness** has a short formula too. Two alters $j$ and $k$ who are not tied to each other are two steps apart inside the ego network, and the routes of that length run through ego and through any other alter who knows both. If $m_{jk}$ is the number of such alters, ego sits on a share $1/(1 + m_{jk})$ of the shortest routes between $j$ and $k$, and adding over the pairs gives
+
+$$
+B_i = \sum_{\{j,k\}:\ a_{jk} = 0} \frac{1}{1 + m_{jk}},
+$$
+
+where $a_{jk} = 1$ when $j$ and $k$ are tied [@everett2005ego]. Hana's alters Fay and Gus are tied, so that pair adds nothing. Ivo is not tied to either of them and nobody else links him to them, so each of those two pairs adds 1, and $B = 2$, which is what the table says.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# The 1.5-step network is what net_ego_summary() measures by default; order = 2 gives the 2-step network.
+one <- net_ego_summary(friends, betweenness = FALSE)
+two <- net_ego_summary(friends, order = 2, betweenness = FALSE)
+tibble(
+  person = people,
+  alters = one$size, ties = one$ties, density = one$density,
+  density_with_ego = (one$ties + one$size) / choose(one$size + 1, 2),
+  alters_2step = two$size, ties_2step = two$ties, density_2step = two$density
+) |>
+  mutate(across(where(is.numeric), \(x) round(x, 3)))
+```
+
+::: {.code-output}
+```text
+```
+:::
+
+## Python
+
+```python
+# The 1.5-step network is the ego graph of the first block; radius 2 gives the 2-step network.
+def width(i, radius):
+    ego = nx.ego_graph(friends, i, radius=radius)
+    alters = friends.subgraph(v for v in ego if v != i)
+    s, t = alters.number_of_nodes(), alters.number_of_edges()
+    return s, t, (t / (s * (s - 1) / 2) if s > 1 else float("nan"))
+
+shown = lambda x: "NaN" if x != x else f"{x:.3f}"
+print(f"{'':<5} {'alters':>6} {'ties':>5} {'density':>8} {'with ego':>9} | {'alters':>6} {'ties':>5} {'density':>8}")
+for i, name in enumerate(names):
+    s1, t1, d1 = width(i, 1)
+    s2, t2, d2 = width(i, 2)
+    with_ego = (t1 + s1) / ((s1 + 1) * s1 / 2)
+    print(f"{name:<5} {s1:>6} {t1:>5} {shown(d1):>8} {with_ego:>9.3f} | {s2:>6} {t2:>5} {shown(d2):>8}")
+```
+
+::: {.code-output}
+```text
+      alters  ties  density  with ego | alters  ties  density
+Ana        4     4    0.667     0.800 |      7    12    0.571
+Ben        4     4    0.667     0.800 |      7    12    0.571
+Cleo       3     3    1.000     1.000 |      7    13    0.619
+Dev        6     8    0.533     0.667 |      7    10    0.476
+Eli        3     3    1.000     1.000 |      7    13    0.619
+Fay        5     5    0.500     0.667 |      8    12    0.429
+Gus        5     5    0.500     0.667 |      8    12    0.429
+Hana       3     1    0.333     0.667 |      9    15    0.417
+Ivo        2     0    0.000     0.667 |      4     3    0.500
+Jo         1     0      NaN     1.000 |      2     1    1.000
+```
+:::
+
+## Rust
+
+```rust
+// The 1.5-step network is what the summary measures by default; order 2 gives the 2-step network.
+let one = compute_ego_summary(&friends, EgoOptions { betweenness: false, ..EgoOptions::default() })?;
+let two = compute_ego_summary(&friends, EgoOptions { order: 2, betweenness: false, ..EgoOptions::default() })?;
+println!("{:<5} {:>6} {:>5} {:>8} {:>9} | {:>6} {:>5} {:>8}", "", "alters", "ties", "density", "with ego", "alters", "ties", "density");
+for (i, name) in names.iter().enumerate() {
+    let with_ego = (one.ties[i] + one.size[i]) / ((one.size[i] + 1.0) * one.size[i] / 2.0);
+    println!("{:<5} {:>6} {:>5} {:>8.3} {:>9.3} | {:>6} {:>5} {:>8.3}",
+             name, one.size[i], one.ties[i], one.density[i], with_ego, two.size[i], two.ties[i], two.density[i]);
+}
+```
+
+::: {.code-output}
+```text
+      alters  ties  density  with ego | alters  ties  density
+Ana        4     4    0.667     0.800 |      7    12    0.571
+Ben        4     4    0.667     0.800 |      7    12    0.571
+Cleo       3     3    1.000     1.000 |      7    13    0.619
+Dev        6     8    0.533     0.667 |      7    10    0.476
+Eli        3     3    1.000     1.000 |      7    13    0.619
+Fay        5     5    0.500     0.667 |      8    12    0.429
+Gus        5     5    0.500     0.667 |      8    12    0.429
+Hana       3     1    0.333     0.667 |      9    15    0.417
+Ivo        2     0    0.000     0.667 |      4     3    0.500
+Jo         1     0      NaN     1.000 |      2     1    1.000
+```
+:::
+
+:::
+
+The left half of the table is the 1.5-step network, the right half the 2-step network. Counting ego raises every density: Dev goes from 0.533 to 0.667, and Jo, whose density was undefined, gets 1.000, because a person and one friend are a complete pair. Widening the view lowers the density of most people, and the changes are not even: Ana's falls from 0.667 to 0.571, while Ivo's rises from 0.000 to 0.500, because the extra people in his two-step circle, Fay and Gus, are tied to each other and to Hana.
+
+## Where ego-network data come from
+
+There are two ways to get an ego network. You can cut it out of a whole network you already have, as we have been doing. Or you can collect it from the egos themselves, which is how most surveys do it, because nobody can interview a whole city. The second way has a few moving parts, and each one shapes what you can measure. @sec-collecting-data covers data collection in general; here is what matters for ego measures.
+
+**The name generator.** A *name generator* is the question that asks a respondent to list their alters: "Who do you discuss important matters with?", "Who would you ask to look after your home?", "Who did you talk to in the last week?". The wording defines the network. Different generators give different ego networks for the same person, and a generator about advice, one about support and one about contact are three different relations, not three ways to see one [@marsden1990network; @perry2018egocentric]. Burt discusses how such items can be put into a general survey [@burt1984network].
+
+**The name interpreters.** After the names come the *interpreters*: questions about each alter, such as how the two know each other, how close they are, and the alter's age, sex or group. These attributes are what let you compute the composition of an ego's contacts, as in the section on Blau's index below, and they are what lets you say whether the alters are like ego.
+
+**Ties among alters.** To get density, effective size or constraint, someone has to say which alters know each other. Usually that is ego, and asking costs more than it looks like it should: with $k$ alters there are $k(k-1)/2$ pairs to ask about, which is 10 pairs for 5 alters, 45 for 10, 105 for 15 and 190 for 20. Respondents tire, and they can be unsure about ties they did not see. Those are reasons studies keep $k$ small and why the ties among alters are the least reliable part of ego data.
+
+**Boundary and size limits.** The boundary question of @sec-collecting-data comes back for every ego: which kind of contact counts, in which time window, and how close it must be. A *size limit* makes it sharper. If the generator accepts at most $k$ names, nobody can have more than $k$ alters, so size, and effective size with it, can't go above $k$ however many contacts a person really has. A cap also changes who is dropped. If respondents name their closest contacts first, and close contacts often know each other [@granovetter1973strength], the alters you keep may be more tightly knit than the ones you lose. That is a plausible direction, not a measured size, so check your own data before you lean on it.
+
+**What an ego sample cannot see.** It sees the alters and, if you asked, the ties among them. It doesn't see the alters' other contacts, so it can't give whole-network betweenness or closeness, and it doesn't see how many contacts each alter has unless you ask. That matters for constraint, as the section on sampling shows. It also means that the same person can look different depending on the width of the network (the previous section) and on the generator.
+
 ## Structural holes
 
 Ronald Burt took the picture of Hana and made an argument out of it [@burt1992structural]. A **structural hole** is a gap between two groups of people who aren't otherwise in touch. Someone whose contacts sit on both sides of a hole can see what each side knows, bring ideas across, and decide who meets whom. Burt's claim is that this is a source of advantage, and that the advantage comes from the *gap*, not from the number of friends. He later reported evidence from managers in one large company that people whose contacts spanned holes were more likely to have ideas their colleagues valued [@burt2004structural]. As with any single study, the finding is a reason to look, not a law.
@@ -386,11 +525,205 @@ Jo    1.000
 :::
 
 Hana has the lowest constraint in the network, 0.431, lower than Dev's 0.470 even though Dev has twice as many friends. That is the point of the measure. Dev's friends form a tightly woven circle, so most of what Dev hears comes through people who also hear it from each other. Hana's three contacts live in different parts of the network, so none of them can speak for her whole world. Jo, with a single contact, has the maximum possible constraint of 1.000.
+
+To see where Hana's 0.431 comes from, do it by hand. She has three contacts, so each gets a share $p = 1/3$. Nobody else in her circle is tied to Ivo, so Ivo's term is just $(1/3)^2 = 0.111$. Fay is different. Fay is tied to Gus, who is also Hana's contact, and Gus gives Fay one fifth of his attention (he has five contacts), so the indirect part is $\tfrac13 \cdot \tfrac15$ and Fay's term is $(\tfrac13 + \tfrac1{15})^2 = 0.16$. Gus's term is the same, because Fay also has five contacts. The total is $0.111 + 0.16 + 0.16 = 0.431$.
+
 @fig-effective-size-bars puts both measures on the same people. They don't agree on who's on top, and that's the lesson. Effective size rewards having many non-redundant contacts, and Dev wins. Constraint rewards having contacts spread across separate parts of the network, and Hana wins. Neither is "the" measure of brokerage. They answer different questions.
 
 ![Effective size and constraint for the friendship network. Dev has the largest effective size, but Hana has the lowest constraint: she is the only person whose contacts live in different parts of the network.](../figures/effective-size-bars.svg){#fig-effective-size-bars fig-alt="Two horizontal bar charts with the same ten names. Effective size: Dev 3.33, Fay and Gus 3.00, Hana 2.33, Ana and Ben 2.00, Ivo 2.00, Cleo, Eli and Jo 1.00. Constraint: Hana is lowest at 0.43, then Fay and Gus at 0.45, Dev 0.47, Ivo 0.50, Ana and Ben 0.54, Cleo and Eli 0.66, Jo 1.00. Hana's bars are highlighted in orange."}
 
-Burt also defines a third measure, **hierarchy**, for how concentrated a person's constraint is in a single contact. The engine computes it too, but we won't spend time on it here.
+
+### Hierarchy: is the constraint all in one contact?
+
+Constraint adds up how boxed in a person is. **Hierarchy** asks how that constraint is *spread* over the contacts. Write $c_{ij}$ for the squared term that contact $j$ contributes to $i$'s constraint, so $C_i = \sum_j c_{ij}$. With $N$ contacts, an even split would give each one $C_i / N$. Let $r_j = c_{ij} / (C_i / N)$ be each contact's share relative to that even split. Burt's hierarchy is
+
+$$
+H_i = \frac{\sum_j r_j \ln r_j}{N \ln N}.
+$$
+
+It is 0 when every contact constrains $i$ equally and approaches 1 when the constraint sits in a single contact [@burt1992structural]. (It is the Coleman-Theil disorder index of the $c_{ij}$.) With a single contact the formula is 0/0, so hierarchy is undefined, and knappnet returns NaN there. Some programs return a number instead, so check before you compare tools.
+
+To watch it move, take a four-person network I'll call the kite. E is tied to A, B and C, and A is also tied to B and C. E gives each contact a third of their attention. A has three contacts and B and C have two each, so the paths through them are worth different amounts:
+
+- through A: $c_{EA} = \left(\tfrac13 + \tfrac13\cdot\tfrac12 + \tfrac13\cdot\tfrac12\right)^2 = (2/3)^2 = 0.444$, because B and C each give half their attention to A;
+- through B: $c_{EB} = \left(\tfrac13 + \tfrac13\cdot\tfrac13\right)^2 = (4/9)^2 = 0.198$, because A gives B a third of A's attention, and the same for C.
+
+E's constraint is $0.444 + 0.198 + 0.198 = 0.840$, and A carries more than half of it, so hierarchy is above zero. Contrast Cleo or Eli in the friendship network, whose three friends are all tied to each other and constrain them about equally.
+
+### Checking the formulas by hand
+
+Every number above came from a function. Here is the same work done from the definitions, using only a table of 0s and 1s. The matrix $P$ holds the $p_{ij}$ (each row divided by its sum). Then $c_{ij}$ is $(P + P^2)$ squared cell by cell, kept for the tied pairs, and effective size is $n - 2t/n$ with $t$ read off the table. The block checks them against the library on the friendship network and then runs the kite.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+adj <- as.matrix(friends)
+rs <- \(M) unname(rowSums(M))
+
+by_hand <- \(A) {
+  n <- rs(A)
+  P <- A / n                                       # p_ij: the share of i's attention that goes to j
+  C <- (P + P %*% P)^2 * (A > 0)                   # c_ij, for the contacts j of i
+  r <- C / (rs(C) / n)                             # each contact's share relative to an even split
+  list(C = C, table = tibble(
+    constraint = rs(C),
+    effective_size = n - rs((A %*% A) * A) / n,    # n - 2t/n: the row sums count each tie among contacts twice
+    hierarchy = rs(ifelse(C > 0, r * log(r), 0)) / (n * log(n))
+  ))
+}
+
+hand <- by_hand(adj)
+engine <- list(constraint = net_constraint(friends), effective_size = net_effective_size(friends),
+               hierarchy = net_hierarchy(friends))
+map_lgl(names(engine), \(k) isTRUE(all.equal(hand$table[[k]], engine[[k]], check.attributes = FALSE))) |>
+  set_names(names(engine))
+round(max(hand$table$hierarchy, na.rm = TRUE), 3)
+
+# The kite: E is tied to A, B and C, and A is also tied to B and C.
+kite_ids <- c("E", "A", "B", "C")
+kite_adj <- matrix(c(0, 1, 1, 1,  1, 0, 1, 1,  1, 1, 0, 0,  1, 1, 0, 0), 4, 4, byrow = TRUE,
+                   dimnames = list(kite_ids, kite_ids))
+kite <- as_net_frame(kite_adj, directed = FALSE, quiet = TRUE)
+kite_hand <- by_hand(kite_adj)
+first <- \(x) unname(x[1])
+list(
+  from_each_contact = round(kite_hand$C["E", ], 3),
+  by_hand = round(unlist(kite_hand$table[1, ]), 3),
+  engine = round(c(constraint = first(net_constraint(kite)), effective_size = first(net_effective_size(kite)),
+                   hierarchy = first(net_hierarchy(kite))), 3)
+)
+```
+
+::: {.code-output}
+```text
+```
+:::
+
+## Python
+
+```python
+import numpy as np
+
+def by_hand(G):
+    """Constraint, effective size and hierarchy from their definitions, in list(G) order."""
+    A = nx.to_numpy_array(G, nodelist=list(G))      # A[i, j] is 1 when i and j are tied
+    n = A.sum(axis=1)                               # contacts of each person
+    P = A / n[:, None]                              # p_ij: the share of i's attention that goes to j
+    C = (P + P @ P) ** 2 * (A > 0)                  # c_ij, for the contacts j of i
+    t = ((A @ A) * A).sum(axis=1) / 2               # ties among each person's contacts
+    with np.errstate(all="ignore"):
+        r = C / (C.sum(axis=1) / n)[:, None]        # each contact's share relative to an even split
+        hierarchy = np.where(C > 0, r * np.log(r), 0).sum(axis=1) / (n * np.log(n))
+    return C, C.sum(axis=1), n - 2 * t / n, hierarchy
+
+C, cons, eff, hier = by_hand(friends)
+agree = lambda a, b: bool(np.allclose(a, b))
+print("hand and NetworkX agree: constraint", agree(cons, list(nx.constraint(friends).values())),
+      ", effective size", agree(eff, list(nx.effective_size(friends).values())))
+print(f"largest hierarchy among the ten people: {np.nanmax(hier):.3f}")
+
+# The kite: E is tied to A, B and C, and A is also tied to B and C.
+kite = nx.Graph()
+kite.add_nodes_from(["E", "A", "B", "C"])
+kite.add_edges_from([("E", "A"), ("E", "B"), ("E", "C"), ("A", "B"), ("A", "C")])
+C, cons, eff, hier = by_hand(kite)
+print("E's constraint from each contact:", {v: round(float(C[0, j]), 3) for j, v in enumerate(kite) if C[0, j] > 0})
+print(f"E by hand: constraint {cons[0]:.3f}, effective size {eff[0]:.3f}, hierarchy {hier[0]:.3f}")
+print(f"E in NetworkX: constraint {nx.constraint(kite)['E']:.3f}, effective size {nx.effective_size(kite)['E']:.3f}")
+```
+
+::: {.code-output}
+```text
+hand and NetworkX agree: constraint True , effective size True
+largest hierarchy among the ten people: 0.034
+E's constraint from each contact: {'A': 0.444, 'B': 0.198, 'C': 0.198}
+E by hand: constraint 0.840, effective size 1.667, hierarchy 0.074
+E in NetworkX: constraint 0.840, effective size 1.667
+```
+:::
+
+## Rust
+
+```rust
+use knappnet::metrics::brokerage::compute_hierarchy;
+
+// Constraint, effective size and hierarchy from their definitions, one row per person, from a table of 0s and 1s.
+fn by_hand(a: &Vec<Vec<f64>>) -> Vec<[f64; 3]> {
+    let n = a.len();
+    let degree: Vec<f64> = a.iter().map(|row| row.iter().sum()).collect();
+    // p[i][j]: the share of i's attention that goes to j
+    let p: Vec<Vec<f64>> = (0..n).map(|i| (0..n).map(|j| a[i][j] / degree[i]).collect()).collect();
+    (0..n).map(|i| {
+        let contacts: Vec<usize> = (0..n).filter(|&j| a[i][j] > 0.0).collect();
+        // c_ij = (p_ij + sum_q p_iq p_qj)^2 for each contact j of i
+        let c: Vec<f64> = contacts.iter()
+            .map(|&j| (p[i][j] + (0..n).map(|q| p[i][q] * p[q][j]).sum::<f64>()).powi(2)).collect();
+        let total: f64 = c.iter().sum();
+        let m = contacts.len() as f64;
+        // ties among the contacts, each counted once
+        let among = contacts.iter().flat_map(|&j| contacts.iter().map(move |&k| (j, k)))
+            .filter(|&(j, k)| j < k && a[j][k] > 0.0).count() as f64;
+        let hierarchy = c.iter().map(|&x| { let r = x / (total / m); r * r.ln() }).sum::<f64>() / (m * m.ln());
+        [total, m - 2.0 * among / m, hierarchy]
+    }).collect()
+}
+
+let mut adj = vec![vec![0.0; names.len()]; names.len()];
+for (&u, &v) in from.iter().zip(&to) {
+    adj[u as usize][v as usize] = 1.0;
+    adj[v as usize][u as usize] = 1.0;
+}
+let hand = by_hand(&adj);
+
+// Does it agree with the engine? Not-a-number must match not-a-number.
+let hierarchy = compute_hierarchy(&friends, StructuralHoleOptions::default())?;
+let agree = |k: usize, engine: &[f64]| hand.iter().zip(engine).all(|(h, e)| (h[k].is_nan() && e.is_nan()) || (h[k] - e).abs() < 1e-9);
+println!("hand and engine agree: constraint {}, effective size {}, hierarchy {}",
+         agree(0, &constraint[..]), agree(1, &size[..]), agree(2, &hierarchy[..]));
+println!("largest hierarchy among the ten people: {:.3}",
+         hand.iter().map(|h| h[2]).filter(|h| !h.is_nan()).fold(0.0, f64::max));
+
+// The kite: E is tied to A, B and C, and A is also tied to B and C.
+let kite = Graph::from_edges(4, &[0, 0, 0, 1, 1], &[1, 2, 3, 2, 3], None, false)?;
+let kite_adj = vec![vec![0.0, 1.0, 1.0, 1.0], vec![1.0, 0.0, 1.0, 1.0], vec![1.0, 1.0, 0.0, 0.0], vec![1.0, 1.0, 0.0, 0.0]];
+let by_kite = by_hand(&kite_adj);
+println!("E by hand: constraint {:.3}, effective size {:.3}, hierarchy {:.3}", by_kite[0][0], by_kite[0][1], by_kite[0][2]);
+println!("E in the engine: constraint {:.3}, effective size {:.3}, hierarchy {:.3}",
+         compute_constraint(&kite, StructuralHoleOptions::default())?[0],
+         compute_effective_size(&kite, StructuralHoleOptions::default())?[0],
+         compute_hierarchy(&kite, StructuralHoleOptions::default())?[0]);
+```
+
+::: {.code-output}
+```text
+hand and engine agree: constraint true, effective size true, hierarchy true
+largest hierarchy among the ten people: 0.034
+E by hand: constraint 0.840, effective size 1.667, hierarchy 0.074
+E in the engine: constraint 0.840, effective size 1.667, hierarchy 0.074
+```
+:::
+
+:::
+
+The hand calculation and the functions agree on every person. In the friendship network no hierarchy is above about 0.03, because every ego network is small and its constraint is spread fairly evenly. In the kite, E's hierarchy is 0.074 and its constraint 0.840, with A carrying the largest share. Hierarchy is the least used of Burt's measures, and with so few contacts a value of a few hundredths shouldn't be read as a finding.
+
+### Weak ties and structural holes: what is claimed, and what has been found
+
+It is easy to turn these two ideas into slogans, so here is what each one actually says.
+
+**Granovetter's argument** [@granovetter1973strength]. If Ana is strongly tied to Ben and to Cleo, then Ben and Cleo are likely to know each other, at least a little. Strong ties therefore pile up inside tight circles, and the ties that reach *between* circles tend to be weak. Those between-circle ties are where news from outside your circle arrives. Two cautions. The claim is about *bridging*, not about weakness for its own sake: most weak ties sit inside a circle and bring nothing new, and some strong ties do bridge. And the 1973 paper is mainly a reasoned argument with some supporting studies. It is not a test.
+
+**Burt's argument** [@burt1992structural]. People on two sides of a structural hole live in different streams of information, so a person who spans the hole gets early access, hears about opportunities, and can pass things across. What matters is the *redundancy* of a person's contacts, which is what effective size and constraint measure, and not their number. The empirical claim is that such positions go with better outcomes. Burt's study of managers in one large company found that managers whose contacts spanned holes were more likely to have ideas their colleagues valued [@burt2004structural].
+
+What has been found since is mixed, and the mix is the honest summary.
+
+- **Some studies find what the arguments predict.** In a very large mobile-phone dataset, the friendship circles of two people overlapped less when the tie between them was weak [@onnela2007structure]. In randomized experiments on a professional networking site, people were more likely to move jobs through contacts that were *moderately* weak than through the weakest ones, a rise and then a fall with tie strength and not a straight line [@rajkumar2022causal].
+- **Some find the opposite.** A study of firms' collaboration networks in one industry reported that structural holes went with *less* innovation, not more [@ahuja2000collaboration]. A study of Broadway musical teams found that musicals did best when the team network had an intermediate amount of small-world structure, and not at either extreme [@uzzi2005collaboration]. Coleman's case for closure fits both: dense circles make it easier to trust and to enforce promises [@coleman1988social].
+- **The usual criticisms apply.** Many studies describe one firm or one industry at one time, so selection is an open question: people who already have good ideas, skills or standing may end up in bridging positions, and the position may follow the outcome. Constraint also tracks how many contacts a person has: in @sec-case-krackhardt the rank correlation between constraint and the number of contacts is about $-0.9$, so "low constraint" can mostly mean "many contacts". And everything depends on who was counted as a contact and who was asked. Burt himself later wrote about how brokerage and closure work *together* [@burt2005brokerage].
+
+So treat the measures as describing an *opportunity* in the pattern of ties, and treat "brokers do better" as a hypothesis for your setting. If you have outcome data, test it there, with the stress checks below, and say which studies point which way.
 
 ## Brokers and the groups they link
 
@@ -573,6 +906,24 @@ Ivy      0     0     0     0     0     0
 Dee brokers three pairs, one in each of three roles. Cy passes work to Dee, who passes it on to Ada (Dee is an itinerant, an outsider linking two Design people), to Eve (a gatekeeper, controlling entry into Build) and to Gus (a liaison, linking Design to Sales). Gus is a gatekeeper twice over for Sales. Ada is a gatekeeper too, because Dee passes work to Ada, who passes it on to Ben. Cy and Flo are representatives, sending their own team's work outward. Ben, Eve and Hal are coordinators inside their own teams, and Ivy, at the end of the chain, brokers nothing. The column headings are cut to five letters to fit: coord, itine, repre, gatek and liais, then the total.
 Remember that these are counts of *pairs*, so a person in a big network with many contacts will tend to have large numbers in every column. As with other counts, compare them against what you'd expect, or at least against people in the same position, before telling a story about them.
 
+To check the counts by hand, list every chain $i \to j \to k$ where $i$ has no arrow to $k$. There are 11, and each one is one count in the table above. Teams are D (Design), B (Build) and S (Sales).
+
+| Chain | Teams of $i$, $j$, $k$ | Broker $j$ | Role |
+| --- | --- | --- | --- |
+| Ada $\to$ Ben $\to$ Cy | D, D, D | Ben | coordinator |
+| Ben $\to$ Cy $\to$ Dee | D, D, B | Cy | representative |
+| Cy $\to$ Dee $\to$ Eve | D, B, B | Dee | gatekeeper |
+| Cy $\to$ Dee $\to$ Ada | D, B, D | Dee | itinerant |
+| Cy $\to$ Dee $\to$ Gus | D, B, S | Dee | liaison |
+| Dee $\to$ Eve $\to$ Flo | B, B, B | Eve | coordinator |
+| Eve $\to$ Flo $\to$ Gus | B, B, S | Flo | representative |
+| Dee $\to$ Ada $\to$ Ben | B, D, D | Ada | gatekeeper |
+| Flo $\to$ Gus $\to$ Hal | B, S, S | Gus | gatekeeper |
+| Dee $\to$ Gus $\to$ Hal | B, S, S | Gus | gatekeeper |
+| Gus $\to$ Hal $\to$ Ivy | S, S, S | Hal | coordinator |
+
+Each role is read off the pattern of equal and different teams: all three equal is a coordinator, the ends equal and the broker different is an itinerant, the first two equal is a representative, the last two equal is a gatekeeper, and all three different is a liaison. Two conventions are worth knowing before you compare tools. The counts here are for *ordered* pairs on a *binary* network, so the tie weights are ignored. And knappnet's documentation says that on an undirected network each tie is read as two arrows, one each way, so a broker of two untied friends is counted twice, once for each direction. I did not run that case here, so check how your own tool treats it.
+
 ## How much stays inside the group?
 
 The last measure is the simplest. Suppose you have groups, such as departments, neighborhoods or the two floors of an office. How much of a person's networking happens inside their own group, and how much reaches outside it? The **E-I index** answers with one number [@krackhardt1988informal]. Count a person's ties that go **e**xternal to their group and the ones that stay **i**nternal, and compute
@@ -706,6 +1057,818 @@ Jo             -1.000
 :::
 
 The whole network scores -0.333: 12 of the 18 ties stay inside a group and 6 cross, which is (6 - 12) / 18. The two groups differ, though. Group 0 has a little more inside than outside (-0.077), and group 1 has a little more outside (+0.091), because Fay and Gus tie across more than they tie within. Hana, Ivo and Jo have every tie inside their own group, so they score -1.000, and this is the place to remember what the index doesn't say: the three of them are at the far end of a chain, not isolated from the other group by choice.
+
+## The mix of an ego's contacts
+
+The E-I index asks one question about one group. Often you want the *composition* of an ego's contacts: how many are like ego, and how mixed they are overall. Let ego $i$ have $n_i$ alters, $n_{ig}$ of them in group $g$, so $p_{ig} = n_{ig} / n_i$, and let there be $K$ groups in all.
+
+- **Proportion in own group**, $s_i = p_{i,g(i)}$, where $g(i)$ is ego's own group. It is the E-I index in other clothes: $\text{E-I}_i = 1 - 2 s_i$.
+- **Blau's heterogeneity index**, $B_i = 1 - \sum_g p_{ig}^2$ [@blau1977inequality]. It is the chance that two alters drawn at random, with replacement, belong to different groups. It is 0 when all alters share a group, and its largest possible value is $1 - 1/K$.
+- **The index of qualitative variation (IQV)**, $B_i / (1 - 1/K)$ [@agresti1978statistical]. It is Blau's index rescaled to run from 0 to 1 whatever the number of groups, which makes studies with different numbers of categories comparable.
+
+They answer different questions. The share in own group looks only at ego's own group. Blau's index and the IQV ignore which group ego is in. A person whose five contacts all come from *one other* group has $s_i = 0$ (E-I of $+1$) and a Blau index of 0: the contacts are alike, and unlike ego. And the share in own group should be judged against chance. If ego's contacts were drawn at random from everyone else, the expected share in ego's own group is $(N_g - 1)/(N - 1)$, where $N_g$ is the size of ego's group and $N$ the size of the network. @sec-homophily does this comparison for whole networks.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# Groups as in the E-I block: the first five people and the other five.
+indicator <- outer(group, 0:1, \(g, k) as.numeric(g == k)) # one column per group
+counts <- adj %*% indicator                                 # how many alters each person has in each group
+p <- counts / rowSums(counts)
+tibble(
+  person = people,
+  alters = as.vector(rowSums(counts)),
+  blau = as.vector(1 - rowSums(p^2)),
+  iqv = blau / (1 - 1 / 2),
+  own_group = p[cbind(seq_along(group), group + 1)]
+) |>
+  mutate(across(where(is.numeric), \(x) round(x, 3)))
+
+# Share in own group if contacts were drawn at random from everyone else: (5 - 1) / (10 - 1).
+round((5 - 1) / (length(people) - 1), 3)
+```
+
+::: {.code-output}
+```text
+```
+:::
+
+## Python
+
+```python
+# Groups as in the E-I block: the first five people and the other five.
+k = 2
+print(f"{'':<5} {'alters':>6} {'Blau':>6} {'IQV':>6} {'own group':>9}")
+for i, name in enumerate(names):
+    alters = list(friends[i])
+    p = np.bincount([group[j] for j in alters], minlength=k) / len(alters)
+    blau = 1 - (p ** 2).sum()
+    print(f"{name:<5} {len(alters):>6} {blau:>6.3f} {blau / (1 - 1 / k):>6.3f} {p[group[i]]:>9.3f}")
+
+# Share in own group if contacts were drawn at random from everyone else: (5 - 1) / (10 - 1).
+print(f"expected share in own group at random: {(5 - 1) / (len(names) - 1):.3f}")
+```
+
+::: {.code-output}
+```text
+      alters   Blau    IQV own group
+Ana        4  0.375  0.750     0.750
+Ben        4  0.375  0.750     0.750
+Cleo       3  0.444  0.889     0.667
+Dev        6  0.444  0.889     0.667
+Eli        3  0.444  0.889     0.667
+Fay        5  0.480  0.960     0.400
+Gus        5  0.480  0.960     0.400
+Hana       3  0.000  0.000     1.000
+Ivo        2  0.000  0.000     1.000
+Jo         1  0.000  0.000     1.000
+expected share in own group at random: 0.444
+```
+:::
+
+## Rust
+
+```rust
+// Groups as in the E-I block: the first five people and the other five.
+println!("{:<5} {:>6} {:>6} {:>6} {:>9}", "", "alters", "Blau", "IQV", "own group");
+for (i, name) in names.iter().enumerate() {
+    let counts = [0, 1].map(|g| (0..names.len()).filter(|&j| adj[i][j] > 0.0 && group[j] == g).count() as f64);
+    let alters = counts[0] + counts[1];
+    let p = counts.map(|c| c / alters);
+    let blau = 1.0 - p[0] * p[0] - p[1] * p[1];
+    println!("{:<5} {:>6} {:>6.3} {:>6.3} {:>9.3}", name, alters, blau, blau / (1.0 - 1.0 / 2.0), p[group[i] as usize]);
+}
+
+// Share in own group if contacts were drawn at random from everyone else: (5 - 1) / (10 - 1).
+println!("expected share in own group at random: {:.3}", (5.0 - 1.0) / (names.len() as f64 - 1.0));
+```
+
+::: {.code-output}
+```text
+      alters   Blau    IQV own group
+Ana        4  0.375  0.750     0.750
+Ben        4  0.375  0.750     0.750
+Cleo       3  0.444  0.889     0.667
+Dev        6  0.444  0.889     0.667
+Eli        3  0.444  0.889     0.667
+Fay        5  0.480  0.960     0.400
+Gus        5  0.480  0.960     0.400
+Hana       3  0.000  0.000     1.000
+Ivo        2  0.000  0.000     1.000
+Jo         1  0.000  0.000     1.000
+expected share in own group at random: 0.444
+```
+:::
+
+:::
+
+Ana has four alters, three of them in her own group, so her share in own group is 0.750, well above the 0.444 that random choice would give. Her E-I of $1 - 2(0.75) = -0.5$ is the value in the E-I block above, as the identity promises. Fay and Gus have the most mixed circles: three alters in the other group and two in their own give a Blau index of 0.480 and an IQV of 0.960, and an own-group share of only 0.400, below chance. Hana, Ivo and Jo have every alter in their own group, so Blau and IQV are 0 and the own-group share is 1.000. Two warnings. A Blau index of 0 would equally describe someone whose alters were all in the *other* group, so read it together with the own-group share. And with one alter (Jo) the index is 0 by construction. Composition from three or four alters is a sketch, and one more alter moves the numbers a lot.
+
+## Directed and valued ties, and what differs between tools
+
+Burt's measures were written for symmetric strengths, so a program has to decide what to do with arrows and weights, and the decisions change numbers. The usual way, which NetworkX and knappnet both follow (the tabs below agree), starts from the *mutual tie* $z_{ij} = a_{ij} + a_{ji}$, the total of what goes from $i$ to $j$ and from $j$ to $i$, and then takes $p_{ij} = z_{ij} / \sum_k z_{ik}$. Four things follow.
+
+- **Direction matters only through reciprocation.** A pair who name each other have $z = 2$ and a one-way tie has $z = 1$. A person's contacts are everyone they name *and* everyone who names them. A survey that records only the ego's own choices never sees the second group.
+- **Weights are read as strengths.** A heavier tie takes a bigger share $p_{ij}$ of a person's attention. Some measures read weights the other way, as distances (betweenness does, in @sec-centrality), so check each function.
+- **With weights, effective size is no longer $n - 2t/n$.** It then uses each contact's ties relative to that contact's strongest tie.
+- **Someone with no contacts has no constraint.** The answer is undefined, and the functions return NaN.
+
+There are three common ways to simplify a directed network, and they give three answers. Keep every arc and count it both ways, as the functions do. Merge the arcs into one tie when *either* person names the other. Or keep only the ties that are *mutual*. The next block runs all three on the managers' friendship relation from Krackhardt's study [@krackhardt1987cognitive; the organization is worked in @sec-case-krackhardt].
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# Krackhardt's friendship relation: row i, column j is 1 when manager i names manager j as a friend.
+named <- read.csv("data/krackhardt/edges.csv") |>
+  filter(relation == "friendship") |>
+  with({
+    m <- matrix(0, 21, 21)
+    m[cbind(from, to)] <- 1
+    m
+  })
+either <- pmax(named, t(named)) # a tie if either manager names the other
+both <- named * t(named)        # a tie only if both name each other
+
+as_graph <- \(m, directed) as_net_frame(m, directed = directed, quiet = TRUE)
+c_arcs <- net_constraint(as_graph(named, TRUE))
+c_either <- net_constraint(as_graph(either, FALSE))
+c_both <- net_constraint(as_graph(both, FALSE))
+least <- \(x, k = 3) order(x)[seq_len(k)] # not-a-number sorts last
+
+tibble(
+  arcs = sum(named), pairs_either = sum(either) / 2, pairs_both = sum(both) / 2,
+  rank_cor_arcs_vs_either = cor(c_arcs, c_either, method = "spearman"),
+  mean_gap = mean(abs(c_arcs - c_either)), largest_gap = max(abs(c_arcs - c_either)),
+  no_mutual_friend = sum(is.na(c_both))
+) |>
+  mutate(across(where(is.numeric), \(x) round(x, 3)))
+list(arcs = least(c_arcs), either = least(c_either), both = least(c_both))
+```
+
+::: {.code-output}
+```text
+```
+:::
+
+## Python
+
+```python
+import csv
+
+# Krackhardt's friendship relation: an arc i -> j means manager i names manager j as a friend.
+with open("data/krackhardt/edges.csv") as f:
+    arcs = [(int(r["from"]) - 1, int(r["to"]) - 1) for r in csv.DictReader(f) if r["relation"] == "friendship"]
+named = nx.DiGraph()
+named.add_nodes_from(range(21))
+named.add_edges_from(arcs)
+either = named.to_undirected()   # a tie if either manager names the other
+both = nx.Graph()
+both.add_nodes_from(range(21))
+both.add_edges_from((u, v) for u, v in arcs if named.has_edge(v, u))   # a tie only if both name each other
+
+def ranks(x):
+    # 1 for the smallest; tied values share the average of their ranks
+    x = np.asarray(x)
+    return np.array([(x < v).sum() + ((x == v).sum() + 1) / 2 for v in x])
+
+def spearman(x, y):
+    return np.corrcoef(ranks(x), ranks(y))[0, 1]
+
+c_arcs, c_either, c_both = (np.array(list(nx.constraint(g).values())) for g in (named, either, both))
+least = lambda x, k=3: [i + 1 for i in sorted((i for i in range(len(x)) if x[i] == x[i]), key=lambda i: (x[i], i))[:k]]
+print(f"{named.number_of_edges()} arcs; {either.number_of_edges()} pairs tied by either manager, {both.number_of_edges()} by both")
+print(f"rank correlation of constraint, arcs vs either: {spearman(c_arcs, c_either):.3f}")
+print(f"gap between the two: mean {np.abs(c_arcs - c_either).mean():.3f}, largest {np.abs(c_arcs - c_either).max():.3f}")
+print(f"managers with no mutual friend, so no constraint: {int(np.isnan(c_both).sum())}")
+print(f"three least constrained managers: arcs {least(c_arcs)}, either {least(c_either)}, both {least(c_both)}")
+```
+
+::: {.code-output}
+```text
+102 arcs; 79 pairs tied by either manager, 23 by both
+rank correlation of constraint, arcs vs either: 0.977
+gap between the two: mean 0.030, largest 0.089
+managers with no mutual friend, so no constraint: 4
+three least constrained managers: arcs [17, 10, 11], either [17, 11, 10], both [17, 1, 2]
+```
+:::
+
+## Rust
+
+```rust
+let kr_text = std::fs::read_to_string("data/krackhardt/edges.csv")?;
+// Friendship arcs: an arc i -> j means manager i names manager j as a friend. Managers are 0 to 20 here.
+let arcs: Vec<(usize, usize)> = kr_text.lines().skip(1)
+    .map(|l| l.split(',').collect::<Vec<&str>>())
+    .filter(|p| p[2] == "friendship")
+    .map(|p| (p[0].parse::<usize>().unwrap() - 1, p[1].parse::<usize>().unwrap() - 1))
+    .collect();
+let mut named = vec![vec![0.0; 21]; 21];
+for &(i, j) in &arcs {
+    named[i][j] = 1.0;
+}
+let either: Vec<Vec<f64>> = (0..21).map(|i| (0..21).map(|j| f64::max(named[i][j], named[j][i])).collect()).collect();
+let both: Vec<Vec<f64>> = (0..21).map(|i| (0..21).map(|j| named[i][j] * named[j][i]).collect()).collect();
+
+// A network from a table of 0s and 1s: every arc, or the ties above the diagonal.
+let graph_of = |m: &Vec<Vec<f64>>, directed: bool| -> Result<Graph, knappnet::Error> {
+    let n = m.len();
+    let (from, to): (Vec<i64>, Vec<i64>) = (0..n).flat_map(|i| (0..n).map(move |j| (i, j)))
+        .filter(|&(i, j)| m[i][j] > 0.0 && (directed || i < j))
+        .map(|(i, j)| (i as i64, j as i64))
+        .unzip();
+    Graph::from_edges(n, &from, &to, None, directed)
+};
+let (g_arcs, g_either, g_both) = (graph_of(&named, true)?, graph_of(&either, false)?, graph_of(&both, false)?);
+let c_arcs = compute_constraint(&g_arcs, StructuralHoleOptions::default())?;
+let c_either = compute_constraint(&g_either, StructuralHoleOptions::default())?;
+let c_both = compute_constraint(&g_both, StructuralHoleOptions::default())?;
+
+// Average ranks (tied values share the mean of their ranks) and the rank correlation.
+let ranks = |x: &[f64]| -> Vec<f64> {
+    x.iter().map(|&v| x.iter().filter(|&&u| u < v).count() as f64
+        + (x.iter().filter(|&&u| u == v).count() as f64 + 1.0) / 2.0).collect()
+};
+let spearman = |x: &[f64], y: &[f64]| -> f64 {
+    let (rx, ry) = (ranks(x), ranks(y));
+    let (mx, my) = (rx.iter().sum::<f64>() / rx.len() as f64, ry.iter().sum::<f64>() / ry.len() as f64);
+    let cov: f64 = rx.iter().zip(&ry).map(|(a, b)| (a - mx) * (b - my)).sum();
+    cov / (rx.iter().map(|a| (a - mx).powi(2)).sum::<f64>() * ry.iter().map(|b| (b - my).powi(2)).sum::<f64>()).sqrt()
+};
+let least = |x: &[f64], k: usize| -> Vec<usize> {
+    let mut order: Vec<usize> = (0..x.len()).filter(|&i| !x[i].is_nan()).collect();
+    order.sort_by(|&a, &b| x[a].partial_cmp(&x[b]).unwrap().then(a.cmp(&b)));
+    order.iter().take(k).map(|i| i + 1).collect()
+};
+let gap: Vec<f64> = c_arcs.iter().zip(&c_either).map(|(a, b)| (a - b).abs()).collect();
+
+println!("{} arcs; {} pairs tied by either manager, {} by both", arcs.len(), g_either.edge_count(), g_both.edge_count());
+println!("rank correlation of constraint, arcs vs either: {:.3}", spearman(&c_arcs, &c_either));
+println!("gap between the two: mean {:.3}, largest {:.3}", gap.iter().sum::<f64>() / gap.len() as f64, gap.iter().cloned().fold(0.0, f64::max));
+println!("managers with no mutual friend, so no constraint: {}", c_both.iter().filter(|c| c.is_nan()).count());
+println!("three least constrained managers: arcs {:?}, either {:?}, both {:?}", least(&c_arcs, 3), least(&c_either, 3), least(&c_both, 3));
+```
+
+::: {.code-output}
+```text
+102 arcs; 79 pairs tied by either manager, 23 by both
+rank correlation of constraint, arcs vs either: 0.977
+gap between the two: mean 0.030, largest 0.089
+managers with no mutual friend, so no constraint: 4
+three least constrained managers: arcs [17, 10, 11], either [17, 11, 10], both [17, 1, 2]
+```
+:::
+
+:::
+
+The managers named 102 friendship arcs. Merged, they make 79 pairs, and only 23 of those pairs are mutual. Counting arcs both ways or merging them into single ties barely changes the picture: the rank correlation of constraint is 0.977, the mean gap is 0.030 and manager 17 is the least constrained either way, though the next two swap places. Keeping only mutual friendships changes the story. Four managers (7, 9, 10 and 20) have no mutual friend, so their constraint is undefined and they drop out of the ranking, and the three least constrained become 17, 1 and 2. The convention that matters most is therefore *what counts as a tie*. Two programs that both print "constraint" can disagree because one merges by union and the other by reciprocity.
+
+The same question for tie strength: Zachary's karate club comes with the number of contexts in which each pair was seen together, from 1 to 7. The next block gives constraint with and without those strengths.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# Zachary's karate club with the number of contexts in which each pair was seen together as the tie strength.
+contexts <- read.csv("data/karate/edges.csv")
+strength <- matrix(0, 34, 34)
+strength[cbind(contexts$source, contexts$target)] <- contexts$contexts
+strength <- pmax(strength, t(strength))
+club <- as_net_frame(strength, directed = FALSE, weighted = TRUE, quiet = TRUE)
+c_plain <- net_constraint(club, weighted = FALSE) # every tie counts as 1
+c_valued <- net_constraint(club, weighted = TRUE) # ties weighted by contexts
+
+list(
+  ties = nrow(contexts), contexts = range(contexts$contexts),
+  rank_cor = round(cor(c_plain, c_valued, method = "spearman"), 3),
+  four_least_constrained = list(plain = least(c_plain, 4), valued = least(c_valued, 4))
+)
+tibble(member = c(1, 34, 3), plain = c_plain[member], valued = c_valued[member]) |>
+  mutate(across(c(plain, valued), \(x) round(x, 3)))
+```
+
+::: {.code-output}
+```text
+```
+:::
+
+## Python
+
+```python
+# Zachary's karate club with the number of contexts in which each pair was seen together as the tie strength.
+with open("data/karate/edges.csv") as f:
+    contexts = [(int(r["source"]) - 1, int(r["target"]) - 1, float(r["contexts"])) for r in csv.DictReader(f)]
+club = nx.Graph()
+club.add_nodes_from(range(34))
+club.add_weighted_edges_from(contexts)
+c_plain = np.array(list(nx.constraint(club).values()))                    # every tie counts as 1
+c_valued = np.array(list(nx.constraint(club, weight="weight").values()))  # ties weighted by contexts
+
+print(f"{len(contexts)} ties, contexts from {min(c[2] for c in contexts):.0f} to {max(c[2] for c in contexts):.0f}")
+print(f"rank correlation of constraint, plain vs valued: {spearman(c_plain, c_valued):.3f}")
+print(f"four least constrained members: plain {least(c_plain, 4)}, valued {least(c_valued, 4)}")
+for member in (1, 34, 3):
+    print(f"member {member}: constraint {c_plain[member - 1]:.3f} plain, {c_valued[member - 1]:.3f} valued")
+```
+
+::: {.code-output}
+```text
+78 ties, contexts from 1 to 7
+rank correlation of constraint, plain vs valued: 0.970
+four least constrained members: plain [1, 34, 3, 32], valued [34, 1, 3, 33]
+member 1: constraint 0.155 plain, 0.191 valued
+member 34: constraint 0.156 plain, 0.186 valued
+member 3: constraint 0.185 plain, 0.256 valued
+```
+:::
+
+## Rust
+
+```rust
+// Zachary's karate club with the number of contexts in which each pair was seen together as the tie strength.
+let club_text = std::fs::read_to_string("data/karate/edges.csv")?;
+let rows: Vec<Vec<f64>> = club_text.lines().skip(1).map(|l| l.split(',').map(|x| x.parse().unwrap()).collect()).collect();
+let (from, to): (Vec<i64>, Vec<i64>) = rows.iter().map(|r| (r[0] as i64 - 1, r[1] as i64 - 1)).unzip();
+let contexts: Vec<f64> = rows.iter().map(|r| r[2]).collect();
+let club = Graph::from_edges(34, &from, &to, Some(&contexts), false)?;
+let c_plain = compute_constraint(&club, StructuralHoleOptions::default())?;                                    // every tie counts as 1
+let c_valued = compute_constraint(&club, StructuralHoleOptions { weighted: true, ..StructuralHoleOptions::default() })?; // ties weighted by contexts
+
+println!("{} ties, contexts from {:.0} to {:.0}", rows.len(), contexts.iter().cloned().fold(f64::MAX, f64::min), contexts.iter().cloned().fold(0.0, f64::max));
+println!("rank correlation of constraint, plain vs valued: {:.3}", spearman(&c_plain, &c_valued));
+println!("four least constrained members: plain {:?}, valued {:?}", least(&c_plain, 4), least(&c_valued, 4));
+for member in [1usize, 34, 3] {
+    println!("member {member}: constraint {:.3} plain, {:.3} valued", c_plain[member - 1], c_valued[member - 1]);
+}
+```
+
+::: {.code-output}
+```text
+78 ties, contexts from 1 to 7
+rank correlation of constraint, plain vs valued: 0.970
+four least constrained members: plain [1, 34, 3, 32], valued [34, 1, 3, 33]
+member 1: constraint 0.155 plain, 0.191 valued
+member 34: constraint 0.156 plain, 0.186 valued
+member 3: constraint 0.185 plain, 0.256 valued
+```
+:::
+
+:::
+
+Strengths change levels more than order: the rank correlation is 0.970, and three of the four least constrained members are the same, although member 32 gives way to member 33. The levels move because shares are squared. When a few ties are heavy, a person's attention piles onto them, the shares are uneven, and the sum of squares goes up, so members 1, 34 and 3 all get a higher constraint once strengths count (member 3 goes from 0.185 to 0.256). Whether strengths *should* count depends on the question. If "a tie" means "a pair who ever met", count ties. If it means "how much of their time", count the strengths, and say which.
+
+**Where tools differ.** What I observed: NetworkX and knappnet give the same constraint on the directed friendship network and on the valued karate club (compare the Python and Rust tabs), and both read weights as strengths. NetworkX has no function for hierarchy, so the hand calculation earlier was the only check there. Past what I ran, knappnet's documentation lists two places where programs disagree. One is self-loops, which NetworkX counts in the row sums and knappnet and igraph ignore. The other is nodes without contacts, where knappnet returns NaN and igraph returns 0 for a node with only loops. I did not run igraph, the R sna package or UCINET for this chapter, so I can't say how they differ here. Before you compare numbers across programs, run each on the ten-person network, whose values are all printed above, and write down the convention you used.
+
+## Seen through a sample of egos
+
+Suppose you could not collect the whole network, only ego networks: for each person you know the alters and the ties among them (the 1.5-step network). How much of the whole-network picture survives? We can find out on two networks where we *do* have the whole thing: the 21 managers' friendships (a tie if either manager names the other) and the 15 Florentine families' marriages.
+
+Three things can go wrong, and the block checks each on both networks.
+
+1. *Can the measure be computed from ego networks at all?* Size, density and ego betweenness are defined on the ego network. Effective size, $n - 2t/n$, needs only $n$ and the ties among alters, so it can be too. Constraint also needs each alter's *total* number of contacts, which an ego network doesn't show, so the best it can do is count only the contacts it sees. I'll call that the **ego-only constraint**.
+2. *If you compute it anyway, how far off is it?* The block compares the ego-only value with the whole-network value for every person.
+3. *How noisy is a sample of egos, and does it matter who is sampled?* If $m$ of the $N$ people are chosen at random, the mean of an ego measure is unbiased for the whole-network mean, and its standard error is $s\sqrt{(1 - m/N)/m}$, where $s$ is the standard deviation across all $N$ people. If egos are found by following ties (ask a respondent to name someone, then interview that person), a person with $d$ contacts is reached $d$ times as often. The average number of contacts of the people you reach is then $\sum d^2 / \sum d$, which is never smaller than the mean degree.
+
+The two networks are small enough to see all of it, so the numbers below are exact calculations, not simulations.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# The Florentine families: a tie means a marriage.
+florence <- read.csv("data/florentine/edges.csv")
+ids <- sort(unique(c(florence$source, florence$target)))
+marriages <- matrix(0, length(ids), length(ids), dimnames = list(ids, ids))
+marriages[cbind(florence$source, florence$target)] <- 1
+marriages <- pmax(marriages, t(marriages))
+
+# What an ego-network study can compute for every person, next to the whole-network value.
+seen_from_egos <- \(adj, m = 5) {
+  n <- nrow(adj)
+  whole <- as_net_frame(adj, directed = FALSE, quiet = TRUE)
+  # A measure computed on the ego network alone: ego, its alters, and the ties among the alters.
+  ego_only <- \(measure) map_dbl(seq_len(n), \(i) {
+    keep <- which(adj[i, ] > 0 | seq_len(n) == i)
+    sub <- as_net_frame(adj[keep, keep, drop = FALSE], directed = FALSE, quiet = TRUE)
+    unname(measure(sub)[match(i, keep)])
+  })
+  degree <- unname(rowSums(adj))
+  w <- map(list(constraint = net_constraint(whole), size = net_effective_size(whole),
+                betweenness = net_betweenness(whole)), unname)
+  e <- list(constraint = ego_only(net_constraint), size = ego_only(net_effective_size),
+            betweenness = unname(net_ego_betweenness(whole)))
+  c(
+    n,
+    mean(degree),
+    sum(degree^2) / sum(degree),
+    mean(degree > 5),
+    max(abs(e$size - w$size)),
+    mean(w$constraint),
+    mean(e$constraint),
+    mean(e$constraint > w$constraint + 1e-12),
+    cor(e$constraint, w$constraint, method = "spearman"),
+    cor(e$betweenness, w$betweenness, method = "spearman"),
+    mean(w$size),
+    sd(w$size) * sqrt((1 - m / n) / m)
+  )
+}
+
+tibble(
+  quantity = c("people", "mean contacts", "mean contacts, person reached by a tie", "share with more than 5 contacts",
+               "eff. size, largest gap ego vs whole", "constraint, mean, whole network",
+               "constraint, mean, ego networks alone", "constraint, share higher from ego alone",
+               "constraint, rank cor. ego alone vs whole", "ego betweenness vs betweenness, rank cor.",
+               "effective size, mean", "effective size, SE of mean of 5 people"),
+  krackhardt = seen_from_egos(either),
+  florentine = seen_from_egos(marriages)
+) |>
+  mutate(across(where(is.numeric), \(x) round(x, 3)))
+```
+
+::: {.code-output}
+```text
+```
+:::
+
+## Python
+
+```python
+# The Florentine families: a tie means a marriage.
+with open("data/florentine/edges.csv") as f:
+    marriages = nx.Graph([tuple(r) for r in list(csv.reader(f))[1:]])
+
+def seen_from_egos(G, m=5):
+    """What an ego-network study can compute for every person, next to the whole-network value."""
+    nodes = list(G)
+    n = len(nodes)
+    degree = np.array([G.degree(v) for v in nodes], dtype=float)
+    whole = {"constraint": nx.constraint(G), "size": nx.effective_size(G), "betweenness": nx.betweenness_centrality(G, normalized=False)}
+    w = {k: np.array([whole[k][v] for v in nodes]) for k in whole}
+    # Each measure computed on the ego network alone: ego, its alters, and the ties among the alters.
+    egos = [nx.ego_graph(G, v) for v in nodes]
+    e = {"constraint": np.array([nx.constraint(g)[v] for g, v in zip(egos, nodes)]),
+         "size": np.array([nx.effective_size(g)[v] for g, v in zip(egos, nodes)]),
+         "betweenness": np.array([nx.betweenness_centrality(g, normalized=False)[v] for g, v in zip(egos, nodes)])}
+    return [
+        n,
+        degree.mean(),
+        (degree ** 2).sum() / degree.sum(),
+        (degree > 5).mean(),
+        np.abs(e["size"] - w["size"]).max(),
+        w["constraint"].mean(),
+        e["constraint"].mean(),
+        (e["constraint"] > w["constraint"] + 1e-12).mean(),
+        spearman(e["constraint"], w["constraint"]),
+        spearman(e["betweenness"], w["betweenness"]),
+        w["size"].mean(),
+        w["size"].std(ddof=1) * np.sqrt((1 - m / n) / m),
+    ]
+
+quantities = ["people", "mean contacts", "mean contacts, person reached by a tie", "share with more than 5 contacts",
+              "eff. size, largest gap ego vs whole", "constraint, mean, whole network",
+              "constraint, mean, ego networks alone", "constraint, share higher from ego alone",
+              "constraint, rank cor. ego alone vs whole", "ego betweenness vs betweenness, rank cor.",
+              "effective size, mean", "effective size, SE of mean of 5 people"]
+print(f"{'':<42} {'Krackhardt':>10} {'Florentine':>10}")
+for q, a, b in zip(quantities, seen_from_egos(either), seen_from_egos(marriages)):
+    print(f"{q:<42} {a:>10.0f} {b:>10.0f}" if q == "people" else f"{q:<42} {a:>10.3f} {b:>10.3f}")
+```
+
+::: {.code-output}
+```text
+                                           Krackhardt Florentine
+people                                             21         15
+mean contacts                                   7.524      2.667
+mean contacts, person reached by a tie          9.215      3.350
+share with more than 5 contacts                 0.714      0.067
+eff. size, largest gap ego vs whole             0.000      0.000
+constraint, mean, whole network                 0.292      0.586
+constraint, mean, ego networks alone            0.499      0.643
+constraint, share higher from ego alone         1.000      0.467
+constraint, rank cor. ego alone vs whole        0.917      0.864
+ego betweenness vs betweenness, rank cor.       0.977      0.871
+effective size, mean                            4.194      2.311
+effective size, SE of mean of 5 people          1.005      0.463
+```
+:::
+
+## Rust
+
+```rust
+use knappnet::{compute_betweenness, BetweennessOptions};
+
+// The Florentine families: a tie means a marriage. Positions are in order of first appearance.
+let fl_text = std::fs::read_to_string("data/florentine/edges.csv")?;
+let fl_rows: Vec<(&str, &str)> = fl_text.lines().skip(1).map(|line| line.split_once(',').unwrap()).collect();
+let mut families: Vec<&str> = Vec::new();
+for &(a, b) in &fl_rows {
+    for family in [a, b] {
+        if !families.contains(&family) {
+            families.push(family);
+        }
+    }
+}
+let place = |family: &str| families.iter().position(|f| *f == family).unwrap();
+let mut marriages = vec![vec![0.0; families.len()]; families.len()];
+for &(a, b) in &fl_rows {
+    marriages[place(a)][place(b)] = 1.0;
+    marriages[place(b)][place(a)] = 1.0;
+}
+// The rows and columns of a table that belong to some of the people.
+let sub_table = |m: &Vec<Vec<f64>>, keep: &[usize]| -> Vec<Vec<f64>> {
+    keep.iter().map(|&a| keep.iter().map(|&b| m[a][b]).collect()).collect()
+};
+
+// What an ego-network study can compute for every person, next to the whole-network value.
+let seen_from_egos = |m: &Vec<Vec<f64>>, sample: f64| -> Result<Vec<f64>, knappnet::Error> {
+    let n = m.len();
+    let nf = n as f64;
+    let opts = StructuralHoleOptions::default();
+    let whole = graph_of(m, false)?;
+    let (w_con, w_size) = (compute_constraint(&whole, opts)?, compute_effective_size(&whole, opts)?);
+    let w_btw = compute_betweenness(&whole, BetweennessOptions::default())?;
+    let e_btw = compute_ego_summary(&whole, EgoOptions::default())?.betweenness.unwrap();
+    // A measure computed on the ego network alone: ego, its alters, and the ties among the alters.
+    let (mut e_con, mut e_size) = (Vec::new(), Vec::new());
+    for i in 0..n {
+        let keep: Vec<usize> = (0..n).filter(|&j| j == i || m[i][j] > 0.0).collect();
+        let at = keep.iter().position(|&j| j == i).unwrap();
+        let ego = graph_of(&sub_table(m, &keep), false)?;
+        e_con.push(compute_constraint(&ego, opts)?[at]);
+        e_size.push(compute_effective_size(&ego, opts)?[at]);
+    }
+    let mean = |x: &[f64]| x.iter().sum::<f64>() / x.len() as f64;
+    let degree: Vec<f64> = m.iter().map(|row| row.iter().sum()).collect();
+    let sd = (w_size.iter().map(|v| (v - mean(&w_size)).powi(2)).sum::<f64>() / (nf - 1.0)).sqrt();
+    Ok(vec![
+        nf,
+        mean(&degree),
+        degree.iter().map(|d| d * d).sum::<f64>() / degree.iter().sum::<f64>(),
+        degree.iter().filter(|&&d| d > 5.0).count() as f64 / nf,
+        e_size.iter().zip(&w_size).map(|(a, b)| (a - b).abs()).fold(0.0, f64::max),
+        mean(&w_con),
+        mean(&e_con),
+        e_con.iter().zip(&w_con).filter(|&(a, b)| *a > *b + 1e-12).count() as f64 / nf,
+        spearman(&e_con, &w_con),
+        spearman(&e_btw, &w_btw),
+        mean(&w_size),
+        sd * ((1.0 - sample / nf) / sample).sqrt(),
+    ])
+};
+
+let quantities = ["people", "mean contacts", "mean contacts, person reached by a tie", "share with more than 5 contacts",
+    "eff. size, largest gap ego vs whole", "constraint, mean, whole network", "constraint, mean, ego networks alone",
+    "constraint, share higher from ego alone", "constraint, rank cor. ego alone vs whole",
+    "ego betweenness vs betweenness, rank cor.", "effective size, mean", "effective size, SE of mean of 5 people"];
+let (k, f) = (seen_from_egos(&either, 5.0)?, seen_from_egos(&marriages, 5.0)?);
+println!("{:<42} {:>10} {:>10}", "", "Krackhardt", "Florentine");
+for (i, q) in quantities.iter().enumerate() {
+    let digits = if i == 0 { 0 } else { 3 };
+    println!("{:<42} {:>10.d$} {:>10.d$}", q, k[i], f[i], d = digits);
+}
+```
+
+::: {.code-output}
+```text
+                                           Krackhardt Florentine
+people                                             21         15
+mean contacts                                   7.524      2.667
+mean contacts, person reached by a tie          9.215      3.350
+share with more than 5 contacts                 0.714      0.067
+eff. size, largest gap ego vs whole             0.000      0.000
+constraint, mean, whole network                 0.292      0.586
+constraint, mean, ego networks alone            0.499      0.643
+constraint, share higher from ego alone         1.000      0.467
+constraint, rank cor. ego alone vs whole        0.917      0.864
+ego betweenness vs betweenness, rank cor.       0.977      0.871
+effective size, mean                            4.194      2.311
+effective size, SE of mean of 5 people          1.005      0.463
+```
+:::
+
+:::
+
+Read the table in three parts.
+
+**What survives exactly.** Effective size from the ego network alone matches the whole-network value for every person in both networks (largest gap 0.000). Density and ego betweenness are defined on the ego network, so they carry over too. These are the measures an ego-network study can report without a caveat about the missing whole.
+
+**What does not.** Constraint from ego networks alone comes out higher: the mean is 0.499 against 0.292 for the managers, and 0.643 against 0.586 for the families. It can't come out lower. Counting only the contacts it sees, an ego network makes each contact $q$ look as if it has fewer contacts, so $p_{qj} = 1/\deg(q)$ is larger and the indirect part of every term grows. For ties without direction or weights, the ego-only value is therefore at least the whole-network value. For every manager it is strictly higher (a share of 1.000). For the families the share is 0.467, and the rest are equal, for example the four families with a single partner, whose constraint is 1 either way. The *order* mostly survives, with rank correlations of 0.917 and 0.864. Ego-only constraint ranks people roughly right and gets the level wrong, so don't set it beside values from whole-network studies, or between samples where alters' contacts were counted differently. @fig-ego-vs-whole shows the gap.
+
+![Constraint computed from each person's ego network alone, against constraint computed from the whole network. The dashed line is where the two agree. No point lies below it.](../figures/ego-vs-whole.svg){#fig-ego-vs-whole fig-alt="Two scatter plots, each with a dashed diagonal. Left, the 21 managers of Krackhardt's firm: whole-network constraint runs from 0.19 to 0.59 and ego-network constraint from 0.20 to 1.12, and 0 of the 21 points lie on the diagonal. Right, the 15 Florentine families: whole-network constraint runs from 0.21 to 1.00 and ego-network constraint from 0.24 to 1.00, and 8 of the 15 points lie on the diagonal. In both plots every other point lies above the diagonal."}
+
+**Sampling.** Ego betweenness tracks whole-network betweenness, with rank correlations of 0.977 for the managers and 0.871 for the families. That is the kind of question @marsden2002egocentric asks for several centralities, and @costenbader2003stability asks for how centralities hold up when nodes or ties are sampled, and the answer depends on the measure and the network. Two networks are not a rule. A random sample of five people pins the mean effective size down only loosely: the standard error is 1.005 against a mean of 4.194 for the managers, and 0.463 against 2.311 for the families, roughly a quarter and a fifth of the mean. *Who* you sample matters as well. Reached by following a tie, a manager has 9.215 contacts on average, against 7.524 for all managers; for the families the figures are 3.350 and 2.667. This is the friendship paradox: your friends have more friends than you do, on average, because popular people are on many people's lists. Finally, 15 of the 21 managers (0.714) have more than five friends, so a five-name cap would cut off most of them, while only one of the 15 families (0.067) would lose anything.
+
+## Stress checks
+
+Before you report that a person is a broker, try to break the result. Three checks fit ego measures, and we run them on one claim from the Florentine families: *the Medici have the lowest constraint of the 15 families.* They have six marriage partners and the lowest constraint, 0.210.
+
+1. **Drop an alter.** Remove each of the Medici's six partners from the data in turn, as if the family had been missed or the marriage unreported, and recompute.
+2. **Drop a tie.** Remove each of the 20 marriages in turn and ask who has the lowest constraint now.
+3. **Compare with chance.** Draw networks that keep every family's number of marriages but shuffle who is married to whom, and see where the Medici's 0.210 falls. This is the degree-preserving null of @sec-tests-and-null-models.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# The Medici's constraint and effective size in a marriage table, and the family with the lowest constraint.
+medici_profile <- \(adj) {
+  g <- as_net_frame(adj, directed = FALSE, quiet = TRUE)
+  tibble(constraint = unname(net_constraint(g))[rownames(adj) == "Medici"],
+         effective_size = unname(net_effective_size(g))[rownames(adj) == "Medici"],
+         least_constrained = rownames(adj)[which.min(net_constraint(g))])
+}
+least_family <- \(adj) medici_profile(adj)$least_constrained
+
+# 1. Drop one alter at a time.
+partners <- sort(names(which(marriages["Medici", ] > 0)))
+bind_rows(
+  medici_profile(marriages) |> mutate(removed = "(nobody)", .before = 1),
+  map(partners, \(a) medici_profile(marriages[rownames(marriages) != a, colnames(marriages) != a]) |>
+        mutate(removed = a, .before = 1)) |> list_rbind()
+) |>
+  mutate(across(where(is.numeric), \(x) round(x, 3)))
+
+# 2. Drop one marriage at a time.
+map_chr(seq_len(nrow(florence)), \(k) {
+  m <- marriages
+  m[florence$source[k], florence$target[k]] <- 0
+  m[florence$target[k], florence$source[k]] <- 0
+  least_family(m)
+}) |>
+  table()
+
+# 3. Random networks with every family's degree, and the Medici's constraint in each.
+medici <- which(rownames(marriages) == "Medici")
+observed <- medici_profile(marriages)$constraint
+null <- net_random_config(unname(rowSums(marriages)), simple = TRUE, max_tries = 100000, reps = 500, seed = 1) |>
+  map_dbl(\(h) net_constraint(h)[medici])
+tibble(draws = length(null), observed = observed, null_mean = mean(null),
+       share_at_or_below_observed = mean(null <= observed + 1e-12)) |>
+  mutate(across(where(is.numeric), \(x) round(x, 3)))
+```
+
+::: {.code-output}
+```text
+```
+:::
+
+## Python
+
+```python
+# The family with the lowest constraint (ignoring families left with no marriage, whose constraint is undefined).
+def least(G):
+    c = nx.constraint(G)
+    return min((v for v in G if c[v] == c[v]), key=lambda v: c[v])
+
+# 1. Drop one alter at a time.
+print(f"{'removed':<13} {'constraint':>10} {'eff. size':>9}  least constrained")
+print(f"{'(nobody)':<13} {nx.constraint(marriages)['Medici']:>10.3f} {nx.effective_size(marriages)['Medici']:>9.3f}  {least(marriages)}")
+for a in sorted(marriages["Medici"]):
+    h = marriages.copy()
+    h.remove_node(a)
+    print(f"{a:<13} {nx.constraint(h)['Medici']:>10.3f} {nx.effective_size(h)['Medici']:>9.3f}  {least(h)}")
+
+# 2. Drop one marriage at a time.
+winners = {}
+for u, v in list(marriages.edges):
+    h = marriages.copy()
+    h.remove_edge(u, v)
+    top = least(h)
+    winners[top] = winners.get(top, 0) + 1
+print("least constrained after dropping each marriage in turn:", ", ".join(f"{k} {n}" for k, n in sorted(winners.items(), key=lambda kv: -kv[1])))
+
+# 3. Random networks with every family's degree (ten accepted swaps per marriage), and the Medici's constraint in each.
+observed = nx.constraint(marriages)["Medici"]
+null = []
+for seed in range(500):
+    h = marriages.copy()
+    nx.double_edge_swap(h, nswap=200, max_tries=10_000_000, seed=seed)
+    null.append(nx.constraint(h)["Medici"])
+print(f"{len(null)} random networks with the same degrees: mean {np.mean(null):.3f}; "
+      f"share at or below the observed {observed:.3f}: {np.mean(np.array(null) <= observed + 1e-12):.3f}")
+```
+
+::: {.code-output}
+```text
+removed       constraint eff. size  least constrained
+(nobody)           0.210     5.667  Medici
+Acciaiuoli         0.262     4.600  Guadagni
+Albizzi            0.262     4.600  Medici
+Barbadori          0.262     4.600  Guadagni
+Ridolfi            0.200     5.000  Medici
+Salviati           0.262     4.600  Guadagni
+Tornabuoni         0.200     5.000  Medici
+least constrained after dropping each marriage in turn: Medici 16, Guadagni 4
+500 random networks with the same degrees: mean 0.244; share at or below the observed 0.210: 0.344
+```
+:::
+
+## Rust
+
+```rust
+use knappnet::generate::{sample_configuration, Degrees};
+
+// The Medici's constraint and effective size in a marriage table, and the family with the lowest constraint.
+let medici = place("Medici");
+let profile = |m: &Vec<Vec<f64>>| -> Result<(Vec<f64>, Vec<f64>), knappnet::Error> {
+    let g = graph_of(m, false)?;
+    Ok((compute_constraint(&g, StructuralHoleOptions::default())?, compute_effective_size(&g, StructuralHoleOptions::default())?))
+};
+let lowest = |c: &[f64]| -> usize {
+    (0..c.len()).filter(|&i| !c[i].is_nan())
+        .min_by(|&a, &b| c[a].partial_cmp(&c[b]).unwrap().then(a.cmp(&b))).unwrap()
+};
+
+// 1. Drop one alter at a time.
+let (c0, s0) = profile(&marriages)?;
+println!("{:<13} {:>10} {:>9}  {}", "removed", "constraint", "eff. size", "least constrained");
+println!("{:<13} {:>10.3} {:>9.3}  {}", "(nobody)", c0[medici], s0[medici], families[lowest(&c0)]);
+let mut partners: Vec<usize> = (0..families.len()).filter(|&j| marriages[medici][j] > 0.0).collect();
+partners.sort_by_key(|&j| families[j]);
+for &a in &partners {
+    let keep: Vec<usize> = (0..families.len()).filter(|&i| i != a).collect();
+    let at = keep.iter().position(|&i| i == medici).unwrap();
+    let (c, s) = profile(&sub_table(&marriages, &keep))?;
+    println!("{:<13} {:>10.3} {:>9.3}  {}", families[a], c[at], s[at], families[keep[lowest(&c)]]);
+}
+
+// 2. Drop one marriage at a time.
+let mut winners = std::collections::BTreeMap::new();
+for &(a, b) in &fl_rows {
+    let mut m = marriages.clone();
+    m[place(a)][place(b)] = 0.0;
+    m[place(b)][place(a)] = 0.0;
+    let (c, _) = profile(&m)?;
+    *winners.entry(families[lowest(&c)]).or_insert(0) += 1;
+}
+let mut counts: Vec<(&str, i32)> = winners.into_iter().collect();
+counts.sort_by(|x, y| y.1.cmp(&x.1));
+println!("least constrained after dropping each marriage in turn: {}",
+         counts.iter().map(|(k, n)| format!("{k} {n}")).collect::<Vec<_>>().join(", "));
+
+// 3. Random networks with every family's degree, and the Medici's constraint in each.
+let degrees: Vec<u64> = marriages.iter().map(|row| row.iter().sum::<f64>() as u64).collect();
+let null: Vec<f64> = sample_configuration(&Degrees::Undirected(degrees), true, 100_000, 500, 1, 0)?
+    .iter()
+    .map(|d| {
+        let (from, to): (Vec<i64>, Vec<i64>) = d.from.iter().zip(&d.to).map(|(&a, &b)| (a as i64, b as i64)).unzip();
+        let g = Graph::from_edges(families.len(), &from, &to, None, false).unwrap();
+        compute_constraint(&g, StructuralHoleOptions::default()).unwrap()[medici]
+    })
+    .collect();
+println!("{} random networks with the same degrees: mean {:.3}; share at or below the observed {:.3}: {:.3}",
+         null.len(), null.iter().sum::<f64>() / null.len() as f64, c0[medici],
+         null.iter().filter(|&&x| x <= c0[medici] + 1e-12).count() as f64 / null.len() as f64);
+```
+
+::: {.code-output}
+```text
+removed       constraint eff. size  least constrained
+(nobody)           0.210     5.667  Medici
+Acciaiuoli         0.262     4.600  Guadagni
+Albizzi            0.262     4.600  Medici
+Barbadori          0.262     4.600  Guadagni
+Ridolfi            0.200     5.000  Medici
+Salviati           0.262     4.600  Guadagni
+Tornabuoni         0.200     5.000  Medici
+least constrained after dropping each marriage in turn: Medici 16, Guadagni 4
+500 random networks with the same degrees: mean 0.245; share at or below the observed 0.210: 0.338
+```
+:::
+
+:::
+
+Read the three results together.
+
+- **Dropping an alter.** With all the data the Medici's constraint is 0.210 and their effective size 5.667, and they are the least constrained family, ahead of Guadagni at 0.250. Remove any one of their six partners and the Medici's constraint lands between 0.200 and 0.262. They stay the least constrained in three of the six cases (without Albizzi, Ridolfi or Tornabuoni), and Guadagni overtakes them in the other three (without Acciaiuoli, Barbadori or Salviati). Without Ridolfi or Tornabuoni the Medici become *less* constrained, 0.200, because those two families are tied to each other and each was redundant with the other. @fig-medici-stress shows every case.
+- **Dropping a tie.** Remove each of the 20 marriages in turn and the Medici stay the least constrained 16 times, with Guadagni taking over four times. So the label survives most single losses and not all of them, and the margin over Guadagni (0.210 against 0.250) is small.
+- **Chance.** Among 500 random networks in which every family keeps its number of marriages, the family in the Medici's place (six partners) has a constraint of 0.245 on average, and about a third of the draws (0.338) reach 0.210 or lower. Having six partners goes a long way toward a low constraint. The R and Python tabs draw different random networks, so their digits differ a little.
+
+![The Medici's constraint (orange square) against the lowest constraint among the other families (blue circle), first with the full data and then with each of the Medici's six marriage partners left out in turn.](../figures/medici-stress.svg){#fig-medici-stress fig-alt="Seven rows, each with an orange square for the Medici and a blue circle for the family with the lowest constraint among the others. nobody removed: Medici 0.210, Guadagni 0.250; Acciaiuoli removed: Medici 0.262, Guadagni 0.250; Albizzi removed: Medici 0.262, Guadagni 0.333; Barbadori removed: Medici 0.262, Guadagni 0.250; Ridolfi removed: Medici 0.200, Guadagni 0.250; Salviati removed: Medici 0.262, Guadagni 0.250; Tornabuoni removed: Medici 0.200, Albizzi 0.333. The Medici have the lowest constraint in 4 of the 7 rows."}
+
+One sentence this evidence supports: *In the marriage network of 15 leading Florentine families around 1430, the Medici have the lowest constraint (0.210), which is about what a family with six marriage partners would have, and the position holds up when most single partners or marriages are left out, but not all.* One it does not support: *the Medici's brokerage position explains their rise.* The data are a snapshot of marriages. They say nothing about what the family did with the position or which came first. Padgett and Ansell used marriage ties together with other relations in a much richer account of the Medici's rise [@padgett1993robust]. That is the kind of evidence a causal claim needs.
+
+## Several readings of the same number
+
+A number means something only inside a setting. Here are three, and for each the two ends of a measure. The last row is the warning, because the same value can come from different stories.
+
+| Reading | Office (who asks whom for help) | Online platform (who replies to whom) | Neighborhood (who helps whom) |
+| --- | --- | --- | --- |
+| **Low constraint, large effective size** | Someone whose contacts sit in different teams, who is placed to carry news across. Or someone whose job simply requires talking to everyone. | An account whose repliers come from different communities, who sees different streams. Or a public figure whose repliers have never met and never will. | A neighbor who knows people on several streets and passes things between them. Or a newcomer who belongs to no circle yet. |
+| **High constraint, small effective size** | Someone whose few contacts all know each other: a close team, with trust and quick agreement and little news from outside. Or someone stuck behind one gatekeeper. | An account inside a closed community, such as one group chat, where everyone hears the same things. | A household inside one close-knit set of families, with strong mutual help and few links beyond it. |
+| **Dense ego network** | Everyone you ask also asks each other, so norms are enforced and gossip travels fast. | Your repliers reply to each other: a community, where a message is seen many times. | A tight block, with mutual aid and also social pressure. |
+| **Mostly contacts in own group** | Mostly your own department or level. | Mostly your own community or topic. | Mostly your own street or congregation. |
+| **What it does not show** | Whether the help was good, wanted or formal. | Whether ties are people, bots or one-click follows. | Who was left out of the survey. |
+
+None of these readings is a finding until the stress checks above hold up and the data came from a design you can describe.
+
 ## A cheat sheet
 
 | Measure | Question | Range | Watch out for |
@@ -731,6 +1894,16 @@ The whole network scores -0.333: 12 of the 18 ties stay inside a group and 6 cro
 
 **Brokers in hidden networks.** Everton's work on dark networks treats brokers as strategically important points for understanding and disrupting a covert network [@everton2012disrupting]. Please read that with the ethics of @sec-collecting-data in mind. A measure of "brokerage" is a statement about a pattern in incomplete data, and not evidence of anyone's intent or guilt.
 
+**Misconceptions to drop.**
+
+- *"Low constraint means power or influence."* It means a pattern of ties that leaves room to broker. Whether anyone uses it is a different question, and the structural-holes literature is mixed on whether it pays.
+- *"Effective size is just degree."* It is when no one's contacts know each other, and it is much smaller in a tight circle: Dev has six contacts and an effective size of 3.333.
+- *"Weak ties are always the useful ones."* The argument is about weak ties that *bridge*. Most weak ties sit inside a circle, and one set of experiments found moderately weak ties more useful than the weakest.
+- *"An ego survey gives the same numbers as the whole network."* Effective size and density carry over exactly, but constraint computed from an ego network alone is higher for most people, with a shifted level, as the sampling section shows.
+- *"Brokerage counts measure skill."* They count brokered pairs, which grow with the number of contacts, and they depend on how the groups were drawn.
+- *"Keeping only mutual ties is the cleaner choice."* It removes whoever nobody reciprocated: four of the 21 managers have no mutual friend and vanish from the ranking.
+- *"A measure belongs to the person."* It belongs to a person *in a measured network*. Leave out one alter, one marriage or one question of the name generator, and it can move, as the stress checks show.
+
 ## Exercises
 
 1. **By hand.** Compute the effective size of Fay with the formula $n - 2t/n$. You'll need Fay's contacts and the ties among them, which you can read off the two lists in the first code block. Check the answer against the output.
@@ -738,13 +1911,33 @@ The whole network scores -0.333: 12 of the 18 ties stay inside a group and 6 cro
 3. **Design.** You are given a company's email network and want to find people who connect departments. Would you use effective size, constraint, brokerage roles or the E-I index? What would you check the result against, and what would you want to know about how the email data were gathered?
 4. **Coding.** Remove Hana from the friendship network and recompute constraint for Ivo. What changes, and why?
 5. **Interpretation.** A report says "the people with the lowest constraint are our best innovators; promote them." Write a short, kind reply that says what the measure shows, and what it does not.
+6. **By hand.** Ego has four alters, $a$, $b$, $c$ and $d$. The ties among them are $a$-$b$, $b$-$c$ and $c$-$d$, a path. Use the formula for ego betweenness to compute it, pair by pair.
+7. **By hand.** Five alters fall into three groups, three in one, one in another and one in the third. Compute Blau's index and the IQV. What is the largest Blau index three groups allow?
+8. **Coding.** Rebuild the "both" network for Krackhardt's friendship relation. Which managers have no mutual friend, and what does it do to a ranking by constraint if you drop them?
+9. **Coding.** Change the sample size in the sampling block from 5 to 10. What happens to the standard error of the mean effective size for the managers? About how many of the 21 managers would you have to sample to bring it down to 0.25, and why is it not simply a matter of the square root of the sample size?
+10. **Design.** A survey of 500 people asks each to name up to five people they discuss important matters with, and then which of those five know each other. List what you can compute from it, what you can't, and what you would say about the size limit when you report.
+
+::: {.callout-note collapse="true"}
+## Worked answers
+
+1. Fay's five contacts are Ana, Cleo, Dev, Gus and Hana. The ties among them are Ana-Cleo, Ana-Dev, Cleo-Dev, Dev-Gus and Gus-Hana, so $t = 5$ and the effective size is $5 - 2 \cdot 5 / 5 = 3$, the 3.000 in the output.
+2. Dee has one incoming arrow, from Cy, and three outgoing, to Eve, Ada and Gus. So there are three chains, Cy to Dee to each of them, and none of the three has an arrow from Cy straight to the end. Cy and Ada are both in Design, so Cy to Dee to Ada is an itinerant. Dee and Eve are both in Build and Cy is not, so Cy to Dee to Eve is a gatekeeper. Gus is in Sales, a third team, so Cy to Dee to Gus is a liaison. That is the row 0, 1, 0, 1, 1 and a total of 3 (coordinator 0, itinerant 1, representative 0, gatekeeper 1, liaison 1).
+3. Brokerage roles, with departments as the groups, because the question is about linking *groups*: liaisons, representatives and gatekeepers are the roles that link departments. Effective size and constraint say a person's contacts are not redundant, not that they cross departments, and the E-I index describes ties of a person but not who links whom. Check the result against how the roles change when a few percent of emails are dropped, and against the same counts in random networks that keep everyone's number of emails. Ask what the email data were (all mail, or only direct mail, a one-month window or a year, whether mailing lists and automated messages were removed), who is in and who is out, whether departments are the right groups, and whether the people know their email is being used this way (@sec-collecting-data).
+4. With Hana in the network, Ivo has two contacts, Hana and Jo, who are not tied to each other, so each gets $p = 1/2$ and the constraint is $(1/2)^2 + (1/2)^2 = 0.5$. Without Hana, Ivo has one contact, Jo, who gets all of Ivo's attention, so the constraint is $1^2 = 1$. The measure changed because the network around Ivo changed: his only other world disappeared.
+5. A kind reply could be: "Thanks for looking at the network. Low constraint means a person's contacts don't know each other, which gives them a chance to carry news between groups, and in one company managers like that were more likely to have ideas their colleagues valued. It doesn't show that these people are innovators, that they use the chance, or that moving someone to a different post would help. It also follows closely how many contacts a person has, and it comes from a snapshot. Could we look at actual outcomes for these people, check that the list holds up if we leave out a few ties, and use the numbers to start conversations, not to decide?"
+6. The pairs that are not tied are $(a,c)$, $(a,d)$ and $(b,d)$. For $(a,c)$, alter $b$ is tied to both, so $m = 1$ and the pair adds $1/2$. For $(a,d)$ no alter is tied to both, so it adds $1$. For $(b,d)$, alter $c$ is tied to both, so it adds $1/2$. The ego betweenness is $0.5 + 1 + 0.5 = 2$.
+7. The shares are 0.6, 0.2 and 0.2. Blau's index is $1 - (0.36 + 0.04 + 0.04) = 0.56$, and the IQV is $0.56 / (1 - 1/3) = 0.84$. The largest Blau index with three groups is $1 - 1/3 = 0.667$, reached when the alters split evenly.
+8. Managers 7, 9, 10 and 20 have no mutual friend. Their constraint is undefined, so a ranking of constraint in the "both" network covers only 17 managers, and the least constrained three change from 17, 11 and 10 (merged ties) to 17, 1 and 2. Whether to drop people or to keep them with a different tie rule is part of the analysis, and you should say which you did.
+9. With $m = 10$ the standard error is about $2.575 \sqrt{(1 - 10/21)/10} = 0.589$, down from 1.005 at $m = 5$ (the 2.575 is the standard deviation of effective size over the 21 managers, which you can get from the block). Setting $2.575\sqrt{(1 - m/21)/m} = 0.25$ gives $m \approx 17.5$, so about 18 of the 21. The square-root rule alone would say $m = 5 \times (1.005/0.25)^2 \approx 81$, more people than there are managers. The factor $1 - m/N$ is what makes the error shrink to zero as you sample everyone.
+10. You can compute size (capped at 5), density among alters, effective size and efficiency (they need only the ties among alters), ego betweenness, and composition (Blau index, IQV, own-group share) if you also asked about each alter's group, in a name interpreter. You can't compute constraint exactly, because it needs how many contacts each named person has outside the five; an ego-only version is available but its level is too high. You have no whole-network measures such as betweenness or closeness, and no brokerage roles unless you know the direction of ties and the groups of the alters. In the report, say that the cap is 5 and what share of respondents named five (those people may have more contacts), that the ties among alters are the respondent's report, and that the numbers describe people's reports of up to five discussion partners, not everyone they know.
+:::
 
 ## Summary
 
 ::: {.callout-tip appearance="simple"}
-An ego network is a person, their contacts and the ties among those contacts. Two people with the same number of friends can have very different worlds: a tight circle whose members all hear the same news, or a set of contacts who have never met. Burt's structural holes measure the difference. Effective size counts non-redundant contacts, constraint weighs how boxed in a person is by interlinked contacts, and the two can disagree, as Dev and Hana do. Gould and Fernandez's roles say what kind of broker a person is, given the groups of the people they link. The E-I index says how much of a person's, group's or network's ties cross group lines. All of these describe an *opportunity* in the pattern of ties. Whether anyone uses it, and what it's worth, depends on the setting.
+An ego network is a person, their contacts and the ties among those contacts, and it comes in a 1-step, a 1.5-step and a 2-step version. Two people with the same number of friends can have very different worlds: a tight circle whose members all hear the same news, or a set of contacts who have never met. Burt's structural holes measure the difference. Effective size ($n - 2t/n$ for unweighted ties) counts non-redundant contacts, constraint weighs how boxed in a person is by interlinked contacts, hierarchy asks whether that constraint sits in one contact, and the measures can disagree, as Dev and Hana do. Gould and Fernandez's roles say what kind of broker a person is, given the groups of the people they link. The E-I index, Blau's index and the IQV describe the mix of a person's contacts. All of these describe an *opportunity* in the pattern of ties, and whether anyone uses it, and what it is worth, depends on the setting. The evidence for structural holes and weak ties is mixed, and the defensible reading is a hypothesis for your setting. From ego networks alone you can compute effective size, density and ego betweenness exactly, but constraint comes out too high, and what you can compute depends on the name generator, the size limit and who is sampled. Convention differences matter: what counts as a tie in a directed network, whether weights are strengths, and how nodes without contacts are handled. Stress-test any claim by dropping alters, dropping ties and comparing with a network that keeps the degrees: the Medici's low constraint survives most of these but is about what six marriage partners give.
 :::
 
 ## Further reading
 
-For ego networks and how they're collected, see @marsden1990network and @marsden2002egocentric, and for ego betweenness, @everett2005ego. For structural holes, see @burt1992structural and @burt2004structural, for the effective-size identity, @borgatti1997structural, and for the contrasting argument for closure, @coleman1988social. For weak ties, see @granovetter1973strength. For brokerage roles, see @gould1989structures, and for the E-I index, @krackhardt1988informal. For homophily, the tendency that the E-I index picks up, see @mcpherson2001birds. For brokers in hidden networks, see @everton2012disrupting. To practice in R, Phil Murphy's tutorials on brokerage [@murphyrpubs320424] and the E-I index [@murphyrpubs300606] are good companions.
+For ego networks and how they're collected, see @marsden1990network, @marsden2002egocentric and the book-length treatment in @perry2018egocentric, and for network items in a general survey, @burt1984network. For ego betweenness, see @everett2005ego. For structural holes, see @burt1992structural and @burt2004structural, for the effective-size identity, @borgatti1997structural, and for how brokerage and closure work together, @burt2005brokerage. For the contrasting argument for closure, see @coleman1988social. For weak ties, see @granovetter1973strength, and for later evidence, @onnela2007structure, @rajkumar2022causal, @ahuja2000collaboration and @uzzi2005collaboration. For brokerage roles, see @gould1989structures, and for the E-I index, @krackhardt1988informal. For composition measures, see @blau1977inequality and @agresti1978statistical. For homophily, the tendency that the E-I index picks up, see @mcpherson2001birds. For how centralities survive sampling, see @costenbader2003stability. For brokers in hidden networks, see @everton2012disrupting. For textbook treatments, see @wasserman1994social and @hanneman2005introduction. To practice in R, Phil Murphy's tutorials on brokerage [@murphyrpubs320424] and the E-I index [@murphyrpubs300606] are good companions.
