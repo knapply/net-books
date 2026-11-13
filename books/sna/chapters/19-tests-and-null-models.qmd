@@ -99,6 +99,11 @@ c(0, 1.2) |>
 
 ::: {.code-output}
 ```text
+# A tibble: 2 × 3
+  scale ordinary relabeling
+  <dbl>    <dbl>      <dbl>
+1   0      0.044      0.044
+2   1.2    0.126      0.046
 ```
 :::
 
@@ -279,6 +284,12 @@ tibble(ties_inside = inside) |>
 
 ::: {.code-output}
 ```text
+# A tibble: 3 × 3
+  ties_inside  ways share_at_least
+        <int> <int>          <dbl>
+1           2    10            1  
+2           3     8            0.5
+3           6     2            0.1
 ```
 :::
 
@@ -793,6 +804,12 @@ c(100, 1000, 10000) |>
 
 ::: {.code-output}
 ```text
+# A tibble: 3 × 7
+  relabelings average sd_over_seeds formula lowest highest exact_share
+        <dbl>   <dbl>         <dbl>   <dbl>  <dbl>   <dbl>       <dbl>
+1         100  0.0201        0.0132  0.0152 0       0.06        0.0238
+2        1000  0.0229        0.0048  0.0048 0.012   0.038       0.0238
+3       10000  0.0238        0.0014  0.0015 0.0205  0.0279      0.0238
 ```
 :::
 
@@ -1160,6 +1177,15 @@ c(10, 20, 40, 100, 200, 1000) |>
 
 ::: {.code-output}
 ```text
+# A tibble: 6 × 4
+  swaps swaps_per_tie share_of_original_ties independent_draws
+  <dbl>         <dbl>                  <dbl>             <dbl>
+1    10           0.5                  0.471             0.294
+2    20           1                    0.332             0.294
+3    40           2                    0.29              0.294
+4   100           5                    0.286             0.294
+5   200          10                    0.294             0.294
+6  1000          50                    0.304             0.294
 ```
 :::
 
@@ -1261,9 +1287,9 @@ for k in [10u64, 20, 40, 100, 200, 1000] {
 
 :::
 
-In the Florentine marriages the share falls from 1 to 0.44 after 10 accepted swaps (half a swap per tie) and to 0.34 after 20, and from about 40 swaps (two per tie) on it sits at the independent level, near 0.30, with the wiggle you expect from 100 chains. The rule of ten swaps per tie used in @sec-small-worlds is generous for a network this small.
+In the Florentine marriages the share falls from 1 to between 0.44 and 0.47 after 10 accepted swaps (half a swap per tie) and to about 0.33 after 20, and from about 40 swaps (two per tie) on it sits at the independent level, near 0.30, with the wiggle you expect from 100 chains. The rule of ten swaps per tie used in @sec-small-worlds is generous for a network this small.
 
-Three cautions. This is one summary of one small network: a chain can have forgotten which ties it started with and still be slow on another statistic, such as clustering. So for your own network, watch your own statistic along the chain, run a longer chain, and check that the answer doesn't move. Second, $k$ counts *accepted* swaps, the way the engine and NetworkX count them; the number of tries is larger. Third, the R and Python tabs make their own random swaps, so their digits differ a little from the Rust tab; the R package cannot swap ties yet, so the R tab writes the swap itself.
+Three cautions. This is one summary of one small network: a chain can have forgotten which ties it started with and still be slow on another statistic, such as clustering. So for your own network, watch your own statistic along the chain, run a longer chain, and check that the answer doesn't move. Second, $k$ counts *accepted* swaps, the way the engine and NetworkX count them; the number of tries is larger. Third, the R and Python tabs make their own random swaps, so their digits differ a little from the Rust tab (and the same-degree rows of the Florentine z-score table later in the chapter shift in the second decimal); the R package cannot swap ties yet, so the R tab writes the swap itself.
 
 ## A test from start to finish
 
@@ -1353,6 +1379,22 @@ tibble(
 
 ::: {.code-output}
 ```text
+# A tibble: 2 × 6
+  relation    ties within_share expected_share correlation t_stat
+  <chr>      <dbl>        <dbl>          <dbl>       <dbl>  <dbl>
+1 advice       190        0.242          0.224       0.04   0.816
+2 friendship   102        0.373          0.224       0.202  4.22 
+# A tibble: 4 × 7
+  relation   null                    null_mean null_sd p_high p_low p_two_sided
+  <chr>      <chr>                       <dbl>   <dbl>  <dbl> <dbl>       <dbl>
+1 advice     relabel departments         0.224  0.0241 0.260  0.808      0.453 
+2 advice     random ties, same count     0.224  0.0221 0.255  0.825      0.489 
+3 friendship relabel departments         0.223  0.043  0.001  1.000      0.001 
+4 friendship random ties, same count     0.224  0.0359 0.0005 1          0.0005
+# A tibble: 1 × 4
+  drops lowest_share highest_share drops_with_p_at_most_005
+  <int>        <dbl>         <dbl>                    <int>
+1   200        0.326         0.413                      200
 ```
 :::
 
@@ -1606,6 +1648,21 @@ family |> summarise(across(starts_with("p_"), \(x) sum(x < 0.05)))
 
 ::: {.code-output}
 ```text
+# A tibble: 8 × 6
+  relation   similarity       correlation  p_raw p_holm   p_bh
+  <chr>      <chr>                  <dbl>  <dbl>  <dbl>  <dbl>
+1 friendship same department       0.202  0.0016 0.0128 0.0128
+2 advice     age closeness         0.148  0.0404 0.283  0.0896
+3 advice     tenure closeness      0.155  0.0406 0.283  0.0896
+4 friendship same level            0.168  0.0448 0.283  0.0896
+5 friendship age closeness         0.139  0.0798 0.319  0.128 
+6 advice     same level           -0.0976 0.242  0.725  0.322 
+7 advice     same department       0.0399 0.514  1      0.587 
+8 friendship tenure closeness      0.0155 0.855  1      0.855 
+# A tibble: 1 × 3
+  p_raw p_holm  p_bh
+  <int>  <int> <int>
+1     4      1     1
 ```
 :::
 
@@ -1806,6 +1863,22 @@ tibble(z = z12, share_of_draws_at_most_12 = (1 + sum(lc <= 12)) / (length(lc) + 
 
 ::: {.code-output}
 ```text
+# A tibble: 8 × 9
+  statistic            null  observed null_mean null_sd      z percentile   skew
+  <chr>                <chr>    <dbl>     <dbl>   <dbl>  <dbl>      <dbl>  <dbl>
+1 transitivity         rand…    0.191     0.172   0.087  0.228      0.595  0.097
+2 transitivity         same…    0.191     0.163   0.074  0.39       0.795  0.087
+3 degree assortativity rand…   -0.375    -0.165   0.19  -1.10       0.134  0.139
+4 degree assortativity same…   -0.375    -0.175   0.16  -1.25       0.124 -0.12 
+5 mean distance        rand…    2.49      2.43    0.221  0.271      0.638  0.398
+6 mean distance        same…    2.49      2.51    0.181 -0.155      0.424 -0.188
+7 largest component    rand…   15        14.3     0.827  0.892      1     -1.17 
+8 largest component    same…   15        14.7     0.739  0.369      1     -2.67 
+# ℹ 1 more variable: p_two_sided <dbl>
+# A tibble: 1 × 2
+      z share_of_draws_at_most_12
+  <dbl>                     <dbl>
+1 -3.69                     0.014
 ```
 :::
 
@@ -1922,7 +1995,7 @@ z -3.6356, share of draws at most 12 0.0150
 
 Nothing here is surprising, and that is the finding. No two-sided p-value is below 0.23. Transitivity (0.191) is in the middle of both nulls. Degree assortativity of $-0.375$ (families with many marriages marry families with few) is 1.1 to 1.2 standard deviations below the null's average, percentile 0.13: in the direction of a hub-and-spokes pattern, but well within what 15 families and 20 marriages produce by chance. A small network gives a wide null, so only large effects show. The honest summary is "no evidence against these nulls", not "no pattern": with 20 ties this test has little power.
 
-The z-score and the percentile agree when the null is roughly bell-shaped, as for assortativity (skewness between $-0.05$ and 0.14). They stop agreeing when it isn't. Look at the largest component under the same-degree null: the skewness is $-2.81$, because most draws are connected (15 families) and a few break off a small piece. Suppose the largest component had been 12 families. Its z-score would be $-3.64$, which a normal curve would call rarer than one in a thousand. But 1.5 percent of the draws (0.0150) are at most 12, about one in 67. A z-score assumes a bell shape; the draws don't have one. So read the percentile or the p-value from the draws, show z only for scale, and look at the skewness (or a histogram) whenever the null is lopsided or takes few distinct values. The latter explains the two-sided p-value of 1.000 for transitivity under same degrees: with the degrees fixed, the number of connected triples is fixed, so transitivity moves only in steps of one triangle (about 0.06), and the observed value sits among the middle steps.
+The z-score and the percentile agree when the null is roughly bell-shaped, as for assortativity (skewness between about $-0.1$ and 0.14). They stop agreeing when it isn't. Look at the largest component under the same-degree null: the skewness is about $-2.7$, because most draws are connected (15 families) and a few break off a small piece. Suppose the largest component had been 12 families. Its z-score would be about $-3.6$, which a normal curve would call rarer than one in a thousand. But only 1.5 percent of the draws (between 0.014 and 0.015, depending on the engine) are at most 12, about one in 70. A z-score assumes a bell shape; the draws don't have one. So read the percentile or the p-value from the draws, show z only for scale, and look at the skewness (or a histogram) whenever the null is lopsided or takes few distinct values. The latter explains the two-sided p-value of 1.000 for transitivity under same degrees: with the degrees fixed, the number of connected triples is fixed, so transitivity moves only in steps of one triangle (about 0.06), and the observed value sits among the middle steps.
 
 ## Three ways a null goes wrong
 
@@ -1953,6 +2026,11 @@ list(`random ties` = fl_gnm, `same degrees` = fl_cfg) |>
 
 ::: {.code-output}
 ```text
+# A tibble: 2 × 5
+  null         observed null_mean null_sd p_high
+  <chr>           <dbl>     <dbl>   <dbl>  <dbl>
+1 random ties         6      5.31   0.814  0.349
+2 same degrees        6      6      0      1    
 ```
 :::
 
@@ -2063,6 +2141,13 @@ asplit(ub, 1) |>
 
 ::: {.code-output}
 ```text
+# A tibble: 2 × 6
+  method covers_truth average_observed spread_of_observed average_bootstrap_ce…¹
+  <chr>         <dbl>            <dbl>              <dbl>                  <dbl>
+1 peopl…         1               0.203              0.022                  0.195
+2 ties …         0.01            0.203              0.022                  0.129
+# ℹ abbreviated name: ¹​average_bootstrap_centre
+# ℹ 1 more variable: average_bootstrap_sd <dbl>
 ```
 :::
 
