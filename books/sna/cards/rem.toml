@@ -1,0 +1,62 @@
+id = "rem"
+title = "Relational event model (REM)"
+kind = "model"
+chapter = "dynamics"
+summary = "A model for a log of timed, directed events in which every possible sender and receiver pair has a rate for the next event that depends on what has happened before, fitted by partial likelihood."
+answers = "Given everything that has happened so far, what makes the next event more likely to be between this pair: repetition, replies, one person being busy, one person being popular, or something else?"
+
+data_requirements = [
+  "A sequence of events, each with a sender, a receiver and an order (and, for timing-based versions, a time).",
+  "A defensible risk set: who could have sent to whom at each moment.",
+  "Enough events: the standard errors in the chapter's 80 events were wide.",
+  "Events should be separate acts, not copies of one act (such as a message to a list).",
+]
+
+assumptions = [
+  "The rate of each pair is the exponential of a sum of effects computed from the past; the effects included are the ones that matter.",
+  "The risk set is correct; if people leave or cannot write to each other and the model lets them, coefficients are biased.",
+  "In the order-only version, the exact timing carries no information beyond the order.",
+  "Memory is as chosen: all the past counts equally, or only a window, or with decay.",
+  "Pairs share coefficients; stable differences between pairs (who is close to whom) are not modeled unless added.",
+]
+
+readings = [
+  { context = "Inertia (earlier events from the sender to the receiver)", high = "Repetition is favored: pairs who have interacted keep interacting. In a log with a few chatty senders, check sender activity first.", low = "Negative: people spread their messages around, as in the invented office log." },
+  { context = "Reciprocity (earlier events from the receiver to the sender)", high = "Replies are favored. Two people who simply talk a lot also look reciprocal, so a shuffled-order comparison matters.", low = "Negative: events tend to be one-way, as in broadcast-like logs." },
+  { context = "Sender activity", high = "Busy people stay busy; a positive value often restates who the heavy senders are.", low = "Negative: senders even out over time." },
+  { context = "Receiver popularity", high = "Attention concentrates on people who have already received a lot.", low = "Negative: recipients are spread out." },
+]
+
+pitfalls = [
+  "Reading a coefficient as a probability of a reply instead of a log multiplier on a rate, given the other effects.",
+  "Interpreting repetition or reciprocity without first including sender activity and receiver popularity.",
+  "Quoting a coefficient without the model it came from: it changes when effects are added.",
+  "Assuming the order-only model says anything about how quickly people reply.",
+  "Using a risk set that includes people who could not have acted.",
+  "Treating a significant coefficient as evidence about timing when a shuffled-order check matches the data.",
+]
+
+checks = [
+  "Refit on each half of the log; signs and sizes should agree within the standard errors.",
+  "Count how many distinct pairs account for how many events; a few pairs should not dominate.",
+  "Add sender activity and receiver popularity and see whether repetition and reciprocity survive, with a likelihood-ratio check.",
+  "Shuffle the order of the events many times and refit; if the shuffled coefficients match the data, the effects may reflect which pairs are active, not timing.",
+  "Try other memory choices (a window or decay) and report which was used.",
+]
+
+do_not_claim = [
+  "That a past event caused the next one.",
+  "That people reply because of politeness, obligation or any other motive.",
+  "That a coefficient says how quickly events follow each other, when only the order was modeled.",
+  "That an effect is real when the shuffled-order check does not separate it.",
+]
+
+report_template = "We modeled {n_events} events among {n_actors} {actors} with a relational event model using {effects}, risk set {risk_set} and memory {memory}. The coefficient for {effect} was {value} ({uncertainty}), a multiplier of {multiplier} on a pair's rate for each earlier {event_unit}, given the other effects. Refits on each half gave {halves}, and a shuffled-order check gave {shuffle}. These coefficients describe patterns in the order of events; they do not show why the events happened."
+
+related = ["saom", "permutation-test", "null-models-choice"]
+sources = ["butts2008relational", "perry2013point", "vu2015relational", "cox1972regression"]
+
+[knappnet]
+rust = "knappnet::temporal::rem::{EventStream, compute_rem_statistics, fit}: statistics, partial-likelihood fit with standard errors, windowed and decaying memory"
+r = "relevent::rem.dyad fits the order-only model; the chapter writes the partial likelihood by hand"
+python = "none (the chapter's hand-written partial likelihood with scipy.optimize)"

@@ -1,0 +1,63 @@
+id = "saom"
+title = "Stochastic actor-oriented model (SAOM)"
+kind = "model"
+chapter = "dynamics"
+summary = "A model for a network observed at two or more times in which actors change their ties one at a time, with probabilities set by how attractive each possible change is to them."
+answers = "Which tendencies (such as returning ties, closing triangles, or favoring similar people) are enough to reproduce how this network changed between waves, and how strong are they once the other tendencies are accounted for?"
+
+data_requirements = [
+  "The same set of actors observed at two or more waves, with the ties recorded the same way each time.",
+  "A defensible account of who was in the study at each wave; people who join or leave must be declared, not left to look like dropped ties.",
+  "Waves close enough in time that most ties are unchanged; if most ties changed between waves, the data say little about the order of change.",
+  "Optional actor attributes, used for effects such as same-group or alter popularity.",
+]
+
+assumptions = [
+  "Changes happen one tie at a time, in continuous time, and the chance of the next change depends only on the network now (a Markov assumption).",
+  "Actors choose among options with probabilities that follow the exponential of a sum of effects; the effects in the model are the ones that matter.",
+  "The rate of opportunities is constant across actors, unless the model says otherwise, and constant across periods unless estimated per period.",
+  "The survey design does not itself force the pattern, as a cap on how many people one may name would.",
+  "For a behavior variable, influence and selection can be separated only if both are in the model and the waves are close enough to attribute changes.",
+]
+
+readings = [
+  { context = "Outdegree coefficient", high = "A positive value means actors keep adding ties; rare in surveys with limits on how many people can be named.", low = "Usually negative: ties are costly or limited, so networks are sparse. The size mostly restates density and moves with the other effects." },
+  { context = "Reciprocity in a friendship survey", high = "Returned ties are favored: an option that would be returned weighs more than an otherwise identical one that would not.", low = "A negative value means one-way ties are favored, which is unusual for friendship." },
+  { context = "Reciprocity in an advice or flow network", high = "Mutual consulting or exchange is favored. It may be built into the setting, as when two-way routes exist.", low = "One-way flows are favored, as in a strict hierarchy." },
+  { context = "Estimated rate per period", high = "A large rate means many chances to change per actor: most ties changed between waves, and the waves are far apart for this model.", low = "A small rate means few changes; coefficients are then poorly determined by the data." },
+]
+
+pitfalls = [
+  "Reading a coefficient as the probability that a tie forms, instead of a log multiplier on the weight of an option, other things equal.",
+  "Treating the actor's 'decision' as a claim about motives.",
+  "Tuning on one wave and reporting fit to the same wave.",
+  "Ignoring changes in who is in the study between waves.",
+  "Fitting waves that are very far apart and reading the order of change from them.",
+  "Comparing coefficients across models with different effects or across networks of different size.",
+]
+
+checks = [
+  "Simulate from the fitted model starting at one wave and compare the next wave on statistics the model was not tuned to, such as out-degree spread and the number of mutual pairs.",
+  "Compare against a rival without the effect of interest, tuned to the same density.",
+  "Look at the rate of each period: a large estimate says most of the network changed.",
+  "Check whether a design feature, such as a cap on ties named, is reproduced.",
+  "Refit with and without people who entered or left during the study.",
+  "Repeat with different random seeds and report the spread.",
+]
+
+do_not_claim = [
+  "That actors decided to form ties for the reason the effect name suggests.",
+  "That a coefficient is a cause, or measures how much an effect matters in practice.",
+  "That a model which matches the totals explains the changes underneath them.",
+  "That selection or influence is shown when only network ties were modeled.",
+]
+
+report_template = "We modeled {n} {actors} observed at {waves} with a stochastic actor-oriented model with the effects {effects}. The coefficient for {effect} was {value} ({uncertainty}): an option with that feature weighs {multiplier} times as much as an otherwise identical one, given the other effects. Checked against {held_out_statistics}, the model reproduced {matched} but not {missed}. These coefficients describe patterns in change under the model and do not show why the changes happened."
+
+related = ["ergm", "influence-vs-selection", "permutation-test"]
+sources = ["snijders2001statistical", "snijders2010introduction", "snijders2017stochastic", "steglich2010dynamic", "kossinets2006effects"]
+
+[knappnet]
+rust = "knappnet::saom::{SaomModel, simulate_period, compute_ministep_probabilities}: forward simulation and ministep probabilities; no estimation"
+r = "RSiena::siena07 estimates the model; the chapter's hand-written simulation shows the forward model"
+python = "none (the chapter's hand-written simulation; estimation through RSiena in R)"
