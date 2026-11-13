@@ -1,0 +1,61 @@
+id = "eigenvector"
+title = "Eigenvector centrality, with Katz and Bonacich power"
+kind = "measure"
+chapter = "centrality"
+summary = "A node's score is proportional to the sum of its contacts' scores, so being tied to well-placed people counts for more; Katz and Bonacich power are relatives that discount long walks or can reverse the sign."
+answers = "Who is tied to people who are themselves well connected, so that their position comes from their neighborhood, not only from their own contacts?"
+
+data_requirements = [
+  "A single connected piece for undirected networks, or a strongly connected network for directed ones. Otherwise the score concentrates on the piece with the largest eigenvalue and is zero elsewhere, or the tool refuses.",
+  "Ties that mean support, access or endorsement flowing from contact to contact. If ties only record co-membership, a neighbor's score has no clear meaning.",
+  "For directed networks, say that scores follow incoming ties (being chosen by well-chosen people). A network with no cycles gives zero for everyone.",
+  "For Katz, a discount alpha below one over the largest eigenvalue; for Bonacich power, a parameter beta whose size is below that limit and whose sign you can justify.",
+]
+
+assumptions = [
+  "Influence or status passes along every route, to a fixed share of the contact's score. That is a model of the process, not a fact.",
+  "The boundary is right. A well-connected core that you only partly sampled will distort every score.",
+  "The scale of the score is arbitrary: only the order and the ratios mean anything, and tools scale differently (top score 1, or unit length).",
+  "For Bonacich power, the sign of beta is a claim about what a tie to a strong person does: positive for status that spreads, negative for bargaining where weak partners are an advantage.",
+]
+
+readings = [
+  { context = "Marriage or alliance network among families", high = "Married into families that are themselves well connected: embedded in the core of the elite.", low = "Tied to families with few connections of their own, whatever their own number of marriages." },
+  { context = "Communication network inside an organization", high = "Close to the people other people talk to: well placed to hear what circulates in the core.", low = "Talks to people on the fringe. May still have many contacts." },
+  { context = "Supply or infrastructure network", high = "Next to major hubs, so exposed to their failures and benefiting from their reach.", low = "Attached to minor nodes." },
+  { context = "Online platform (follows)", high = "Followed by accounts that are themselves widely followed.", low = "Followed by accounts with small audiences." },
+]
+
+pitfalls = [
+  "Treating it as degree with extra steps and not looking at where they differ. In the books two-group example the node that joins the groups has a low score because its contacts sit in small groups.",
+  "Using it on a disconnected or non-strongly-connected network without noticing that some people get zero because of the structure, not because they are unimportant.",
+  "Reading a high score as influence. It says where someone sits, not what they do.",
+  "Letting one dense core take all the score and concluding nothing outside it matters.",
+  "Comparing scores between tools without checking the scaling, or between networks of different size.",
+  "Picking the sign of Bonacich's beta without a reason, since it flips who looks strong.",
+]
+
+checks = [
+  "Check connectivity first, and report which pieces get zero.",
+  "Check the rule on the output: at each node, the sum of its neighbors' scores divided by its own score should be the same number (the largest eigenvalue).",
+  "Drop a random tenth of the ties several times. In the books examples the order as a whole was fairly stable but the top person changed in roughly a quarter to a third of runs, so give the top group, not a single name.",
+  "Compare with degree and PageRank. If the three orders agree closely, say that the finding is one finding.",
+  "For Katz, try two or three values of alpha; for Bonacich power, report both signs of beta if the process is unclear.",
+]
+
+do_not_claim = [
+  "That the top-scoring node is the most influential or most powerful, without evidence about behavior.",
+  "That a low score means few contacts.",
+  "That scores computed with different scalings or conventions can be compared as numbers.",
+  "That a single top node is the most central when first place changes under small data changes.",
+]
+
+report_template = "In this {tie_meaning} network of {n} {node_type}, {node} has the highest eigenvector centrality (scaled so the top score is 1; next is {runner_up} at {runner_up_value}). The network has {components} connected piece(s). This describes being tied to well-connected people, not influence. The top place is {stable_or_not} when {perturbation}."
+
+related = ["degree", "pagerank", "betweenness", "components"]
+sources = ["bonacich1972factoring", "bonacich1987power", "katz1953new", "bonacich2001eigenvector", "wasserman1994social", "borgatti2006robustness"]
+
+[knappnet]
+rust = "compute_eigenvector_centrality(&graph, EigenvectorOptions::default()); compute_katz(&graph, &KatzOptions::default()); compute_bonacich_power(&graph, BonacichOptions::default())"
+r = "net_eigen(g); net_katz(g, alpha = 0.1); net_bonacich(g, exponent = 0.3)"
+python = "networkx.eigenvector_centrality_numpy(G); networkx.katz_centrality(G, alpha=0.1); (Bonacich power is not in NetworkX: solve (I - beta A) c = A 1)"

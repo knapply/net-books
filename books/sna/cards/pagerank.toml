@@ -1,0 +1,60 @@
+id = "pagerank"
+title = "PageRank"
+kind = "measure"
+chapter = "centrality"
+summary = "The long-run share of time a random walker spends at each node when it mostly follows outgoing ties and sometimes jumps to a random node."
+answers = "Where does attention or traffic pool if it follows the ties at random, with some chance of starting over, so that ties from nodes that point to few others count for more?"
+
+data_requirements = [
+  "Ties must plausibly carry attention or traffic from one node to another (links, citations, follows, replies). Direction matters and should follow the way the thing moves.",
+  "Say how nodes with no outgoing ties are treated. The usual rule sends the walker to a random node; tools mostly agree, but state it.",
+  "State the damping value (usually 0.85) and check that conclusions survive other values.",
+  "For undirected networks the score is close to degree, so say if that is what you are really measuring.",
+]
+
+assumptions = [
+  "A visitor splits their attention equally among the nodes they point to, unless weights say otherwise.",
+  "A fixed share of the time (one minus the damping) is spent jumping to a random node. That share is a modeling choice with no data behind it.",
+  "The boundary is right. Nodes just outside the data would send and receive attention.",
+  "Ties record the flow you care about. Replies, follows and links include arguments, spam and automated accounts.",
+]
+
+readings = [
+  { context = "Marriage or alliance network among families (undirected)", high = "Behaves much like degree: many partners, weighted by how selective those partners are. Close to degree in the books Florentine example.", low = "Few partners, or partners who have many others." },
+  { context = "Communication or reply network inside an organization (directed)", high = "A lot of messages arrive from people who send to few others: attention concentrates here.", low = "Few messages arrive, or they come from people who send to everyone." },
+  { context = "Citation or link network", high = "Cited by items that are themselves heavily cited and selective in what they cite.", low = "Seldom cited, or cited only by items that cite everything." },
+  { context = "Online platform (follows, replies)", high = "Receives attention from accounts that are themselves attention hubs. Could be a legitimate hub or a coordinated group lifting an account.", low = "Receives little attention. Says nothing about quality." },
+]
+
+pitfalls = [
+  "Reading a high score as influence or importance. It describes where a random walk pools.",
+  "Using it on undirected data and reporting it as if it were a different finding from degree.",
+  "Not stating the damping value or the treatment of nodes with no outgoing ties, which differ between tools and change scores.",
+  "Comparing scores across networks of different size. The scores add up to 1, so each shrinks as the network grows.",
+  "Ignoring that a coordinated group can inflate scores by linking to each other.",
+]
+
+checks = [
+  "Compute degree (in-degree if directed) and report the rank correlation with PageRank. If it is near 1, the finding is largely a degree finding.",
+  "Rerun with damping 0.5 and 0.95. A stable ranking across damping values is more defensible.",
+  "Drop a random tenth of the ties several times and see whether the top account stays on top; in the books examples PageRank was among the steadier measures at the top place.",
+  "Look at who sends the incoming ties. A high score fed by a few accounts that link to each other is a different story from a broad base.",
+  "State the tool's convention: damping, dangling nodes, weights, and whether direction was followed.",
+]
+
+do_not_claim = [
+  "That the highest-scoring node is the most influential, trusted or best.",
+  "That PageRank scores from different networks or tool conventions can be compared as numbers.",
+  "That a high score was earned rather than manufactured, without looking at the sources of the ties.",
+  "A precise ranking between nodes whose scores are close.",
+]
+
+report_template = "In this {tie_meaning} network of {n} {node_type}, {node} has PageRank {value} (rank {rank} of {n}; damping {damping}; scores add up to 1). Its rank correlation with {degree_kind} is {rho}, so {degree_remark}. The top place is {stable_or_not} when {perturbation}. PageRank describes where a random walk pools, not influence."
+
+related = ["degree", "eigenvector", "betweenness"]
+sources = ["brin1998anatomy", "langville2004deeper", "katz1953new", "wasserman1994social", "newman2018networks"]
+
+[knappnet]
+rust = "compute_pagerank(&graph, &PagerankOptions::default())  // knappnet::metrics::spectral"
+r = "net_pagerank(g, damping = 0.85)"
+python = "networkx.pagerank(G, alpha=0.85)"

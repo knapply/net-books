@@ -1,0 +1,60 @@
+id = "closeness"
+title = "Closeness and harmonic centrality"
+kind = "measure"
+chapter = "centrality"
+summary = "How near a node is to everyone else: the inverse of its average distance (closeness), or the average of the inverse distances (harmonic)."
+answers = "Who can reach everyone else in the fewest steps, and so depends least on any one go-between?"
+
+data_requirements = [
+  "Ties must represent something that can travel step by step (information, goods, an introduction). If they are only similarity, distances have no meaning.",
+  "State whether the network is connected. Plain closeness is undefined across pieces; use harmonic centrality or the Wasserman and Faust correction and say which.",
+  "In a directed network say which direction: out-closeness (how fast I reach others) or in-closeness (how fast others reach me). Tools default differently.",
+  "If ties have weights, say whether they are distances or strengths. Shortest-path code treats larger as farther.",
+]
+
+assumptions = [
+  "Things travel along shortest paths. Real flows wander or follow the routes people know.",
+  "All ties are equally easy to use unless you supply weights.",
+  "The boundary is right. Missing the people just outside the data makes edge nodes look far from everything.",
+  "An average is the right summary. Closeness hides whether a node is near a few people and far from many.",
+]
+
+readings = [
+  { context = "Marriage or alliance network among families", high = "Reaches every other family in few marriages: quick access to the whole elite. It is not the same as having many partners.", low = "Far from most families: a peripheral or recently connected house." },
+  { context = "Communication network inside an organization", high = "News from them reaches everyone quickly and news reaches them quickly: well placed to coordinate or to hear early.", low = "On the edge of the information flow: hears late, is heard late." },
+  { context = "Transport, supply or infrastructure network", high = "Short trips to everywhere: a good site for a depot or a hospital.", low = "Remote: long trips to reach most places." },
+  { context = "Online platform", high = "Sees content early from across the network and can spread it to many in few steps, if replies or follows are the route.", low = "On the periphery of the replies or follows." },
+]
+
+pitfalls = [
+  "Using plain closeness on a network with pieces. A two-person island averaged over the one person each can reach gets a perfect score and can outrank everyone in the main piece.",
+  "Comparing raw closeness across networks of different size. Shapes also matter: the same value means different things in a line and a ring.",
+  "Reading small differences in a dense network. When everyone is within a step or two of everyone, scores bunch up and the order is mostly noise.",
+  "Mixing up in- and out-closeness, or comparing a tool that uses one with a tool that uses the other.",
+  "Treating closeness as having many friends. A node can be close with few ties.",
+]
+
+checks = [
+  "Count the connected pieces first. If there is more than one, report harmonic centrality or the Wasserman and Faust version, not plain closeness.",
+  "Compare closeness with harmonic centrality. If the order changes, say so.",
+  "Drop a random tenth of the ties several times and check whether the top few stay on top; in the books examples closeness-type orders were fairly stable but the top place was less so.",
+  "Compare with degree and betweenness. High closeness with low degree means a well-placed node with few ties.",
+  "Check the direction convention of the tool you used against your question.",
+]
+
+do_not_claim = [
+  "That a high-closeness node is more influential or better informed, without evidence about what travels.",
+  "That information actually reaches people along shortest paths.",
+  "That closeness from different networks, or from different tool conventions, can be compared directly.",
+  "A precise ranking among nodes with nearly equal scores in a dense or small network.",
+]
+
+report_template = "In this {tie_meaning} network of {n} {node_type} ({components} connected piece(s)), {node} has {kind_of_closeness} closeness {value} (rank {rank} of {n}): it reaches the others in {mean_steps} steps on average. Paths were followed {direction}. This describes position on shortest paths, not what flows along them. The ranking is {stable_or_not} when {perturbation}."
+
+related = ["geodesic-distance", "connectivity", "components", "betweenness", "degree"]
+sources = ["sabidussi1966centrality", "freeman1978centrality", "marchiori2000harmony", "wasserman1994social", "boldi2014axioms"]
+
+[knappnet]
+rust = "compute_closeness(&graph, ClosenessOptions { normalized: true, ..Default::default() }); compute_harmonic_centrality(&graph, ClosenessOptions { normalized: true, ..Default::default() })"
+r = "net_closeness(g, normalized = TRUE); net_harmonic(g, normalized = TRUE)  # convention = \"networkx\" for the Wasserman and Faust correction"
+python = "networkx.closeness_centrality(G, wf_improved=True); networkx.harmonic_centrality(G)"
