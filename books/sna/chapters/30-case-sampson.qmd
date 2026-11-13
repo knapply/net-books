@@ -5,6 +5,16 @@
 @sec-subgroups, @sec-signed-and-valued and @sec-time. You will use communities and ways of comparing two partitions, signed ties, and the idea of describing waves of a network one at a time. @sec-homophily and @sec-tests-and-null-models are useful too.
 :::
 
+::: {.callout-tip appearance="simple"}
+## The short version
+Eighteen novices in a monastery were asked three times whom they liked best. This chapter asks whether their liking split into the factions a researcher had described. It didn't: the circles you find by looking only at who likes whom are not the researcher's groups, though they are fairly steady from one round to the next. The researcher's groups do line up with who the novices disliked, which mostly crossed group lines. Along the way you see how to compare against chance in a survey where everyone was told to name exactly three people.
+:::
+
+::: {.callout-tip appearance="simple"}
+## Why you might care
+Any time people are sorted into teams, departments or factions, someone will claim the teams are "real". This chapter shows how to check that claim against what people actually do, and how to avoid being fooled by the way the questions were asked.
+:::
+
 ## The question
 
 A small group, three snapshots, and a lot of ways to go wrong. That is the whole appeal of this data set. Samuel Sampson lived in a New England monastery as an experimenter and asked 18 novices, the men in training, whom they liked [@sampson1968novitiate]. The earlier chapters each used a slice of his data to teach one tool: the triad census over the three waves (@sec-triads-and-motifs), signed ties and balance at the third (@sec-signed-and-valued), group homophily at the third (@sec-homophily), and rank stability across the waves (@sec-time). This chapter takes the question that ties them together, and takes it all the way through.
@@ -358,7 +368,7 @@ Look at the picture before reading further. The three most chosen novices at tim
 
 *In-degree*, the number of choices a novice receives, is the simplest popularity measure there is (@sec-centrality). Here it is the number of the other 17 who put him in their top three. Two questions: who is on top, and is the order the same from one wave to the next?
 
-For the second we use the **Spearman correlation**, which compares two rankings and runs from $-1$ (reversed) through 0 (unrelated) to $+1$ (identical). To judge a correlation we need to know what two *unrelated* waves would give, so the code compares it with pairs of random waves built the same way as in Step 1. The "95th percentile" column is the correlation that only one random pair in twenty beats.
+For the second we use the **Spearman correlation**, which compares two rankings and runs from $-1$ (reversed) through 0 (unrelated) to $+1$ (identical). In plain words: line the novices up from most to least chosen in wave 1, then again in wave 2. If the two lineups look alike, the number is near 1; if they look like two shuffled decks, it is near 0. To judge a correlation we need to know what two *unrelated* waves would give, so the code compares it with pairs of random waves built the same way as in Step 1. The "95th percentile" column is the correlation that only one random pair in twenty beats.
 
 ::: {.panel-tabset group="language"}
 
@@ -526,9 +536,13 @@ Now the main question. Sampson's groups are four labels. A network method can pr
 
 The method is **Louvain** [@blondel2008fast], which moves people between groups to raise *modularity*, the share of ties inside groups minus what random ties with the same degrees would put there (@sec-subgroups). It needs an undirected network, so we count a pair as tied if either novice chose the other. We fix the seed and the resolution so the answer can be reproduced.
 
-To compare two partitions we use the **adjusted Rand index** [@hubert1985comparing], from the Rand index [@rand1971objective]. Take every pair of novices and ask whether the two partitions agree about the pair: both put them together, or both put them apart. The adjusted index corrects for the agreement chance would give. A small example you can check by hand: four novices A, B, C, D, with partition X = {A, B | C, D} and partition Y = {A, B, C | D}. Of the 6 pairs, X keeps 2 together (AB and CD), Y keeps 3 together (AB, AC and BC), and exactly 1 pair (AB) is together in both. Chance would give $2 \times 3 / 6 = 1$ pair together in both. With $a$ = pairs together in $X$, $b$ = pairs together in $Y$, $m$ = pairs together in both, and $N$ = all pairs,
+To compare two partitions we use the **adjusted Rand index** [@hubert1985comparing], from the Rand index [@rand1971objective]. Take every pair of novices and ask whether the two partitions agree about the pair: both put them together, or both put them apart. The adjusted index corrects for the agreement chance would give. Think of two people who each sort the same 18 novices into teams: the index asks how often they'd put the same two novices together, beyond what coin tosses would give. A small example you can check by hand: four novices A, B, C, D, with partition X = {A, B | C, D} and partition Y = {A, B, C | D}. Of the 6 pairs, X keeps 2 together (AB and CD), Y keeps 3 together (AB, AC and BC), and exactly 1 pair (AB) is together in both. Chance would give $2 \times 3 / 6 = 1$ pair together in both. With $a$ = pairs together in $X$, $b$ = pairs together in $Y$, $m$ = pairs together in both, and $N$ = all pairs,
 
 $$\text{ARI} = \frac{m - ab/N}{(a + b)/2 - ab/N} = \frac{1 - 1}{2.5 - 1} = 0.$$
+
+::: {.callout-tip title="In plain words"}
+This answers: do two ways of sorting people into groups agree more than luck would? Read the symbols aloud. The letter $a$ is how many pairs of people the first sorting keeps together (2). The letter $b$ is the same for the second sorting (3). The letter $m$ is how many pairs both keep together (1). The letter $N$ is the number of pairs in all (6). Luck would give $ab/N = 2 \times 3 / 6 = 1$ shared pair, and the top of the fraction is "what we got minus what luck gives". The bottom is "the most we could have got minus what luck gives", with the average of $a$ and $b$, 2.5, as that most. So here $(1-1)/(2.5-1) = 0$: exactly as much agreement as luck. A score of 1 means identical groupings, and a negative score means the two disagree more than luck would.
+:::
 
 Zero means no more agreement than chance, and 1 means the same partition. We also report **normalized mutual information**, which asks how much knowing one partition tells you about the other, on a scale from 0 to 1 [@vinh2010information].
 
@@ -877,7 +891,7 @@ One caution about the numbers above. Louvain on 18 novices and about 40 pairs of
 
 @sec-signed-and-valued built a signed network from the liking and disliking choices at the third wave and found that it isn't balanced, and that it can't be cut into clusters with positive ties inside and negative ties between. Here we ask a narrower question about the groups: **do the dislikes fall between Sampson's groups, and do the likes fall inside them?**
 
-First the raw table: who dislikes whom, by group (rows choose, columns are chosen), with the number of dislikes that stay inside a group set against shuffled groups. Then the signed network, built as before: one tie per pair of novices, kept only when every choice about the pair has the same sign. For any partition of the novices we can count how many ties it contradicts: negative ties *inside* a group plus positive ties *between* groups [@doreian1996partitioning]. Call that the **cost** of the partition. Everyone in one group costs every negative tie, everyone alone costs every positive tie, and a good partition costs less than both. Last, popularity: how many likes and dislikes did the most disliked novices receive?
+First the raw table: who dislikes whom, by group (rows choose, columns are chosen), with the number of dislikes that stay inside a group set against shuffled groups. Then the signed network, built as before: one tie per pair of novices, kept only when every choice about the pair has the same sign. For any partition of the novices we can count how many ties it contradicts: negative ties *inside* a group plus positive ties *between* groups [@doreian1996partitioning]. Call that the **cost** of the partition. In everyday terms, the cost is a count of "mistakes", ties that don't fit the idea that friends stick together and rivals stay apart. Everyone in one group costs every negative tie, everyone alone costs every positive tie, and a good partition costs less than both. Last, popularity: how many likes and dislikes did the most disliked novices receive?
 
 ::: {.panel-tabset group="language"}
 
@@ -1079,7 +1093,12 @@ The last table is a warning about "popular". Peter received 6 likes and 8 dislik
 
 ## Step 5: change across the waves
 
-Change is where the questionnaire most easily fools you, so decide what chance looks like first. Between two waves, how many of the choices made at the first would appear again at the second if the novices simply chose again at random? Two baselines. The exact one: a novice who made $d_1$ choices in the first wave and $d_2$ in the second would repeat $d_1 d_2 / 17$ of them on average, summed over novices. The second keeps the later wave as it is, *including* its pattern of popularity and mutual choices, and shuffles which novice is which, which is the idea behind the QAP tests of @sec-network-regression.
+Change is where the questionnaire most easily fools you, so decide what chance looks like first. Between two waves, how many of the choices made at the first would appear again at the second if the novices simply chose again at random? Two baselines. The exact one: a novice who made $d_1$ choices in the first wave and $d_2$ in the second would repeat $d_1 d_2 / 17$ of them on average, summed over novices.
+
+::: {.callout-tip title="In plain words"}
+This is the number of repeated choices luck alone would give. A novice names $d_1$ people the first time and $d_2$ the second time, and each of his $d_2$ new picks lands on one of the 17 others. For a novice who names 3 and then 3, that's $3 \times 3 / 17$, about 0.53 repeats. Add that up over all 18 novices and you get the roughly 10 repeats that chance gives in the results below.
+:::
+ The second keeps the later wave as it is, *including* its pattern of popularity and mutual choices, and shuffles which novice is which, which is the idea behind the QAP tests of @sec-network-regression.
 
 Then two follow-ups. Do mutual choices last longer than one-way ones? And who moves? For each novice, the **stay score** is the share of the other 17 novices whom he sits with (or apart from) in the same way in both waves' communities. A score of 1 means his company didn't change, and a low score means it did.
 
@@ -1519,7 +1538,7 @@ Read it against the checklist. Does it say what a tie is (a top-three choice), w
 ::: {.callout-note collapse="true"}
 ## Worked answers
 
-1. Together in X: AB and CD, 2 pairs. Together in Y: AC and BD, 2 pairs. Together in both: none, so $m = 0$. With $N = 6$ pairs, $ab/N = 2 \times 2 / 6 = 2/3$, and $\text{ARI} = (0 - 2/3)/(2 - 2/3) = -0.5$. The partitions agree less than chance: every pair X keeps together, Y splits.
+1. The two sortings agree less than luck would, and the score is $-0.5$. Here is the count. Together in X: AB and CD, 2 pairs. Together in Y: AC and BD, 2 pairs. Together in both: none, so $m = 0$. With $N = 6$ pairs, $ab/N = 2 \times 2 / 6 = 2/3$, and $\text{ARI} = (0 - 2/3)/(2 - 2/3) = -0.5$. The partitions agree less than chance: every pair X keeps together, Y splits.
 2. $18 \times 3 = 54$ choices and an average in-degree of $54/18 = 3$. Every choice lands on somebody, so the total received equals the total made. When everyone names exactly three, the average is fixed at 3 whatever the novices do, which is why in-degree *spread*, not in-degree average, carries the information. Wave sizes of 55, 57 and 56 (averages 3.06, 3.17 and 3.11) are the tied ranks.
 3. Each of the 3 choices repeats with chance $3/17$, so you expect $3 \times 3/17 = 0.53$ repeats per novice and $18 \times 0.53 = 9.5$ in all. The 10.3 of Step 5 is a little higher because a few novices named four.
 4. Resolution is the dial from @sec-subgroups. Smaller values give fewer, larger communities, larger values more and smaller ones. Compare the adjusted Rand index with the groups at each setting, and check that none is far above the 95th percentile of the luck column; if one is, ask whether you tried many settings and kept the best.

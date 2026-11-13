@@ -5,11 +5,35 @@
 None. If you can add, multiply and read a table, you can read this appendix.
 :::
 
+::: {.callout-tip appearance="simple"}
+## The short version
+This page is a gentle, plain-language guide to the little bits of math that show up in network chapters. You don't need any background. If you can add, multiply and read a table, you can follow it. We use one tiny network of five friends the whole way through, so every idea is something you can check on paper. If a symbol in a chapter ever looks scary, come here: each one is read out loud in ordinary words, with real numbers beside it.
+:::
+
+::: {.callout-tip appearance="simple"}
+## Why you might care
+Network measures are mostly counting, with tidy symbols for the counting. Once you see that "degree" is just "how many friends", and "density" is just "what share of possible friendships exist", the formulas stop being a wall and become shorthand you can check yourself.
+:::
+
 ## Introduction
 
 Network analysis borrows its math from three places: sets (who belongs to what), matrices (a network written as a table you can compute with) and probability (how surprised to be). You can use the book without ever opening this appendix, and many readers do. It is here for the moment a formula in a chapter stops making sense and you want one place that says, slowly, what a symbol means and shows it on five people.
 
 Every section works the same way. A question, a tiny example you can check on paper, the idea in words, the formula once you know what it says, then the code in R, Python and Rust so you can see the numbers appear. We use one small network throughout: Ana, Ben, Cleo, Dev and Eli. Ana, Ben and Cleo all know each other, Cleo knows Dev, and Dev knows Eli. After this appendix you should be able to read the chapters' formulas, and to check a number by hand when a program surprises you.
+
+::: {.callout-tip title="Reading the symbols out loud"}
+Here is how the main symbols sound, so none of them has to stay a mystery.
+
+- $V$ is "the set of people" and $E$ is "the set of ties". Braces like $\{\text{Ana}, \text{Ben}\}$ mean "the group containing these".
+- $|S|$ is "how many are in the group $S$". The symbol $\cap$ is "both" (the overlap) and $\cup$ is "either" (everyone put together).
+- $\sum$, the big sigma, is "add up". So $\sum_j a_{ij}$ means "add up the entries in row $i$".
+- A letter with small numbers beside it, like $a_{ij}$, is a labeled spot in a table: row $i$, column $j$.
+- $\binom{n}{2}$ is "$n$ choose 2", the number of ways to pick two people from $n$.
+- $\mathbb{E}[X]$ is "the average value of $X$ you'd get if you could repeat the chance process many times".
+- $\log$ is the logarithm, a button on a calculator that turns multiplying into adding.
+:::
+
+*Reassurance:* nothing later needs more than this list. If a section feels heavy, skip to the code and the sentence after it, which always says the result in plain words.
 
 ## Sets and counting
 
@@ -174,6 +198,10 @@ A = \begin{pmatrix}
 \end{pmatrix}.
 $$
 
+::: {.callout-tip title="In plain words"}
+This is the whole network written as a grid. Each row belongs to one person, in the order Ana, Ben, Cleo, Dev, Eli, and each column does too. A 1 means those two people know each other, and a 0 means they don't. Look at the first row: Ana knows Ben and Cleo, so it reads 0, 1, 1, 0, 0 (the first 0 is Ana with herself).
+:::
+
 Three things to read off it. The diagonal is all zeros because nobody is tied to themselves (a tie from a person to themselves is a **loop**). The matrix is symmetric, $a_{ij} = a_{ji}$, because friendship here goes both ways; the **transpose** $A^{\top}$ swaps rows and columns, so "symmetric" means $A = A^{\top}$. And each row adds up to that person's number of friends, their **degree**: $k_i = \sum_j a_{ij}$.
 
 In a directed network, say Ana goes to Ben for advice, Ben goes to Cleo, and Ana goes to Cleo, the matrix is not symmetric. Rows are the senders and columns the receivers, so a row sum is a person's **out-degree** (how many they name) and a column sum is their **in-degree** (how many name them). Here the out-degrees are 2, 1, 0 and the in-degrees are 0, 1, 2.
@@ -318,6 +346,10 @@ $$
 (A^{\ell})_{ij} = \text{the number of walks of length } \ell \text{ from } i \text{ to } j.
 $$
 
+::: {.callout-tip title="In plain words"}
+Multiply the grid by itself $\ell$ times (the small raised $\ell$ is just "how many steps"), and the number in row $i$, column $j$ tells you how many different step-by-step routes there are from person $i$ to person $j$. With $\ell = 2$, Ana to Dev gets a 1, for the one route Ana, Cleo, Dev.
+:::
+
 Check by hand. From Ana to Dev in two steps there is one walk, Ana to Cleo to Dev, so $(A^2)_{\text{Ana},\text{Dev}} = 1$. From Ana back to Ana in two steps there are two, through Ben and through Cleo, which is Ana's degree. In general the diagonal of $A^2$ is the list of degrees, and the diagonal of $A^3$ counts walks that leave a person and come back in three steps, which is only possible around a triangle. Each triangle gives each of its three corners two such walks (one in each direction), so the number of triangles is $\operatorname{trace}(A^3)/6$, where the **trace** is the sum of the diagonal.
 
 Walks also give distances. The shortest distance from $i$ to $j$ is the smallest $\ell$ for which $(A^{\ell})_{ij} > 0$. Ana to Eli has no walk of length 1 or 2 and one walk of length 3, so the distance is 3.
@@ -453,6 +485,10 @@ $$
 A v = \lambda v.
 $$
 
+::: {.callout-tip title="In plain words"}
+Read it as "the grid applied to a list of scores gives back the same list, just stretched". The letter $v$ is a list with one score per person, the letter $\lambda$ (lambda) is the stretch factor, and $A v$ means "each person adds up their friends' scores". For two people who know each other, give both a score of 1. Each adds up one friend's score, 1, so the list comes back as $(1, 1)$, stretched by $\lambda = 1$.
+:::
+
 Here is the smallest case. Two people tied to each other have $A = \begin{pmatrix} 0 & 1 \\ 1 & 0 \end{pmatrix}$. Take $v = (1, 1)$: then $Av = (1, 1) = 1 \cdot v$, so $\lambda = 1$. Take $v = (1, -1)$: then $Av = (-1, 1) = -1 \cdot v$, so $\lambda = -1$. Two eigenvectors, two eigenvalues.
 
 Now read $Av = \lambda v$ one row at a time: $\lambda v_i = \sum_j a_{ij} v_j$. The score of person $i$ is proportional to the sum of the scores of their friends. That is the idea of **eigenvector centrality**: be well connected to people who are well connected. For a connected network the matrix has one eigenvector with the largest eigenvalue whose entries are all positive (the Perron-Frobenius theorem), and that one is the centrality score [@bonacich1972factoring].
@@ -558,6 +594,10 @@ Cleo, who sits in the triangle and also reaches out to Dev, scores highest; Ana 
 $$
 \mathbb{E}[X] = \sum_x x \, P(X = x).
 $$
+
+::: {.callout-tip title="In plain words"}
+The expectation is the average you'd get over many repeats. For every possible value $x$, multiply it by its chance $P(X = x)$, then add up. For one pair of people tied with probability 0.3, the count of ties is 1 with chance 0.3 and 0 with chance 0.7, so the average is $1 \times 0.3 + 0 \times 0.7 = 0.3$.
+:::
 
 Its **variance** says how far it typically strays, $\operatorname{Var}(X) = \mathbb{E}[(X - \mathbb{E}[X])^2]$.
 
@@ -699,6 +739,10 @@ Picture a bag with 20 marbles, 8 black (design) and 12 white. Draw 5 without put
 $$
 P(X = k) = \frac{\binom{K}{k}\binom{N-K}{m-k}}{\binom{N}{m}},
 $$
+
+::: {.callout-tip title="In plain words"}
+This is the chance that exactly $k$ of your draws are black marbles. The bottom counts every possible handful of $m$ marbles. The top counts the handfuls with exactly $k$ black ones: pick which black marbles in one count, which white ones in another, and multiply. Chance of exactly 3 designers in five picks: $56 \times 66 / 15{,}504 = 0.238$, from the numbers just below.
+:::
 
 where $N$ is the number of marbles (20), $K$ the number of black ones (8), $m$ the number drawn (5) and $k$ the number of black marbles among them. The numerator counts the ways to pick $k$ black and $m - k$ white; the denominator counts all ways to pick $m$. For $k = 3$: $\binom{8}{3}\binom{12}{2} / \binom{20}{5} = 56 \times 66 / 15{,}504 = 0.238$. The expected number of black marbles is $m K / N = 5 \times 8 / 20 = 2$, which fits the intuition that 8 of 20 is 40 percent and 40 percent of 5 is 2.
 
@@ -898,6 +942,10 @@ The six people have 7, 5, 6, 4, 3 and 5 contacts, and the first three are the le
 $$
 p = \frac{\#\{\text{arrangements with a total} \ge 18\}}{20}.
 $$
+
+::: {.callout-tip title="In plain words"}
+The p-value is a fraction: the top is how many of the possible leader line-ups give a total at least as big as the real one, and the bottom is how many line-ups there are in all. The symbol $\#$ just means "the number of". Here that is 2 line-ups out of 20, so $p = 0.1$.
+:::
 
 Count by hand. The only totals of 18 or more come from the two 5s being interchangeable: $\{7, 6, 5\}$ can be chosen two ways (using either of the 5s), and nothing larger exists, so 2 of 20 arrangements reach 18, and $p = 2/20 = 0.1$. If you want to count "as extreme in either direction" (the leaders having *fewer* contacts would have been just as notable), the totals of 12 or less also count, and $p = 4/20 = 0.2$.
 

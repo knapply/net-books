@@ -5,6 +5,16 @@
 @sec-getting-started and @sec-tests-and-null-models. We reuse Krackhardt's 21 managers and Zachary's karate club, and the habit of reading a result against random draws. @sec-collecting-data says where network data come from, and @sec-reporting says what to write about a result. This chapter is about what has to hold still between the two so that someone else, or you in a year, gets the same answer.
 :::
 
+::: {.callout-tip appearance="simple"}
+## The short version
+Two people can run "the same" network analysis and get different numbers without either of them making a mistake. The usual causes are small and boring: a tie listed twice, a random draw that starts differently in different software, rows in a different order, a measure whose definition leaves a choice open, or a file that quietly changed. This chapter lists eight such causes, shows each on a tiny example you can count by hand, and gives habits that make a result easy to repeat. You'll also learn how to share a network without exposing the people in it.
+:::
+
+::: {.callout-tip appearance="simple"}
+## Why you might care
+Sooner or later someone will ask "why doesn't your number match mine?", and that someone is often you, a year from now. A short written record, kept next to the result, turns that argument into a five-minute check.
+:::
+
 ## Introduction
 
 You ran an analysis in R last spring. A colleague reruns it in Python this week and gets a different number. Or you rerun it yourself, on the same laptop, and a community comes out in a different place. Somebody has to decide which number is right, and the first honest answer is often "both".
@@ -996,6 +1006,13 @@ Three kinds of difference look alike and are not.
 
 The test below takes all three on Zachary's club. The **oracle** is an independent calculation that does not use either tool: for eigenvector centrality, the leading eigenvector of the adjacency matrix; for PageRank, the exact solution of the linear equations that define it, $(I - d P^{\top}) x = \frac{1 - d}{n}\mathbf{1}$, with $P$ the matrix of tie shares ($P_{ij} = A_{ij} / k_i$, where $k_i$ is $i$'s degree) and $d = 0.85$. Gaps smaller than $10^{-12}$ are shown as $10^{-12}$, since the digits below that are noise.
 
+::: {.callout-tip title="In plain words"}
+This is the PageRank answer worked out exactly, without any "keep going until it settles" loop. The line says: take the identity matrix $I$ (a table of ones down the diagonal that changes nothing), subtract $d$ times the table $P^{\top}$ of "share of my ties that go to each person", and the result times the unknown scores $x$ equals a fixed small amount for everyone. The letter $d = 0.85$ is the chance a surfer follows a tie instead of jumping anywhere, and $n$ is the number of people. A tiny check: two people tied to each other, so $n = 2$ and each sends all their ties to the other. The equation says each score minus $0.85$ times the other's equals $0.15/2 = 0.075$. By symmetry both scores match, so each score times $0.15$ is $0.075$, and each is $0.5$. (I solved this by hand.) That is the exact answer the tools' loops should agree with.
+
+The small powers of ten are just tiny numbers: $10^{-9}$ is 0.000000001, one part in a billion, and $10^{-12}$ is a thousand times smaller still.
+:::
+
+
 ::: {.panel-tabset group="language"}
 
 ## R
@@ -1366,7 +1383,7 @@ A summary of what this chapter found, for the "where tools disagree" habit from 
 
 1. As recorded: Ana 2, Ben 3, Chloe 3, Dev 2 (a loop adds 2), Eli 0; the sum is 10, twice the 5 ties; density is $5/10 = 0.50$. As a simple graph that keeps the loop: the repeated Ben-Chloe is merged, so Ana 2, Ben 2, Chloe 2, Dev 2, Eli 0, sum 8, twice the 4 ties; density $4/10 = 0.40$.
 2. Read as undirected pairs, A has 1 tie, B has 2 and C has 1. With the extra arrow B to A, the arrow reading has 3 ties (A to B, B to C, B to A) and a mutual pair, while the pair reading still has 2 ties, because A-B was already there. The arrow reading changes; the pair reading does not. That is why "how many ties" needs the reading stated.
-3. The first number is $16807 \times 1 \bmod 2147483647 = 16807$. The second is $16807^2 = 282475249$, which is below 2147483647, so it stays 282475249; divided by 2147483647 it is 0.1315 (0.13153778 before rounding). (You can check against the tabs: the first three numbers they print are 0.000, 0.132 and 0.756.)
+3. The stream starts 16807, then 282475249, which is 0.1315 once divided. The rule is "multiply by 16807 and keep only the remainder after dividing by 2147483647", and the remainder step only matters once the product gets large. The first number is $16807 \times 1 \bmod 2147483647 = 16807$. The second is $16807^2 = 282475249$, which is below 2147483647, so it stays 282475249; divided by 2147483647 it is 0.1315 (0.13153778 before rounding). (You can check against the tabs: the first three numbers they print are 0.000, 0.132 and 0.756.)
 4. The degrees do not change, so members 4 and 32 are still tied for sixth place. In this listing member 4 comes before member 32 (as strings, "4" sorts after "32", so in reverse order it is listed first), so the top six is the same as in the forward listing: 34, 1, 33, 3, 2 and 4. The tie was settled by where each member happened to be listed, not by anything about the members. For Louvain, run it with seed 1 and compare the groups with the forward run by adjusted Rand; whatever you get is one more draw from the near-equal partitions.
 5. Harmonic centrality adds $1/d$ over everyone and treats an unreachable person as $1/\infty = 0$, so a person on a tiny island scores low without any special rule. In the split network its leader is C, the same as NetworkX's and UCINET's. It avoids the problem because it never divides by the number of people reached.
 6. In Python: build `nx.path_graph(5)` and `np.testing.assert_allclose(list(nx.betweenness_centrality(g, normalized=False).values()), [0, 3, 4, 3, 0], atol=1e-9)`. Check the numbers by hand first: the pairs of other people whose only route passes through person 3 are (1,4), (1,5), (2,4) and (2,5), giving 4; person 2 is on the routes of (1,3), (1,4) and (1,5), giving 3.

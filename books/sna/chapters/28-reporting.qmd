@@ -5,6 +5,16 @@
 @sec-centrality, @sec-tests-and-null-models and @sec-reproducibility. We reuse Krackhardt's 21 managers, the Florentine marriages and Zachary's karate club, and the habit of reading a number against a random baseline. The case studies (@sec-case-florentine) show the habits of this chapter on one network from start to finish.
 :::
 
+::: {.callout-tip appearance="simple"}
+## The short version
+A number from network software is a true statement about a calculation. A sentence like "this person is the power broker" is a claim about the world, and the number doesn't carry it there. This chapter gives you a four-part recipe for writing a result so it says what was computed, what it means here, how sure we are, and what it doesn't show. It also gives a short checklist to run before any number leaves your desk, three before-and-after rewrites of over-claiming paragraphs, and a look at the small guidance files that ship with this book.
+:::
+
+::: {.callout-tip appearance="simple"}
+## Why you might care
+The sentence people read is the result, and people act on sentences: they promote, fire, fund and ignore. Writing it carefully is cheap, and it protects the people in your data and your own credibility.
+:::
+
 ## Introduction
 
 You ran the analysis. The software printed a table, and one row is at the top. Now someone is going to read a sentence about it: your manager, a reviewer, a client, or a program that turns your numbers into a summary. The sentence they read is the result. The table was only the raw material.
@@ -273,7 +283,7 @@ If your question does not name a process (for example "who matters?"), the right
 
 ### When two measures are one measure
 
-A second reason to choose, not to dump: many of the measures say nearly the same thing on real networks. If two measures agree to within a hair, reporting both says one thing twice and makes the result look broader than it is. The way to know is to correlate them on the network you have, using ranks (Spearman's rank correlation), because we care about who comes first, not by how much.
+A second reason to choose, not to dump: many of the measures say nearly the same thing on real networks. If two measures agree to within a hair, reporting both says one thing twice and makes the result look broader than it is. The way to know is to correlate them on the network you have, using ranks (Spearman's rank correlation, a score from $-1$ to $+1$ for how alike two lineups of the same people are, where 1 means the same order), because we care about who comes first, not by how much.
 
 ::: {.panel-tabset group="language"}
 
@@ -597,7 +607,7 @@ Two limits to say out loud. First, the check removes ties and nothing else. It c
 
 In ordinary statistics you would resample the data with replacement (a bootstrap) and read off a confidence interval. For network data that is a trap, for three reasons.
 
-- **Ties are not independent draws.** Resampling the 190 ties with replacement keeps only about 120 distinct ties (a tie is left out of a resample with probability $(1-1/190)^{190}$, about 0.37) and repeats the others. A repeated tie is not a stronger tie. The resample is a sparser, odder network than the one you observed, and its betweenness scores are not scores of any network anyone could have collected.
+- **Ties are not independent draws.** Resampling the 190 ties with replacement keeps only about 120 distinct ties (a tie is left out of a resample with probability $(1-1/190)^{190}$, about 0.37; in plain words, each of the 190 draws misses a given tie with chance 189 out of 190, and 190 misses in a row multiplies out to about 37 percent) and repeats the others. A repeated tie is not a stronger tie. The resample is a sparser, odder network than the one you observed, and its betweenness scores are not scores of any network anyone could have collected.
 - **Actors are not independent either.** Resampling people instead of ties duplicates actors, creates ties between copies of the same person, and inflates their degree.
 - **Resampling the data cannot show you what you did not collect.** A bootstrap of 21 managers has no way to ask about the 22nd, so it is silent about the boundary.
 
@@ -998,7 +1008,7 @@ The Rust hash covers the network as the engine saw it (its ties in order, direct
 
 ## Cards: guidance a program can use
 
-Next to each principal measure and model this book keeps a short, checked guidance file called a card, one TOML file per measure in `books/sna/cards/`. They are written for two readers. A person reads one before reporting a number. A program that runs a measure, such as an MCP server that calls knappnet, reads the same file before it writes a sentence about the result. The README in that folder lists the fields, `tools/check_books.py` refuses a card with a missing field or a citation that is not in the bibliography, and `tools/export_machine.py` exports them all as `cards.json` with the book.
+Next to each principal measure and model this book keeps a short, checked guidance file called a card, one TOML file (a plain-text file of labeled lines) per measure in `books/sna/cards/`. They are written for two readers. A person reads one before reporting a number. A program that runs a measure, such as an MCP server that calls knappnet, reads the same file before it writes a sentence about the result. The README in that folder lists the fields, `tools/check_books.py` refuses a card with a missing field or a citation that is not in the bibliography, and `tools/export_machine.py` exports them all as `cards.json` with the book.
 
 Here is the betweenness card, read line by line.
 
@@ -1163,7 +1173,7 @@ None of this makes programs less useful. It makes the human step explicit: when 
 
 1. B is on the routes A to C and A to D, so betweenness 2. C is on the routes A to D and B to D, so also 2. For each node there are 3 other managers and so 6 ordered pairs of other managers, of which only 2 have a route that passes through it: a share of 2/6 = 1/3. Most ordered pairs have no route at all, because the arrows only run one way. That is why the share says as much as the count.
 2. *Computed:* which network (what is a tie, directed or not, repeated ties), and where "Bea" is in it, since degree 4 means different things if the network has 5 people or 500. *Meaning:* four direct contacts of the kind the tie records; in an advice network, four people she asks or is asked by (in or out must be stated). *How sure:* how many ties could be missing, and whether she would still have about four if one or two were absent. *Not shown:* that she is popular, powerful or important; those are claims about more than the count. Degree 4 compared with the average degree is the missing context.
-3. A tie is left out of one draw with probability 3/4, so out of all four draws with probability $(3/4)^4 = 81/256$, about 0.316. The expected number of distinct ties is $4 \times (1 - 81/256) = 700/256$, about 2.73. A resample therefore usually has fewer than four ties and repeats some, so it is a sparser network than the one observed, and scores computed on it are scores of a network nobody observed.
+3. On average about 2.7 of the 4 ties survive, so the resample is usually sparser than the original. Here is the count. A tie is left out of one draw with probability 3/4, so out of all four draws with probability $(3/4)^4 = 81/256$, about 0.316. The expected number of distinct ties is $4 \times (1 - 81/256) = 700/256$, about 2.73. A resample therefore usually has fewer than four ties and repeats some, so it is a sparser network than the one observed, and scores computed on it are scores of a network nobody observed.
 4. Replace 19 by 38 and by 57 in the drop step (and in the checks, the range of ties). In my run in Python the shares first with 38 dropped were 0.810 for the leader on "asked" and 0.850 for the leader on betweenness, with mean rank correlations of 0.935 and 0.894; with 57 dropped they were 0.735 and 0.750, with rank correlations of 0.898 and 0.835. At 10% the leader on "asked" was the steadier one, but as more ties are dropped the leader on betweenness holds first place a little better, while the whole betweenness ranking is less stable throughout. Your digits depend on the scrambling recipe, but the direction should be the same.
 5. The same 60 ties overlap, but they are 60 of 190 advice ties, which is 31.6%, against a friendship density of 24.3% (102 of 420). After 1,000 relabelings in my Python run the share averages 0.243, the middle 90% runs from 0.189 to 0.300, and 1.4% of scrambles reach 0.316. The share differs because the base is different (the advice network has more ties than the friendship network), but the overlap and the conclusion are the same: more than relabeling gives, and nothing about cause.
 6. Report one of in-degree and eigenvector and say the other agrees (rho 0.97), since they carry the same ranking. Report betweenness separately, because it correlates only about 0.4 with each and so measures something different, and say what question each answers. Listing all three as independent findings would make a single pattern look like three.

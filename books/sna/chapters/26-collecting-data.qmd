@@ -5,6 +5,16 @@
 @sec-networks-as-data, and the ideas of degree and betweenness from @sec-centrality. @sec-ego-networks matters for the section on sampling people. We use Zachary's karate club and Krackhardt's 21 managers again, and two smaller data sets: Sampson's novices and the Southern women. All numbers are from the code in the chapter.
 :::
 
+::: {.callout-tip appearance="simple"}
+## The short version
+Before anyone measures a network, someone decided who counts, what a tie is, whom to ask, and how to handle people who didn't answer. Those quiet decisions change the numbers more than most choices of formula. This chapter shows, on real small networks, how each decision bends the results: where you draw the line around the group, how a question is worded, how you find people, what happens when some answers are missing or wrong, and what you owe the people in the data. The habit to take away is simple: write down how the data were made, then check which of your numbers would move if they'd been made a little differently.
+:::
+
+::: {.callout-tip appearance="simple"}
+## Why you might care
+If you ever trust a network picture someone hands you, or build one yourself from a survey, an email log or a membership list, this chapter tells you what to ask first. It can save you from a confident answer built on a boundary that happened to be convenient.
+:::
+
 ## Introduction
 
 Every measure in this book starts from a table somebody made. Before anyone computes a degree, someone decided who counted, what a tie was, whom to ask, how many names to allow, and what to do about the people who did not answer. Those decisions are quiet, and they move the numbers more than most choices of formula do.
@@ -22,7 +32,7 @@ The blocks run top to bottom as one script per language. The first block defines
 
 A **boundary** is the rule that says who is in the data. Two kinds are usually distinguished: a *realist* boundary follows what the people themselves treat as the group (everyone who says they belong), and a *nominalist* boundary is set by the researcher to fit a question (everyone on this payroll, everyone who used this hashtag). @marsden1990network surveys the standard approaches. Either way, the rule cuts ties, and the people near the cut pay for it.
 
-Take six people in a line, a to f, where each knows the next. Person c sits between a and b on one side and d, e and f on the other, so c lies on 2 × 3 = 6 shortest routes between others. Now study only c to f. Person c is the end of a line and lies on none. The person didn't change. The boundary did.
+Think of it like cropping a photo: whoever stands at the new edge looks like they're at the edge of the world. Take six people in a line, a to f, where each knows the next. Person c sits between a and b on one side and d, e and f on the other, so c lies on 2 × 3 = 6 shortest routes between others. Now study only c to f. Person c is the end of a line and lies on none. The person didn't change. The boundary did.
 
 For a real case, suppose we study only Mr. Hi's side of the karate club [@zachary1977information]. That is a nominalist boundary, and an awkward one, because the split is the thing the club is famous for. The block compares the club with that side alone.
 
@@ -825,15 +835,25 @@ What this does and does not show: it is two small networks, exact enumeration, o
 
 **Respondent-driven sampling (RDS).** In RDS each respondent gets a few coupons to recruit peers, and each respondent reports their degree (how many people in the population they know) [@heckathorn1997respondent]. The design adds a correction: the chain of recruits tends to reach person $i$ with a probability proportional to their degree $d_i$, so weighting each respondent by $1/d_i$ should undo the lean toward well-connected people.
 
-Why that works, on four people. A hub knows three others, who each know only the hub, so the degrees are 3, 1, 1, 1 and the mean degree is 1.5. A long random chain reaches the hub half the time (3 out of 6 ends of ties) and each other person a sixth of the time. The average degree of a respondent is $\tfrac12 \cdot 3 + \tfrac12 \cdot 1 = 2.0$, too high. With weights $1/d$, the hub counts $\tfrac12 \cdot \tfrac13 = \tfrac16$ and the three others $\tfrac16$ each, so the weighted average is $\tfrac{(1/6)\cdot 3 + 3\cdot(1/6)\cdot 1}{1/6 + 3\cdot 1/6} = 1.5$, the truth. In general, with $p_i = d_i / \sum_j d_j$ the long-run chance of reaching person $i$ and $y_i$ the quantity of interest,
+Why that works, on four people. A hub knows three others, who each know only the hub, so the degrees are 3, 1, 1, 1 and the mean degree is 1.5. A long random chain reaches the hub half the time (3 out of 6 ends of ties) and each other person a sixth of the time. The average degree of a respondent is $\tfrac12 \cdot 3 + \tfrac12 \cdot 1 = 2.0$, too high. With weights $1/d$, the hub counts $\tfrac12 \cdot \tfrac13 = \tfrac16$ and the three others $\tfrac16$ each, so the weighted average is $\tfrac{(1/6)\cdot 3 + 3\cdot(1/6)\cdot 1}{1/6 + 3\cdot 1/6} = 1.5$, the truth. In general, the question the next formula answers is: how do I turn a sample that leans toward popular people into an honest average? With $p_i = d_i / \sum_j d_j$ the long-run chance of reaching person $i$ and $y_i$ the quantity of interest,
 
 $$
 \hat\mu = \frac{\sum_i p_i\, y_i / d_i}{\sum_i p_i / d_i}
 $$
 
-equals the population mean of $y$ exactly in this idealized limit. The assumptions in the limit are strong: ties are mutual, recruiting is random among contacts, the chain is long, sampling is nearly with replacement, and reported degree is right. Real studies break each of them to some degree,.
+::: {.callout-tip title="In plain words"}
+The symbol $\hat\mu$ (read "mu hat") is our estimate of the true average. The letter $d_i$ is how many people person $i$ knows, $p_i$ is how likely the chain is to reach him, and $y_i$ is whatever we are averaging. The formula gives each person a weight of "chance of being reached, divided by how many people he knows", then takes a weighted average. Popular people get reached more, and dividing by their degree cancels that out. On the four-person example, take $y_i$ to be the degree itself. The hub has $p = 1/2$ and $d = 3$, each leaf has $p = 1/6$ and $d = 1$. The top is $(1/6)\cdot 3 + 3 \cdot (1/6) \cdot 1 = 1$, the bottom is $1/6 + 3 \cdot 1/6 = 2/3$, and $1 / (2/3) = 1.5$, the true mean degree.
+:::
 
-Ego sampling is the third design: draw people at random and record each one's own ties (@sec-ego-networks). Here the sample *is* random, so the mean of an ego measure is unbiased and its standard error for $k$ people out of $n$ is $s\sqrt{(1 - k/n)/k}$, where $s$ is the standard deviation of the measure over everyone. What an ego sample cannot see is paths: no betweenness, no distances, and constraint needs each alter's total degree.
+equals the population mean of $y$ exactly in this idealized limit. The assumptions in the limit are strong: ties are mutual, recruiting is random among contacts, the chain is long, sampling is nearly with replacement, and reported degree is right. Real studies break each of them to some degree.
+
+Ego sampling is the third design: draw people at random and record each one's own ties (@sec-ego-networks). Here the sample *is* random, so the mean of an ego measure is unbiased and its standard error for $k$ people out of $n$ is $s\sqrt{(1 - k/n)/k}$, where $s$ is the standard deviation of the measure over everyone.
+
+::: {.callout-tip title="In plain words"}
+The standard error says how far a sample's average typically lands from the truth. It shrinks as the sample $k$ grows, and the piece $1 - k/n$ shrinks it a bit more when you've sampled a big share of a small population. Here $s$ is the usual spread of degree among everyone. With 5 of the 34 karate members, the shrink factor is $\sqrt{(1 - 5/34)/5} = 0.41$, so the 1.602 reported below means the spread of degree in the club is about 3.9 (a number I backed out by hand from the chapter's result).
+:::
+
+What an ego sample cannot see is paths: no betweenness, no distances, and constraint needs each alter's total degree.
 
 The block computes the long-run values exactly, so there is no simulation noise. The attribute is "belongs to the officer's faction" for the karate club and "is a middle manager (level 3)" for the Krackhardt managers. The last weighted row shows what happens if respondents can report a degree of at most 6.
 

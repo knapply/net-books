@@ -5,6 +5,16 @@
 @sec-subgroups, @sec-latent-space, @sec-homophily and @sec-centrality. You will use communities and modularity, block models, and the idea of comparing a network with random ones.
 :::
 
+::: {.callout-tip appearance="simple"}
+## The short version
+A karate club of 34 people split into two camps after a dispute between its instructor and its administrator. Researchers have been using the club's friendship network ever since as a test: can a method that sees only who spends time with whom work out which camp each person joined? This chapter tries several methods. They get close, and always miss the same one or two people, but we also learn that this is an easy test, and a good score on it doesn't show a method is good.
+:::
+
+::: {.callout-tip appearance="simple"}
+## Why you might care
+"Find the groups in a network" is one of the most common jobs in network analysis, from customer segments to online communities. This chapter shows what a good answer looks like, and how to tell when a famous benchmark is flattering a method.
+:::
+
 ## The question
 
 In the early 1970s the anthropologist Wayne Zachary spent about three years with a university karate club of 34 members [@zachary1977information]. He recorded who spent time with whom outside the club's activities. Then a dispute between the club's part-time instructor and its administrator split the club in two, and each member took a side.
@@ -316,11 +326,17 @@ Zachary didn't use a community method. He asked a question from the study of pip
 
 Here is a six-member club you can do by hand. Members A, B and C are on one side, D, E and F on the other. The ties, with their contexts, are A-B 3, A-C 2, B-C 2, D-E 3, D-F 2, E-F 2, and two ties across: C-D 1 and B-E 1. Take A as the source and F as the sink. Cutting off A alone costs $3 + 2 = 5$. Cutting off F alone costs $2 + 2 = 4$. Cutting the two crossing ties costs $1 + 1 = 2$, and no cheaper cut exists, so the minimum cut is 2 and its two sides are $\{A, B, C\}$ and $\{D, E, F\}$. Flow agrees: one unit can run A-B-E-F, another A-C-D-F, and both bridges are then full.
 
-In symbols, for a source $s$ and a sink $t$, a **cut** is a set $S$ of members that contains $s$ and not $t$. Its **capacity** adds up the weights $w_{ij}$ of the ties that leave the set,
+The question the next formula answers is: how much would it cost to separate one side of the club from the other? In symbols, for a source $s$ and a sink $t$, a **cut** is a set $S$ of members that contains $s$ and not $t$. Its **capacity** adds up the weights $w_{ij}$ of the ties that leave the set,
 
 $$ c(S) = \sum_{i \in S,\; j \notin S} w_{ij}, $$
 
-and the minimum cut is the set with the smallest capacity. Members inside $S$ are predicted to join the source, everyone else the sink. Here the source is Mr. Hi (member 1), the sink is the officer (member 34), and $w_{ij}$ is the number of contexts. A minimum cut isn't always unique, so we report the smallest and the largest source side.
+and the minimum cut is the set with the smallest capacity.
+
+::: {.callout-tip title="In plain words"}
+Think of cutting the ties like snipping pipes, and you want the cheapest snip that leaves Mr. Hi on one side and the officer on the other. The letter $c(S)$ is the price of cutting off the group $S$. The big sigma says "add up". The small letters under it say which ties to add: those with one end $i$ inside the group and the other end $j$ outside. And $w_{ij}$ is the width of that tie, its number of contexts. In the six-member example, the group $\{A, B, C\}$ is joined to the rest by C-D (1) and B-E (1), so $c(S) = 1 + 1 = 2$.
+:::
+
+Members inside $S$ are predicted to join the source, everyone else the sink. Here the source is Mr. Hi (member 1), the sink is the officer (member 34), and $w_{ij}$ is the number of contexts. A minimum cut isn't always unique (sometimes two different snips cost the same), so we report the smallest and the largest source side.
 
 
 ::: {.panel-tabset group="language"}
@@ -712,6 +728,8 @@ Take a moment with that result, because it matters later. A rule that needs no a
 ## Step 4: communities against the factions
 
 Now forget the leaders and ask what community methods find from the ties alone. The table below shows nine of them, next to the real split and Zachary's minimum cut. Louvain [@blondel2008fast] and fast greedy [@clauset2004finding] climb modularity (@sec-subgroups). Label propagation [@raghavan2007near] lets neighbors vote. The leading eigenvector method [@newman2006modularity] splits by the sign of the top eigenvector of the modularity matrix. Infomap [@rosvall2008maps] follows a random walker. Girvan and Newman [@girvan2002community] cut the busiest ties, here until two groups remain. The exact optimum maximizes modularity with no shortcuts [@brandes2008modularity]. Two spectral rows split by the sign of one eigenvector: the second-smallest of the graph Laplacian (the *Fiedler* vector [@fiedler1973algebraic]) and the top eigenvector of the modularity matrix.
+
+*Reassurance:* you don't need to know how any of these work to read the results. Each one is a different recipe for drawing circles around people, and what matters is how closely its circles match the real sides.
 
 We score each partition in three ways. **Modularity** is how many more ties fall inside groups than a degree-matched random network would put there. The **adjusted Rand index** [@hubert1985comparing] is 1 for identical partitions and about 0 for chance agreement. And a member is **misclassified** when most of their community took the other side. That rule is generous to methods that find more than two groups. It lets a method off for splitting a side into two or three pieces, and it only blames members who sit with the wrong crowd.
 
@@ -1154,11 +1172,21 @@ Label propagation is much less stable. Across 200 seeds it returns anywhere from
 
 A community method gives a partition. A model says more: it says how likely each tie is, and a partition is only one of its parameters. The simplest model of groups is the **stochastic block model** [@holland1983stochastic]. Each member belongs to one of two groups, and the chance that two members are tied depends only on their two groups: one rate inside the first group, one inside the second and one across. @sec-latent-space introduces it; here we fit the two-group version by hand and ask whether the fitted groups are the factions.
 
-For a partition, set each rate to the share of possible pairs that are tied, and compute the log-likelihood. With $m_{rs}$ ties and $n_{rs}$ possible pairs between (or inside) groups $r$ and $s$, the **profile log-likelihood** is
+For a partition, set each rate to the share of possible pairs that are tied, and compute the log-likelihood, a score for how well the model explains the network (closer to zero is better, and it is usually a negative number). *This is the hardest formula in the chapter. On a first read you can skip to the next heading and still keep the findings below.* With $m_{rs}$ ties and $n_{rs}$ possible pairs between (or inside) groups $r$ and $s$, the **profile log-likelihood** is
 
 $$ \ell = \sum_{r \le s} \Big[ m_{rs} \log \frac{m_{rs}}{n_{rs}} + (n_{rs} - m_{rs}) \log\Big(1 - \frac{m_{rs}}{n_{rs}}\Big) \Big]. $$
 
+::: {.callout-tip title="In plain words"}
+This scores a proposed sorting into groups by asking how probable the real ties are if each pair of groups has its own tie rate. For each pair of groups (a group with itself counts too), $n_{rs}$ is how many pairs of people could be tied, $m_{rs}$ is how many actually are, and $m_{rs}/n_{rs}$ is the tie rate. The first term rewards the ties that exist and the second rewards the ties that are absent, each weighted by how likely the rate says it was. Take the six-member club split into $\{A, B, C\}$ and $\{D, E, F\}$. Inside each group all 3 possible pairs are tied, a rate of 1, and those contribute 0. Across the groups, 2 of 9 possible pairs are tied, so that part is $2 \log(2/9) + 7 \log(7/9) = -4.77$. So $\ell = -4.77$ for this split. (I worked this out by hand from the example.) A better split would score closer to zero.
+:::
+
+
 We then look for the partition with the highest $\ell$ by starting from 200 random partitions and flipping the single best member at a time until no flip helps. The **degree-corrected** version [@karrer2011stochastic] lets a member's number of ties depend on the member, so a busy member doesn't need a group of their own. Its profile log-likelihood is $\ell = \sum_{r,s} m_{rs} \log \big(m_{rs} / (\kappa_r \kappa_s)\big)$, where $m_{rs}$ counts ties between groups $r$ and $s$ (ties inside a group count twice) and $\kappa_r$ adds up the degrees in group $r$.
+
+::: {.callout-tip title="In plain words"}
+The degree-corrected score asks the same question but compares the ties you see against what the busyness of each group would predict, so a group is not rewarded just for having popular members. The Greek letter $\kappa$ (kappa) is the total number of ties its members have. In the six-member example, each group has degrees adding up to 8 (A 2, B 3, C 3), inside ties count twice so $m_{11} = m_{22} = 6$, and $m_{12} = m_{21} = 2$. That gives $\ell = 12\log(6/64) + 4\log(2/64) = -42.3$, working it out by hand.
+:::
+
 
 
 ::: {.panel-tabset group="language"}
@@ -1943,7 +1971,7 @@ Read that paragraph against the checklist. Does it say what a tie means, what wa
 ## Worked answers
 
 1. Cutting the two crossing ties costs 2, and G adds ties of 1 toward $\{A, B, C\}$ and 4 toward $\{D, E, F\}$. If G joins the A side, the cut grows by 4 and costs 6; if G joins the F side, it grows by 1 and costs 3. So G goes with D, E and F, and the capacity is 3. A single weak tie to the other side is the cost of G's choice, which is what happened to member 9.
-2. $Q = 35/78 - (81/156)^2 + 32/78 - (75/156)^2$. The degree sum of Mr. Hi's side is $2 \cdot 35 + 11 = 81$ and of the officer's side $2 \cdot 32 + 11 = 75$. So $Q = 0.4487 - 0.2696 + 0.4103 - 0.2311 = 0.358$.
+2. The score is 0.358, the modularity formula applied to the counts in the table: for each side, the share of all ties that are inside it, minus the share you'd expect by chance given how busy its members are. $Q = 35/78 - (81/156)^2 + 32/78 - (75/156)^2$. The degree sum of Mr. Hi's side is $2 \cdot 35 + 11 = 81$ and of the officer's side $2 \cdot 32 + 11 = 75$. So $Q = 0.4487 - 0.2696 + 0.4103 - 0.2311 = 0.358$.
 3. Of member 9's ties, the ones to 1 and 3 weigh $2 + 5 = 7$ and the ones to 31, 33 and 34 weigh $3 + 3 + 4 = 10$. With 9 on Mr. Hi's side the cut pays the 10. On the officer's side it pays the 7. The difference is 3, and $25 - 3 = 22$.
 4. There are $\binom{33}{2} = 528$ pairs of other members, and $231.1/528 = 0.438$, so about 44%.
 5. With the contexts as weights the modularity of the real split is 0.391 (the 0.39 mentioned in @sec-subgroups). Louvain still finds more than two groups, but in a check with the Rust engine (seeds 1 to 5) the only misclassified member under the majority rule was 9. The contexts help.
