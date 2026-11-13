@@ -57,13 +57,10 @@ The checks we always run first are the same as for the marriage network: count m
 
 ```r
 library(knappnet)
-library(dplyr)
-library(purrr)
-library(tibble)
 
 # One row per tie: two members and the number of contexts in which they were seen together.
-edges <- read.csv("data/karate/edges.csv") |> as_tibble()
-nodes <- read.csv("data/karate/nodes.csv") |> as_tibble()
+edges <- read.csv("data/karate/edges.csv")
+nodes <- read.csv("data/karate/nodes.csv")
 # Which side each member took: 0 = Mr. Hi, 1 = the officer. Position i is member i.
 side <- as.integer(nodes$faction != "Mr. Hi")
 
@@ -72,13 +69,13 @@ club <- net_frame(edges[, c("source", "target")], nodes = nodes, directed = FALS
 club_valued <- net_frame(edges, nodes = nodes, directed = FALSE, weight = "contexts", weight_type = "strength")
 
 # Checks before any measure: pieces, isolates, pairs listed twice.
-tibble(
+data.frame(
   members = nrow(nodes), ties = nrow(edges),
-  distinct_pairs = nrow(distinct(edges, a = pmin(source, target), b = pmax(source, target))),
+  distinct_pairs = nrow(unique(data.frame(pmin(edges$source, edges$target), pmax(edges$source, edges$target)))),
   pieces = max(net_components(club)$membership), isolated = sum(net_degree(club) == 0)
 )
-count(edges, contexts, name = "ties")
-count(nodes, faction, name = "members")
+table(contexts = edges$contexts)
+table(faction = nodes$faction)
 ```
 
 ::: {.code-output}
@@ -219,68 +216,24 @@ Where do the ties run? Every tie is inside Mr. Hi's side, inside the officer's s
 ## R
 
 ```r
-# Every tie is inside Mr. Hi's side, inside the officer's side, or across.
-kinds <- edges |>
-  mutate(kind = case_when(
-    side[source] == 0 & side[target] == 0 ~ "inside Mr. Hi",
-    side[source] == 1 & side[target] == 1 ~ "inside officer",
-    .default = "across"
-  ))
-kinds |>
-  summarise(ties = n(), contexts_per_tie = round(mean(contexts), 2), contexts = sum(contexts), .by = kind)
-
-# The ties that cross the line, strongest first.
-kinds |> filter(kind == "across") |> arrange(desc(contexts), source, target) |> select(source, target, contexts)
+# TODO(code, R): needs ties counted inside and across two sides of an attribute, with their contexts (net_mixing() on the valued network, or net_ei_index()), and the strongest crossing ties; the Rust tab shows the numbers.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 3 × 4
-  kind            ties contexts_per_tie contexts
-  <chr>          <int>            <dbl>    <int>
-1 inside Mr. Hi     35             3.03      106
-2 across            11             2.27       25
-3 inside officer    32             3.12      100
-# A tibble: 11 × 3
-   source target contexts
-    <int>  <int>    <int>
- 1      9     34        4
- 2      9     31        3
- 3      9     33        3
- 4     14     34        3
- 5      1     32        2
- 6      2     31        2
- 7      3     28        2
- 8      3     29        2
- 9      3     33        2
-10      3     10        1
-11     20     34        1
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# Every tie is inside Mr. Hi's side, inside the officer's side, or across.
-def kind(a, b):
-    return "across" if side[a - 1] != side[b - 1] else ("inside Mr. Hi", "inside officer")[side[a - 1]]
-
-for name in ("inside Mr. Hi", "inside officer", "across"):
-    rows = [t for t in ties if kind(t[0], t[1]) == name]
-    total = sum(t[2] for t in rows)
-    print(f"{name:<15}{len(rows):>3} ties {total:>4} contexts {total / len(rows):>5.2f} per tie")
-
-# The ties that cross the line, strongest first.
-across = sorted((t for t in ties if kind(t[0], t[1]) == "across"), key=lambda t: (-t[2], t[0], t[1]))
-print(", ".join(f"{a}-{b} ({c})" for a, b, c in across))
+# TODO(code, Python): needs ties counted inside and across two sides of an attribute, with their contexts (net_mixing()); NetworkX has no such cross-tab. Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-inside Mr. Hi   35 ties  106 contexts  3.03 per tie
-inside officer  32 ties  100 contexts  3.12 per tie
-across          11 ties   25 contexts  2.27 per tie
-9-34 (4), 9-31 (3), 9-33 (3), 14-34 (3), 1-32 (2), 2-31 (2), 3-28 (2), 3-29 (2), 3-33 (2), 3-10 (1), 20-34 (1)
+TODO(output)
 ```
 :::
 
@@ -344,111 +297,24 @@ Members inside $S$ are predicted to join the source, everyone else the sink. Her
 ## R
 
 ```r
-# The R package has no maximum-flow function yet, so here is a small one (Edmonds and Karp):
-# find a shortest path that still has room, push as much as fits along it, and repeat.
-start <- \(v) replace(integer(34), v, v)
-# Breadth first search on what is left of each tie's capacity. Returns, for every member, who they
-# were reached from (0 = not reached).
-bfs <- \(left, parent, frontier) {
-  open <- left[frontier, , drop = FALSE] > 0
-  open[, parent > 0] <- FALSE
-  new <- which(colSums(open) > 0)
-  if (length(new) == 0) return(parent)
-  parent[new] <- frontier[max.col(t(open[, new, drop = FALSE]) * 1, ties.method = "first")]
-  bfs(left, parent, new)
-}
-max_flow <- \(left, from, to, total = 0) {
-  parent <- bfs(left, start(from), from)
-  if (parent[to] == 0) return(list(flow = total, left = left))
-  path <- \(v) if (v == from) v else c(path(parent[v]), v)
-  p <- path(to)
-  steps <- cbind(head(p, -1), p[-1])
-  push <- min(left[steps])
-  left[steps] <- left[steps] - push
-  left[steps[, 2:1, drop = FALSE]] <- left[steps[, 2:1, drop = FALSE]] + push
-  max_flow(left, from, to, total + push)
-}
-
-# Zachary's capacities: the contexts of each tie. Source: Mr. Hi (member 1). Sink: the officer (member 34).
-capacity <- matrix(0, 34, 34)
-capacity[cbind(edges$source, edges$target)] <- edges$contexts
-capacity <- capacity + t(capacity)
-
-# A minimum cut is not always unique, so report the smallest and the largest source side.
-cut_sides <- \(capacity, label) {
-  flow <- max_flow(capacity, 1, 34)
-  sides <- list(
-    smallest = which(bfs(flow$left, start(1), 1) > 0),
-    largest = setdiff(1:34, which(bfs(t(flow$left), start(34), 34) > 0))
-  )
-  imap(sides, \(near_hi, which_side) tibble(
-    capacity = label, cut = which_side, value = flow$flow, near_mr_hi = length(near_hi),
-    wrong = paste(which(as.integer(!(1:34 %in% near_hi)) != side), collapse = ", ")
-  )) |> list_rbind()
-}
-bind_rows(cut_sides(capacity, "contexts"), cut_sides((capacity > 0) * 1, "unweighted"))
-
-# The cut Zachary's method gives with the contexts, as a partition we can reuse below.
-zachary <- as.integer(!(1:34 %in% which(bfs(max_flow(capacity, 1, 34)$left, start(1), 1) > 0)))
+# TODO(code, R): needs a maximum-flow / minimum-cut function (net_max_flow(), net_min_cut() returning the smallest and largest source side); the Rust tab shows the numbers.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 4 × 5
-  capacity   cut      value near_mr_hi wrong
-  <chr>      <chr>    <dbl>      <int> <chr>
-1 contexts   smallest    22         16 9    
-2 contexts   largest     22         16 9    
-3 unweighted smallest    10         15 3, 9 
-4 unweighted largest     10         17 9, 10
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-from collections import deque
-
-def cut_sides(valued):
-    # Edmonds-Karp from NetworkX, then read the two extreme minimum cuts off what is left over.
-    net = nx.DiGraph()
-    for a, b, c in ties:
-        net.add_edge(a, b, capacity=c if valued else 1)
-        net.add_edge(b, a, capacity=c if valued else 1)
-    left = nx.algorithms.flow.edmonds_karp(net, 1, 34)
-
-    def reach(start, neighbors):
-        seen, queue = {start}, deque([start])
-        while queue:
-            u = queue.popleft()
-            for v in neighbors(u):
-                if v not in seen:
-                    seen.add(v)
-                    queue.append(v)
-        return seen
-
-    room = lambda u, v: left[u][v]["capacity"] - left[u][v]["flow"] > 0
-    smallest = reach(1, lambda u: [v for v in left[u] if room(u, v)])
-    cannot_leave = reach(34, lambda u: [v for v in left.pred[u] if room(v, u)])
-    return left.graph["flow_value"], {"smallest": smallest, "largest": set(members) - cannot_leave}
-
-# Zachary's capacities: the contexts of each tie. Source: Mr. Hi (member 1). Sink: the officer (member 34).
-for valued, label in ((True, "contexts"), (False, "unweighted")):
-    value, sides = cut_sides(valued)
-    for which_side, near_hi in sides.items():
-        wrong = [m for m in members if (m not in near_hi) != bool(side[m - 1])]
-        print(f"{label:<11}{which_side:<9} value {value:>3}, {len(near_hi):>2} members on Mr. Hi's side, wrong: {wrong}")
-
-# The cut Zachary's method gives with the contexts, as a partition we can reuse below.
-zachary = [int(m not in cut_sides(True)[1]["smallest"]) for m in members]
+# TODO(code, Python): needs a function returning the smallest and largest minimum-cut source side (net_min_cut()); NetworkX returns one cut only. Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-contexts   smallest  value  22, 16 members on Mr. Hi's side, wrong: [9]
-contexts   largest   value  22, 16 members on Mr. Hi's side, wrong: [9]
-unweighted smallest  value  10, 15 members on Mr. Hi's side, wrong: [3, 9]
-unweighted largest   value  10, 17 members on Mr. Hi's side, wrong: [9, 10]
+TODO(output)
 ```
 :::
 
@@ -506,26 +372,20 @@ The split was a dispute between two people, so look at those two in the network.
 ## R
 
 ```r
-scores <- tibble(
-  member = nodes$id,
+scores <- data.frame(
   degree = net_degree(club),
   strength = net_strength(club_valued),
   betweenness = net_betweenness(club),
   closeness = net_closeness(club, normalized = TRUE),
-  eigenvector = net_eigen(club)
+  eigenvector = net_eigen(club),
+  row.names = nodes$id
 )
 
 # The two leaders and the next three busiest members. Eigenvector is scaled so the top score is 1.
-focus <- c(34, 1, 33, 3, 2)
-scores |>
-  filter(member %in% focus) |>
-  arrange(match(member, focus)) |>
-  mutate(across(c(betweenness, closeness, eigenvector), \(x) round(x, 3)))
+round(scores[c(34, 1, 33, 3, 2), ], 3)
 
 # Rank of each leader on each measure (1 = highest; tied scores share a rank).
-scores |>
-  mutate(across(-member, \(x) min_rank(desc(x)))) |>
-  filter(member %in% c(1, 34))
+sapply(scores, function(x) rank(-x, ties.method = "min"))[c(1, 34), ]
 ```
 
 ::: {.code-output}
@@ -562,14 +422,6 @@ eigen = {m: v / top for m, v in eigen.items()}
 print(f"{'member':>6}{'degree':>8}{'strength':>9}{'betweenness':>12}{'closeness':>10}{'eigenvector':>12}")
 for m in (34, 1, 33, 3, 2):
     print(f"{m:>6}{degree[m]:>8}{strength[m]:>9}{between[m]:>12.3f}{close[m]:>10.3f}{eigen[m]:>12.3f}")
-
-# Rank of each leader on each measure (1 = highest; tied scores share a rank).
-def rank(scores, m):
-    return 1 + sum(v > scores[m] + 1e-9 for v in scores.values())
-
-for m in (1, 34):
-    print(f"member {m} ranks: degree {rank(degree, m)}, strength {rank(strength, m)}, betweenness {rank(between, m)}, "
-          f"closeness {rank(close, m)}, eigenvector {rank(eigen, m)}")
 ```
 
 ::: {.code-output}
@@ -580,8 +432,6 @@ member  degree strength betweenness closeness eigenvector
     33      12       38      76.690     0.516       0.827
      3      10       33      75.851     0.559       0.850
      2       9       29      28.479     0.485       0.712
-member 1 ranks: degree 2, strength 2, betweenness 1, closeness 1, eigenvector 2
-member 34 ranks: degree 1, strength 1, betweenness 2, closeness 3, eigenvector 1
 ```
 :::
 
@@ -644,10 +494,9 @@ steps <- net_distances(club)
 nearer_officer <- as.integer(steps[, 34] < steps[, 1])
 abstain <- which(steps[, 1] == steps[, 34])
 
-tibble(
+data.frame(
   decided = 34 - length(abstain),
   right = sum(nearer_officer[-abstain] == side[-abstain]),
-  wrong = decided - right,
   abstains_for = paste(abstain, collapse = ", ")
 )
 ```
@@ -739,48 +588,34 @@ We score each partition in three ways. **Modularity** is how many more ties fall
 ## R
 
 ```r
-adjacency <- \(e) {
-  a <- matrix(0, 34, 34)
-  a[cbind(e$source, e$target)] <- 1
-  a + t(a)
-}
-# Split by the sign of one eigenvector. Fiedler: the second-smallest of the graph Laplacian.
-# Spectral modularity: the largest of Newman's modularity matrix.
-fiedler_split <- \(a) as.integer(eigen(diag(rowSums(a)) - a, symmetric = TRUE)$vectors[, 33] > 0)
-modularity_split <- \(a) {
-  k <- rowSums(a)
-  as.integer(eigen(a - outer(k, k) / sum(k), symmetric = TRUE)$vectors[, 1] > 0)
-}
-
 # A member counts as misclassified when the majority of their community took the other side.
-wrong_members <- \(labels, members = 1:34) {
+wrong_members <- function(labels, members = 1:34) {
   members[as.integer(ave(side[members], labels, FUN = mean) > 0.5) != side[members]]
 }
-agree <- \(labels, members = 1:34) net_compare_partitions(labels, side[members], method = "adjusted_rand")
+agree <- function(labels, members = 1:34) {
+  net_compare_partitions(labels, side[members], method = "adjusted_rand")
+}
 
-a <- adjacency(edges)
 partitions <- list(
   "Real split" = side,
-  "Zachary min cut" = zachary,
   "Louvain" = net_louvain(club, seed = 1),
   "Fast greedy" = net_fast_greedy(club),
   "Label propagation" = net_label_prop(club, seed = 1),
   "Leading eigenvector" = net_leading_eigen(club),
   "Infomap" = net_infomap(club, seed = 1),
   "Girvan-Newman, 2 groups" = cutree(attr(net_girvan_newman(club), "tree"), k = 2),
-  "Spectral: Fiedler" = fiedler_split(a),
-  "Spectral: modularity" = modularity_split(a),
   "Best modularity (exact)" = net_optimal(club)
-) |> map(as.integer)
+)
+partitions <- lapply(partitions, as.integer)
 
-partitions |>
-  imap(\(labels, method) tibble(
-    method = method, groups = n_distinct(labels),
-    modularity = round(net_modularity(club, labels), 3),
-    adjusted_rand = round(agree(labels), 3),
-    wrong = paste(wrong_members(labels), collapse = ", ")
-  )) |>
-  list_rbind()
+# TODO(code, R): needs Zachary's minimum cut (net_min_cut()), spectral splits (net_spectral_partition(),
+# Fiedler vector and modularity matrix) and a degree-corrected block model fit (net_sbm()).
+data.frame(
+  groups = sapply(partitions, function(l) length(unique(l))),
+  modularity = sapply(partitions, function(l) net_modularity(club, l)),
+  adjusted_rand = sapply(partitions, agree),
+  wrong = sapply(partitions, function(l) paste(wrong_members(l), collapse = ", "))
+) |> transform(modularity = round(modularity, 3), adjusted_rand = round(adjusted_rand, 3))
 ```
 
 ::: {.code-output}
@@ -805,68 +640,27 @@ partitions |>
 ## Python
 
 ```python
-def as_labels(groups):
-    where = {m: k for k, group in enumerate(groups) for m in group}
-    return [where[m] for m in members]
-
-def adjusted_rand(a, b):
-    table = Counter(zip(a, b))
-    pairs = lambda n: comb(n, 2)
-    index = sum(pairs(n) for n in table.values())
-    rows = sum(pairs(n) for n in Counter(a).values())
-    cols = sum(pairs(n) for n in Counter(b).values())
-    expected = rows * cols / pairs(len(a))
-    return (index - expected) / ((rows + cols) / 2 - expected)
-
-# A member counts as misclassified when the majority of their community took the other side.
-def wrong_members(labels, who=members):
-    labels, own = np.array(labels), np.array([side[m - 1] for m in who])
-    return [m for m, l, s in zip(who, labels, own) if int(own[labels == l].mean() > 0.5) != s]
-
-def agree(labels, who=members):
-    return adjusted_rand(list(labels), [side[m - 1] for m in who])
-
-# Split by the sign of one eigenvector. Fiedler: the second-smallest of the graph Laplacian.
-# Spectral modularity: the largest of Newman's modularity matrix.
-def fiedler_split(a):
-    values, vectors = np.linalg.eigh(np.diag(a.sum(axis=1)) - a)
-    return (vectors[:, 1] > 0).astype(int)
-
-def modularity_split(a):
-    k = a.sum(axis=1)
-    values, vectors = np.linalg.eigh(a - np.outer(k, k) / k.sum())
-    return (vectors[:, -1] > 0).astype(int)
-
-a = nx.to_numpy_array(club, nodelist=members)
-partitions = {
-    "Real split": side,
-    "Zachary min cut": zachary,
-    "Louvain": as_labels(nx.community.louvain_communities(club, seed=1)),
-    "Fast greedy": as_labels(nx.community.greedy_modularity_communities(club)),
-    "Label propagation": as_labels(nx.community.asyn_lpa_communities(club, seed=1)),
-    "Girvan-Newman, 2 groups": as_labels(next(nx.community.girvan_newman(club))),
-    "Spectral: Fiedler": list(fiedler_split(a)),
-    "Spectral: modularity": list(modularity_split(a)),
+methods = {
+    "Louvain": nx.community.louvain_communities(club, seed=1),
+    "Fast greedy": nx.community.greedy_modularity_communities(club),
+    "Label propagation": list(nx.community.asyn_lpa_communities(club, seed=1)),
+    "Girvan-Newman, 2 groups": next(nx.community.girvan_newman(club)),
 }
 
-print(f"{'method':<25}{'groups':>7}{'modularity':>11}{'adj. Rand':>10}  wrong")
-for method, labels in partitions.items():
-    groups = [{m for m, l in zip(members, labels) if l == k} for k in sorted(set(labels))]
-    print(f"{method:<25}{len(groups):>7}{nx.community.modularity(club, groups):>11.3f}"
-          f"{agree(labels):>10.3f}  {', '.join(map(str, wrong_members(labels)))}")
+# TODO(code, Python): adjusted Rand against the real split and the misclassified members need
+# net_compare_partitions(); spectral splits need net_spectral_partition(); degree-corrected block model needs net_sbm().
+print(f"{'method':<25}{'groups':>7}{'modularity':>11}")
+for method, groups in methods.items():
+    print(f"{method:<25}{len(groups):>7}{nx.community.modularity(club, groups):>11.3f}")
 ```
 
 ::: {.code-output}
 ```text
-method                    groups modularity adj. Rand  wrong
-Real split                     2      0.358     1.000  
-Zachary min cut                2      0.371     0.882  9
-Louvain                        4      0.419     0.392  9, 10
-Fast greedy                    3      0.381     0.568  9, 10
-Label propagation              3      0.385     0.612  9, 10
-Girvan-Newman, 2 groups        2      0.360     0.772  3, 9
-Spectral: Fiedler              2      0.360     0.772  3, 9
-Spectral: modularity           2      0.371     0.882  9
+method                    groups modularity
+Louvain                        4      0.419
+Fast greedy                    3      0.381
+Label propagation              3      0.385
+Girvan-Newman, 2 groups        2      0.360
 ```
 :::
 
@@ -975,7 +769,7 @@ No method returns the real split. The best agreement, 0.882, comes from two meth
 
 ![The karate club drawn four times with the same layout. Shape shows the side each member took. In the three method panels, colour shows the group the method found and a heavy black outline marks a member the method puts on the wrong side (a member counts as wrong when most of their group took the other side). Member 9 is wrong in every panel.](../figures/karate-case-partitions.svg){#fig-karate-case-partitions fig-alt="Four network pictures of 34 members. Top left, the real split: circles for Mr. Hi's 17 supporters in blue and squares for the officer's 17 in orange, with 11 dashed ties crossing between them. Top right, Louvain finds four colour groups and heavy black outlines mark members 9 and 10. Bottom left, a Fiedler spectral cut finds two groups and heavy black outlines mark members 3 and 9. Bottom right, Zachary's minimum cut finds two groups and a heavy black outline marks only member 9."}
 
-The Python tab has fewer rows than the R and Rust tabs, because NetworkX has no Infomap, leading eigenvector or exact optimizer. Its label propagation also draws different random numbers, so that row can differ. The R and Rust tabs use the same engine and the same seeds.
+The Python tab has fewer rows than the R and Rust tabs, because NetworkX has no Infomap, leading eigenvector or exact optimizer, and it does not score against the real split yet. The R tab leaves out Zachary's minimum cut, the spectral splits and the degree-corrected block model, which knappnet does not expose yet (see the engine gaps); the Rust tab has them all.
 
 ### How stable is each answer?
 
@@ -988,39 +782,34 @@ A community method is not a single answer, it is an answer for a given seed and 
 
 ```r
 # Louvain and label propagation with 200 different seeds each.
-runs <- tibble(seed = 1:200) |>
-  mutate(
-    louvain = map(seed, \(s) as.integer(net_louvain(club, seed = s))),
-    label_prop = map(seed, \(s) as.integer(net_label_prop(club, seed = s)))
-  )
+louvain_runs <- lapply(1:200, function(s) as.integer(net_louvain(club, seed = s)))
+lpa_runs <- lapply(1:200, function(s) as.integer(net_label_prop(club, seed = s)))
 
 # How many groups, and how close to the real split, for Louvain.
-runs |>
-  mutate(
-    groups = map_int(louvain, n_distinct), ari = map_dbl(louvain, agree),
-    wrong_9 = map_lgl(louvain, \(l) 9 %in% wrong_members(l)), wrong_10 = map_lgl(louvain, \(l) 10 %in% wrong_members(l))
-  ) |>
-  summarise(
-    seeds = n(), ari_lowest = round(min(ari), 3),
-    ari_highest = round(max(ari), 3), share_9_wrong = mean(wrong_9), share_10_wrong = mean(wrong_10),
-    .by = groups
-  ) |>
-  arrange(groups)
+groups <- sapply(louvain_runs, function(l) length(unique(l)))
+louvain <- data.frame(
+  groups, ari = sapply(louvain_runs, agree),
+  wrong_9 = sapply(louvain_runs, function(l) 9 %in% wrong_members(l)),
+  wrong_10 = sapply(louvain_runs, function(l) 10 %in% wrong_members(l))
+)
+aggregate(ari ~ groups, louvain, range)
+aggregate(cbind(wrong_9, wrong_10) ~ groups, louvain, mean)
+table(groups)
 
 # The same for label propagation.
-runs |>
-  mutate(groups = map_int(label_prop, n_distinct), ari = map_dbl(label_prop, agree)) |>
-  summarise(seeds = n(), ari_lowest = round(min(ari), 3), ari_highest = round(max(ari), 3), .by = groups) |>
-  arrange(groups)
+lpa <- data.frame(groups = sapply(lpa_runs, function(l) length(unique(l))), ari = sapply(lpa_runs, agree))
+aggregate(ari ~ groups, lpa, range)
+table(lpa$groups)
 
 # Louvain with a coarser or finer yardstick (resolution), seed 1.
-tibble(resolution = c(0.3, 0.5, 0.7, 1, 1.5, 2)) |>
-  mutate(
-    found = map(resolution, \(r) as.integer(net_louvain(club, resolution = r, seed = 1))),
-    groups = map_int(found, n_distinct), ari = round(map_dbl(found, agree), 3),
-    wrong = map_chr(found, \(l) paste(wrong_members(l), collapse = ", "))
-  ) |>
-  select(-found)
+resolution <- c(0.3, 0.5, 0.7, 1, 1.5, 2)
+found <- lapply(resolution, function(r) as.integer(net_louvain(club, resolution = r, seed = 1)))
+data.frame(
+  resolution,
+  groups = sapply(found, function(l) length(unique(l))),
+  ari = round(sapply(found, agree), 3),
+  wrong = sapply(found, function(l) paste(wrong_members(l), collapse = ", "))
+)
 ```
 
 ::: {.code-output}
@@ -1052,51 +841,29 @@ tibble(resolution = c(0.3, 0.5, 0.7, 1, 1.5, 2)) |>
 ## Python
 
 ```python
-# Louvain and label propagation with 200 different seeds each.
-louvain_runs = [as_labels(nx.community.louvain_communities(club, seed=s)) for s in range(1, 201)]
-lpa_runs = [as_labels(nx.community.asyn_lpa_communities(club, seed=s)) for s in range(1, 201)]
-
-# How many groups, and how close to the real split, for Louvain.
-print("groups seeds ari_lowest ari_highest share_9_wrong share_10_wrong")
-for g in sorted({len(set(l)) for l in louvain_runs}):
-    some = [l for l in louvain_runs if len(set(l)) == g]
-    aris = [agree(l) for l in some]
-    print(f"{g:>6}{len(some):>6}{min(aris):>11.3f}{max(aris):>12.3f}"
-          f"{np.mean([9 in wrong_members(l) for l in some]):>15.3f}{np.mean([10 in wrong_members(l) for l in some]):>16.3f}")
-
-# The same for label propagation.
-print("label propagation")
-for g in sorted({len(set(l)) for l in lpa_runs}):
-    some = [l for l in lpa_runs if len(set(l)) == g]
-    aris = [agree(l) for l in some]
-    print(f"{g:>6}{len(some):>6}{min(aris):>11.3f}{max(aris):>12.3f}")
+# Louvain and label propagation with 200 different seeds each: how many groups do they find?
+louvain_sizes = Counter(len(nx.community.louvain_communities(club, seed=s)) for s in range(1, 201))
+lpa_sizes = Counter(len(list(nx.community.asyn_lpa_communities(club, seed=s))) for s in range(1, 201))
+print("Louvain, groups: seeds ", dict(sorted(louvain_sizes.items())))
+print("label propagation, groups: seeds ", dict(sorted(lpa_sizes.items())))
 
 # Louvain with a coarser or finer yardstick (resolution), seed 1.
-print("resolution groups  ari  wrong")
 for r in (0.3, 0.5, 0.7, 1, 1.5, 2):
-    found = as_labels(nx.community.louvain_communities(club, resolution=r, seed=1))
-    print(f"{r:>10}{len(set(found)):>7}{agree(found):>6.3f}  {wrong_members(found)}")
+    print(f"resolution {r:>3}: {len(nx.community.louvain_communities(club, resolution=r, seed=1))} groups")
+
+# TODO(code, Python): adjusted Rand against the real split, and who is misclassified, need net_compare_partitions().
 ```
 
 ::: {.code-output}
 ```text
-groups seeds ari_lowest ari_highest share_9_wrong share_10_wrong
-     3     1      0.612       0.612          1.000           1.000
-     4   199      0.370       0.509          1.000           0.638
-label propagation
-     1     1      0.000       0.000
-     2    43      0.072       0.882
-     3    72      0.051       0.742
-     4    66      0.331       0.662
-     5    17      0.325       0.487
-     6     1      0.297       0.297
-resolution groups  ari  wrong
-       0.3      2 0.772  [9, 10]
-       0.5      2 0.772  [9, 10]
-       0.7      3 0.591  [9, 10]
-         1      4 0.392  [9, 10]
-       1.5      5 0.373  [3, 9]
-         2      7 0.319  [3, 31]
+Louvain, groups: seeds  {3: 1, 4: 199}
+label propagation, groups: seeds  {1: 1, 2: 43, 3: 72, 4: 66, 5: 17, 6: 1}
+resolution 0.3: 2 groups
+resolution 0.5: 2 groups
+resolution 0.7: 3 groups
+resolution   1: 4 groups
+resolution 1.5: 5 groups
+resolution   2: 7 groups
 ```
 :::
 
@@ -1194,149 +961,24 @@ The degree-corrected score asks the same question but compares the ties you see 
 ## R
 
 ```r
-# Two models of who ties to whom given two groups, each scored by its profile log-likelihood:
-# the likelihood with every tie rate set to the value that fits best.
-xlogx <- \(x, y) ifelse(x > 0, x * log(ifelse(y > 0, y, 1)), 0)
-sizes <- \(z) as.numeric(table(factor(z, levels = 0:1)))
-tie_counts <- \(z) t(cbind(1 - z, z)) %*% a %*% cbind(1 - z, z)   # ties inside a group count twice
-
-# Plain two-block model: one tie probability inside each group and one across.
-sbm_loglik <- \(z) {
-  if (min(sizes(z)) == 0) return(-Inf)
-  m <- tie_counts(z)
-  made <- c(m[1, 1] / 2, m[1, 2], m[2, 2] / 2)
-  possible <- c(choose(sizes(z)[1], 2), prod(sizes(z)), choose(sizes(z)[2], 2))
-  sum(ifelse(possible > 0, xlogx(made, made / possible) + xlogx(possible - made, 1 - made / possible), 0))
-}
-# Degree-corrected two-block model (Karrer and Newman): ties are counts whose mean depends on both
-# members' degrees and on the pair of groups.
-dc_loglik <- \(z) {
-  if (min(sizes(z)) == 0) return(-Inf)
-  m <- tie_counts(z)
-  sum(xlogx(m, m / outer(rowSums(m), rowSums(m))))
-}
-
-# Climb: flip the one member whose move helps most, until no flip helps.
-climb <- \(z, loglik) {
-  now <- loglik(z)
-  gains <- map_dbl(1:34, \(i) loglik(replace(z, i, 1 - z[i])) - now)
-  best <- which.max(gains)
-  if (gains[best] > 1e-9) climb(replace(z, best, 1 - z[best]), loglik) else list(z = z, value = now)
-}
-fit_blocks <- \(loglik, starts) {
-  fits <- map(seq_len(starts), \(s) climb(sample(0:1, 34, replace = TRUE), loglik))
-  values <- round(map_dbl(fits, "value"), 4)
-  z <- fits[[which.max(values)]]$z
-  list(z = if (z[1] == 1) 1 - z else z, value = max(values), reached = sum(values == max(values)))
-}
-
-set.seed(1)
-plain <- fit_blocks(sbm_loglik, 200)
-corrected <- fit_blocks(dc_loglik, 200)
-fits <- list(plain, corrected)
-
-tibble(
-  model = c("two-block", "degree-corrected"),
-  real_split = c(sbm_loglik(side), dc_loglik(side)),
-  best_found = map_dbl(fits, "value"),
-  starts_reaching_best = map_int(fits, "reached"),
-  group_sizes = map_chr(fits, \(f) paste(sizes(f$z), collapse = " and ")),
-  adjusted_rand = map_dbl(fits, \(f) agree(f$z))
-) |>
-  mutate(across(where(is.double), \(x) round(x, 3)))
-
-# Who is in the small group of the plain model, and who does the corrected model get wrong?
-tibble(
-  small_group = paste(which(plain$z == as.integer(sum(plain$z) < 17)), collapse = ", "),
-  corrected_wrong = paste(wrong_members(corrected$z), collapse = ", ")
-)
-partitions[["Degree-corrected SBM"]] <- corrected$z
+# TODO(code, R): needs a stochastic block model fit, plain and degree-corrected, with a profile log-likelihood and restarts (net_sbm(k = 2, degree_corrected = TRUE)); net_random_sbm() only generates. The Rust tab shows the numbers.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 2 × 6
-  model     real_split best_found starts_reaching_best group_sizes adjusted_rand
-  <chr>          <dbl>      <dbl>                <int> <chr>               <dbl>
-1 two-block      -198.      -179.                  176 5 and 29           -0.012
-2 degree-c…      -743.      -739.                   28 17 and 17           0.772
-# A tibble: 1 × 2
-  small_group     corrected_wrong
-  <chr>           <chr>          
-1 1, 2, 3, 33, 34 9, 10          
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# Two models of who ties to whom given two groups, each scored by its profile log-likelihood:
-# the likelihood with every tie rate set to the value that fits best.
-def xlogx(x, y):
-    return np.where(x > 0, x * np.log(np.where(y > 0, y, 1.0)), 0.0)
-
-def tie_counts(z):
-    groups = np.stack([1 - np.array(z), np.array(z)], axis=1).astype(float)
-    return groups.T @ a @ groups, groups.sum(axis=0)   # ties inside a group count twice
-
-# Plain two-block model: one tie probability inside each group and one across.
-def sbm_loglik(z):
-    m, n = tie_counts(z)
-    if n.min() == 0:
-        return -np.inf
-    made = np.array([m[0, 0] / 2, m[0, 1], m[1, 1] / 2])
-    possible = np.array([n[0] * (n[0] - 1) / 2, n[0] * n[1], n[1] * (n[1] - 1) / 2])
-    rate = np.divide(made, possible, out=np.zeros(3), where=possible > 0)
-    return float(np.where(possible > 0, xlogx(made, rate) + xlogx(possible - made, 1 - rate), 0).sum())
-
-# Degree-corrected two-block model (Karrer and Newman): ties are counts whose mean depends on both
-# members' degrees and on the pair of groups.
-def dc_loglik(z):
-    m, n = tie_counts(z)
-    if n.min() == 0:
-        return -np.inf
-    k = m.sum(axis=1)
-    return float(xlogx(m, m / np.outer(k, k)).sum())
-
-# Climb: flip the one member whose move helps most, until no flip helps.
-def climb(z, loglik):
-    z, now = list(z), loglik(z)
-    while True:
-        gains = [loglik(z[:i] + [1 - z[i]] + z[i + 1:]) - now for i in range(34)]
-        best = int(np.argmax(gains))
-        if gains[best] <= 1e-9:
-            return z, now
-        z[best], now = 1 - z[best], now + gains[best]
-
-def fit_blocks(loglik, starts, rng):
-    fits = [climb(list(rng.integers(0, 2, 34)), loglik) for _ in range(starts)]
-    values = [round(v, 4) for _, v in fits]
-    z = fits[int(np.argmax(values))][0]
-    return {"z": z if z[0] == 0 else [1 - g for g in z], "value": max(values), "reached": values.count(max(values))}
-
-rng = np.random.default_rng(1)
-plain = fit_blocks(sbm_loglik, 200, rng)
-corrected = fit_blocks(dc_loglik, 200, rng)
-
-print(f"{'model':<17}{'real split':>11}{'best found':>11}{'reaching':>9}  sizes     adj. Rand")
-for name, loglik, fit in (("two-block", sbm_loglik, plain), ("degree-corrected", dc_loglik, corrected)):
-    sizes = " and ".join(map(str, np.bincount(fit["z"], minlength=2)))
-    print(f"{name:<17}{loglik(side):>11.3f}{fit['value']:>11.3f}{fit['reached']:>9}  {sizes:<10}{agree(fit['z']):>8.3f}")
-
-# Who is in the small group of the plain model, and who does the corrected model get wrong?
-small = int(sum(plain["z"]) < 17)
-print(f"small group of the two-block model: {[m for m, g in zip(members, plain['z']) if g == small]}")
-print(f"degree-corrected model wrong: {wrong_members(corrected['z'])}")
-partitions["Degree-corrected SBM"] = corrected["z"]
+# TODO(code, Python): needs a stochastic block model fit, plain and degree-corrected (net_sbm()); NetworkX has none. Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-model             real split best found reaching  sizes     adj. Rand
-two-block           -198.499   -179.389      162  5 and 29    -0.012
-degree-corrected    -743.207   -739.388       21  17 and 17    0.772
-small group of the two-block model: [1, 2, 3, 33, 34]
-degree-corrected model wrong: [9, 10]
+TODO(output)
 ```
 :::
 
@@ -1431,7 +1073,7 @@ The plain two-block model prefers a partition of 5 and 29 members, with a log-li
 
 The degree-corrected model finds two groups of 17, with agreement 0.772. It is much closer, and it still moves members 9 and 10 to the other side. Its best log-likelihood is $-739.4$, and the real split scores $-743.2$. So by this model, the real split is not the best two-group story, and the model prefers the one that moves 9 and 10. That is a difference of 3.8 log-likelihood units. It isn't a test, but it shows the same two members in a third method.
 
-Note too how many random starts reach the best answer: 172 of 200 for the plain model, but only 32 of 200 for the degree-corrected one (the R tab draws other starts: 176 and 28). A fit from a single start can land on a worse partition, so restart.
+Note too how many random starts reach the best answer: 172 of 200 for the plain model, but only 32 of 200 for the degree-corrected one (Rust tab). A fit from a single start can land on a worse partition, so restart.
 
 ## Step 6: stress tests
 
@@ -1447,26 +1089,22 @@ Leave out 8 of the 78 ties at random, 200 times, and rerun two methods each time
 ## R
 
 ```r
-# Leave out 8 of the 78 ties (about a tenth), 200 times. Each time, rerun two methods.
+# Leave out 8 of the 78 ties (about a tenth), 200 times. Each time, rerun Louvain.
+# TODO(code, R): the spectral modularity split needs net_spectral_partition().
 set.seed(1)
-trials <- tibble(draw = 1:200) |>
-  mutate(
-    kept = map(draw, \(d) edges[sort(sample.int(nrow(edges), nrow(edges) - 8)), ]),
-    spectral = map(kept, \(k) modularity_split(adjacency(k))),
-    louvain = map2(kept, draw, \(k, d) {
-      net_frame(k[, c("source", "target")], nodes = tibble(id = 1:34), directed = FALSE) |>
-        net_louvain(seed = d) |> as.integer()
-    })
-  )
+louvain_dropped <- lapply(1:200, function(d) {
+  kept <- edges[sort(sample.int(nrow(edges), nrow(edges) - 8)), c("source", "target")]
+  thinned <- net_frame(kept, nodes = data.frame(id = 1:34), directed = FALSE)
+  as.integer(net_louvain(thinned, seed = d))
+})
 
-summary_of <- \(runs, method) tibble(
-  method = method,
-  mean_ari = round(mean(map_dbl(runs, agree)), 3), lowest_ari = round(min(map_dbl(runs, agree)), 3),
-  share_9_wrong = mean(map_lgl(runs, \(l) 9 %in% wrong_members(l))),
-  share_10_wrong = mean(map_lgl(runs, \(l) 10 %in% wrong_members(l))),
-  share_3_wrong = mean(map_lgl(runs, \(l) 3 %in% wrong_members(l)))
-)
-bind_rows(summary_of(trials$spectral, "Spectral: modularity"), summary_of(trials$louvain, "Louvain"))
+round(data.frame(
+  mean_ari = mean(sapply(louvain_dropped, agree)),
+  lowest_ari = min(sapply(louvain_dropped, agree)),
+  share_9_wrong = mean(sapply(louvain_dropped, function(l) 9 %in% wrong_members(l))),
+  share_10_wrong = mean(sapply(louvain_dropped, function(l) 10 %in% wrong_members(l))),
+  share_3_wrong = mean(sapply(louvain_dropped, function(l) 3 %in% wrong_members(l)))
+), 3)
 ```
 
 ::: {.code-output}
@@ -1482,29 +1120,12 @@ bind_rows(summary_of(trials$spectral, "Spectral: modularity"), summary_of(trials
 ## Python
 
 ```python
-# Leave out 8 of the 78 ties (about a tenth), 200 times. Each time, rerun two methods.
-rng = np.random.default_rng(1)
-spectral_runs, louvain_runs_dropped = [], []
-for draw in range(1, 201):
-    kept = [ties[i] for i in sorted(rng.choice(len(ties), len(ties) - 8, replace=False))]
-    thinned = nx.Graph()
-    thinned.add_nodes_from(members)
-    thinned.add_edges_from((x, y) for x, y, _ in kept)
-    spectral_runs.append(list(modularity_split(nx.to_numpy_array(thinned, nodelist=members))))
-    louvain_runs_dropped.append(as_labels(nx.community.louvain_communities(thinned, seed=draw)))
-
-print(f"{'method':<22}{'mean ARI':>9}{'lowest':>8}{'9 wrong':>9}{'10 wrong':>9}{'3 wrong':>9}")
-for method, runs in (("Spectral: modularity", spectral_runs), ("Louvain", louvain_runs_dropped)):
-    aris = [agree(l) for l in runs]
-    wrong = [wrong_members(l) for l in runs]
-    print(f"{method:<22}{np.mean(aris):>9.3f}{min(aris):>8.3f}" + "".join(f"{np.mean([m in w for w in wrong]):>9.3f}" for m in (9, 10, 3)))
+# TODO(code, Python): needs a robustness helper (net_robustness(): drop a share of ties, rerun a community method) and net_compare_partitions() for scoring; use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-method                 mean ARI  lowest  9 wrong 10 wrong  3 wrong
-Spectral: modularity      0.844   0.668    0.905    0.125    0.000
-Louvain                   0.428   0.297    0.940    0.545    0.095
+TODO(output)
 ```
 :::
 
@@ -1559,25 +1180,19 @@ The thought experiment from the newspaper version of this story: what's left whe
 ```r
 # Take both leaders out and look at the other 32 members.
 others <- setdiff(1:34, c(1, 34))
-kept <- edges |> filter(!source %in% c(1, 34), !target %in% c(1, 34))
-rest <- net_frame(kept[, c("source", "target")], nodes = tibble(id = others), directed = FALSE)
+kept <- edges[!edges$source %in% c(1, 34) & !edges$target %in% c(1, 34), c("source", "target")]
+rest <- net_frame(kept, nodes = data.frame(id = others), directed = FALSE)
 
 # The pieces the club falls into without them.
-tibble(piece = net_components(rest)$membership, member = others) |>
-  summarise(size = n(), members = paste(member, collapse = ", "), .by = piece) |>
-  arrange(desc(size))
+piece <- net_components(rest)$membership
+pieces <- data.frame(size = as.vector(table(piece)), members = tapply(others, piece, paste, collapse = ", "))
+pieces[order(-pieces$size), ]
 
-# Two methods on the 32 members, scored against the real sides of those 32.
-without_leaders <- list(
-  "Louvain" = as.integer(net_louvain(rest, seed = 1)),
-  "Spectral: modularity" = modularity_split(adjacency(kept)[others, others])
-)
-without_leaders |>
-  imap(\(labels, method) tibble(
-    method = method, groups = n_distinct(labels), adjusted_rand = round(agree(labels, others), 3),
-    wrong = paste(wrong_members(labels, others), collapse = ", ")
-  )) |>
-  list_rbind()
+# Louvain on the 32 members, scored against the real sides of those 32.
+# TODO(code, R): the spectral modularity split needs net_spectral_partition().
+labels <- as.integer(net_louvain(rest, seed = 1))
+data.frame(groups = length(unique(labels)), adjusted_rand = round(agree(labels, others), 3),
+           wrong = paste(wrong_members(labels, others), collapse = ", "))
 ```
 
 ::: {.code-output}
@@ -1605,21 +1220,13 @@ rest = club.subgraph(others).copy()
 pieces = sorted(nx.connected_components(rest), key=len, reverse=True)
 print("pieces: " + "; ".join(f"{len(p)} ({', '.join(map(str, sorted(p)))})" for p in pieces))
 
-# Two methods on the 32 members, scored against the real sides of those 32.
-labels_of = lambda groups: [{m: k for k, g in enumerate(groups) for m in g}[m] for m in others]
-without_leaders = {
-    "Louvain": labels_of(nx.community.louvain_communities(rest, seed=1)),
-    "Spectral: modularity": list(modularity_split(nx.to_numpy_array(rest, nodelist=others))),
-}
-for method, labels in without_leaders.items():
-    print(f"{method:<22}groups {len(set(labels))}, adjusted Rand {agree(labels, others):.3f}, wrong {wrong_members(labels, others)}")
+# TODO(code, Python): scoring Louvain and a spectral split on the 32 members needs net_compare_partitions()
+# and net_spectral_partition().
 ```
 
 ::: {.code-output}
 ```text
 pieces: 26 (2, 3, 4, 8, 9, 10, 13, 14, 15, 16, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33); 5 (5, 6, 7, 11, 17); 1 (12)
-Louvain               groups 5, adjusted Rand 0.339, wrong [9, 10]
-Spectral: modularity  groups 2, adjusted Rand 0.114, wrong [5, 6, 7, 9, 10, 11, 12, 17, 29, 31]
 ```
 :::
 
@@ -1676,52 +1283,24 @@ Is a modularity of 0.358 for the real split unusual? Two null models answer diff
 # Null 1: keep the ties, shuffle who is on which side (17 and 17 stay 17 and 17).
 set.seed(1)
 real_q <- net_modularity(club, side)
-shuffled <- map_dbl(1:2000, \(i) net_modularity(club, sample(side)))
+shuffled <- sapply(1:2000, function(i) net_modularity(club, sample(side)))
 
 # Null 2: keep every member's number of ties, rewire who is tied to whom. The R package has no
-# tie-swapping function yet, so here is one. Pick two ties, a-b and c-d, and replace them with
-# a-d and c-b, unless that would make a loop or repeat a tie. Every degree stays.
-swap_once <- \(ties, pick) {
-  ab <- ties[pick[1], ]
-  cd <- ties[pick[2], ]
-  if (runif(1) < 0.5) cd <- rev(cd)
-  new <- rbind(sort(c(ab[1], cd[2])), sort(c(cd[1], ab[2])))
-  present <- \(tie) any(ties[, 1] == tie[1] & ties[, 2] == tie[2])
-  blocked <- pick[1] == pick[2] || any(new[, 1] == new[, 2]) || all(new[1, ] == new[2, ]) ||
-    present(new[1, ]) || present(new[2, ])
-  if (blocked) {
-    ties
-  } else {
-    ties[pick, ] <- new
-    ties
-  }
-}
-# Do the swaps one after another. Splitting the list in half and recursing keeps the recursion shallow.
-swap_many <- \(ties, picks) {
-  if (ncol(picks) == 1) {
-    swap_once(ties, picks[, 1])
-  } else {
-    half <- ncol(picks) %/% 2
-    swap_many(swap_many(ties, picks[, seq_len(half), drop = FALSE]), picks[, -seq_len(half), drop = FALSE])
-  }
-}
-tie_matrix <- cbind(pmin(edges$source, edges$target), pmax(edges$source, edges$target))
-as_network <- \(t) net_frame(tibble(source = t[, 1], target = t[, 2]), nodes = tibble(id = 1:34), directed = FALSE)
-rewired <- map(1:200, \(r) {
-  picks <- matrix(sample.int(nrow(tie_matrix), 20 * nrow(tie_matrix), replace = TRUE), nrow = 2)
-  swap_many(tie_matrix, picks) |> as_network()
-})
-rewired_q <- map_dbl(rewired, \(g) net_modularity(g, side))
-rewired_best <- map_dbl(rewired, \(g) attr(net_louvain(g, seed = 1), "modularity"))
+# tie-swapping function yet, so these are configuration-model draws with the same degrees.
+rewired <- net_random_config(net_degree(club), simple = TRUE, max_tries = 100000, reps = 200, seed = 1)
+rewired_q <- sapply(rewired, function(g) net_modularity(g, side))
+best_q <- function(g) attr(net_louvain(g, seed = 1), "modularity")
+rewired_best <- sapply(rewired, best_q)
+observed_best <- best_q(club)
 
-tibble(
-  null = c("shuffle sides", "rewire ties", "rewire ties, best Louvain"),
-  observed = round(c(real_q, real_q, attr(net_louvain(club, seed = 1), "modularity")), 3),
-  null_mean = round(c(mean(shuffled), mean(rewired_q), mean(rewired_best)), 3),
-  null_highest = round(c(max(shuffled), max(rewired_q), max(rewired_best)), 3),
+round(data.frame(
+  observed = c(real_q, real_q, observed_best),
+  null_mean = c(mean(shuffled), mean(rewired_q), mean(rewired_best)),
+  null_highest = c(max(shuffled), max(rewired_q), max(rewired_best)),
   share_as_high = c(mean(shuffled >= real_q - 1e-9), mean(rewired_q >= real_q - 1e-9),
-                    mean(rewired_best >= attr(net_louvain(club, seed = 1), "modularity") - 1e-9))
-)
+                    mean(rewired_best >= observed_best - 1e-9)),
+  row.names = c("shuffle sides", "rewire ties", "rewire ties, best Louvain")
+), 3)
 ```
 
 ::: {.code-output}
@@ -1838,45 +1417,24 @@ Now pool what we have. For every method in Step 4 plus the degree-corrected mode
 ## R
 
 ```r
-# Which members does each method put on the wrong side? Drop the real split itself, count the rest.
-wrong_by_method <- partitions[-1] |>
-  imap(\(labels, method) tibble(method = method, member = wrong_members(labels))) |>
-  list_rbind()
-
-wrong_by_method |>
-  summarise(methods_wrong = n(), methods = paste(method, collapse = "; "), .by = member) |>
-  arrange(desc(methods_wrong), member) |>
-  mutate(of = length(partitions) - 1, .after = methods_wrong)
+# TODO(code, R): needs a per-member misclassification table across partitions (net_partition_errors(): which members each method puts on the wrong side of a reference split); the Rust tab shows the numbers.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 3 × 4
-  member methods_wrong    of methods                                            
-   <int>         <int> <dbl> <chr>                                              
-1      9            11    11 Zachary min cut; Louvain; Fast greedy; Label propa…
-2     10             4    11 Louvain; Fast greedy; Infomap; Degree-corrected SBM
-3      3             3    11 Label propagation; Girvan-Newman, 2 groups; Spectr…
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# Which members does each method put on the wrong side? Drop the real split itself, count the rest.
-wrong_by_method = {method: wrong_members(labels) for method, labels in partitions.items() if method != "Real split"}
-counts = Counter(m for wrong in wrong_by_method.values() for m in wrong)
-print(f"{'member':>6}{'methods wrong':>14}   of {len(wrong_by_method)}")
-for m, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])):
-    print(f"{m:>6}{n:>14}   " + "; ".join(method for method, wrong in wrong_by_method.items() if m in wrong))
+# TODO(code, Python): needs a per-member misclassification table across partitions (net_partition_errors()); use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-member methods wrong   of 8
-     9             8   Zachary min cut; Louvain; Fast greedy; Label propagation; Girvan-Newman, 2 groups; Spectral: Fiedler; Spectral: modularity; Degree-corrected SBM
-    10             4   Louvain; Fast greedy; Label propagation; Degree-corrected SBM
-     3             2   Girvan-Newman, 2 groups; Spectral: Fiedler
+TODO(output)
 ```
 :::
 
@@ -1910,7 +1468,7 @@ member methods wrong   of 11
 
 :::
 
-Member 9 is wrong for all eleven methods in the Rust and R tables, member 10 for four, member 3 for three, and no other member is ever wrong. (The Python table has fewer methods, and the counts are lower, but the same members.) @fig-karate-case-wrong draws it.
+Member 9 is wrong for all eleven methods in the Rust table, member 10 for four, member 3 for three, and no other member is ever wrong. (Rust tab; the R and Python tabs for this step are stubs until knappnet can list misclassified members.) @fig-karate-case-wrong draws it.
 
 ![Members that each of eleven methods puts on the wrong side. Member 9 is wrong for all eleven, member 10 for four and member 3 for three. Every other member is right for every method.](../figures/karate-case-wrong.svg){#fig-karate-case-wrong fig-alt="A grid of eleven methods by three members (3, 9 and 10). A dot means the method misclassifies that member. Member 9 has a dot in every row, 11 of 11. Member 10 has 4 dots and member 3 has 3."}
 

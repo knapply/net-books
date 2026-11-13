@@ -56,11 +56,9 @@ The bundled copy has no isolated families, which makes the checks easy, but run 
 
 ```r
 library(knappnet)
-library(dplyr)
-library(purrr)
 
 # Florentine marriages around 1430: one row per marriage between two families.
-marriages <- as_tibble(read.csv("data/florentine/edges.csv"))
+marriages <- read.csv("data/florentine/edges.csv")
 florence <- net_frame(marriages, directed = FALSE)
 florence
 
@@ -68,16 +66,17 @@ florence
 # any pair of families listed twice?
 parts <- net_components(florence, mode = "weak")
 ties <- net_degree(florence)
-tibble(
+data.frame(
   n_families = nrow(florence$nodes),
   n_marriages = nrow(marriages),
-  n_distinct_pairs = nrow(distinct(marriages, a = pmin(source, target), b = pmax(source, target))),
+  n_distinct_pairs = nrow(unique(data.frame(pmin(marriages$source, marriages$target),
+                                            pmax(marriages$source, marriages$target)))),
   n_pieces = max(parts$membership),
   n_isolated = sum(ties == 0)
 )
 
 # How many families have each number of marriages?
-count(tibble(marriages = ties), marriages, name = "families")
+table(marriages = ties)
 ```
 
 ::: {.code-output}
@@ -240,21 +239,16 @@ The network is one connected piece, so every pair of families can reach each oth
 ```r
 medici <- which(florence$nodes$id == "Medici")
 
-measures <- tibble(
-  family = florence$nodes$id,
+measures <- data.frame(
   marriages = net_degree(florence),
   closeness = net_closeness(florence, normalized = TRUE),
   betweenness = net_betweenness(florence),
-  eigenvector = net_eigen(florence)
+  eigenvector = net_eigen(florence),
+  row.names = florence$nodes$id
 )
 
 # Sorted by betweenness. Eigenvector is scaled so the top score is 1.
-measures |>
-  arrange(desc(betweenness)) |>
-  mutate(
-    across(c(closeness, eigenvector), \(x) round(x, 3)),
-    betweenness = round(betweenness, 1)
-  )
+round(measures[order(-measures$betweenness), ], 3)
 ```
 
 ::: {.code-output}
@@ -395,23 +389,24 @@ We draw 1,000 random networks with a fixed seed (a starting number that makes th
 
 ```r
 degrees <- net_degree(florence)
-observed <- measures$betweenness[medici]
+observed <- measures["Medici", "betweenness"]
 
 # 1,000 random networks in which every family keeps its number of marriages.
 # simple = TRUE allows no self-marriages and no repeated pairs.
 draws <- net_random_config(degrees, simple = TRUE, max_tries = 100000, reps = 1000, seed = 1)
-random_between <- map(draws, net_betweenness)
-scores <- map_dbl(random_between, \(b) b[medici])
+random_between <- lapply(draws, net_betweenness)
+scores <- sapply(random_between, function(b) b[medici])
 
-tibble(
+round(data.frame(
   real = observed,
   random_average = mean(scores),
-  middle_90 = paste(round(quantile(scores, c(0.05, 0.95)), 1), collapse = " to "),
+  middle_90_low = quantile(scores, 0.05),
+  middle_90_high = quantile(scores, 0.95),
   share_as_high = mean(scores >= observed - 1e-9),
-  medici_on_top = mean(map_lgl(random_between, \(b) b[medici] >= max(b))),
-  one_piece = mean(map_lgl(draws, \(d) max(net_components(d)$membership) == 1))
-) |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
+  medici_on_top = mean(sapply(random_between, function(b) b[medici] >= max(b))),
+  one_piece = mean(sapply(draws, function(d) max(net_components(d)$membership) == 1)),
+  row.names = NULL
+), 3)
 ```
 
 ::: {.code-output}
@@ -426,37 +421,12 @@ tibble(
 ## Python
 
 ```python
-degrees = [degree[v] for v in families]
-observed = between["Medici"]
-
-def simple_configuration(degrees, rng):
-    # Match the stubs at random and start over until there are no loops or repeated ties.
-    while True:
-        m = nx.configuration_model(degrees, seed=int(rng.integers(2**31)))
-        h = nx.Graph(m)
-        if nx.number_of_selfloops(h) == 0 and h.number_of_edges() == m.number_of_edges():
-            return h
-
-# 1,000 random networks in which every family keeps its number of marriages.
-# NetworkX draws different networks than Rust, so the digits differ a little.
-rng = np.random.default_rng(1)
-draws = [simple_configuration(degrees, rng) for _ in range(1000)]
-random_between = [nx.betweenness_centrality(h, normalized=False) for h in draws]
-scores = np.array([b[medici] for b in random_between])
-
-low, high = np.percentile(scores, [5, 95])
-print(f"real {observed:.1f}, random average {scores.mean():.1f}, middle 90% {low:.1f} to {high:.1f}")
-print(f"random networks with the Medici at least that high  {np.mean(scores >= observed - 1e-9):.3f}")
-print(f"random networks with the Medici on top              {np.mean([b[medici] >= max(b.values()) for b in random_between]):.3f}")
-print(f"random networks in one piece                        {np.mean([nx.is_connected(h) for h in draws]):.3f}")
+# TODO(code, Python): needs a simple configuration-model sampler (net_random_config(simple = TRUE) in the Python backend: no loops, no repeated ties, many draws); the Rust tab shows the numbers.
 ```
 
 ::: {.code-output}
 ```text
-real 47.5, random average 39.9, middle 90% 24.8 to 54.5
-random networks with the Medici at least that high  0.196
-random networks with the Medici on top              0.905
-random networks in one piece                        0.887
+TODO(output)
 ```
 :::
 
@@ -524,7 +494,7 @@ Three cautions keep that from being overread:
 
 - **It's one yardstick.** The configuration model fixes degrees and randomizes everything else. A different null (say, one that keeps clusters intact) could put the Medici in a different place.
 - **It tests betweenness, not the story.** The configuration model says nothing about *why* the Medici had six marriages. If those six marriages were themselves the result of the family's wealth or standing, then "explained by degree" and "explained by position" aren't rivals. They could be the same thing described twice.
-- **Draws are random.** With 1,000 draws and a share near 0.2, the share is uncertain by about one and a quarter percentage points, give or take. The R tab uses the same engine and seed as Rust. The Python tab uses different random draws, so its digits differ a little. None of the differences would change what we conclude.
+- **Draws are random.** With 1,000 draws and a share near 0.2, the share is uncertain by about one and a quarter percentage points, give or take. The R tab uses the same engine and seed as Rust. The Python tab for this step is still a stub, waiting on a configuration-model sampler without loops or repeated ties.
 
 Some draws also come out in more than one piece (only 87.5% are in one piece), and betweenness only counts pairs that have a route. We report that share so you can see how often it happens. It's a reminder that null models are themselves a choice.
 
@@ -542,34 +512,28 @@ Think of leaving out a tie as a stand-in for a marriage that was never recorded.
 
 ```r
 # Betweenness of the Medici and of the best other family, with some marriages left out.
-leave_out <- \(dropped) {
-  g <- net_frame(marriages[-dropped, ], nodes = tibble(id = florence$nodes$id), directed = FALSE)
+leave_out <- function(dropped) {
+  g <- net_frame(marriages[-dropped, ], nodes = data.frame(id = florence$nodes$id), directed = FALSE)
   b <- net_betweenness(g)
   best <- which.max(replace(b, medici, -Inf))
-  tibble(
-    medici = b[medici], other = g$nodes$id[best], other_score = b[best],
-    pieces = max(net_components(g)$membership)
-  )
+  data.frame(medici = b[medici], other = g$nodes$id[best], other_score = b[best],
+             pieces = max(net_components(g)$membership), row.names = NULL)
 }
 labels <- paste(marriages$source, marriages$target, sep = " - ")
 
 # One marriage left out, each of the 20 in turn.
-singles <- seq_len(nrow(marriages)) |>
-  map(leave_out) |>
-  list_rbind() |>
-  mutate(dropped = labels, margin = medici - other_score, .before = 1)
+singles <- do.call(rbind, lapply(seq_len(nrow(marriages)), leave_out))
+singles$dropped <- labels
+singles$margin <- singles$medici - singles$other_score
 
-singles |>
-  summarise(
-    medici_first = sum(margin > 0), of = n(),
-    lowest = min(medici), highest = max(medici), network_splits = sum(pieces > 1)
-  )
+data.frame(
+  medici_first = sum(singles$margin > 0), of = nrow(singles),
+  lowest = min(singles$medici), highest = max(singles$medici),
+  network_splits = sum(singles$pieces > 1)
+)
 
 # The three closest calls.
-singles |>
-  slice_min(margin, n = 3) |>
-  select(dropped, medici, other, other_score) |>
-  mutate(across(where(is.numeric), \(x) round(x, 1)))
+singles[order(singles$margin)[1:3], c("dropped", "medici", "other", "other_score")]
 ```
 
 ::: {.code-output}
@@ -691,21 +655,14 @@ One tie at a time is gentle. With only 20 ties we can afford to try every pair o
 ```r
 # Two marriages left out, all 190 pairs.
 pair_ids <- combn(nrow(marriages), 2, simplify = FALSE)
-pairs <- pair_ids |>
-  map(leave_out) |>
-  list_rbind() |>
-  mutate(
-    dropped = map_chr(pair_ids, \(p) paste(labels[p], collapse = " and ")),
-    margin = medici - other_score,
-    .before = 1
-  )
+pairs <- do.call(rbind, lapply(pair_ids, leave_out))
+pairs$dropped <- sapply(pair_ids, function(p) paste(labels[p], collapse = " and "))
+pairs$margin <- pairs$medici - pairs$other_score
 
-pairs |> summarise(medici_first = sum(margin > 0), of = n())
+data.frame(medici_first = sum(pairs$margin > 0), of = nrow(pairs))
 
 # The pair that hurts most.
-pairs |>
-  slice_min(margin, n = 1) |>
-  select(dropped, medici, other, other_score)
+pairs[pairs$margin == min(pairs$margin), c("dropped", "medici", "other", "other_score")]
 ```
 
 ::: {.code-output}
@@ -785,20 +742,19 @@ The last test asks about structure directly. If the Medici weren't in the networ
 ## R
 
 ```r
-others <- tibble(id = setdiff(florence$nodes$id, "Medici"))
-without <- marriages |>
-  filter(source != "Medici", target != "Medici") |>
-  net_frame(nodes = others, directed = FALSE)
+others <- data.frame(id = setdiff(florence$nodes$id, "Medici"))
+kept <- marriages[marriages$source != "Medici" & marriages$target != "Medici", ]
+without <- net_frame(kept, nodes = others, directed = FALSE)
 
-pieces <- others |>
-  mutate(piece = net_components(without, mode = "weak")$membership) |>
-  group_by(piece) |>
-  summarise(size = n(), families = paste(id, collapse = ", "), .groups = "drop") |>
-  arrange(desc(size))
-pieces
+piece <- net_components(without, mode = "weak")$membership
+pieces <- data.frame(
+  size = as.vector(table(piece)),
+  families = tapply(others$id, piece, paste, collapse = ", ")
+)
+pieces[order(-pieces$size), ]
 
 # Pairs of the other families that can still reach each other, out of all pairs.
-tibble(can_still_reach = sum(choose(pieces$size, 2)), all_pairs = choose(nrow(others), 2))
+data.frame(can_still_reach = sum(choose(pieces$size, 2)), all_pairs = choose(nrow(others), 2))
 ```
 
 ::: {.code-output}

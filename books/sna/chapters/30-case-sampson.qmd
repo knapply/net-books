@@ -56,32 +56,31 @@ The code below runs the checks that matter for everything after: how many choice
 
 ```r
 library(knappnet)
-library(dplyr)
-library(purrr)
 
 # The 18 novices in the order of the data file, and the group Sampson put each in.
-novices <- as_tibble(read.csv("data/sampson/nodes.csv")) |> select(id = name)
-ids <- novices$id
-groups <- as_tibble(read.csv("data/sampson_groups/nodes.csv"))
+ids <- read.csv("data/sampson/nodes.csv")$name
+novices <- data.frame(id = ids)
+groups <- read.csv("data/sampson_groups/nodes.csv")
 labels <- c("Turks", "Loyal", "Outcasts", "Waverers")
 group <- match(groups$group[match(ids, groups$name)], labels)
 
 # One row per ranked choice, with novices as numbers 1 to 18 in that order.
-rows <- as_tibble(read.csv("data/sampson/edges.csv")) |>
-  transmute(a = match(from, ids), b = match(to, ids), relation, wave = time, rank)
-pairs <- \(rel, w, min_rank = 1) {
-  rows |> filter(relation == rel, wave == w, rank >= min_rank) |> select(a, b)
+edges <- read.csv("data/sampson/edges.csv")
+rows <- data.frame(a = match(edges$from, ids), b = match(edges$to, ids),
+                   relation = edges$relation, wave = edges$time, rank = edges$rank)
+pairs <- function(rel, w, min_rank = 1) {
+  rows[rows$relation == rel & rows$wave == w & rows$rank >= min_rank, c("a", "b")]
 }
+lik <- lapply(1:3, function(w) pairs("liking", w))
 
 # Checks on the liking waves: the questionnaire asked for three names.
-map(1:3, \(w) {
-  p <- pairs("liking", w)
+do.call(rbind, lapply(1:3, function(w) {
+  p <- lik[[w]]
   named <- tabulate(p$a, 18)
-  tibble(wave = w, choices = nrow(p), named_3 = sum(named == 3), named_4 = sum(named == 4),
-         self_choices = sum(p$a == p$b), repeated_pairs = nrow(p) - nrow(distinct(p)))
-}) |>
-  list_rbind()
-tibble(sampson_group = labels, novices = tabulate(group, 4))
+  data.frame(wave = w, choices = nrow(p), named_3 = sum(named == 3), named_4 = sum(named == 4),
+             self_choices = sum(p$a == p$b), repeated_pairs = nrow(p) - nrow(unique(p)))
+}))
+table(sampson_group = labels[group])
 ```
 
 ::: {.code-output}
@@ -105,44 +104,12 @@ tibble(sampson_group = labels, novices = tabulate(group, 4))
 ## Python
 
 ```python
-import csv
-from collections import Counter
-
-import networkx as nx
-import numpy as np
-from scipy.stats import spearmanr
-
-# The 18 novices in the order of the data file, and the group Sampson put each in.
-with open("data/sampson/nodes.csv") as f:
-    names = [r["name"] for r in csv.DictReader(f)]
-with open("data/sampson_groups/nodes.csv") as f:
-    group_of = {r["name"]: r["group"] for r in csv.DictReader(f)}
-labels = ["Turks", "Loyal", "Outcasts", "Waverers"]
-group = np.array([labels.index(group_of[n]) for n in names])
-at = {n: i for i, n in enumerate(names)}
-
-# One row per ranked choice: (from, to, relation, wave, rank).
-with open("data/sampson/edges.csv") as f:
-    rows = [(at[r["from"]], at[r["to"]], r["relation"], int(r["time"]), int(r["rank"])) for r in csv.DictReader(f)]
-
-def pairs(relation, wave, min_rank=1):
-    return [(a, b) for a, b, rel, w, rank in rows if rel == relation and w == wave and rank >= min_rank]
-
-# Checks on the liking waves: the questionnaire asked for three names.
-for wave in (1, 2, 3):
-    p = pairs("liking", wave)
-    named = Counter(a for a, _ in p)
-    print(f"wave {wave}: {len(p)} choices; {sum(d == 3 for d in named.values())} novices named 3 and {sum(d == 4 for d in named.values())} named 4; "
-          f"self-choices {sum(a == b for a, b in p)}; repeated pairs {len(p) - len(set(p))}")
-print("Sampson's groups: " + ", ".join(f"{lab} {(group == k).sum()}" for k, lab in enumerate(labels)))
+# TODO(code, Python): nothing to call yet: this tab only read the data and counted; it returns when the Python backend has a table reader for ranked-choice edge lists (net_read). Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-wave 1: 55 choices; 17 novices named 3 and 1 named 4; self-choices 0; repeated pairs 0
-wave 2: 57 choices; 15 novices named 3 and 3 named 4; self-choices 0; repeated pairs 0
-wave 3: 56 choices; 16 novices named 3 and 2 named 4; self-choices 0; repeated pairs 0
-Sampson's groups: Turks 7, Loyal 5, Outcasts 3, Waverers 3
+TODO(output)
 ```
 :::
 
@@ -216,85 +183,24 @@ For each wave the code draws 2,000 random sets of choices this way, and reports 
 ## R
 
 ```r
-lik <- map(1:3, \(w) pairs("liking", w))
-named <- map(lik, \(p) tabulate(p$a, 18))
-indegree <- \(p) tabulate(p$b, 18)
-digraph <- \(p) {
-  net_frame(tibble(source = ids[p$a], target = ids[p$b]), nodes = novices, directed = TRUE, quiet = TRUE)
-}
-
-# Random choices: every novice keeps his own number of choices, but picks others at random.
-random_choices <- \(named) {
-  tibble(a = rep(1:18, named), b = unlist(map2(1:18, named, \(i, d) sample(setdiff(1:18, i), d))))
-}
-# Two summaries of a wave: the share of choices that were returned, and the spread of in-degree.
-summary_of <- \(p) tibble(returned = mean(paste(p$b, p$a) %in% paste(p$a, p$b)), spread = sd(indegree(p)))
-
-set.seed(1)
-map(1:3, \(w) {
-  p <- lik[[w]]
-  g <- digraph(p)
-  draws <- map(1:2000, \(i) summary_of(random_choices(named[[w]]))) |> list_rbind()
-  spread <- sd(net_degree(g, mode = "in"))
-  tibble(
-    wave = w, ties = nrow(p), mutual = sum(p$a < p$b & paste(p$b, p$a) %in% paste(p$a, p$b)),
-    returned = net_reciprocity(g), chance = mean(draws$returned),
-    spread = spread, chance_spread = mean(draws$spread),
-    share_as_spread = mean(draws$spread >= spread - 1e-9)
-  )
-}) |>
-  list_rbind() |>
-  mutate(across(c(returned, chance, spread, chance_spread, share_as_spread), \(x) round(x, 3)))
+# TODO(code, R): needs a null model for directed choice data (net_random_choices(): every novice keeps his number of choices, picks others at random) and net_reciprocity compared against it; the Rust tab shows the numbers.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 3 × 8
-   wave  ties mutual returned chance spread chance_spread share_as_spread
-  <int> <int>  <int>    <dbl>  <dbl>  <dbl>         <dbl>           <dbl>
-1     1    55     14    0.509  0.181   2.34          1.61           0.009
-2     2    57     15    0.526  0.187   2.31          1.62           0.008
-3     3    56     15    0.536  0.183   1.78          1.61           0.276
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-def digraph(p):
-    g = nx.DiGraph()
-    g.add_nodes_from(range(18))
-    g.add_edges_from(p)
-    return g
-
-lik = [pairs("liking", w) for w in (1, 2, 3)]
-named = [np.bincount([a for a, _ in p], minlength=18) for p in lik]
-
-# Two summaries of a wave: the share of choices that were returned, and the spread of in-degree.
-def summary(p):
-    g = digraph(p)
-    return nx.reciprocity(g), np.std([d for _, d in g.in_degree()], ddof=1)
-
-# Random choices: every novice keeps his own number of choices, but picks others at random.
-rng = np.random.default_rng(1)
-def random_choices(named):
-    return [(i, int(k if k < i else k + 1)) for i, d in enumerate(named) for k in rng.choice(17, d, replace=False)]
-
-print("wave  ties  mutual  returned  chance  spread  chance  share as spread")
-for w, p in enumerate(lik):
-    returned, spread = summary(p)
-    draws = np.array([summary(random_choices(named[w])) for _ in range(2000)])
-    mutual = sum(a < b and (b, a) in set(p) for a, b in p)
-    print(f"{w + 1:<5} {len(p):<5} {mutual:<7} {returned:<9.3f} {draws[:, 0].mean():<7.3f} {spread:<7.2f} "
-          f"{draws[:, 1].mean():<7.2f} {np.mean(draws[:, 1] >= spread - 1e-9):.3f}")
+# TODO(code, Python): the Python backend runs NetworkX only; this tab needs adjusted Rand and normalized mutual information (net_compare_partitions) and a random-choices or permutation null, which are not exposed yet. Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-wave  ties  mutual  returned  chance  spread  chance  share as spread
-1     55    14      0.509     0.179   2.34    1.60    0.005
-2     57    15      0.526     0.187   2.31    1.63    0.009
-3     56    15      0.536     0.184   1.78    1.61    0.279
+TODO(output)
 ```
 :::
 
@@ -375,82 +281,24 @@ For the second we use the **Spearman correlation**, which compares two rankings 
 ## R
 
 ```r
-received <- map(lik, indegree)
-
-# The six novices chosen most often over the three waves.
-tibble(novice = ids, group = labels[group], t1 = received[[1]], t2 = received[[2]], t3 = received[[3]]) |>
-  arrange(desc(t1 + t2 + t3)) |>
-  slice_head(n = 6)
-
-# Spearman correlation of in-degree between waves, against two waves of random choices.
-random_waves <- map(1:2000, \(i) map(named, \(n) indegree(random_choices(n))))
-list(c(1, 2), c(2, 3), c(1, 3)) |>
-  map(\(w) {
-    observed <- cor(received[[w[1]]], received[[w[2]]], method = "spearman")
-    null <- map_dbl(random_waves, \(r) cor(r[[w[1]]], r[[w[2]]], method = "spearman"))
-    tibble(waves = paste(w, collapse = " vs "), correlation = observed, random_average = mean(null),
-           random_95th = as.numeric(quantile(null, 0.95)), share_as_high = mean(null >= observed - 1e-9))
-  }) |>
-  list_rbind() |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
+# TODO(code, R): needs the same random-choices null model, and a rank-correlation helper for in-degree across waves (net_rank_cor()); the Rust tab shows the numbers.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 6 × 5
-  novice      group       t1    t2    t3
-  <chr>       <chr>    <int> <int> <int>
-1 Romuald     Waverers     9     8     4
-2 Bonaventure Loyal        7     8     6
-3 Peter       Loyal        5     7     6
-4 Berthold    Loyal        3     5     4
-5 Victor      Waverers     4     3     5
-6 Boniface    Turks        1     4     6
-# A tibble: 3 × 5
-  waves  correlation random_average random_95th share_as_high
-  <chr>        <dbl>          <dbl>       <dbl>         <dbl>
-1 1 vs 2       0.547          0.006       0.39          0.008
-2 2 vs 3       0.68          -0.002       0.4           0.002
-3 1 vs 3       0.451         -0.003       0.409         0.034
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-def indegree(p):
-    return np.bincount([b for _, b in p], minlength=18)
-
-received = [indegree(p) for p in lik]
-
-# The six novices chosen most often over the three waves.
-total = sum(received)
-print(f"{'novice':<12}{'group':<10}{'t1':>5}{'t2':>5}{'t3':>5}")
-for i in sorted(range(18), key=lambda i: (-total[i], i))[:6]:
-    print(f"{names[i]:<12}{labels[group[i]]:<10}{received[0][i]:>5}{received[1][i]:>5}{received[2][i]:>5}")
-
-# Spearman correlation of in-degree between waves, against two waves of random choices.
-random_waves = [[indegree(random_choices(named[w])) for w in range(3)] for _ in range(2000)]
-print("waves  rank correlation  random: average  95th percentile  share as high")
-for a, b in [(0, 1), (1, 2), (0, 2)]:
-    observed = spearmanr(received[a], received[b])[0]
-    null = np.sort([spearmanr(r[a], r[b])[0] for r in random_waves])
-    print(f"{a + 1} vs {b + 1}  {observed:<17.2f} {null.mean():<16.2f} {null[1899]:<16.2f} {np.mean(null >= observed - 1e-9):.3f}")
+# TODO(code, Python): the Python backend runs NetworkX only; this tab needs adjusted Rand and normalized mutual information (net_compare_partitions) and a random-choices or permutation null, which are not exposed yet. Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-novice      group        t1   t2   t3
-Romuald     Waverers      9    8    4
-Bonaventure Loyal         7    8    6
-Peter       Loyal         5    7    6
-Berthold    Loyal         3    5    4
-Victor      Waverers      4    3    5
-Boniface    Turks         1    4    6
-waves  rank correlation  random: average  95th percentile  share as high
-1 vs 2  0.55              -0.01            0.39             0.007
-2 vs 3  0.68              0.01             0.40             0.002
-1 vs 3  0.45              0.00             0.40             0.030
+TODO(output)
 ```
 :::
 
@@ -554,34 +402,35 @@ Two baselines come with every number. *Modularity of Sampson's groups* on the sa
 
 ```r
 # Either direction counts as a tie, and each pair counts once.
-undirected <- \(p) {
-  tibble(source = ids[pmin(p$a, p$b)], target = ids[pmax(p$a, p$b)]) |>
-    distinct() |>
-    net_frame(nodes = novices, directed = FALSE, quiet = TRUE)
+undirected <- function(p) {
+  both <- unique(data.frame(a = pmin(p$a, p$b), b = pmax(p$a, p$b)))
+  net_frame(data.frame(source = ids[both$a], target = ids[both$b]), nodes = novices,
+            directed = FALSE, quiet = TRUE)
 }
 # Louvain, resolution 1, unweighted: the community of each novice.
-communities <- \(p, seed = 1) as.integer(net_louvain(undirected(p), resolution = 1, seed = seed))
-ari <- \(a, b) net_compare_partitions(a, b, method = "adjusted_rand")
-nmi <- \(a, b) net_compare_partitions(a, b, method = "nmi")
+communities <- function(p, seed = 1) as.integer(net_louvain(undirected(p), resolution = 1, seed = seed))
+ari <- function(a, b) net_compare_partitions(a, b, method = "adjusted_rand")
+nmi <- function(a, b) net_compare_partitions(a, b, method = "nmi")
 
-found <- map(lik, communities)
-map(1:3, \(w) {
+found <- lapply(lik, communities)
+do.call(rbind, lapply(1:3, function(w) {
   g <- undirected(lik[[w]])
   here <- ari(found[[w]], group)
   # The groups with the novices shuffled: what agreement with Sampson's groups looks like by luck.
-  by_luck <- map_dbl(1:2000, \(i) ari(found[[w]], sample(group)))
-  tibble(wave = w, communities = n_distinct(found[[w]]),
-         modularity = net_modularity(g, found[[w]]), groups_modularity = net_modularity(g, group),
-         ari = here, nmi = nmi(found[[w]], group),
-         luck_95th = as.numeric(quantile(by_luck, 0.95)), share_as_high = mean(by_luck >= here - 1e-9))
-}) |>
-  list_rbind() |>
-  mutate(across(where(is.double), \(x) round(x, 3)))
+  by_luck <- sapply(1:2000, function(i) ari(found[[w]], sample(group)))
+  round(data.frame(
+    wave = w, communities = length(unique(found[[w]])),
+    modularity = net_modularity(g, found[[w]]), groups_modularity = net_modularity(g, group),
+    ari = here, nmi = nmi(found[[w]], group),
+    luck_95th = quantile(by_luck, 0.95), share_as_high = mean(by_luck >= here - 1e-9),
+    row.names = NULL
+  ), 3)
+}))
 
 # Who is in which community? (T Turks, L Loyal, O Outcasts, W Waverers)
-tibble(novice = paste0(ids, " (", substr(labels[group], 1, 1), ")"),
-       wave_1 = found[[1]], wave_2 = found[[2]], wave_3 = found[[3]]) |>
-  arrange(wave_3, wave_2, wave_1)
+who <- data.frame(wave_1 = found[[1]], wave_2 = found[[2]], wave_3 = found[[3]],
+                  row.names = paste0(ids, " (", substr(labels[group], 1, 1), ")"))
+who[order(who$wave_3, who$wave_2, who$wave_1), ]
 ```
 
 ::: {.code-output}
@@ -620,68 +469,12 @@ tibble(novice = paste0(ids, " (", substr(labels[group], 1, 1), ")"),
 ## Python
 
 ```python
-# Either direction counts as a tie, and each pair counts once.
-def undirected(p):
-    g = nx.Graph()
-    g.add_nodes_from(range(18))
-    g.add_edges_from(p)
-    return g
-
-# Louvain, resolution 1, unweighted: the community of each novice, numbered in order of first member.
-def communities(p, seed=1):
-    found = nx.community.louvain_communities(undirected(p), seed=seed)
-    label = np.zeros(18, dtype=int)
-    for k, members in enumerate(sorted(found, key=min)):
-        label[list(members)] = k
-    return label
-
-def modularity(p, label):
-    return nx.community.modularity(undirected(p), [set(np.flatnonzero(label == k)) for k in set(label)])
-
-# Adjusted Rand index and normalized mutual information, from the table of who is where in both partitions.
-def agreement(a, b):
-    joint, rows_, cols = Counter(zip(a, b)), Counter(a), Counter(b)
-    pairs_ = lambda counts: sum(v * (v - 1) / 2 for v in counts.values())
-    expected = pairs_(rows_) * pairs_(cols) / (18 * 17 / 2)
-    ari = (pairs_(joint) - expected) / ((pairs_(rows_) + pairs_(cols)) / 2 - expected)
-    entropy = lambda counts: -sum(v / 18 * np.log(v / 18) for v in counts.values())
-    info = sum(v / 18 * np.log(v * 18 / (rows_[x] * cols[y])) for (x, y), v in joint.items())
-    return ari, 2 * info / (entropy(rows_) + entropy(cols))
-
-ari = lambda a, b: agreement(a, b)[0]
-nmi = lambda a, b: agreement(a, b)[1]
-# The groups with the novices shuffled: what agreement with Sampson's groups looks like by luck.
-shuffled_groups = lambda: rng.permutation(group)
-
-found = [communities(p) for p in lik]
-print("wave  communities  modularity  groups' modularity  ARI   NMI   ARI by luck: 95th pct  share as high")
-for w in range(3):
-    by_luck = np.sort([ari(found[w], shuffled_groups()) for _ in range(2000)])
-    here = ari(found[w], group)
-    print(f"{w + 1:<5} {found[w].max() + 1:<12} {modularity(lik[w], found[w]):<11.3f} {modularity(lik[w], group):<19.3f} "
-          f"{here:<5.3f} {nmi(found[w], group):<5.3f} {by_luck[1899]:<23.3f} {np.mean(by_luck >= here - 1e-9):.3f}")
-# Who is in which community? (T Turks, L Loyal, O Outcasts, W Waverers)
-for w in range(3):
-    for c in range(found[w].max() + 1):
-        who = ", ".join(f"{names[i]} ({labels[group[i]][0]})" for i in range(18) if found[w][i] == c)
-        print(f"wave {w + 1} community {c + 1}: {who}")
+# TODO(code, Python): the Python backend runs NetworkX only; this tab needs adjusted Rand and normalized mutual information (net_compare_partitions) and a random-choices or permutation null, which are not exposed yet. Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-wave  communities  modularity  groups' modularity  ARI   NMI   ARI by luck: 95th pct  share as high
-1     3            0.276       -0.005              0.037 0.244 0.165                   0.353
-2     3            0.308       -0.043              0.107 0.333 0.139                   0.105
-3     3            0.443       -0.004              0.077 0.274 0.142                   0.174
-wave 1 community 1: Romuald (W), Bonaventure (L), Ambrose (L), Boniface (T), Albert (T), Amand (W)
-wave 1 community 2: Berthold (L), Peter (L), Louis (L), Winfrid (T), John Bosco (T), Gregory (T), Hugh (T), Basil (O)
-wave 1 community 3: Victor (W), Mark (T), Elias (O), Simplicius (O)
-wave 2 community 1: Romuald (W), Bonaventure (L), Victor (W), Hugh (T), Boniface (T), Albert (T), Amand (W), Basil (O)
-wave 2 community 2: Ambrose (L), Elias (O), Simplicius (O)
-wave 2 community 3: Berthold (L), Peter (L), Louis (L), Winfrid (T), John Bosco (T), Gregory (T), Mark (T)
-wave 3 community 1: Romuald (W), Bonaventure (L), Victor (W), Boniface (T), Albert (T), Amand (W), Basil (O)
-wave 3 community 2: Ambrose (L), Mark (T), Elias (O), Simplicius (O)
-wave 3 community 3: Berthold (L), Peter (L), Louis (L), Winfrid (T), John Bosco (T), Gregory (T), Hugh (T)
+TODO(output)
 ```
 :::
 
@@ -772,21 +565,22 @@ The next block asks how stable all this is.
 
 ```r
 # How much do the waves' communities agree with each other?
-waves_in_pairs <- list(c(1, 2), c(2, 3), c(1, 3))
-waves_in_pairs |>
-  map(\(w) tibble(waves = paste(w, collapse = " and "), adjusted_rand = ari(found[[w[1]]], found[[w[2]]]),
-                  nmi = nmi(found[[w[1]]], found[[w[2]]]))) |>
-  list_rbind() |>
-  mutate(across(where(is.double), \(x) round(x, 3)))
+wave_pairs <- list(c(1, 2), c(2, 3), c(1, 3))
+do.call(rbind, lapply(wave_pairs, function(w) {
+  data.frame(waves = paste(w, collapse = " and "),
+             adjusted_rand = round(ari(found[[w[1]]], found[[w[2]]]), 3),
+             nmi = round(nmi(found[[w[1]]], found[[w[2]]]), 3))
+}))
 
 # Is the answer an accident of the seed? Louvain with seeds 1 to 20.
-tibble(wave = 1:3, seeds_giving_the_same = map_int(1:3, \(w) {
-  sum(map_lgl(1:20, \(s) ari(communities(lik[[w]], s), found[[w]]) > 1 - 1e-9))
+data.frame(wave = 1:3, seeds_giving_the_same = sapply(1:3, function(w) {
+  sum(sapply(1:20, function(s) ari(communities(lik[[w]], s), found[[w]]) > 1 - 1e-9))
 }))
 
 # How well do Sampson's groups fit as communities of other relations? Modularity of the groups on each graph.
-tibble(relation = c("liking", "esteem", "disliking")) |>
-  mutate(groups_modularity = map_dbl(relation, \(r) net_modularity(undirected(pairs(r, 3)), group)) |> round(3))
+relations <- c("liking", "esteem", "disliking")
+data.frame(relation = relations, groups_modularity = round(
+  sapply(relations, function(r) net_modularity(undirected(pairs(r, 3)), group)), 3), row.names = NULL)
 ```
 
 ::: {.code-output}
@@ -815,30 +609,12 @@ tibble(relation = c("liking", "esteem", "disliking")) |>
 ## Python
 
 ```python
-# How much do the waves' communities agree with each other?
-for a, b in [(0, 1), (1, 2), (0, 2)]:
-    print(f"waves {a + 1} and {b + 1}: adjusted Rand {ari(found[a], found[b]):.3f}, NMI {nmi(found[a], found[b]):.3f}")
-# Is the answer an accident of the seed? Louvain with seeds 1 to 20.
-for w in range(3):
-    same = sum((communities(lik[w], s) == found[w]).all() for s in range(1, 21))
-    print(f"wave {w + 1}: {same} of 20 seeds give the seed-1 communities")
-
-# How well do Sampson's groups fit as communities of other relations? Modularity of the groups on each graph.
-for relation in ("liking", "esteem", "disliking"):
-    print(f"{relation:<10} modularity of Sampson's groups: {modularity(pairs(relation, 3), group):.3f}")
+# TODO(code, Python): the Python backend runs NetworkX only; this tab needs adjusted Rand and normalized mutual information (net_compare_partitions) and a random-choices or permutation null, which are not exposed yet. Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-waves 1 and 2: adjusted Rand 0.306, NMI 0.379
-waves 2 and 3: adjusted Rand 0.673, NMI 0.708
-waves 1 and 3: adjusted Rand 0.562, NMI 0.588
-wave 1: 13 of 20 seeds give the seed-1 communities
-wave 2: 6 of 20 seeds give the seed-1 communities
-wave 3: 20 of 20 seeds give the seed-1 communities
-liking     modularity of Sampson's groups: -0.004
-esteem     modularity of Sampson's groups: 0.276
-disliking  modularity of Sampson's groups: -0.215
+TODO(output)
 ```
 :::
 
@@ -898,126 +674,24 @@ First the raw table: who dislikes whom, by group (rows choose, columns are chose
 ## R
 
 ```r
-# Dislikes at the third wave: who dislikes whom, by group.
-dislikes <- pairs("disliking", 3)
-table(chooser = factor(labels[group[dislikes$a]], levels = labels),
-      chosen = factor(labels[group[dislikes$b]], levels = labels))
-inside <- \(g, p) sum(g[p$a] == g[p$b])
-by_luck <- map_int(1:2000, \(i) inside(sample(group), dislikes))
-tibble(dislikes_inside = inside(group, dislikes), of = nrow(dislikes), by_luck = round(mean(by_luck), 1),
-       shuffles_as_low = sum(by_luck <= inside(group, dislikes)), of_shuffles = 2000)
-
-# One signed tie per pair (liking +, disliking -), kept only when every choice about the pair has one sign.
-signed <- bind_rows(mutate(lik[[3]], sign = 1), mutate(dislikes, sign = -1)) |>
-  mutate(lo = pmin(a, b), hi = pmax(a, b)) |>
-  group_by(lo, hi) |>
-  summarise(positive = any(sign > 0), negative = any(sign < 0), .groups = "drop") |>
-  filter(positive != negative)
-signed |> count(inside_a_group = group[lo] == group[hi], positive)
-# A partition's cost: negative ties inside groups plus positive ties between groups.
-cost <- \(g) sum((g[signed$lo] == g[signed$hi]) != signed$positive)
-costs <- map_int(1:2000, \(i) cost(sample(group)))
-tibble(ties = nrow(signed), one_group = cost(rep(1, 18)), everyone_alone = cost(1:18), sampson = cost(group),
-       shuffled_average = round(mean(costs), 1), shuffled_lowest = min(costs), shuffles_as_low = sum(costs <= cost(group)))
-
-# Popular is not the same as agreed on: likes and dislikes received at the third wave.
-disliked <- indegree(dislikes)
-tibble(novice = ids, group = labels[group], liked = received[[3]], disliked = disliked) |>
-  arrange(desc(disliked)) |>
-  slice_head(n = 4)
-cor(received[[3]], disliked, method = "spearman") |> round(2)
+# TODO(code, R): needs net_as_signed() on liking (+) and disliking (-) choices plus a signed-balance cost for a partition (net_signed_balance()), and a shuffle test of dislikes inside groups; the Rust tab shows the numbers.
 ```
 
 ::: {.code-output}
 ```text
-          chosen
-chooser    Turks Loyal Outcasts Waverers
-  Turks        2     6        4        6
-  Loyal        7     0        6        0
-  Outcasts     2     5        0        3
-  Waverers     4     1        1        0
-# A tibble: 1 × 5
-  dislikes_inside    of by_luck shuffles_as_low of_shuffles
-            <int> <int>   <dbl>           <int>       <dbl>
-1               2    47    11.4               0        2000
-# A tibble: 4 × 3
-  inside_a_group positive     n
-  <lgl>          <lgl>    <int>
-1 FALSE          FALSE       25
-2 FALSE          TRUE        18
-3 TRUE           FALSE        1
-4 TRUE           TRUE        11
-# A tibble: 1 × 7
-   ties one_group everyone_alone sampson shuffled_average shuffled_lowest
-  <int>     <int>          <int>   <int>            <dbl>           <int>
-1    55        26             29      19             28.4              13
-# ℹ 1 more variable: shuffles_as_low <int>
-# A tibble: 4 × 4
-  novice  group    liked disliked
-  <chr>   <chr>    <int>    <int>
-1 Peter   Loyal        6        8
-2 Gregory Turks        0        7
-3 Basil   Outcasts     1        6
-4 Victor  Waverers     5        5
-[1] -0.19
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# Dislikes at the third wave: who dislikes whom, by group (rows choose, columns are chosen).
-dislikes = pairs("disliking", 3)
-matrix = np.zeros((4, 4), dtype=int)
-for a, b in dislikes:
-    matrix[group[a], group[b]] += 1
-print(f"{'':<10}" + "".join(f"{lab:>{w}}" for lab, w in zip(labels, (7, 7, 10, 10))))
-for g in range(4):
-    print(f"{labels[g]:<10}" + "".join(f"{matrix[g, h]:>{w}}" for h, w in zip(range(4), (7, 7, 10, 10))))
-inside = lambda g: sum(g[a] == g[b] for a, b in dislikes)
-by_luck = np.array([inside(shuffled_groups()) for _ in range(2000)])
-print(f"dislikes inside a group: {inside(group)} of {len(dislikes)}; with shuffled groups {by_luck.mean():.1f} on average, "
-      f"{(by_luck <= inside(group)).sum()} of 2000 shuffles as low")
-
-# One signed tie per pair (liking +, disliking -), kept only when every choice about the pair has one sign.
-seen = {}
-for relation, p in [("liking", lik[2]), ("disliking", dislikes)]:
-    for a, b in p:
-        seen.setdefault((min(a, b), max(a, b)), [False, False])[0 if relation == "liking" else 1] = True
-signed = [(a, b, v[0]) for (a, b), v in sorted(seen.items()) if v[0] != v[1]]
-tally = lambda same, plus: sum((group[a] == group[b]) == same and s == plus for a, b, s in signed)
-print(f"signed ties {len(signed)}: positive inside {tally(True, True)}, positive between {tally(False, True)}, "
-      f"negative inside {tally(True, False)}, negative between {tally(False, False)}")
-# A partition's cost: negative ties inside groups plus positive ties between groups.
-cost = lambda g: sum((g[a] == g[b]) != s for a, b, s in signed)
-costs = np.array([cost(shuffled_groups()) for _ in range(2000)])
-print(f"cost: one group {cost([0] * 18)}, everyone alone {cost(list(range(18)))}, Sampson's groups {cost(group)}; "
-      f"shuffled groups {costs.mean():.1f} on average, lowest {costs.min()}, {(costs <= cost(group)).sum()} of 2000 as low")
-
-# Popular is not the same as agreed on: likes and dislikes received at the third wave.
-disliked = indegree(dislikes)
-print(f"{'novice':<12}{'group':<10}{'liked':>6}{'disliked':>10}")
-for i in sorted(range(18), key=lambda i: (-disliked[i], i))[:4]:
-    print(f"{names[i]:<12}{labels[group[i]]:<10}{received[2][i]:>6}{disliked[i]:>10}")
-print(f"rank correlation of likes and dislikes received: {spearmanr(received[2], disliked)[0]:.2f}")
+# TODO(code, Python): the Python backend runs NetworkX only; this tab needs adjusted Rand and normalized mutual information (net_compare_partitions) and a random-choices or permutation null, which are not exposed yet. Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-            Turks  Loyal  Outcasts  Waverers
-Turks           2      6         4         6
-Loyal           7      0         6         0
-Outcasts        2      5         0         3
-Waverers        4      1         1         0
-dislikes inside a group: 2 of 47; with shuffled groups 11.3 on average, 2 of 2000 shuffles as low
-signed ties 55: positive inside 11, positive between 18, negative inside 1, negative between 25
-cost: one group 26, everyone alone 29, Sampson's groups 19; shuffled groups 28.3 on average, lowest 17, 5 of 2000 as low
-novice      group      liked  disliked
-Peter       Loyal          6         8
-Gregory     Turks          0         7
-Basil       Outcasts       1         6
-Victor      Waverers       5         5
-rank correlation of likes and dislikes received: -0.19
+TODO(output)
 ```
 :::
 
@@ -1107,125 +781,24 @@ Then two follow-ups. Do mutual choices last longer than one-way ones? And who mo
 ## R
 
 ```r
-# How many choices carry over, and how many would by chance? Two chance baselines:
-# (1) every novice keeps his number of choices but picks at random, exactly: sum of named_a * named_b / 17;
-# (2) the later wave is kept as it is but the novices are shuffled (who is who is lost, the shape stays).
-code <- \(p, who = 1:18) (who[p$a] - 1L) * 18L + who[p$b]
-list(c(1, 2), c(2, 3), c(1, 3)) |>
-  map(\(w) {
-    earlier <- code(lik[[w[1]]])
-    carried <- sum(code(lik[[w[2]]]) %in% earlier)
-    by_shuffle <- map_int(1:2000, \(i) sum(code(lik[[w[2]]], sample(18)) %in% earlier))
-    tibble(waves = paste(w, collapse = " "), carried, of = length(earlier),
-           expected = sum(named[[w[1]]] * named[[w[2]]]) / 17, shuffled_average = mean(by_shuffle),
-           shuffled_95th = as.numeric(quantile(by_shuffle, 0.95)), share_as_high = mean(by_shuffle >= carried))
-  }) |>
-  list_rbind() |>
-  mutate(across(c(expected, shuffled_average, share_as_high), \(x) round(x, 3)))
-
-# Do mutual choices last longer than one-way choices?
-list(c(1, 2), c(2, 3)) |>
-  map(\(w) {
-    p <- lik[[w[1]]]
-    mutual <- paste(p$b, p$a) %in% paste(p$a, p$b)
-    kept <- code(p) %in% code(lik[[w[2]]])
-    tibble(waves = paste(w, collapse = " to "), mutual_kept = sum(kept & mutual), mutual = sum(mutual),
-           one_way_kept = sum(kept & !mutual), one_way = sum(!mutual))
-  }) |>
-  list_rbind()
-
-# Who moves? For each novice: of the other 17, the share he sits with (or apart from) in the same way
-# in both waves' communities. A low score means his company changed.
-stays <- \(a, b) (rowSums(outer(a, a, "==") == outer(b, b, "==")) - 1) / 17
-stay <- list(c(1, 2), c(2, 3), c(1, 3)) |>
-  map(\(w) tibble(waves = paste(w, collapse = " and "), novice = ids, group = labels[group],
-                  stays = stays(found[[w[1]]], found[[w[2]]]))) |>
-  list_rbind()
-stay |> summarise(average = round(mean(stays), 2), .by = waves)
-stay |> slice_min(stays, n = 4, with_ties = FALSE, by = waves) |> mutate(stays = round(stays, 2))
+# TODO(code, R): needs a carry-over test for ranked choices across waves (net_persistence(): choices kept, against shuffled-novice and fixed-degree baselines) and a per-novice stability score between two partitions (net_partition_stability()); the Rust tab shows the numbers.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 3 × 7
-  waves carried    of expected shuffled_average shuffled_95th share_as_high
-  <chr>   <int> <int>    <dbl>            <dbl>         <dbl>         <dbl>
-1 1 2        35    55     10.3             10.2            15             0
-2 2 3        40    57     10.4             10.4            16             0
-3 1 3        35    55     10.1             10.1            15             0
-# A tibble: 2 × 5
-  waves  mutual_kept mutual one_way_kept one_way
-  <chr>        <int>  <int>        <int>   <int>
-1 1 to 2          21     28            0       0
-2 2 to 3          22     30            0       0
-# A tibble: 3 × 2
-  waves   average
-  <chr>     <dbl>
-1 1 and 2    0.76
-2 2 and 3    0.93
-3 1 and 3    0.81
-# A tibble: 12 × 4
-   waves   novice   group    stays
-   <chr>   <chr>    <chr>    <dbl>
- 1 1 and 2 Basil    Outcasts  0.24
- 2 1 and 2 Mark     Turks     0.41
- 3 1 and 2 Victor   Waverers  0.47
- 4 1 and 2 Ambrose  Loyal     0.59
- 5 2 and 3 Mark     Turks     0.41
- 6 2 and 3 Ambrose  Loyal     0.94
- 7 2 and 3 Berthold Loyal     0.94
- 8 2 and 3 Peter    Loyal     0.94
- 9 1 and 3 Basil    Outcasts  0.24
-10 1 and 3 Victor   Waverers  0.47
-11 1 and 3 Ambrose  Loyal     0.53
-12 1 and 3 Romuald  Waverers  0.82
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# How many choices carry over, and how many would by chance? Two chance baselines:
-# (1) every novice keeps his number of choices but picks at random, exactly: sum of named_a * named_b / 17;
-# (2) the later wave is kept as it is but the novices are shuffled (who is who is lost, the shape stays).
-print("waves  carried  of  expected (1)  shuffled (2): average  95th pct  share as high")
-for a, b in [(0, 1), (1, 2), (0, 2)]:
-    earlier, later = set(lik[a]), lik[b]
-    carried = sum(t in earlier for t in later)
-    expected = (named[a] * named[b]).sum() / 17
-    by_shuffle = np.sort([sum((who[x], who[y]) in earlier for x, y in later) for who in (rng.permutation(18) for _ in range(2000))])
-    print(f"{a + 1} {b + 1}   {carried:<8} {len(lik[a]):<3} {expected:<12.1f} {by_shuffle.mean():<22.1f} {by_shuffle[1899]:<9} "
-          f"{np.mean(by_shuffle >= carried):.3f}")
-# Do mutual choices last longer than one-way choices?
-for a, b in [(0, 1), (1, 2)]:
-    both = [t for t in lik[a] if (t[1], t[0]) in set(lik[a])]
-    one = [t for t in lik[a] if (t[1], t[0]) not in set(lik[a])]
-    print(f"wave {a + 1} to {b + 1}: mutual choices kept {sum(t in set(lik[b]) for t in both)} of {len(both)}, "
-          f"one-way choices kept {sum(t in set(lik[b]) for t in one)} of {len(one)}")
-
-# Who moves? For each novice: of the other 17, the share he sits with (or apart from) in the same way
-# in both waves' communities. A low score means his company changed.
-def stays(a, b):
-    same_a, same_b = a[:, None] == a[None, :], b[:, None] == b[None, :]
-    return ((same_a == same_b).sum(axis=1) - 1) / 17
-for a, b in [(0, 1), (1, 2), (0, 2)]:
-    s = stays(found[a], found[b])
-    low = sorted(range(18), key=lambda i: (s[i], i))[:4]
-    print(f"waves {a + 1} and {b + 1}: average {s.mean():.2f}; lowest: "
-          + ", ".join(f"{names[i]} ({labels[group[i]][0]}) {s[i]:.2f}" for i in low))
+# TODO(code, Python): the Python backend runs NetworkX only; this tab needs adjusted Rand and normalized mutual information (net_compare_partitions) and a random-choices or permutation null, which are not exposed yet. Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-waves  carried  of  expected (1)  shuffled (2): average  95th pct  share as high
-1 2   35       55  10.3         10.2                   15        0.000
-2 3   40       57  10.4         10.4                   15        0.000
-1 3   35       55  10.1         10.0                   15        0.000
-wave 1 to 2: mutual choices kept 21 of 28, one-way choices kept 14 of 27
-wave 2 to 3: mutual choices kept 22 of 30, one-way choices kept 18 of 27
-waves 1 and 2: average 0.69; lowest: Hugh (T) 0.29, Basil (O) 0.29, Victor (W) 0.41, Mark (T) 0.47
-waves 2 and 3: average 0.86; lowest: Hugh (T) 0.24, Mark (T) 0.47, Berthold (L) 0.88, Peter (L) 0.88
-waves 1 and 3: average 0.81; lowest: Basil (O) 0.24, Victor (W) 0.47, Ambrose (L) 0.53, Romuald (W) 0.82
+TODO(output)
 ```
 :::
 
@@ -1313,108 +886,24 @@ For the first three, the table reports the average number of choices per wave, t
 ## R
 
 ```r
-# Re-run the main results under different ways of reading the same data.
-# For a choice of which ties to keep, per wave: the rank correlation of popularity between waves and
-# the agreement of the communities with Sampson's groups.
-measure <- \(p) {
-  got <- map(p, indegree)
-  agree <- map_dbl(p, \(w) ari(communities(w), group))
-  tibble(ties_per_wave = mean(map_dbl(p, nrow)),
-         pop_1_2 = cor(got[[1]], got[[2]], method = "spearman"), pop_2_3 = cor(got[[2]], got[[3]], method = "spearman"),
-         ari_t1 = agree[1], ari_t2 = agree[2], ari_t3 = agree[3])
-}
-mutual_of <- \(p) semi_join(p, select(p, a = b, b = a), by = c("a", "b"))
-variants <- list(
-  `all choices` = lik,
-  `first and second choices only` = map(1:3, \(w) pairs("liking", w, 2)),
-  `mutual choices only` = map(lik, mutual_of)
-)
-# Drop a fifth of the choices at random, 200 times, and average.
-dropped <- map(1:200, \(i) measure(map(lik, \(p) filter(p, runif(n()) < 0.8)))) |>
-  list_rbind() |>
-  summarise(across(everything(), mean)) |>
-  mutate(reading = "a fifth dropped at random (mean of 200)")
-variants |>
-  map(measure) |>
-  list_rbind(names_to = "reading") |>
-  bind_rows(dropped) |>
-  mutate(across(where(is.double), \(x) round(x, 3)))
-
-# Leave each novice out in turn: do the others keep their communities?
-map(1:3, \(w) {
-  scores <- map_dbl(1:18, \(out) {
-    again <- communities(filter(lik[[w]], a != out, b != out))
-    ari(found[[w]][-out], again[-out])
-  })
-  tibble(wave = w, average = round(mean(scores), 2), lowest = round(min(scores), 2), without = ids[which.min(scores)])
-}) |>
-  list_rbind()
+# TODO(code, R): needs a robustness harness (net_robustness(): rerun a measure after dropping a share of ties, keeping only mutual or top-ranked choices, or leaving each node out); the Rust tab shows the numbers.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 4 × 7
-  reading                     ties_per_wave pop_1_2 pop_2_3 ari_t1 ari_t2 ari_t3
-  <chr>                               <dbl>   <dbl>   <dbl>  <dbl>  <dbl>  <dbl>
-1 all choices                          56     0.547   0.68   0.037  0.17   0.077
-2 first and second choices o…          36.7   0.564   0.789  0.119  0.17   0.077
-3 mutual choices only                  29.3   0.4     0.424  0.006  0.018 -0.019
-4 a fifth dropped at random …          44.8   0.482   0.57   0.036  0.079  0.098
-# A tibble: 3 × 4
-   wave average lowest without 
-  <int>   <dbl>  <dbl> <chr>   
-1     1    0.85   0.27 Berthold
-2     2    0.88   0.46 Berthold
-3     3    1      1    Romuald 
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# Re-run the main results under different ways of reading the same data.
-# For a choice of which ties to keep, per wave: the rank correlation of popularity between waves and
-# the agreement of the communities with Sampson's groups.
-def measure(p):
-    got = [indegree(w) for w in p]
-    return spearmanr(got[0], got[1])[0], spearmanr(got[1], got[2])[0], [ari(communities(w), group) for w in p]
-
-def show(label, ties, m):
-    print(f"{label:<40}{ties:>14.1f}{m[0]:>8.2f}{m[1]:>6.2f}{m[2][0]:>8.3f}{m[2][1]:>7.3f}{m[2][2]:>7.3f}")
-
-print(f"{'reading':<40}{'ties per wave':>14}{'pop 1-2':>8}{'2-3':>6}{'ARI t1':>8}{'t2':>7}{'t3':>7}")
-show("all choices", np.mean([len(w) for w in lik]), measure(lik))
-first_two = [pairs("liking", w, 2) for w in (1, 2, 3)]
-show("first and second choices only", np.mean([len(w) for w in first_two]), measure(first_two))
-mutual = [[t for t in w if (t[1], t[0]) in set(w)] for w in lik]
-show("mutual choices only", np.mean([len(w) for w in mutual]), measure(mutual))
-# Drop a fifth of the choices at random, 200 times, and average.
-runs = [measure([[t for t in w if rng.random() < 0.8] for w in lik]) for _ in range(200)]
-show("a fifth dropped at random (mean of 200)", 0.8 * np.mean([len(w) for w in lik]),
-     (np.mean([r[0] for r in runs]), np.mean([r[1] for r in runs]), np.mean([r[2] for r in runs], axis=0)))
-
-# Leave each novice out in turn: do the others keep their communities?
-for w in range(3):
-    scores = []
-    for out in range(18):
-        again = communities([t for t in lik[w] if out not in t])
-        keep = [i for i in range(18) if i != out]
-        scores.append(ari(found[w][keep], again[keep]))
-    worst = int(np.argmin(scores))
-    print(f"wave {w + 1}: leaving out one novice, adjusted Rand with the full-data communities averages {np.mean(scores):.2f}, "
-          f"lowest {scores[worst]:.2f} (without {names[worst]})")
+# TODO(code, Python): the Python backend runs NetworkX only; this tab needs adjusted Rand and normalized mutual information (net_compare_partitions) and a random-choices or permutation null, which are not exposed yet. Use the Rust tab.
 ```
 
 ::: {.code-output}
 ```text
-reading                                  ties per wave pop 1-2   2-3  ARI t1     t2     t3
-all choices                                       56.0    0.55  0.68   0.037  0.107  0.077
-first and second choices only                     36.7    0.56  0.79   0.119  0.170  0.077
-mutual choices only                               29.3    0.40  0.42   0.006 -0.023 -0.019
-a fifth dropped at random (mean of 200)           44.8    0.48  0.57   0.029  0.084  0.094
-wave 1: leaving out one novice, adjusted Rand with the full-data communities averages 0.85, lowest 0.32 (without Simplicius)
-wave 2: leaving out one novice, adjusted Rand with the full-data communities averages 0.73, lowest 0.43 (without Berthold)
-wave 3: leaving out one novice, adjusted Rand with the full-data communities averages 0.98, lowest 0.86 (without Ambrose)
+TODO(output)
 ```
 :::
 
@@ -1482,7 +971,7 @@ The finding about popularity survives. Rank correlations stay between 0.40 and 0
 
 Leaving one novice out is less kind to wave 1 and wave 2. In wave 3 the communities of the other 17 are the same every time (the average and the lowest adjusted Rand are both 1.00). In wave 1 the average is 0.85 but drops to 0.27 without Berthold, and in wave 2 the average is 0.88 and the lowest is 0.46, again without Berthold. A wave whose communities depend on one person is a wave whose communities are fragile.
 
-Tools disagree, a little, and it's worth knowing where. The Python tab uses NetworkX's Louvain and the others use knappnet's, and they draw different random numbers. On waves 1 and 3 they find the same three communities. On wave 2, NetworkX places Hugh with Romuald and Bonaventure and knappnet places him with Berthold and Peter. The adjusted Rand index with Sampson's groups for wave 2 is 0.107 for NetworkX and 0.170 for knappnet, and the seeds that reproduce the partition fall from 12 of 20 to 6. That's the instability above showing up as a disagreement between tools.
+Tools disagree, a little, and it's worth knowing where. A run with NetworkX's Louvain (the Python tab for this step is a stub, waiting on adjusted Rand in the Python backend) and one with knappnet's draw different random numbers. On waves 1 and 3 they find the same three communities. On wave 2, NetworkX places Hugh with Romuald and Bonaventure and knappnet places him with Berthold and Peter. The adjusted Rand index with Sampson's groups for wave 2 is 0.107 for NetworkX and 0.170 for knappnet, and the seeds that reproduce the partition fall from 12 of 20 to 6. That's the instability above showing up as a disagreement between tools.
 
 ## Step 7: what we can say, what we cannot
 

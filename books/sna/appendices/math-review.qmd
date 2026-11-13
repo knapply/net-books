@@ -50,20 +50,17 @@ Counting comes with it. With $n$ people there are $\binom{n}{2} = n(n-1)/2$ poss
 ## R
 
 ```r
-library(tibble)
-library(dplyr)
-library(purrr)
-
 people <- c("Ana", "Ben", "Cleo", "Dev", "Eli")
-ties <- tibble(a = c("Ana", "Ana", "Ben", "Cleo", "Dev"), b = c("Ben", "Cleo", "Cleo", "Dev", "Eli"))
+ties <- data.frame(a = c("Ana", "Ana", "Ben", "Cleo", "Dev"), b = c("Ben", "Cleo", "Cleo", "Dev", "Eli"))
 
 # The neighbors of a person: everyone on the other end of one of their ties.
-neighbors <- people |>
-  set_names() |>
-  map(\(p) sort(c(ties$b[ties$a == p], ties$a[ties$b == p])))
+neighbors <- setNames(
+  lapply(people, function(p) sort(c(ties$b[ties$a == p], ties$a[ties$b == p]))),
+  people
+)
 
 n_ties <- nrow(ties)
-tibble(possible_pairs = choose(5, 2), ties = n_ties, density = n_ties / choose(5, 2))
+data.frame(possible_pairs = choose(5, 2), ties = n_ties, density = n_ties / choose(5, 2))
 
 in_both <- intersect(neighbors$Ana, neighbors$Ben)
 in_either <- sort(union(neighbors$Ana, neighbors$Ben))
@@ -71,8 +68,8 @@ list(Ana = neighbors$Ana, Ben = neighbors$Ben, in_both = in_both, in_either = in
      overlap = round(length(in_both) / length(in_either), 3))
 
 # Every pair of people that is not in the table of ties.
-tibble(a = combn(people, 2)[1, ], b = combn(people, 2)[2, ]) |>
-  anti_join(ties, by = c("a", "b"))
+all_pairs <- setNames(as.data.frame(t(combn(people, 2))), c("a", "b"))
+all_pairs[!paste(all_pairs$a, all_pairs$b) %in% paste(ties$a, ties$b), ]
 ```
 
 ::: {.code-output}
@@ -367,8 +364,8 @@ A3
 list(ana_to_dev_in_2 = A2["Ana", "Dev"], diagonal_of_A2 = diag(A2), triangles = sum(diag(A3)) / 6)
 
 # Walks from Ana to Eli of length 1, 2, 3 and 4: the first nonzero entry is the distance.
-accumulate(rep(list(A), 4), `%*%`) |>
-  map_dbl(\(m) m["Ana", "Eli"])
+walks <- function(k) if (k == 1) A else walks(k - 1) %*% A
+sapply(1:4, function(k) walks(k)["Ana", "Eli"])
 ```
 
 ::: {.code-output}
@@ -507,8 +504,8 @@ lead <- abs(e$vectors[, 1])  # the sign of an eigenvector is arbitrary; the lead
 
 list(
   eigenvalues = round(e$values, 3),
-  unit_length = round(set_names(lead, people), 3),
-  largest_is_1 = round(set_names(lead / max(lead), people), 3),
+  unit_length = round(setNames(lead, people), 3),
+  largest_is_1 = round(setNames(lead / max(lead), people), 3),
   A_v_equals_lambda_v = all.equal(as.vector(A %*% lead), e$values[1] * lead)
 )
 ```
@@ -617,25 +614,24 @@ p <- 0.3
 slots <- combn(n, 2, simplify = FALSE)  # the 10 possible ties, numbered 1 to 10
 
 # For each group of three people, which three slots must all be tied to make a triangle.
-triples <- combn(n, 3, simplify = FALSE) |>
-  map(\(trio) combn(trio, 2, simplify = FALSE) |> map_int(\(pr) which(map_lgl(slots, \(s) identical(s, pr)))))
+triples <- lapply(combn(n, 3, simplify = FALSE), function(trio) {
+  sapply(combn(trio, 2, simplify = FALSE), function(pr) which(sapply(slots, function(s) identical(s, pr))))
+})
 
 # Every possible network is a number from 0 to 1023: bit s says whether slot s is tied.
-tibble(world = 0:1023) |>
-  mutate(
-    on = map(world, \(w) bitwAnd(w, 2^(0:9)) > 0),
-    ties = map_int(on, sum),
-    triangles = map_int(on, \(o) sum(map_lgl(triples, \(s) all(o[s])))),
-    prob = p^ties * (1 - p)^(10 - ties)
-  ) |>
-  summarise(
-    networks = n(), total_probability = sum(prob), expected_ties = sum(prob * ties),
-    variance_of_ties = sum(prob * ties^2) - expected_ties^2, expected_triangles = sum(prob * triangles)
-  ) |>
-  mutate(across(everything(), \(x) round(x, 3)))
+worlds <- 0:1023
+on <- sapply(worlds, function(w) bitwAnd(w, 2^(0:9)) > 0)  # one column per network
+k <- colSums(on)
+triangles <- sapply(seq_along(worlds), function(w) sum(sapply(triples, function(s) all(on[s, w]))))
+prob <- p^k * (1 - p)^(10 - k)
+expected_ties <- sum(prob * k)
+round(data.frame(
+  networks = length(worlds), total_probability = sum(prob), expected_ties = expected_ties,
+  variance_of_ties = sum(prob * k^2) - expected_ties^2, expected_triangles = sum(prob * triangles)
+), 3)
 
 # The formulas.
-tibble(expected_ties = choose(n, 2) * p, variance_of_ties = choose(n, 2) * p * (1 - p), expected_triangles = choose(n, 3) * p^3)
+data.frame(expected_ties = choose(n, 2) * p, variance_of_ties = choose(n, 2) * p * (1 - p), expected_triangles = choose(n, 3) * p^3)
 ```
 
 ::: {.code-output}
@@ -753,16 +749,16 @@ The "without replacement" part is what separates it from the binomial distributi
 ## R
 
 ```r
-hyper <- tibble(in_design = 0:5, probability = dhyper(in_design, m = 8, n = 12, k = 5))
-hyper |> mutate(probability = round(probability, 4))
+in_design <- 0:5
+probability <- dhyper(in_design, m = 8, n = 12, k = 5)
+data.frame(in_design, probability = round(probability, 4))
 
-tibble(
-  total = sum(hyper$probability),
-  mean = sum(hyper$in_design * hyper$probability),
-  three_or_more = sum(hyper$probability[hyper$in_design >= 3]),
+round(c(
+  total = sum(probability),
+  mean = sum(in_design * probability),
+  three_or_more = sum(probability[in_design >= 3]),
   from_phyper = phyper(2, m = 8, n = 12, k = 5, lower.tail = FALSE)
-) |>
-  mutate(across(everything(), \(x) round(x, 4)))
+), 4)
 ```
 
 ::: {.code-output}
@@ -855,16 +851,14 @@ Why bother? Because log-odds can be any number, positive or negative, so a model
 ## R
 
 ```r
-options(pillar.sigfig = 6)  # show more digits than the default of three
 chance <- 0.2
 odds <- chance / (1 - chance)
-tibble(
+round(c(
   probability = chance, odds = odds, log_odds = log(odds), back_to_probability = plogis(log(odds)),
   after_adding_1 = plogis(log(odds) + 1), odds_multiplied_by = exp(1), probability_at_minus_2.2 = plogis(-2.2)
-) |>
-  mutate(across(everything(), \(x) round(x, 3)))
+), 3)
 
-tibble(product_of_200 = prod(rep(0.01, 200)), sum_of_their_logs = sum(log(rep(0.01, 200))))
+c(product_of_200 = prod(rep(0.01, 200)), sum_of_their_logs = sum(log(rep(0.01, 200))))
 ```
 
 ::: {.code-output}
@@ -960,11 +954,10 @@ contacts <- c(7, 5, 6, 4, 3, 5)
 leaders <- 1:3
 
 # The leaders' total contacts for every way to pick three of the six: 20 ways.
-totals <- combn(6, 3, simplify = FALSE) |>
-  map_dbl(\(chosen) sum(contacts[chosen]))
+totals <- apply(combn(6, 3), 2, function(chosen) sum(contacts[chosen]))
 observed <- sum(contacts[leaders])
 
-tibble(
+data.frame(
   observed_total = observed, arrangements = length(totals),
   at_least_as_large = sum(totals >= observed), one_sided_p = mean(totals >= observed),
   two_sided_p = mean(abs(2 * totals - sum(contacts)) >= abs(2 * observed - sum(contacts)))
