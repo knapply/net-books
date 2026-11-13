@@ -1,0 +1,63 @@
+id = "latent-space-model"
+title = "Latent space model (distance model)"
+kind = "model"
+chapter = "latent-space"
+summary = "A model in which every node has an unseen position on a map and the log-odds of a tie fall with the distance between the two positions."
+answers = "Can the ties be explained by a low-dimensional map in which nearer nodes are more likely to be tied, and how well does that map reproduce the network's closure, degrees and distances?"
+
+data_requirements = [
+  "One network observed once, with a clear boundary. Directed networks need sender and receiver effects or a bilinear form.",
+  "Ties that are present or absent; counts or weights need a different likelihood.",
+  "No node should be an isolate: a node with no ties has no position the data can fix.",
+  "Networks of tens to a few thousand nodes for the exact likelihood; larger ones need an approximation such as case-control sampling.",
+]
+
+assumptions = [
+  "Given the positions, ties are independent; all dependence between ties comes through the map.",
+  "Distance on the map is Euclidean, so the triangle inequality holds and closure comes for free.",
+  "A low number of dimensions is enough. On the karate club, two dimensions beat one on AIC and lose to one on BIC, so the data did not clearly demand the second.",
+  "Positions are only defined up to turns, mirror images and shifts. The axes have no meaning; only distances do.",
+  "A single baseline plus distance can describe degrees. On the karate club it could not: simulated networks had a busiest member of about 9 friends where the club's has 17.",
+]
+
+readings = [
+  { context = "Friendship network with two camps (the karate club)", high = "Members of different sides were on average 9.5 apart and members of the same side 5.3 apart on the fitted map.", low = "A member between the camps, or one with a single friend, is placed on little information: in 40 short posterior chains the single-friend member's place had a typical radius of 5.2 map units." },
+  { context = "Marriage or alliance network among families", high = "Families close on the map have similar ties to other families.", low = "A family far from every other may simply have been left out of the records; it does not show that the family was socially distant." },
+  { context = "Office or communication network", high = "People close together talk to similar colleagues, which can be a team, a floor or a project.", low = "Distance on the map is not how well people work together, and the axes are not seniority or any other trait unless you check them against it." },
+  { context = "Online platform", high = "Users close together follow similar accounts and may suit similar suggestions.", low = "Users with few ties have wide uncertainty; a few very popular accounts are hard for a plain map to reproduce." },
+]
+
+pitfalls = [
+  "Reading the axes: a rotated or mirrored map fits exactly as well, so no axis can be named.",
+  "Fitting too many dimensions: with three dimensions on the karate club the baseline ran to 13.8 or more and the log-likelihood to -83.7, which is separation, not insight.",
+  "Trusting one map. The likelihood has many hills and the fit stops at the first one found; start from classical scaling of path distances and try more than one start.",
+  "Summarizing posterior draws by averaging coordinates. Average distances or tie probabilities, which do not change under turns and mirror images.",
+  "Reporting a posterior from chains that were not run long enough: here the mean distance between the leaders drifted from 7.8 to 8.4 as the same chains ran from 100 to 400 sweeps.",
+  "Treating the number of pairs as the sample size in BIC without saying so; the pairs are not independent observations of anything but the model.",
+]
+
+checks = [
+  "Simulate networks from the fitted model and compare degree spread, busiest member, triangles and pairs two steps apart with the observed values.",
+  "Draw posterior chains from several starts, check trace plots, and show the spread of the positions, not only the best map.",
+  "Compare dimensions by held-out ties, and report AIC and BIC when they disagree.",
+  "Refit after dropping a few percent of ties and compare distances, up to turns and mirrors.",
+  "Check the baseline: a very large value signals separation.",
+]
+
+do_not_claim = [
+  "That positions are the true locations of people in any social or physical space.",
+  "That an axis of the map is a named trait.",
+  "That near on the map means liking, trust or influence.",
+  "That the model explains the network when simulated networks miss the observed degrees.",
+  "That one fitted map is the map.",
+]
+
+report_template = "A {dim}-dimensional latent space model was fitted to {network} ({n} {node_type}, {m} ties) by {method}, starting from {start}. {finding} Simulated networks from the fit reproduced {reproduced} but not {not_reproduced}. The positions are defined up to turns, mirrors and shifts, and {uncertainty}. This describes the pattern of ties and does not show why they formed."
+
+related = ["sbm", "ergm", "spectral-embedding", "link-prediction"]
+sources = ["hoff2002latent", "hoff2005bilinear", "handcock2007model", "krivitsky2009representing", "krivitsky2008fitting", "raftery2012fast", "gower1966some", "schwarz1978estimating"]
+
+[knappnet]
+rust = "knappnet::latent_space::{fit, sample, compute_loglik}"
+r = "latentnet::ergmm(net ~ euclidean(d = 2)), or the chapter's optim() fit"
+python = "no mainstream package; the chapter fits it with scipy.optimize.minimize"
