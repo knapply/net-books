@@ -1,0 +1,61 @@
+id = "permutation-test"
+title = "Permutation test and its Monte Carlo p-value"
+kind = "measure"
+chapter = "tests-and-null-models"
+summary = "A p-value obtained by shuffling something in the data many times (people's labels, an attribute, one matrix against another) and counting how often the shuffled statistic is at least as extreme as the observed one."
+answers = "Is this statistic more extreme than what the same data give when the pattern of interest is broken but everything else is kept?"
+
+data_requirements = [
+  "A single statistic that summarizes the question, computed the same way on the real data and on every shuffle.",
+  "A stated rule for what is shuffled (for example, people are relabeled with rows and columns moved together, or an attribute is reassigned among people).",
+  "Enough people that the number of distinct shuffles is large. With n people there are at most n! relabelings, and for two groups of equal size the real split and its mirror image always count, so very small networks cannot give small p-values.",
+  "A recorded number of draws and seed when the shuffles are random rather than exhaustive.",
+]
+
+assumptions = [
+  "Under no pattern, the shuffled units are exchangeable: relabeling people (or reassigning the attribute) would not change how likely the data are. This is a choice about the question, not a fact about the world.",
+  "The statistic measures what you mean. A correlation of 0-1 matrices is small when ties are rare even if overlap is strong.",
+  "The tail is chosen before looking. A one-sided p-value answers 'more than chance'; a two-sided one answers 'different from chance'.",
+  "The number of draws is large enough that the Monte Carlo error is small next to the distance from your threshold.",
+]
+
+readings = [
+  { context = "Friendship and a shared attribute (floor, department) in an office", high = "A small p-value says ties and attribute line up more than relabeling people alone produces. It does not say how strongly or why; read the effect size next to it.", low = "A large p-value means no evidence of alignment beyond relabeling. With few people or few ties the test has little power, so it does not show that there is none." },
+  { context = "Two relations among the same people (advice and friendship)", high = "The relations overlap more than their own structures allow. Both could be driven by a third pattern such as a shared team.", low = "No overlap beyond chance, or too little data to see it." },
+  { context = "Trade or flows between places and distance", high = "Closer places exchange more than relabeling places produces. Distance may be the mechanism, so this is a description.", low = "Distance does not line up with flows after the bundling of each place's flows is respected." },
+  { context = "Online platform: follows and a shared interest", high = "Accounts with shared interests follow each other more than relabeling accounts gives. Platform recommendations can produce this on their own.", low = "Following is not organized by the measured interest." },
+]
+
+pitfalls = [
+  "Reporting a p-value without the effect size. A small p-value mixes effect size with the amount of data.",
+  "Too few draws. With 100 draws a true p-value of 0.024 came back anywhere from 0 to 0.06 in 100 repeats; at 10,000 draws it stayed between 0.020 and 0.028.",
+  "Reporting zero. A p-value from B draws should be (1 + hits) / (B + 1) and is never zero; say 'smaller than 1/(B+1)' when no draw reaches the observed value.",
+  "Choosing the tail after seeing which way the data lean.",
+  "Running many shuffle tests and reporting the ones that pass. Adjust for the number of tests (Holm, Benjamini-Hochberg) or say how many were run.",
+  "Reading z-scores from the shuffles as if they were bell-shaped. When the shuffled values are lopsided or take few values, read the percentile or p-value from the draws.",
+]
+
+checks = [
+  "Rerun with another seed and with ten times as many draws; a conclusion that flips is not a conclusion.",
+  "Compute the Monte Carlo error sqrt(p (1 - p) / B) and compare it with the distance between p and your threshold.",
+  "Where the number of shuffles allows (up to ten people for relabeling), compute the exact share.",
+  "Drop a random tenth of the ties and repeat the test; a finding that vanishes was fragile.",
+  "Compare with the ordinary test on the same data to see how much the bundling of pairs matters.",
+]
+
+do_not_claim = [
+  "That the pattern is caused by, or explained by, the attribute or relation it was tested against.",
+  "That a large p-value shows there is no pattern.",
+  "That the result holds for other networks or for a population the people were not sampled from.",
+  "That a small p-value means a large effect.",
+]
+
+report_template = "In this {tie_meaning} network of {n} {node_type}, {statistic} is {observed}. Shuffling {what_was_shuffled} {draws} times (seed {seed}) gave a value at least this {tail} in {share} of draws (p = {p}, computed as (1 + hits) / (draws + 1)). The effect size is {effect}. This shows the pattern is {more_or_less} than the shuffles produce; it does not show why. {caveat}"
+
+related = ["qap", "mrqap", "null-models-choice", "configuration-model"]
+sources = ["hubert1976quadratic", "krackhardt1987qap", "phipson2010permutation", "dekker2007sensitivity", "holm1979simple", "benjamini1995controlling"]
+
+[knappnet]
+rust = "knappnet::qap::compute_qap_cor(&y, &x, QapCorOptions { permutations: Permutations::Random { reps, seed }, keep_draws: true, ..Default::default() })"
+r = "net_qap_cor(y, x, reps = 5000, seed = 1, mode = \"graph\") for relabeling; for other shuffles, build the draws by hand and compute (1 + sum(draws >= observed)) / (length(draws) + 1)"
+python = "none yet; shuffle with numpy (rng.permutation) and compute (1 + np.sum(draws >= observed)) / (len(draws) + 1) as in the chapter"

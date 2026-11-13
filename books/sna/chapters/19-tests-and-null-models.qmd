@@ -2,7 +2,7 @@
 
 ::: {.callout-note appearance="simple"}
 ## Prerequisites
-@sec-networks-as-data, @sec-paths-and-cohesion and @sec-ego-networks. We reuse the ten-person friendship network and the idea of an E-I split into two groups.
+@sec-networks-as-data, @sec-paths-and-cohesion and @sec-ego-networks. We reuse the ten-person friendship network and the idea of an E-I split into two groups. Later sections also use Krackhardt's managers (@sec-triads-and-motifs) and the Florentine families (@sec-small-worlds).
 :::
 
 ## How surprised should we be?
@@ -16,6 +16,15 @@ You compute a number and it looks interesting. In the friendship network from @s
 
 That's what a statistical test is for. It asks how often a number this large would turn up if nothing but chance were at work. Everything depends on what you mean by "chance," and that's where network data fight back.
 
+By the end of the chapter you will be able to:
+
+- explain, and show with a simulation, why an ordinary test on pairs of people is overconfident;
+- say what a null model holds fixed, and choose one that matches your question;
+- build a permutation distribution, say how many draws you need, and report a p-value from draws correctly;
+- read a p-value next to an effect size, a z-score next to a percentile, and a set of tests next to the number you ran;
+- recognize a degenerate null and a bootstrap that cannot be trusted;
+- write the sentence the evidence supports, and not the one next to it.
+
 ## Why independence fails
 
 Most of the tests you've met, such as a correlation test or a regression, rest on one assumption: the observations are *independent*, like separate coin flips. They tell you how much a correlation could wobble from luck alone if each row of data had no connection to any other.
@@ -28,6 +37,312 @@ Two families of answer do that, and they're the two halves of this chapter.
 
 - **Permutation tests on relationships** (QAP). Keep each network exactly as it is, but scramble *who is who* in one of them, and see how large the association gets. This tests whether two networks, or a network and an attribute pattern, are related.
 - **Null models for a single network.** Draw many random networks that share some features with yours, such as the number of ties or each person's degree, and see how often they produce a value like the one you saw. This tests whether a feature of the network, such as clustering, is more than those shared features alone would produce.
+
+### Watching it fail
+
+Let's watch the overconfidence happen, not just take it on trust. We invent worlds where we know the answer is "no relationship" and count how often a test says "yes" anyway. In each of 500 invented worlds, 20 people each have two things. The first is a **sociability**: some people are outgoing and some are quiet, so a tie between two people becomes more likely when both are sociable. (We draw it from a logistic distribution multiplied by a *scale*; with scale 0 everyone is equally sociable.) The second is a number with nothing to do with the ties, say their age, drawn separately. We then ask "do ties go between people of similar age?" The honest answer is no, by construction.
+
+We test that two ways, with a 5 percent cutoff. The **ordinary** test treats the 190 pairs as independent: it correlates "is there a tie" with "age gap" and calls the result significant when the t statistic is beyond 1.973, the 5 percent cutoff on 188 degrees of freedom. The **relabeling** test (QAP, which comes next) shuffles who has which age 99 times, recomputes the correlation each time, and calls the result significant when at most 4 of the 99 shuffles reach it. A test that holds its promise rejects in about 5 percent of these worlds. The random numbers come from the same small generator as in @sec-network-regression (Park-Miller), so all three tabs print the same numbers.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+library(knappnet)
+library(dplyr)
+library(purrr)
+
+# Park-Miller pseudo-random numbers, identical in every language.
+stream <- \(seed, k) accumulate(seq_len(k), \(s, i) (16807 * s) %% 2147483647, .init = seed)[-1] / 2147483647
+
+people_n <- 20
+worlds <- 500
+shuffles <- 99
+pair_ends <- combn(people_n, 2) # the 190 pairs, in the order (1,2), (1,3), ..., (19,20)
+pair_i <- pair_ends[1, ]
+pair_j <- pair_ends[2, ]
+pairs_n <- ncol(pair_ends)
+per_world <- 2 * people_n + pairs_n + shuffles * people_n
+u <- matrix(stream(2024, worlds * per_world), nrow = worlds, byrow = TRUE)
+
+# Share of worlds in which each test calls "ties go to people of similar age" significant.
+error_rates <- \(scale) {
+  asplit(u, 1) |> # asplit() hands over 1-d arrays, so as.vector() below
+    map(\(w) {
+      w <- as.vector(w)
+      z <- w[1:people_n]
+      sociability <- scale * log(z / (1 - z))
+      age <- w[(people_n + 1):(2 * people_n)]
+      p_tie <- plogis(-1 + sociability[pair_i] + sociability[pair_j])
+      tie <- as.numeric(w[(2 * people_n + 1):(2 * people_n + pairs_n)] < p_tie)
+      r <- cor(tie, abs(age[pair_i] - age[pair_j]))
+      t_stat <- r * sqrt((pairs_n - 2) / (1 - r^2))
+      keys <- matrix(w[(2 * people_n + pairs_n + 1):per_world], nrow = shuffles, byrow = TRUE)
+      shuffled <- map_dbl(seq_len(shuffles), \(b) {
+        moved <- age[order(keys[b, ])] # relabel: person i takes the age of person order(keys)[i]
+        cor(tie, abs(moved[pair_i] - moved[pair_j]))
+      })
+      tibble(
+        ordinary = abs(t_stat) > 1.9729,
+        relabeling = (1 + sum(abs(shuffled) >= abs(r) - 1e-12)) / (shuffles + 1) <= 0.05
+      )
+    }) |>
+    list_rbind() |>
+    summarise(ordinary = mean(ordinary), relabeling = mean(relabeling))
+}
+c(0, 1.2) |>
+  map(\(s) bind_cols(tibble(scale = s), error_rates(s))) |>
+  list_rbind() |>
+  mutate(across(c(ordinary, relabeling), \(x) round(x, 3)))
+```
+
+::: {.code-output}
+```text
+```
+:::
+
+## Python
+
+```python
+import numpy as np
+
+def stream(seed, k):
+    """k pseudo-random numbers in (0, 1): Park-Miller, identical in every language."""
+    out, s = np.empty(k), seed
+    for i in range(k):
+        s = 16807 * s % 2147483647
+        out[i] = s / 2147483647
+    return out
+
+people_n, worlds, shuffles = 20, 500, 99
+pairs_n = people_n * (people_n - 1) // 2
+per_world = 2 * people_n + pairs_n + shuffles * people_n
+u = stream(2024, worlds * per_world).reshape(worlds, per_world)
+pair_i, pair_j = np.triu_indices(people_n, 1)  # the 190 pairs, in the order (0,1), (0,2), ..., (18,19)
+
+def error_rates(scale):
+    """Share of worlds in which each test calls 'ties go to people of similar age' significant."""
+    ordinary = relabeling = 0
+    for w in u:
+        z = w[:people_n]
+        sociability = scale * np.log(z / (1 - z))
+        age = w[people_n:2 * people_n]
+        p_tie = 1 / (1 + np.exp(-(-1 + sociability[pair_i] + sociability[pair_j])))
+        tie = (w[2 * people_n:2 * people_n + pairs_n] < p_tie).astype(float)
+        r = np.corrcoef(tie, np.abs(age[pair_i] - age[pair_j]))[0, 1]
+        t_stat = r * np.sqrt((pairs_n - 2) / (1 - r * r))
+        keys = w[2 * people_n + pairs_n:].reshape(shuffles, people_n)
+        shuffled = [np.corrcoef(tie, np.abs(age[q][pair_i] - age[q][pair_j]))[0, 1] for q in np.argsort(keys, axis=1)]
+        ordinary += abs(t_stat) > 1.9729
+        relabeling += (1 + np.sum(np.abs(shuffled) >= abs(r) - 1e-12)) / (shuffles + 1) <= 0.05
+    return ordinary / worlds, relabeling / worlds
+
+print(f"{'scale':>5} {'ordinary':>9} {'relabeling':>11}")
+for scale in (0, 1.2):
+    ordinary, relabeling = error_rates(scale)
+    print(f"{scale:>5} {ordinary:>9.3f} {relabeling:>11.3f}")
+```
+
+::: {.code-output}
+```text
+scale  ordinary  relabeling
+    0     0.044       0.044
+  1.2     0.126       0.046
+```
+:::
+
+## Rust
+
+```rust
+// The same Park-Miller stream as the other tabs, so all three print the same numbers.
+let pm_stream = |seed: u64, k: usize| -> Vec<f64> {
+    let mut s = seed;
+    (0..k).map(|_| { s = 16807 * s % 2147483647; s as f64 / 2147483647.0 }).collect()
+};
+let pearson = |a: &[f64], b: &[f64]| -> f64 {
+    let (ma, mb) = (a.iter().sum::<f64>() / a.len() as f64, b.iter().sum::<f64>() / b.len() as f64);
+    let (mut sab, mut saa, mut sbb) = (0.0, 0.0, 0.0);
+    for (p, q) in a.iter().zip(b) {
+        sab += (p - ma) * (q - mb);
+        saa += (p - ma).powi(2);
+        sbb += (q - mb).powi(2);
+    }
+    sab / (saa * sbb).sqrt()
+};
+let (people_n, worlds, shuffles) = (20usize, 500usize, 99usize);
+let pairs: Vec<(usize, usize)> = (0..people_n).flat_map(|i| (i + 1..people_n).map(move |j| (i, j))).collect();
+let pairs_n = pairs.len();
+let per_world = 2 * people_n + pairs_n + shuffles * people_n;
+let u = pm_stream(2024, worlds * per_world);
+let gap = |ages: &[f64]| -> Vec<f64> { pairs.iter().map(|&(i, j)| (ages[i] - ages[j]).abs()).collect() };
+
+println!("{:>5} {:>9} {:>11}", "scale", "ordinary", "relabeling");
+for scale in [0.0, 1.2] {
+    let (mut ordinary, mut relabeling) = (0, 0);
+    for w in u.chunks(per_world) {
+        let sociability: Vec<f64> = w[..people_n].iter().map(|z| scale * (z / (1.0 - z)).ln()).collect();
+        let age = &w[people_n..2 * people_n];
+        let tie: Vec<f64> = pairs.iter().enumerate().map(|(k, &(i, j))| {
+            let p_tie = 1.0 / (1.0 + (-(-1.0 + sociability[i] + sociability[j])).exp());
+            if w[2 * people_n + k] < p_tie { 1.0 } else { 0.0 }
+        }).collect();
+        let r = pearson(&tie, &gap(age));
+        let t_stat = r * ((pairs_n - 2) as f64 / (1.0 - r * r)).sqrt();
+        let keys = &w[2 * people_n + pairs_n..];
+        let mut hits = 0;
+        for b in 0..shuffles {
+            let k = &keys[b * people_n..(b + 1) * people_n];
+            let mut q: Vec<usize> = (0..people_n).collect();
+            q.sort_by(|&a, &c| k[a].partial_cmp(&k[c]).unwrap());
+            let moved: Vec<f64> = q.iter().map(|&i| age[i]).collect();
+            if pearson(&tie, &gap(&moved)).abs() >= r.abs() - 1e-12 {
+                hits += 1;
+            }
+        }
+        if t_stat.abs() > 1.9729 { ordinary += 1; }
+        if (1 + hits) as f64 / (shuffles + 1) as f64 <= 0.05 { relabeling += 1; }
+    }
+    println!("{:>5} {:>9.3} {:>11.3}", scale, ordinary as f64 / worlds as f64, relabeling as f64 / worlds as f64);
+}
+```
+
+::: {.code-output}
+```text
+scale  ordinary  relabeling
+    0     0.044       0.044
+  1.2     0.126       0.046
+```
+:::
+
+:::
+
+Each rate comes from 500 worlds, so it wobbles by about a percentage point. When everyone is equally sociable (scale 0), both tests keep their promise: each calls the age pattern significant in 4.4 percent of worlds. Make sociability uneven (scale 1.2) and the ordinary test cries wolf in 12.6 percent of worlds, two and a half times what it promised, while relabeling stays at 4.6 percent. The ages are the same kind of numbers, the 190 pairs are the same 190 pairs, and the ties are no more related to age than before. The only change is that some people are busier than others.
+
+Here is why. A person whose age is unusual has a large age gap with almost everyone, so all of that person's pairs have a large gap at once. If that person is also sociable, all of their many ties land on large gaps at once, too. The ordinary test counts those as many separate pieces of evidence. They are one. Relabeling keeps each person's bundle of pairs together, so the shuffled correlations show how much a correlation really wobbles in a network like this one.
+
+Two cautions, so you don't over-learn this. Overconfidence is not automatic: with equal sociability the ordinary test was fine here. And it needs a pair-level variable that a person's pairs share, such as an age gap; every pair containing the same person inherits that person's age. @sec-network-regression runs a version with two whole matrices, where the false alarms are worse, and shows the same fix.
+
+## What a null model is
+
+A **null model** is a rule for making random networks. You choose which features of your network the rule keeps, the rule scrambles everything else, and you compare your statistic with its values across many scrambled networks. "Null" doesn't mean "nothing is happening". It means "nothing is happening beyond what we held fixed".
+
+That makes *what you hold fixed* the question you are asking. Take one network and one statistic, say the share of friendships that stay inside a department. Hold fixed the number of friendships and scramble who is friends with whom, and you ask: is there more department loyalty than ties placed at random would give? Hold fixed each person's number of friends too, and you ask: more than busy people alone would give? Hold fixed the whole network and shuffle the department labels, and you ask: given exactly this web of friendships, does it line up with departments? Each is a fair question with its own p-value. None is "the" null model, and a p-value reported without its null leaves the reader to guess the question.
+
+| Null model | What it holds fixed | The question it answers | Watch out for |
+| --- | --- | --- | --- |
+| Gilbert $G(n,p)$ [@gilbert1959random] | The people; each pair is tied independently with probability $p$ | Is the pattern more than a random density gives? | The number of ties varies from draw to draw. To fix yours, use $G(n,m)$ |
+| Erdős-Rényi $G(n,m)$ [@erdos1959random] | The people and the exact number of ties, placed uniformly | More than the number of ties gives? (the "conditional uniform graph" test) | Easy to beat whenever people differ in how many ties they have |
+| Dyad census, U\|MAN [@holland1976local] | Directed: how many pairs are mutual, one-way and empty | More than the pairwise pattern, reciprocity included, gives? | Built for triad counts (@sec-triads-and-motifs). For undirected data it is just $G(n,m)$ |
+| Configuration model [@molloy1995critical; @newman2001random] | Every degree (or every in- and out-degree); the stubs are paired at random | More than who is busy gives? | Raw pairing can make loops and repeated ties (a multigraph); insisting on a simple network by rejection fails for dense or hub-heavy degrees |
+| Degree-preserving swaps [@maslov2002specificity] | Every degree, by swapping ties of your own network | The same question, always on simple networks | It is a Markov chain: how many swaps? (below). knappnet's swap is undirected only; directed swaps keep in- and out-degrees and are written by hand in @sec-triads-and-motifs |
+| Label permutation | The network exactly, and the group sizes | Does an attribute line up with the structure? | Says nothing about what else could have produced the network (@sec-homophily) |
+| QAP relabeling [@krackhardt1987qap] | Both matrices exactly; people are relabeled in one | Do two relations line up more than their own structure allows? | With $n$ people there are only $n!$ relabelings; four people can never give a p-value below one third (@sec-network-regression) |
+| Space-preserving | Where people are, or how long ties are | More than geography alone gives? | When distance is the mechanism, the null already contains the finding (@sec-space-honest) |
+
+Two things the table can't show. First, a null is also a *sampler*: a sampler that doesn't draw evenly from the set it claims (a pairing that throws away awkward draws, a swap chain stopped too early) answers a slightly different question. We look at both below. Second, passing a null means "no evidence of more than this null produces". It is not a claim that the network was made that way, and a null that fits says nothing about whether another one would.
+
+## Building a permutation distribution
+
+A **permutation test** is the plainest way to turn "what is held fixed" into a p-value. It has five steps.
+
+1. Boil the question down to one number, the **statistic** $T$: a correlation, a share of ties inside groups, a clustering coefficient.
+2. Say what could be shuffled without changing the story if there were no pattern. In QAP it is who is who: relabel the people, and every pair involving someone moves with them.
+3. Compute $T$ on the real data. Call it $T_{\text{obs}}$.
+4. Shuffle $B$ times and compute $T$ each time, giving $T_1, \dots, T_B$. A histogram of these is the **permutation distribution**: what $T$ looks like once the pattern is broken and everything else is kept.
+5. Report the share of shuffles at least as extreme, counting the real data as one of them:
+
+$$
+p = \frac{1 + \#\{b : T_b \ge T_{\text{obs}}\}}{B + 1}.
+$$
+
+The two 1s are not fudge. The real data is one of the possible shuffles (the one that changes nothing), so it belongs in the count. A p-value can then never be zero, and the smallest you can report with $B$ draws is $1/(B+1)$ [@phipson2010permutation].
+
+When the number of shuffles is small, skip the random draws and list them all; the share is then exact. Here is the smallest example you can check on paper. Six people: two triangles joined by a single tie. They sit on two floors of three, and the real floors put each triangle on its own floor, so 6 of the 7 ties stay inside a floor. There are 20 ways to choose which three people are on floor A (the other three are on floor B). For each one, count the ties inside a floor.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# Two triangles (people 1-2-3 and 4-5-6) joined by one tie, 3-4: seven ties.
+ties6 <- tibble(from = c(1, 1, 2, 4, 4, 5, 3), to = c(2, 3, 3, 5, 6, 6, 4))
+
+# Every way to pick the three people who get label A (the other three get B): 20 ways.
+# For each, count the ties whose two ends carry the same label.
+inside <- combn(6, 3, simplify = FALSE) |>
+  map_int(\(a_people) sum((ties6$from %in% a_people) == (ties6$to %in% a_people)))
+tibble(ties_inside = inside) |>
+  count(ties_inside, name = "ways") |>
+  mutate(share_at_least = rev(cumsum(rev(ways))) / sum(ways))
+```
+
+::: {.code-output}
+```text
+```
+:::
+
+## Python
+
+```python
+from collections import Counter
+from itertools import combinations
+
+# Two triangles (people 0-1-2 and 3-4-5) joined by one tie, 2-3: seven ties.
+ties6 = [(0, 1), (0, 2), (1, 2), (3, 4), (3, 5), (4, 5), (2, 3)]
+
+# Every way to pick the three people who get label A (the other three get B): 20 ways.
+# For each, count the ties whose two ends carry the same label.
+inside = [sum((a in group) == (b in group) for a, b in ties6) for group in combinations(range(6), 3)]
+ways = sorted(Counter(inside).items())
+print("ties inside a floor   ways (of 20)   share at least this many")
+for k, count in ways:
+    print(f"{k:>19} {count:>14} {sum(c for j, c in ways if j >= k) / len(inside):>26.2f}")
+```
+
+::: {.code-output}
+```text
+ties inside a floor   ways (of 20)   share at least this many
+                  2             10                       1.00
+                  3              8                       0.50
+                  6              2                       0.10
+```
+:::
+
+## Rust
+
+```rust
+// Two triangles (people 0-1-2 and 3-4-5) joined by one tie, 2-3: seven ties.
+let ties6: [(usize, usize); 7] = [(0, 1), (0, 2), (1, 2), (3, 4), (3, 5), (4, 5), (2, 3)];
+
+// Every way to pick the three people who get label A (the other three get B): 20 ways, one per
+// bit pattern with three bits set. Count the ties whose two ends carry the same label.
+let mut ways = std::collections::BTreeMap::new();
+for mask in 0u32..64 {
+    if mask.count_ones() == 3 {
+        let inside = ties6.iter().filter(|&&(a, b)| ((mask >> a) & 1) == ((mask >> b) & 1)).count();
+        *ways.entry(inside).or_insert(0usize) += 1;
+    }
+}
+println!("ties inside a floor   ways (of 20)   share at least this many");
+for (inside, count) in &ways {
+    let at_least: usize = ways.range(*inside..).map(|(_, c)| *c).sum();
+    println!("{:>19} {:>14} {:>26.2}", inside, count, at_least as f64 / 20.0);
+}
+```
+
+::: {.code-output}
+```text
+ties inside a floor   ways (of 20)   share at least this many
+                  2             10                       1.00
+                  3              8                       0.50
+                  6              2                       0.10
+```
+:::
+
+:::
+
+Only two of the 20 splits keep all six triangle ties inside: the real one, and its mirror image with the floors swapped. So the exact one-sided p-value is $2/20 = 0.1$. That is the best any pattern could do with six people on two floors of three, because the mirror image always counts. A permutation test cannot show more evidence than the number of distinct relabelings allows (@sec-network-regression does the same with four people, where the floor is one third). With ten people you can still list every relabeling, as the next section does for all 3,628,800 of them. Fifteen people would need about 1.3 trillion, so past that point we draw them at random and the p-value becomes an estimate.
 
 ## QAP: scrambling who is who
 
@@ -443,6 +758,133 @@ R-squared 0.194 on 45 pairs
 :::
 
 Read the coefficients as you would in any regression. The outcome is 0 or 1, so a coefficient is a difference in the share of pairs that are friends. Holding the book club fixed, pairs on the same floor are about 0.34 more likely to be friends, with a permutation p-value of 0.006. The book club coefficient is negative, -0.24, and its p-value of 0.08 is not small. That attribute is invented (even versus odd position), so its sign says nothing about the world and only shows how it happens to line up with the floors and the ties. R-squared is 0.194: the two predictors together account for about a fifth of the variation in who is tied to whom. Because the permutations are random, the p-values move a little with the seed. With 5,000 draws, don't read anything into the third decimal place. The Python tab draws its own random relabelings, so its p-values can differ in the last digits.
+## How many draws, and which tail
+
+Every p-value from random draws is itself an estimate. Call the true share $p$ (what unlimited draws would give) and the number of draws $B$. The count of draws in the tail is a binomial count, so the estimate $\hat p$ wobbles from run to run with standard deviation
+
+$$
+\text{sd}(\hat p) = \sqrt{\frac{p(1-p)}{B}}.
+$$
+
+This is the **Monte Carlo error**. For the friendship-and-floor test above we can find the true $p$, because ten people have only $10! = 3{,}628{,}800$ relabelings and the engine can count them all. Then we rerun the test with 100 different seeds at 100, 1,000 and 10,000 relabelings, and compare the spread of the estimates with the formula. (The tabs of the QAP section print the plain share, which can be exactly zero. In the tables from here on, a p-value from draws is $(1 + \text{hits})/(B + 1)$, except in the next block, whose subject is the plain share.)
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# The exact share: every one of the 10! = 3,628,800 relabelings of ten people, counted by the engine.
+p_exact <- net_qap_cor(friends, same_floor, exact = TRUE, mode = "graph")$p.value[["Pr(>=r)"]]
+
+# The same test with 100 different seeds, at three different numbers of relabelings.
+c(100, 1000, 10000) |>
+  map(\(b) {
+    p_hat <- map_dbl(1:100, \(s) {
+      net_qap_cor(friends, same_floor, reps = b, seed = s, mode = "graph")$p.value[["Pr(>=r)"]]
+    })
+    tibble(
+      relabelings = b, average = mean(p_hat), sd_over_seeds = sd(p_hat),
+      formula = sqrt(p_exact * (1 - p_exact) / b), lowest = min(p_hat), highest = max(p_hat)
+    )
+  }) |>
+  list_rbind() |>
+  mutate(across(-relabelings, \(x) round(x, 4)), exact_share = round(p_exact, 4))
+```
+
+::: {.code-output}
+```text
+```
+:::
+
+## Python
+
+```python
+from itertools import chain, islice, permutations
+
+pair_a, pair_b = low  # the 45 pairs, as in the QAP block
+tied = friends[low]
+seen = tied @ same_floor[low]  # friend pairs that are also same-floor pairs
+
+def shared(P):
+    """For each relabeling (a row of P): how many friend pairs land on same-floor pairs."""
+    return same_floor[P[:, pair_a], P[:, pair_b]] @ tied
+
+# The exact share: every one of the 10! relabelings of ten people, a chunk at a time.
+every, at_least, total = permutations(range(n)), 0, 0
+while True:
+    flat = np.fromiter(chain.from_iterable(islice(every, 200_000)), dtype=np.int8)
+    if flat.size == 0:
+        break
+    at_least += np.sum(shared(flat.reshape(-1, n)) >= seen - 1e-9)
+    total += len(flat) // n
+p_exact = at_least / total
+print(f"exact share over all {total} relabelings: {p_exact:.4f}")
+
+def p_hat(draws, seed):
+    P = np.argsort(np.random.default_rng(seed).random((draws, n)), axis=1)
+    return np.mean(shared(P) >= seen - 1e-9)
+
+# Python draws its own relabelings, so its middle columns differ a little from the other tabs.
+print(f"{'relabelings':>11} {'average':>8} {'sd over seeds':>14} {'formula':>8} {'lowest':>7} {'highest':>8}")
+for draws in (100, 1000, 10000):
+    p = np.array([p_hat(draws, s) for s in range(1, 101)])
+    print(f"{draws:>11} {p.mean():>8.4f} {p.std(ddof=1):>14.4f} {np.sqrt(p_exact * (1 - p_exact) / draws):>8.4f} {p.min():>7.4f} {p.max():>8.4f}")
+```
+
+::: {.code-output}
+```text
+exact share over all 3628800 relabelings: 0.0238
+relabelings  average  sd over seeds  formula  lowest  highest
+        100   0.0228         0.0167   0.0152  0.0000   0.0700
+       1000   0.0238         0.0051   0.0048  0.0120   0.0410
+      10000   0.0238         0.0015   0.0015  0.0204   0.0270
+```
+:::
+
+## Rust
+
+```rust
+// The exact share: every one of the 10! relabelings of ten people.
+let exact_options = QapCorOptions { mode: QapMode::Graph, permutations: Permutations::Exhaustive, ..Default::default() };
+let p_exact = compute_qap_cor(&friends, &same_floor, exact_options)?.tail.compute_p_ge();
+println!("exact share over all {} relabelings: {:.4}", (1..=n).product::<usize>(), p_exact);
+
+let mean_sd = |v: &[f64]| -> (f64, f64) {
+    let m = v.iter().sum::<f64>() / v.len() as f64;
+    (m, (v.iter().map(|x| (x - m).powi(2)).sum::<f64>() / (v.len() - 1) as f64).sqrt())
+};
+println!("{:>11} {:>8} {:>14} {:>8} {:>7} {:>8}", "relabelings", "average", "sd over seeds", "formula", "lowest", "highest");
+for draws in [100usize, 1000, 10000] {
+    // The same test with 100 different seeds.
+    let p: Vec<f64> = (1..=100u64).map(|seed| {
+        let options = QapCorOptions { mode: QapMode::Graph, permutations: Permutations::Random { reps: draws, seed }, ..Default::default() };
+        compute_qap_cor(&friends, &same_floor, options).unwrap().tail.compute_p_ge()
+    }).collect();
+    let (mean, sd) = mean_sd(&p);
+    let lowest = p.iter().cloned().fold(f64::INFINITY, f64::min);
+    let highest = p.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    println!("{:>11} {:>8.4} {:>14.4} {:>8.4} {:>7.4} {:>8.4}", draws, mean, sd, (p_exact * (1.0 - p_exact) / draws as f64).sqrt(), lowest, highest);
+}
+```
+
+::: {.code-output}
+```text
+exact share over all 3628800 relabelings: 0.0238
+relabelings  average  sd over seeds  formula  lowest  highest
+        100   0.0201         0.0132   0.0152  0.0000   0.0600
+       1000   0.0229         0.0048   0.0048  0.0120   0.0380
+      10000   0.0238         0.0014   0.0015  0.0205   0.0279
+```
+:::
+
+:::
+
+The exact share is 0.0238, so the 0.0218 from 10,000 draws earlier was a little low: 0.0020 below, which is about 1.3 of the 0.0015 that the formula gives for 10,000 draws. The formula holds up: with 1,000 draws the estimates spread by 0.0048, and $\sqrt{0.0238 \times 0.9762 / 1000} = 0.0048$. With 100 draws the same test, with the same data, returned anything from 0 to 0.06, the difference between "impossible" and "borderline". With 10,000 draws the estimates stayed between 0.0205 and 0.0279.
+
+Choose $B$ so that the Monte Carlo error is small next to the distance between your p-value and the threshold you care about. For a p-value near 0.05, an error of 0.005 (a tenth of it) needs $B = 0.05 \times 0.95 / 0.005^2 = 1{,}900$ draws, and an error of 0.001 needs about 47,500. Say how many draws you used and the seed. The Python tab draws its own relabelings, so its middle columns differ a little from the other two; the exact share and the formula column do not.
+
+**Which tail?** An **upper-tail** (or one-sided) p-value asks for draws at least as large as the observed value, and fits the question "more than chance?". A **lower-tail** one asks for draws at most as large. A **two-sided** p-value asks for draws at least as far from the null's centre as the observed value, in either direction. For a symmetric null it is about double the one-sided value; for a lopsided one there is no single doubling rule, so this chapter counts the draws at least as far from the null's average as the real value, which is one common choice. Decide the tail before you look. Choosing the one-sided tail after you see which way the data lean halves your p-value for free. The tables below print all three: "p high", "p low" and "p two-sided".
+
 ## Null models for one network
 
 QAP asks whether two patterns are related. A different question is whether a single network has a *feature* more than you'd expect. In the friendship network, transitivity was 0.579 (@sec-paths-and-cohesion). Is that high?
@@ -645,6 +1087,1094 @@ at least as clustered as observed               0.0080
 
 Holding every degree fixed raises the average only slightly, to 0.392, and about 0.8% of the draws (0.0080) reach 0.579. The conclusion survives the tougher comparison, which is more convincing than passing the easy one. As before, these shares come from random draws, so treat them as "about one percent," not as exact. The Python tab draws different random networks, so its numbers can differ slightly.
 
+### Fixed degrees, done carefully
+
+Holding every degree fixed sounds simple, and two details decide whether it means what you think.
+
+**Simple network or multigraph?** Pairing stubs at random can tie a person to themselves (a loop) or tie the same two people twice. A network with either is a *multigraph*. You can allow them, which is the pure configuration model with its clean formulas, or demand a simple network and throw away every draw that isn't one. Throwing away works when degrees are small and fails when they are large or a hub exists: @sec-small-worlds found no simple network in 20,000 pairings of the karate club's degrees or the managers', and found one in about 5 percent of pairings for the Florentine families. If you keep multigraphs, say so, because clustering and distance have to be defined for them.
+
+**Swapping ties.** Start from your real network. Pick two ties, $a$-$b$ and $c$-$d$, and replace them with $a$-$d$ and $c$-$b$ unless that makes a loop or repeats a tie. Every degree survives each swap, and repeated swaps can reach every simple network with those degrees [@fosdick2018configuring]. But the networks along one chain are correlated: each is a small change from the one before. So there are two practical questions. How many swaps until the chain has forgotten where it started? And, if you keep several networks from one chain, how far apart should they be? (@sec-small-worlds restarts from the real network with a new seed for every draw, which sidesteps the second question.)
+
+One way to look at the first question: count the share of the real ties still present after $k$ accepted swaps, averaged over 100 chains. At zero swaps it is 1. For independent random networks with the same degrees it settles at a level above zero, because the degrees force some of the real ties to appear. That level, from stub matching, is the last column.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# Florentine families around 1430 (the small-worlds chapter): 15 families, 20 marriages.
+fl <- read.csv("data/florentine/edges.csv")
+fl_ids <- unique(c(fl$source, fl$target))
+fl_a <- match(fl$source, fl_ids)
+fl_b <- match(fl$target, fl_ids)
+fl_ties <- cbind(pmin(fl_a, fl_b), pmax(fl_a, fl_b)) # one row per marriage, smaller position first
+fl_g <- net_frame(tibble(source = fl_ties[, 1], target = fl_ties[, 2]),
+                  nodes = tibble(id = seq_along(fl_ids)), directed = FALSE)
+tie_keys <- \(a, b) paste(pmin(a, b), pmax(a, b))
+fl_keys <- tie_keys(fl_ties[, 1], fl_ties[, 2])
+share_original <- \(a, b) mean(tie_keys(a, b) %in% fl_keys)
+
+# The R package cannot swap ties yet, so here is one accepted swap: pick two ties a-b and c-d, replace
+# them with a-d and c-b, and pick again if that would make a loop or repeat a tie. Every degree stays.
+swap_once <- \(ties) {
+  pick <- sample.int(nrow(ties), 2)
+  ab <- ties[pick[1], ]
+  cd <- if (runif(1) < 0.5) rev(ties[pick[2], ]) else ties[pick[2], ]
+  fresh <- rbind(sort(c(ab[1], cd[2])), sort(c(cd[1], ab[2])))
+  present <- \(tie) any(ties[, 1] == tie[1] & ties[, 2] == tie[2])
+  blocked <- any(fresh[, 1] == fresh[, 2]) || all(fresh[1, ] == fresh[2, ]) ||
+    present(fresh[1, ]) || present(fresh[2, ])
+  if (blocked) {
+    swap_once(ties)
+  } else {
+    ties[pick, ] <- fresh
+    ties
+  }
+}
+# k accepted swaps, one after another. Splitting k in half keeps the recursion shallow.
+swap_many <- \(ties, k) {
+  if (k == 1) swap_once(ties) else swap_many(swap_many(ties, k %/% 2), k - k %/% 2)
+}
+
+set.seed(1)
+# Independent random networks with the same degrees (stub matching): the level the chain should settle at.
+independent <- net_random_config(net_degree(fl_g), simple = TRUE, max_tries = 100000, reps = 500, seed = 1) |>
+  map_dbl(\(h) share_original(h$edges$source, h$edges$target)) |>
+  mean()
+# Average over 100 chains, each starting from the real network.
+c(10, 20, 40, 100, 200, 1000) |>
+  map(\(k) tibble(
+    swaps = k,
+    swaps_per_tie = k / nrow(fl_ties),
+    share_of_original_ties = mean(map_dbl(1:100, \(r) {
+      end <- swap_many(fl_ties, k)
+      share_original(end[, 1], end[, 2])
+    })),
+    independent_draws = independent
+  )) |>
+  list_rbind() |>
+  mutate(across(c(share_of_original_ties, independent_draws), \(x) round(x, 3)))
+```
+
+::: {.code-output}
+```text
+```
+:::
+
+## Python
+
+```python
+import csv
+
+# Florentine families around 1430: 15 families, 20 marriages.
+with open("data/florentine/edges.csv") as f:
+    fl = nx.Graph([tuple(r) for r in list(csv.reader(f))[1:]])
+fl_names = list(fl.nodes)
+fl_original = {frozenset(e) for e in fl.edges}
+
+def share_original(pairs):
+    return np.mean([frozenset(e) in fl_original for e in pairs])
+
+def after_swaps(k, seed):
+    h = fl.copy()
+    nx.double_edge_swap(h, nswap=k, max_tries=10_000_000, seed=seed)
+    return share_original(h.edges)
+
+# Independent random networks with the same degrees (stub matching): the level the chain should settle at.
+fl_degrees = [fl.degree(v) for v in fl_names]
+independent = np.mean([
+    share_original((fl_names[a], fl_names[b]) for a, b in simple_configuration(fl_degrees, rng).edges)
+    for _ in range(500)
+])
+# Python swaps differently from Rust, so its digits differ a little. Average over 100 chains.
+print(f"{'swaps':>6} {'per tie':>9} {'share of original ties':>22} {'independent draws':>18}")
+for k in (10, 20, 40, 100, 200, 1000):
+    share = np.mean([after_swaps(k, seed) for seed in range(100)])
+    print(f"{k:>6} {k / fl.number_of_edges():>9.1f} {share:>22.3f} {independent:>18.3f}")
+```
+
+::: {.code-output}
+```text
+ swaps   per tie share of original ties  independent draws
+    10       0.5                  0.448              0.301
+    20       1.0                  0.323              0.301
+    40       2.0                  0.313              0.301
+   100       5.0                  0.308              0.301
+   200      10.0                  0.293              0.301
+  1000      50.0                  0.311              0.301
+```
+:::
+
+## Rust
+
+```rust
+// Florentine families around 1430 (the small-worlds chapter): 15 families, 20 marriages.
+let fl_text = std::fs::read_to_string("data/florentine/edges.csv")?;
+let fl_rows: Vec<(&str, &str)> = fl_text.lines().skip(1).map(|line| line.split_once(',').unwrap()).collect();
+let mut fl_names: Vec<&str> = Vec::new();
+for &(a, b) in &fl_rows {
+    for family in [a, b] {
+        if !fl_names.contains(&family) {
+            fl_names.push(family);
+        }
+    }
+}
+let fl_place = |family: &str| fl_names.iter().position(|f| *f == family).unwrap() as i64;
+let fl_from: Vec<i64> = fl_rows.iter().map(|row| fl_place(row.0)).collect();
+let fl_to: Vec<i64> = fl_rows.iter().map(|row| fl_place(row.1)).collect();
+let fl_graph = Graph::from_edges(fl_names.len(), &fl_from, &fl_to, None, false)?;
+let fl_original: std::collections::HashSet<(u32, u32)> =
+    fl_from.iter().zip(&fl_to).map(|(&a, &b)| (a.min(b) as u32, a.max(b) as u32)).collect();
+let share_original = |ties: &[(u32, u32)]| {
+    ties.iter().filter(|&&(a, b)| fl_original.contains(&(a.min(b), a.max(b)))).count() as f64 / ties.len() as f64
+};
+let fl_degrees: Vec<u64> = compute_degree(&fl_graph, DegreeMode::All, true).iter().map(|&d| d as u64).collect();
+
+// Independent random networks with the same degrees (stub matching): the level the chain should settle at.
+let independent = knappnet::generate::sample_configuration(&Degrees::Undirected(fl_degrees.clone()), true, 100_000, 500, 1, 0)?
+    .iter()
+    .map(|d| share_original(&d.from.iter().zip(&d.to).map(|(&a, &b)| (a as u32, b as u32)).collect::<Vec<_>>()))
+    .sum::<f64>() / 500.0;
+// Average over 100 chains, each starting from the real network.
+println!("{:>6} {:>9} {:>22} {:>18}", "swaps", "per tie", "share of original ties", "independent draws");
+for k in [10u64, 20, 40, 100, 200, 1000] {
+    let share = (0..100u64)
+        .map(|seed| share_original(&knappnet::metrics::rewiring::run_double_edge_swap(&fl_graph, k, 1_000_000, seed).unwrap()))
+        .sum::<f64>() / 100.0;
+    println!("{:>6} {:>9.1} {:>22.3} {:>18.3}", k, k as f64 / fl_rows.len() as f64, share, independent);
+}
+```
+
+::: {.code-output}
+```text
+ swaps   per tie share of original ties  independent draws
+    10       0.5                  0.438              0.298
+    20       1.0                  0.336              0.298
+    40       2.0                  0.294              0.298
+   100       5.0                  0.289              0.298
+   200      10.0                  0.314              0.298
+  1000      50.0                  0.305              0.298
+```
+:::
+
+:::
+
+In the Florentine marriages the share falls from 1 to 0.44 after 10 accepted swaps (half a swap per tie) and to 0.34 after 20, and from about 40 swaps (two per tie) on it sits at the independent level, near 0.30, with the wiggle you expect from 100 chains. The rule of ten swaps per tie used in @sec-small-worlds is generous for a network this small.
+
+Three cautions. This is one summary of one small network: a chain can have forgotten which ties it started with and still be slow on another statistic, such as clustering. So for your own network, watch your own statistic along the chain, run a longer chain, and check that the answer doesn't move. Second, $k$ counts *accepted* swaps, the way the engine and NetworkX count them; the number of tries is larger. Third, the R and Python tabs make their own random swaps, so their digits differ a little from the Rust tab; the R package cannot swap ties yet, so the R tab writes the swap itself.
+
+## A test from start to finish
+
+Time to do one properly, from question to sentence, with Krackhardt's 21 managers [@krackhardt1987cognitive]. The attribute is department, one of four (the CEO is alone in department 0). @sec-homophily does the karate club's version of the same idea.
+
+1. **The question, written before looking.** Do managers' ties stay inside their department more than chance would give? Asked separately of advice ties and friendship ties.
+2. **The statistic.** The share of ties that join two people in the same department.
+3. **Two nulls, because they ask different things.** *Relabel departments*: keep the network exactly, shuffle who sits in which department (5,000 times). *Random ties*: keep departments, place the same number of ties at random among the 21 managers (2,000 networks).
+4. **The tail.** Upper, because the question is "more than chance". We print all three anyway.
+5. **The p-value.** $(1 + \text{hits})/(B + 1)$, as above, plus the effect size, plus a stress check.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# Krackhardt's 21 managers: who goes to whom for advice, who names whom a friend, and department.
+kr_nodes <- read.csv("data/krackhardt/nodes.csv")
+kr_edges <- read.csv("data/krackhardt/edges.csv")
+kr_n <- nrow(kr_nodes)
+kr_relation <- \(rel) kr_edges[kr_edges$relation == rel, ]
+kr_matrix <- \(ties) {
+  m <- matrix(0, kr_n, kr_n)
+  m[cbind(ties$from, ties$to)] <- 1
+  m
+}
+kr_same <- outer(kr_nodes$department, kr_nodes$department, "==") * 1
+diag(kr_same) <- 0
+kr_off <- row(kr_same) != col(kr_same)
+
+# The statistic: the share of ties that stay inside a department.
+within_share <- \(a) sum(a * kr_same) / sum(a)
+
+# Null A: relabel departments. 5,000 random relabelings from the same Park-Miller stream as before.
+kr_perms <- matrix(stream(7, 5000 * kr_n), nrow = 5000, byrow = TRUE) |>
+  asplit(1) |>
+  map(\(k) order(as.vector(k)))
+relabeled_share <- \(a) map_dbl(kr_perms, \(p) sum(a * kr_same[p, p]) / sum(a))
+# Null B: random ties, the same number of ties, departments stay where they are.
+random_share <- \(h) mean(kr_nodes$department[h$edges$source] == kr_nodes$department[h$edges$target])
+
+results <- c("advice", "friendship") |>
+  map(\(rel) {
+    a <- kr_matrix(kr_relation(rel))
+    seen <- within_share(a)
+    r <- cor(a[kr_off], kr_same[kr_off])
+    nulls <- list(
+      `relabel departments` = relabeled_share(a),
+      `random ties, same count` = net_random_gnm(kr_n, sum(a), directed = TRUE, reps = 2000, seed = 1) |>
+        map_dbl(random_share)
+    )
+    list(
+      effect = tibble(
+        relation = rel, ties = sum(a), within_share = seen,
+        expected_share = sum(kr_same) / (kr_n * (kr_n - 1)),
+        correlation = r, t_stat = r * sqrt((sum(kr_off) - 2) / (1 - r^2))
+      ),
+      tests = imap(nulls, \(v, label) tibble(
+        relation = rel, null = label, null_mean = mean(v), null_sd = sd(v),
+        p_high = (1 + sum(v >= seen - 1e-12)) / (length(v) + 1),
+        p_low = (1 + sum(v <= seen + 1e-12)) / (length(v) + 1),
+        p_two_sided = (1 + sum(abs(v - mean(v)) >= abs(seen - mean(v)) - 1e-12)) / (length(v) + 1)
+      )) |> list_rbind()
+    )
+  })
+results |> map("effect") |> list_rbind() |> mutate(across(where(is.numeric), \(x) round(x, 3)))
+results |> map("tests") |> list_rbind() |> mutate(across(where(is.numeric), \(x) round(x, 4)))
+
+# Stress check: leave out 10 of the 102 friendships at random, 200 times, and test again
+# (with the first 500 relabelings).
+fr_ties <- kr_relation("friendship")
+stress <- matrix(stream(11, 200 * nrow(fr_ties)), nrow = 200, byrow = TRUE) |>
+  asplit(1) |>
+  map(\(k) {
+    thinned <- kr_matrix(fr_ties[order(as.vector(k))[-(1:10)], ])
+    seen <- within_share(thinned)
+    shuffled <- map_dbl(kr_perms[1:500], \(p) sum(thinned * kr_same[p, p]) / sum(thinned))
+    tibble(share = seen, p = (1 + sum(shuffled >= seen - 1e-12)) / 501)
+  }) |>
+  list_rbind()
+tibble(
+  drops = nrow(stress), lowest_share = min(stress$share), highest_share = max(stress$share),
+  drops_with_p_at_most_005 = sum(stress$p <= 0.05)
+) |>
+  mutate(across(ends_with("share"), \(x) round(x, 3)))
+```
+
+::: {.code-output}
+```text
+```
+:::
+
+## Python
+
+```python
+kr_nodes = list(csv.DictReader(open("data/krackhardt/nodes.csv")))
+kr_edges = list(csv.DictReader(open("data/krackhardt/edges.csv")))
+kr_dept = np.array([int(r["department"]) for r in kr_nodes])
+kr_n = len(kr_dept)
+
+def kr_relation(rel):
+    return [(int(r["from"]) - 1, int(r["to"]) - 1) for r in kr_edges if r["relation"] == rel]
+
+def kr_matrix(ties):
+    m = np.zeros((kr_n, kr_n))
+    for i, j in ties:
+        m[i, j] = 1
+    return m
+
+kr_same = (kr_dept[:, None] == kr_dept[None, :]).astype(float)
+np.fill_diagonal(kr_same, 0)
+kr_off = ~np.eye(kr_n, dtype=bool)
+
+def within_share(a):
+    """The statistic: the share of ties that stay inside a department."""
+    return (a * kr_same).sum() / a.sum()
+
+# Null A: relabel departments. 5,000 random relabelings from the same Park-Miller stream as before.
+kr_perms = np.argsort(stream(7, 5000 * kr_n).reshape(5000, kr_n), axis=1)
+def relabeled_share(a):
+    return np.array([(a * kr_same[np.ix_(q, q)]).sum() / a.sum() for q in kr_perms])
+
+def p_values(v, seen):
+    two = np.abs(v - v.mean()) >= abs(seen - v.mean()) - 1e-12
+    return ((1 + np.sum(v >= seen - 1e-12)) / (len(v) + 1), (1 + np.sum(v <= seen + 1e-12)) / (len(v) + 1),
+            (1 + np.sum(two)) / (len(v) + 1))
+
+print(f"{'relation':<11} {'ties':>5} {'within':>7} {'expected':>9} {'correlation':>12} {'t':>6}")
+tests = []
+for rel in ("advice", "friendship"):
+    a = kr_matrix(kr_relation(rel))
+    seen = within_share(a)
+    r = np.corrcoef(a[kr_off], kr_same[kr_off])[0, 1]
+    t_stat = r * np.sqrt((kr_off.sum() - 2) / (1 - r * r))
+    print(f"{rel:<11} {a.sum():>5.0f} {seen:>7.3f} {kr_same.sum() / (kr_n * (kr_n - 1)):>9.3f} {r:>12.3f} {t_stat:>6.2f}")
+    # Null B: random ties, the same number of ties; NetworkX draws its own networks, so its digits differ a little.
+    random_draws = np.array([
+        np.mean(kr_dept[np.array(g.edges)[:, 0]] == kr_dept[np.array(g.edges)[:, 1]])
+        for g in (nx.gnm_random_graph(kr_n, int(a.sum()), directed=True, seed=s) for s in range(2000))
+    ])
+    tests.append((rel, "relabel departments", relabeled_share(a), seen))
+    tests.append((rel, "random ties, same count", random_draws, seen))
+print(f"\n{'relation':<11} {'null':<24} {'mean':>6} {'sd':>7} {'p high':>7} {'p low':>7} {'p two-sided':>12}")
+for rel, label, v, seen in tests:
+    high, low_p, two = p_values(v, seen)
+    print(f"{rel:<11} {label:<24} {v.mean():>6.3f} {v.std(ddof=1):>7.4f} {high:>7.4f} {low_p:>7.4f} {two:>12.4f}")
+
+# Stress check: leave out 10 of the 102 friendships at random, 200 times, and test again
+# (with the first 500 relabelings).
+fr_ties = kr_relation("friendship")
+shares, ps = [], []
+for k in stream(11, 200 * len(fr_ties)).reshape(200, len(fr_ties)):
+    thinned = kr_matrix([fr_ties[i] for i in np.argsort(k)[10:]])
+    seen = within_share(thinned)
+    shuffled = np.array([(thinned * kr_same[np.ix_(q, q)]).sum() / thinned.sum() for q in kr_perms[:500]])
+    shares.append(seen)
+    ps.append((1 + np.sum(shuffled >= seen - 1e-12)) / 501)
+print(f"\nleaving out 10 of 102 friendships, 200 times: within-department share from {min(shares):.3f} to "
+      f"{max(shares):.3f}; relabeling p at most 0.05 in {sum(p <= 0.05 for p in ps)} of 200 drops")
+```
+
+::: {.code-output}
+```text
+relation     ties  within  expected  correlation      t
+advice        190   0.242     0.224        0.040   0.82
+friendship    102   0.373     0.224        0.202   4.22
+
+relation    null                       mean      sd  p high   p low  p two-sided
+advice      relabel departments       0.223  0.0241  0.2597  0.8084       0.4533
+advice      random ties, same count   0.224  0.0226  0.2349  0.8296       0.4108
+friendship  relabel departments       0.223  0.0430  0.0010  0.9996       0.0010
+friendship  random ties, same count   0.224  0.0354  0.0005  1.0000       0.0005
+
+leaving out 10 of 102 friendships, 200 times: within-department share from 0.326 to 0.413; relabeling p at most 0.05 in 200 of 200 drops
+```
+:::
+
+## Rust
+
+```rust
+let kr_nodes = std::fs::read_to_string("data/krackhardt/nodes.csv")?;
+let kr_dept: Vec<i64> = kr_nodes.lines().skip(1).map(|l| l.split(',').nth(4).unwrap().parse().unwrap()).collect();
+let kr_n = kr_dept.len();
+let kr_text = std::fs::read_to_string("data/krackhardt/edges.csv")?;
+let kr_relation = |rel: &str| -> Vec<(usize, usize)> {
+    kr_text.lines().skip(1).filter_map(|l| {
+        let p: Vec<&str> = l.split(',').collect();
+        (p[2] == rel).then(|| (p[0].parse::<usize>().unwrap() - 1, p[1].parse::<usize>().unwrap() - 1))
+    }).collect()
+};
+
+// The statistic: the share of ties that stay inside a department. `who[i]` is the person whose
+// department person i carries (the identity for the real data, a relabeling for the null).
+let within_share = |ties: &[(usize, usize)], who: &[usize]| {
+    ties.iter().filter(|&&(i, j)| kr_dept[who[i]] == kr_dept[who[j]]).count() as f64 / ties.len() as f64
+};
+let identity: Vec<usize> = (0..kr_n).collect();
+let expected = (0..kr_n * kr_n).filter(|&c| c / kr_n != c % kr_n && kr_dept[c / kr_n] == kr_dept[c % kr_n]).count() as f64
+    / (kr_n * (kr_n - 1)) as f64;
+
+// Null A: relabel departments. 5,000 random relabelings from the same Park-Miller stream as before.
+let kr_perms: Vec<Vec<usize>> = pm_stream(7, 5000 * kr_n).chunks(kr_n).map(|k| {
+    let mut q: Vec<usize> = (0..kr_n).collect();
+    q.sort_by(|&a, &c| k[a].partial_cmp(&k[c]).unwrap());
+    q
+}).collect();
+
+let p_values = |v: &[f64], seen: f64| -> (f64, f64, f64) {
+    let (mean, _) = mean_sd(v);
+    let n_draws = (v.len() + 1) as f64;
+    (
+        (1 + v.iter().filter(|&&x| x >= seen - 1e-12).count()) as f64 / n_draws,
+        (1 + v.iter().filter(|&&x| x <= seen + 1e-12).count()) as f64 / n_draws,
+        (1 + v.iter().filter(|&&x| (x - mean).abs() >= (seen - mean).abs() - 1e-12).count()) as f64 / n_draws,
+    )
+};
+
+println!("{:<11} {:>5} {:>7} {:>9} {:>12} {:>6}", "relation", "ties", "within", "expected", "correlation", "t");
+let mut tests = Vec::new();
+for rel in ["advice", "friendship"] {
+    let ties = kr_relation(rel);
+    let seen = within_share(&ties, &identity);
+    let mut dense = Dense::zeros(kr_n, kr_n);
+    for &(i, j) in &ties {
+        dense.set(i, j, 1.0);
+    }
+    let off: Vec<(usize, usize)> = (0..kr_n).flat_map(|i| (0..kr_n).filter(move |&j| j != i).map(move |j| (i, j))).collect();
+    let y: Vec<f64> = off.iter().map(|&(i, j)| dense.get(i, j)).collect();
+    let x: Vec<f64> = off.iter().map(|&(i, j)| if kr_dept[i] == kr_dept[j] { 1.0 } else { 0.0 }).collect();
+    let r = pearson(&y, &x);
+    let t_stat = r * ((off.len() - 2) as f64 / (1.0 - r * r)).sqrt();
+    println!("{:<11} {:>5} {:>7.3} {:>9.3} {:>12.3} {:>6.2}", rel, ties.len(), seen, expected, r, t_stat);
+    // Null B: random ties, the same number of ties, departments stay where they are.
+    let random_draws: Vec<f64> = knappnet::generate::sample_gnm(kr_n, ties.len() as u64, true, false, 2_000, 1, 0)?
+        .iter()
+        .map(|d| d.from.iter().zip(&d.to).filter(|p| kr_dept[*p.0 as usize] == kr_dept[*p.1 as usize]).count() as f64 / ties.len() as f64)
+        .collect();
+    let relabeled: Vec<f64> = kr_perms.iter().map(|q| within_share(&ties, q)).collect();
+    tests.push((rel, "relabel departments", relabeled, seen));
+    tests.push((rel, "random ties, same count", random_draws, seen));
+}
+println!("\n{:<11} {:<24} {:>6} {:>7} {:>7} {:>7} {:>12}", "relation", "null", "mean", "sd", "p high", "p low", "p two-sided");
+for (rel, label, v, seen) in &tests {
+    let (mean, sd) = mean_sd(v);
+    let (high, low_p, two) = p_values(v, *seen);
+    println!("{:<11} {:<24} {:>6.3} {:>7.4} {:>7.4} {:>7.4} {:>12.4}", rel, label, mean, sd, high, low_p, two);
+}
+
+// Stress check: leave out 10 of the 102 friendships at random, 200 times, and test again
+// (with the first 500 relabelings).
+let fr_ties = kr_relation("friendship");
+let (mut shares, mut at_most) = (Vec::new(), 0);
+for k in pm_stream(11, 200 * fr_ties.len()).chunks(fr_ties.len()) {
+    let mut order: Vec<usize> = (0..fr_ties.len()).collect();
+    order.sort_by(|&a, &c| k[a].partial_cmp(&k[c]).unwrap());
+    let thinned: Vec<(usize, usize)> = order[10..].iter().map(|&i| fr_ties[i]).collect();
+    let seen = within_share(&thinned, &identity);
+    let hits = kr_perms[..500].iter().filter(|q| within_share(&thinned, q) >= seen - 1e-12).count();
+    shares.push(seen);
+    if (1 + hits) as f64 / 501.0 <= 0.05 {
+        at_most += 1;
+    }
+}
+println!(
+    "\nleaving out 10 of 102 friendships, 200 times: within-department share from {:.3} to {:.3}; relabeling p at most 0.05 in {} of 200 drops",
+    shares.iter().cloned().fold(f64::INFINITY, f64::min),
+    shares.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
+    at_most
+);
+```
+
+::: {.code-output}
+```text
+relation     ties  within  expected  correlation      t
+advice        190   0.242     0.224        0.040   0.82
+friendship    102   0.373     0.224        0.202   4.22
+
+relation    null                       mean      sd  p high   p low  p two-sided
+advice      relabel departments       0.223  0.0241  0.2597  0.8084       0.4533
+advice      random ties, same count   0.224  0.0221  0.2549  0.8251       0.4888
+friendship  relabel departments       0.223  0.0430  0.0010  0.9996       0.0010
+friendship  random ties, same count   0.224  0.0359  0.0005  1.0000       0.0005
+
+leaving out 10 of 102 friendships, 200 times: within-department share from 0.326 to 0.413; relabeling p at most 0.05 in 200 of 200 drops
+```
+:::
+
+:::
+
+Read the first table as effect sizes. Of the 190 advice ties, 24.2 percent stay inside a department, where 22.4 percent would be expected if ties ignored departments (the share of ordered pairs of managers in the same department). Of the 102 friendship ties, 37.3 percent do. Put as a correlation between "tied" and "same department" over the 420 ordered pairs, advice gives 0.04 and friendship 0.20.
+
+The second table has the p-values. For advice, nothing: the upper-tail p-value is 0.26 against relabeled departments and 0.25 against random ties. For friendship, the upper-tail p-value is 0.0010 against relabeling (4 of 5,000 relabelings reach the observed share) and 0.0005 against random ties, which is the smallest value 2,000 draws can give: none of the 2,000 random networks reached it. Both nulls agree on the verdict. They disagree on the spread: the relabeling null for friendship has a standard deviation of 0.043, against 0.036 for random ties. Keeping the network fixed keeps the unevenness among managers (some name many friends, some few), which makes the shuffled share wobble more, and the narrower null would make the result look a little stronger than it is. The ordinary test on the 420 pairs says $t = 4.22$ for friendship, far beyond the cutoff of about 1.97, so here it agrees on the verdict too, because the effect is strong.
+
+The tails behave as the question suggests. For friendship, "p low" is near 1 (almost every draw is lower than the observed share) and the two-sided value equals the upper-tail one. For advice the observed share is close to the middle of the relabeling null: 0.26 in the upper tail, 0.81 in the lower, 0.45 two-sided.
+
+**A small p-value is not a big effect.** The friendship correlation is 0.20, which accounts for about 4 percent of the variation in who is tied to whom ($0.20^2 = 0.04$). The p-value of about 0.001 says 37 percent would be hard to get by chance. The effect size says the pattern is 15 percentage points above chance, with most ties still crossing departments (63 percent do). Both are true and neither replaces the other. And a p-value mixes effect size with the amount of data: the ordinary statistic is $t = r\sqrt{(N-2)/(1-r^2)}$ for $N$ pairs, so the same correlation of 0.1 gives $t = 2.05$ over 420 pairs and $t = 6.5$ over 4,200. Bigger networks make smaller effects "significant". Report the effect and the p-value together.
+
+The last line is the stress check. Leaving out 10 of the 102 friendships at random, 200 times, moves the within-department share between 0.326 and 0.413, and the relabeling p-value stays at most 0.05 in all 200 drops. A tenth of the ties missing at random does not erase the finding. It would not guard against ties that are missing for a reason, such as people who left the survey.
+
+### How many things did you test?
+
+We tested friendship against department because we planned to. Suppose you also check level, age and tenure, for both relations: eight tests. If nothing were going on, each has a 5 percent chance of passing at the 5 percent level, and the chance that at least one passes is $1 - 0.95^8 = 34$ percent (if the tests were independent). Two common fixes shrink that. **Holm's method** [@holm1979simple] controls the chance of *any* false alarm. **Benjamini-Hochberg** [@benjamini1995controlling] controls the *share* of false alarms among the results you call significant, which is gentler and the usual choice when you screen many. With $m$ tests and sorted p-values $p_{(1)} \le \dots \le p_{(m)}$, the adjusted values are
+
+$$
+p^{\text{Holm}}_{(i)} = \min\Big(1, \max_{j \le i} (m - j + 1)\, p_{(j)}\Big), \qquad
+p^{\text{BH}}_{(i)} = \min\Big(1, \min_{j \ge i} \tfrac{m}{j}\, p_{(j)}\Big).
+$$
+
+Holm is valid whatever the dependence between tests; Benjamini-Hochberg is proved for independent tests and, in later work, for a common kind of positive dependence, which is plausible here but not guaranteed. Our eight tests share ties and relabelings, so they are not independent. Each test is a QAP correlation between a relation and a similarity pattern: same department, same level, closeness in age, closeness in tenure.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# Four similarity patterns among the managers; a bigger number means more alike.
+kr_similarity <- list(
+  `same department` = kr_same,
+  `same level` = outer(kr_nodes$level, kr_nodes$level, "==") * 1,
+  `age closeness` = -abs(outer(kr_nodes$age, kr_nodes$age, "-")),
+  `tenure closeness` = -abs(outer(kr_nodes$tenure, kr_nodes$tenure, "-"))
+)
+# Eight QAP tests: two relations by four patterns, 5,000 relabelings each.
+family <- expand.grid(relation = c("advice", "friendship"), similarity = names(kr_similarity),
+                      stringsAsFactors = FALSE) |>
+  as_tibble() |>
+  mutate(
+    test = map2(relation, similarity, \(rel, sim) {
+      net_qap_cor(kr_matrix(kr_relation(rel)), kr_similarity[[sim]], reps = 5000, seed = 1, mode = "digraph")
+    }),
+    correlation = map_dbl(test, \(res) as.numeric(res$statistic)),
+    p_raw = map_dbl(test, \(res) (1 + sum(abs(res$dist) >= abs(res$statistic) - 1e-12)) / (length(res$dist) + 1)),
+    p_holm = p.adjust(p_raw, "holm"),
+    p_bh = p.adjust(p_raw, "BH")
+  ) |>
+  select(-test)
+family |> arrange(p_raw) |> mutate(across(where(is.numeric), \(x) round(x, 4)))
+family |> summarise(across(starts_with("p_"), \(x) sum(x < 0.05)))
+```
+
+::: {.code-output}
+```text
+```
+:::
+
+## Python
+
+```python
+kr_level = np.array([int(r["level"]) for r in kr_nodes])
+kr_age = np.array([int(r["age"]) for r in kr_nodes], dtype=float)
+kr_tenure = np.array([float(r["tenure"]) for r in kr_nodes])
+# Four similarity patterns among the managers; a bigger number means more alike.
+kr_similarity = {
+    "same department": kr_same,
+    "same level": (kr_level[:, None] == kr_level[None, :]).astype(float),
+    "age closeness": -np.abs(kr_age[:, None] - kr_age[None, :]),
+    "tenure closeness": -np.abs(kr_tenure[:, None] - kr_tenure[None, :]),
+}
+
+def holm(p):
+    p = np.asarray(p)
+    order = np.argsort(p)
+    adjusted = np.minimum(np.maximum.accumulate((len(p) - np.arange(len(p))) * p[order]), 1)
+    out = np.empty_like(p)
+    out[order] = adjusted
+    return out
+
+def benjamini_hochberg(p):
+    p = np.asarray(p)
+    order = np.argsort(p)
+    adjusted = np.minimum.accumulate((len(p) / (np.arange(len(p)) + 1) * p[order])[::-1])[::-1]
+    out = np.empty_like(p)
+    out[order] = np.minimum(adjusted, 1)
+    return out
+
+# Eight QAP tests: two relations by four patterns, 5,000 relabelings each (Python draws its own).
+family = []
+qap_perms = np.argsort(np.random.default_rng(1).random((5000, kr_n)), axis=1)
+for rel in ("advice", "friendship"):
+    y = kr_matrix(kr_relation(rel))[kr_off]
+    for label, sim in kr_similarity.items():
+        r = np.corrcoef(y, sim[kr_off])[0, 1]
+        null = np.array([np.corrcoef(y, sim[np.ix_(q, q)][kr_off])[0, 1] for q in qap_perms])
+        family.append((rel, label, r, (1 + np.sum(np.abs(null) >= abs(r) - 1e-12)) / (len(null) + 1)))
+raw = np.array([f[3] for f in family])
+adjusted = list(zip(holm(raw), benjamini_hochberg(raw)))
+print(f"{'relation':<11} {'pattern':<17} {'r':>6} {'p raw':>7} {'p Holm':>7} {'p BH':>7}")
+for (rel, label, r, p), (h, b) in sorted(zip(family, adjusted), key=lambda item: item[0][3]):
+    print(f"{rel:<11} {label:<17} {r:>6.3f} {p:>7.4f} {h:>7.4f} {b:>7.4f}")
+print(f"below 0.05: raw {np.sum(raw < 0.05)}, Holm {sum(h < 0.05 for h, _ in adjusted)}, BH {sum(b < 0.05 for _, b in adjusted)}")
+```
+
+::: {.code-output}
+```text
+relation    pattern                r   p raw  p Holm    p BH
+friendship  same department    0.202  0.0006  0.0048  0.0048
+advice      tenure closeness   0.155  0.0368  0.2575  0.0896
+advice      age closeness      0.148  0.0414  0.2575  0.0896
+friendship  same level         0.168  0.0448  0.2575  0.0896
+friendship  age closeness      0.139  0.0834  0.3335  0.1334
+advice      same level        -0.098  0.2414  0.7241  0.3218
+advice      same department    0.040  0.5047  1.0000  0.5768
+friendship  tenure closeness   0.016  0.8598  1.0000  0.8598
+below 0.05: raw 4, Holm 1, BH 1
+```
+:::
+
+## Rust
+
+```rust
+// Four similarity patterns among the managers; a bigger number means more alike.
+let kr_nodes_rows: Vec<Vec<f64>> = kr_nodes.lines().skip(1).map(|l| l.split(',').map(|x| x.parse().unwrap()).collect()).collect();
+let (kr_age, kr_tenure, kr_level) = (
+    |i: usize| kr_nodes_rows[i][1], |i: usize| kr_nodes_rows[i][2], |i: usize| kr_nodes_rows[i][3],
+);
+let similarity: Vec<(&str, Dense)> = {
+    let build = |f: &dyn Fn(usize, usize) -> f64| {
+        let mut m = Dense::zeros(kr_n, kr_n);
+        for i in 0..kr_n {
+            for j in 0..kr_n {
+                m.set(i, j, f(i, j));
+            }
+        }
+        m
+    };
+    vec![
+        ("same department", build(&|i, j| if kr_dept[i] == kr_dept[j] { 1.0 } else { 0.0 })),
+        ("same level", build(&|i, j| if kr_level(i) == kr_level(j) { 1.0 } else { 0.0 })),
+        ("age closeness", build(&|i, j| -(kr_age(i) - kr_age(j)).abs())),
+        ("tenure closeness", build(&|i, j| -(kr_tenure(i) - kr_tenure(j)).abs())),
+    ]
+};
+
+// Eight QAP tests: two relations by four patterns, 5,000 relabelings each.
+let mut family = Vec::new();
+for rel in ["advice", "friendship"] {
+    let mut y = Dense::zeros(kr_n, kr_n);
+    for &(i, j) in &kr_relation(rel) {
+        y.set(i, j, 1.0);
+    }
+    for (label, sim) in &similarity {
+        let options = QapCorOptions { mode: QapMode::Digraph, permutations: Permutations::Random { reps: 5_000, seed: 1 }, keep_draws: true, ..Default::default() };
+        let test = compute_qap_cor(&y, sim, options)?;
+        let hits = test.distribution.iter().filter(|r| r.abs() >= test.statistic.abs() - 1e-12).count();
+        family.push((rel, *label, test.statistic, (1 + hits) as f64 / (test.distribution.len() + 1) as f64));
+    }
+}
+// Holm and Benjamini-Hochberg adjustments.
+let m = family.len();
+let mut order: Vec<usize> = (0..m).collect();
+order.sort_by(|&a, &b| family[a].3.partial_cmp(&family[b].3).unwrap());
+let (mut holm, mut bh) = (vec![0.0f64; m], vec![0.0f64; m]);
+let mut running = 0.0f64;
+for (rank, &i) in order.iter().enumerate() {
+    running = running.max((m - rank) as f64 * family[i].3);
+    holm[i] = running.min(1.0);
+}
+let mut running = 1.0f64;
+for (rank, &i) in order.iter().enumerate().rev() {
+    running = running.min(m as f64 / (rank + 1) as f64 * family[i].3);
+    bh[i] = running;
+}
+println!("{:<11} {:<17} {:>6} {:>7} {:>7} {:>7}", "relation", "pattern", "r", "p raw", "p Holm", "p BH");
+for &i in &order {
+    println!("{:<11} {:<17} {:>6.3} {:>7.4} {:>7.4} {:>7.4}", family[i].0, family[i].1, family[i].2, family[i].3, holm[i], bh[i]);
+}
+println!(
+    "below 0.05: raw {}, Holm {}, BH {}",
+    family.iter().filter(|f| f.3 < 0.05).count(), holm.iter().filter(|&&p| p < 0.05).count(), bh.iter().filter(|&&p| p < 0.05).count()
+);
+```
+
+::: {.code-output}
+```text
+relation    pattern                r   p raw  p Holm    p BH
+friendship  same department    0.202  0.0016  0.0128  0.0128
+advice      age closeness      0.148  0.0404  0.2827  0.0896
+advice      tenure closeness   0.155  0.0406  0.2827  0.0896
+friendship  same level         0.168  0.0448  0.2827  0.0896
+friendship  age closeness      0.139  0.0798  0.3191  0.1277
+advice      same level        -0.098  0.2416  0.7247  0.3221
+advice      same department    0.040  0.5137  1.0000  0.5871
+friendship  tenure closeness   0.016  0.8554  1.0000  0.8554
+below 0.05: raw 4, Holm 1, BH 1
+```
+:::
+
+:::
+
+Four of the eight raw p-values are below 0.05: friendship with department (0.0016), advice with age (0.040) and with tenure (0.041), and friendship with level (0.045). After Holm or Benjamini-Hochberg adjustment only the first survives (0.013 under both), and the other three sit near 0.09 (Benjamini-Hochberg) or 0.28 (Holm). Those three are what you tend to find when you look at eight things. This doesn't prove they are false. It says the evidence for them is no stronger than looking at eight things would produce. It is also the reason to decide what you will test before you look, and to report how many things you tried. The Python tab uses its own relabelings, so its p-values differ in the third decimal.
+
+### Reading a z-score and a percentile
+
+Back to the Florentine families of @sec-small-worlds: 15 families, 20 marriages. Take four statistics and two nulls (random ties, and random networks with the same degrees from stub matching), 2,000 draws each. For each pair we print the observed value, the null's average and spread, the **z-score** (distance from the null's average in standard deviations, @sec-triads-and-motifs), the **percentile** (the share of draws at or below the observed value), the **skewness** of the draws (0 for a symmetric bell, negative for a long tail to the left), and the two-sided p-value.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# The Florentine marriages again (fl_g from the swap block), against two nulls with 2,000 draws each.
+fl_degrees <- net_degree(fl_g)
+fl_gnm <- net_random_gnm(15, 20, reps = 2000, seed = 1)
+fl_cfg <- net_random_config(fl_degrees, simple = TRUE, max_tries = 100000, reps = 2000, seed = 1)
+fl_stats <- list(
+  transitivity = \(h) as.numeric(net_transitivity(h)),
+  `degree assortativity` = \(h) as.numeric(net_assort_degree(h)),
+  `mean distance` = \(h) as.numeric(net_mean_distance(h)),
+  `largest component` = \(h) max(net_components(h)$csize)
+)
+
+# Observed value, the null's average and spread, z-score, percentile, skewness and a two-sided p-value.
+compare_to_null <- \(draws, stat, seen) {
+  v <- map_dbl(draws, stat)
+  tibble(
+    observed = seen, null_mean = mean(v), null_sd = sd(v),
+    z = (seen - mean(v)) / sd(v),
+    percentile = mean(v <= seen + 1e-12),
+    skew = mean(((v - mean(v)) / sd(v))^3),
+    p_two_sided = (1 + sum(abs(v - mean(v)) >= abs(seen - mean(v)) - 1e-12)) / (length(v) + 1)
+  )
+}
+fl_stats |>
+  imap(\(stat, label) {
+    list(`random ties` = fl_gnm, `same degrees` = fl_cfg) |>
+      imap(\(draws, null_label) {
+        compare_to_null(draws, stat, stat(fl_g)) |> mutate(statistic = label, null = null_label, .before = 1)
+      }) |>
+      list_rbind()
+  }) |>
+  list_rbind() |>
+  mutate(across(where(is.numeric), \(x) round(x, 3)))
+
+# Suppose the largest component had been 12 families. The z-score and the draws tell different stories.
+lc <- map_dbl(fl_cfg, fl_stats[["largest component"]])
+z12 <- (12 - mean(lc)) / sd(lc)
+tibble(z = z12, share_of_draws_at_most_12 = (1 + sum(lc <= 12)) / (length(lc) + 1)) |>
+  mutate(across(everything(), \(x) round(x, 4)))
+```
+
+::: {.code-output}
+```text
+```
+:::
+
+## Python
+
+```python
+fl_degrees = [fl.degree(v) for v in fl_names]
+# NetworkX and our own helpers draw different networks than Rust, so the digits below differ a little.
+fl_gnm = [nx.gnm_random_graph(15, 20, seed=s) for s in range(2000)]
+fl_cfg = [simple_configuration(fl_degrees, rng) for _ in range(2000)]
+
+def mean_distance(h):
+    return np.mean([d for _, lengths in nx.all_pairs_shortest_path_length(h) for d in lengths.values() if d > 0])
+
+fl_stats = {
+    "transitivity": nx.transitivity,
+    "degree assortativity": nx.degree_assortativity_coefficient,
+    "mean distance": mean_distance,
+    "largest component": lambda h: max(len(c) for c in nx.connected_components(h)),
+}
+print(f"{'statistic':<21} {'null':<13} {'observed':>8} {'null mean':>9} {'null sd':>7} {'z':>6} {'percentile':>10} {'skew':>6} {'p two-sided':>11}")
+for label, stat in fl_stats.items():
+    seen = stat(fl)
+    for null_label, draws in (("random ties", fl_gnm), ("same degrees", fl_cfg)):
+        v = np.array([stat(h) for h in draws])
+        m, s = v.mean(), v.std(ddof=1)
+        two = (1 + np.sum(np.abs(v - m) >= abs(seen - m) - 1e-12)) / (len(v) + 1)
+        print(f"{label:<21} {null_label:<13} {seen:>8.3f} {m:>9.3f} {s:>7.3f} {(seen - m) / s:>6.2f} "
+              f"{np.mean(v <= seen + 1e-12):>10.3f} {np.mean(((v - m) / s) ** 3):>6.2f} {two:>11.3f}")
+
+# Suppose the largest component had been 12 families. The z-score and the draws tell different stories.
+lc = np.array([fl_stats["largest component"](h) for h in fl_cfg])
+z12 = (12 - lc.mean()) / lc.std(ddof=1)
+print(f"z {z12:.4f}, share of draws at most 12 {(1 + np.sum(lc <= 12)) / (len(lc) + 1):.4f}")
+```
+
+::: {.code-output}
+```text
+statistic             null          observed null mean null sd      z percentile   skew p two-sided
+transitivity          random ties      0.191     0.169   0.086   0.27      0.619   0.23       0.853
+transitivity          same degrees     0.191     0.159   0.077   0.42      0.806   0.21       0.692
+degree assortativity  random ties     -0.375    -0.164   0.188  -1.12      0.134   0.17       0.272
+degree assortativity  same degrees    -0.375    -0.184   0.162  -1.18      0.140  -0.11       0.269
+mean distance         random ties      2.486     2.423   0.217   0.29      0.626   0.14       0.767
+mean distance         same degrees     2.486     2.505   0.184  -0.11      0.449  -0.14       0.895
+largest component     random ties     15.000    14.270   0.855   0.85      1.000  -1.26       0.640
+largest component     same degrees    15.000    14.710   0.761   0.38      1.000  -2.57       1.000
+z -3.5596, share of draws at most 12 0.0150
+```
+:::
+
+## Rust
+
+```rust
+use knappnet::metrics::descriptive::{compute_mean_distance, PathOptions};
+use knappnet::metrics::mixing::{compute_assortativity_degree, AssortOptions};
+use knappnet::metrics::topography::{find_components, ComponentKind};
+
+// The Florentine marriages again (fl_graph from the swap block), against two nulls with 2,000 draws each.
+let fl_to_graph = |d: &knappnet::generate::EdgeList| {
+    let from: Vec<i64> = d.from.iter().map(|&x| x as i64).collect();
+    let to: Vec<i64> = d.to.iter().map(|&x| x as i64).collect();
+    Graph::from_edges(15, &from, &to, None, false)
+};
+let fl_gnm: Vec<Graph> = knappnet::generate::sample_gnm(15, 20, false, false, 2_000, 1, 0)?
+    .iter().map(|d| fl_to_graph(d).unwrap()).collect();
+let fl_cfg: Vec<Graph> = knappnet::generate::sample_configuration(&Degrees::Undirected(fl_degrees.clone()), true, 100_000, 2_000, 1, 0)?
+    .iter().map(|d| fl_to_graph(d).unwrap()).collect();
+let fl_stats: Vec<(&str, Box<dyn Fn(&Graph) -> f64>)> = vec![
+    ("transitivity", Box::new(|h: &Graph| compute_transitivity(h, ClusteringOptions::default()))),
+    ("degree assortativity", Box::new(|h: &Graph| compute_assortativity_degree(h, false, AssortOptions::default()).unwrap())),
+    ("mean distance", Box::new(|h: &Graph| compute_mean_distance(h, PathOptions::default(), true).unwrap())),
+    ("largest component", Box::new(|h: &Graph| *find_components(h, ComponentKind::Weak).sizes.iter().max().unwrap() as f64)),
+];
+println!("{:<21} {:<13} {:>8} {:>9} {:>7} {:>6} {:>10} {:>6} {:>11}", "statistic", "null", "observed", "null mean", "null sd", "z", "percentile", "skew", "p two-sided");
+for (label, stat) in &fl_stats {
+    let seen = stat(&fl_graph);
+    for (null_label, draws) in [("random ties", &fl_gnm), ("same degrees", &fl_cfg)] {
+        let v: Vec<f64> = draws.iter().map(|h| stat(h)).collect();
+        let (m, s) = mean_sd(&v);
+        let two = (1 + v.iter().filter(|&&x| (x - m).abs() >= (seen - m).abs() - 1e-12).count()) as f64 / (v.len() + 1) as f64;
+        let below = v.iter().filter(|&&x| x <= seen + 1e-12).count() as f64 / v.len() as f64;
+        let skew = v.iter().map(|x| ((x - m) / s).powi(3)).sum::<f64>() / v.len() as f64;
+        println!("{:<21} {:<13} {:>8.3} {:>9.3} {:>7.3} {:>6.2} {:>10.3} {:>6.2} {:>11.3}", label, null_label, seen, m, s, (seen - m) / s, below, skew, two);
+    }
+}
+
+// Suppose the largest component had been 12 families. The z-score and the draws tell different stories.
+let lc: Vec<f64> = fl_cfg.iter().map(|h| (fl_stats[3].1)(h)).collect();
+let (lc_mean, lc_sd) = mean_sd(&lc);
+let z12 = (12.0 - lc_mean) / lc_sd;
+println!(
+    "z {:.4}, share of draws at most 12 {:.4}",
+    z12, (1 + lc.iter().filter(|&&x| x <= 12.0).count()) as f64 / (lc.len() + 1) as f64
+);
+```
+
+::: {.code-output}
+```text
+statistic             null          observed null mean null sd      z percentile   skew p two-sided
+transitivity          random ties      0.191     0.172   0.087   0.23      0.595   0.10       0.870
+transitivity          same degrees     0.191     0.166   0.077   0.33      0.786   0.24       1.000
+degree assortativity  random ties     -0.375    -0.165   0.190  -1.10      0.134   0.14       0.278
+degree assortativity  same degrees    -0.375    -0.177   0.160  -1.23      0.130  -0.05       0.233
+mean distance         random ties      2.486     2.426   0.221   0.27      0.638   0.40       0.774
+mean distance         same degrees     2.486     2.511   0.177  -0.14      0.422  -0.32       0.857
+largest component     random ties     15.000    14.263   0.827   0.89      1.000  -1.17       0.616
+largest component     same degrees    15.000    14.726   0.750   0.37      1.000  -2.81       1.000
+z -3.6356, share of draws at most 12 0.0150
+```
+:::
+
+:::
+
+Nothing here is surprising, and that is the finding. No two-sided p-value is below 0.23. Transitivity (0.191) is in the middle of both nulls. Degree assortativity of $-0.375$ (families with many marriages marry families with few) is 1.1 to 1.2 standard deviations below the null's average, percentile 0.13: in the direction of a hub-and-spokes pattern, but well within what 15 families and 20 marriages produce by chance. A small network gives a wide null, so only large effects show. The honest summary is "no evidence against these nulls", not "no pattern": with 20 ties this test has little power.
+
+The z-score and the percentile agree when the null is roughly bell-shaped, as for assortativity (skewness between $-0.05$ and 0.14). They stop agreeing when it isn't. Look at the largest component under the same-degree null: the skewness is $-2.81$, because most draws are connected (15 families) and a few break off a small piece. Suppose the largest component had been 12 families. Its z-score would be $-3.64$, which a normal curve would call rarer than one in a thousand. But 1.5 percent of the draws (0.0150) are at most 12, about one in 67. A z-score assumes a bell shape; the draws don't have one. So read the percentile or the p-value from the draws, show z only for scale, and look at the skewness (or a histogram) whenever the null is lopsided or takes few distinct values. The latter explains the two-sided p-value of 1.000 for transitivity under same degrees: with the degrees fixed, the number of connected triples is fixed, so transitivity moves only in steps of one triangle (about 0.06), and the observed value sits among the middle steps.
+
+## Three ways a null goes wrong
+
+**Too weak.** A null that ignores something obvious in the data makes ordinary patterns look remarkable. In @sec-small-worlds the karate club's transitivity of 0.256 looks nearly twice as clustered as random ties (0.135), but against networks with the same degrees the average is 0.225 and 13 percent of draws are at least as clustered. Reporting only the easy comparison is a quiet way of overselling.
+
+**Too strong.** A null that holds fixed the thing you are studying cannot find it. If your question is whether a few managers attract most of the advice, a null that fixes every manager's number of advice-seekers has answered it before you start. Fixing more is not safer; it changes the question.
+
+**Degenerate.** The worst case is a null that fixes the statistic itself. Take the largest number of marriages any family has (the Medici, with 6), against the two Florentine nulls from above.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# Statistic: the largest number of marriages any one family has (Medici: 6). Reuse the draws from above.
+top_degree <- \(draws) map_dbl(draws, \(h) max(net_degree(h)))
+list(`random ties` = fl_gnm, `same degrees` = fl_cfg) |>
+  imap(\(draws, null_label) {
+    top <- top_degree(draws)
+    tibble(
+      null = null_label, observed = max(fl_degrees), null_mean = mean(top), null_sd = sd(top),
+      p_high = (1 + sum(top >= max(fl_degrees))) / (length(top) + 1)
+    )
+  }) |>
+  list_rbind() |>
+  mutate(across(where(is.numeric), \(x) round(x, 3)))
+```
+
+::: {.code-output}
+```text
+```
+:::
+
+## Python
+
+```python
+# Statistic: the largest number of marriages any one family has (Medici: 6). Reuse the draws from above.
+print(f"{'null':<13} {'observed':>8} {'null mean':>9} {'null sd':>7} {'p high':>7}")
+for null_label, draws in (("random ties", fl_gnm), ("same degrees", fl_cfg)):
+    top = np.array([max(d for _, d in h.degree()) for h in draws])
+    p_high = (1 + np.sum(top >= max(fl_degrees))) / (len(top) + 1)
+    print(f"{null_label:<13} {max(fl_degrees):>8} {top.mean():>9.3f} {top.std(ddof=1):>7.3f} {p_high:>7.3f}")
+```
+
+::: {.code-output}
+```text
+null          observed null mean null sd  p high
+random ties          6     5.272   0.814   0.331
+same degrees         6     6.000   0.000   1.000
+```
+:::
+
+## Rust
+
+```rust
+// Statistic: the largest number of marriages any one family has (Medici: 6). Reuse the draws from above.
+let observed_top = *fl_degrees.iter().max().unwrap();
+println!("{:<13} {:>8} {:>9} {:>7} {:>7}", "null", "observed", "null mean", "null sd", "p high");
+for (null_label, draws) in [("random ties", &fl_gnm), ("same degrees", &fl_cfg)] {
+    let top: Vec<f64> = draws.iter().map(|h| compute_degree(h, DegreeMode::All, true).iter().cloned().fold(0.0, f64::max)).collect();
+    let (m, s) = mean_sd(&top);
+    let p_high = (1 + top.iter().filter(|&&x| x >= observed_top as f64).count()) as f64 / (top.len() + 1) as f64;
+    println!("{:<13} {:>8} {:>9.3} {:>7.3} {:>7.3}", null_label, observed_top, m, s, p_high);
+}
+```
+
+::: {.code-output}
+```text
+null          observed null mean null sd  p high
+random ties          6     5.309   0.814   0.349
+same degrees         6     6.000   0.000   1.000
+```
+:::
+
+:::
+
+Against random ties, a family with 6 marriages is not unusual (average 5.3, upper-tail p-value 0.35). Against the same-degree null, every one of the 2,000 draws has a family with 6 marriages, because the degrees were held fixed: the standard deviation is exactly 0 and the p-value is exactly 1, whatever the network. The test is not saying anything, because the null has already decided. Before running a null, check that your statistic is not a function of what you held fixed. A standard deviation of exactly 0, or a p-value of exactly 1, is the symptom.
+
+## Resampling: the bootstrap, and why the naive one fails
+
+The **bootstrap** [@efron1979bootstrap] has a different job from a permutation test. A permutation test asks whether a pattern is more than a null produces. The bootstrap asks how much an *estimate* would move with different data from the same source: resample the data with replacement, recompute the estimate each time, and read the uncertainty off the spread. For ordinary data it works because the rows are independent units. A network has no such units, and the two obvious ways to resample one both go wrong.
+
+- **Resample people.** Draw $n$ people with replacement and keep the ties among those drawn. A person drawn twice becomes two copies who are not tied to each other, so the resampled network is sparser by construction.
+- **Resample ties.** Draw $m$ ties with replacement from the real $m$. A tie drawn twice is still one tie, so each resample keeps only about $1 - 1/e \approx 63$ percent of the distinct ties.
+
+To measure the damage we need a case where the truth is known, so we invent 100 networks of 24 people in which every pair is tied with probability 0.2. The true density is 0.2. For each network we draw 100 resamples of each kind and take the 2.5th and 97.5th percentiles of the resampled densities as a 95 percent interval. A method that works would cover 0.2 in about 95 of the 100 networks.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# 100 random networks of 24 people in which every pair is tied with probability 0.2, so the true density
+# is 0.2. For each network, 100 bootstrap resamples of each of two kinds.
+nb <- 24
+nets <- 100
+boots <- 100
+cap <- 100 # room for up to 100 tie draws per resample
+pairs_b <- choose(nb, 2)
+pair_ends <- combn(nb, 2)
+per_net <- pairs_b + boots * nb + boots * cap
+ub <- matrix(stream(99, nets * per_net), nrow = nets, byrow = TRUE)
+summarise_boot <- \(values, label, seen) tibble(
+  method = label, observed = seen, boot_mean = mean(values), boot_sd = sd(values),
+  lo = as.numeric(quantile(values, 0.025)), hi = as.numeric(quantile(values, 0.975))
+)
+one_network <- \(w) {
+  w <- as.vector(w)
+  tie <- w[1:pairs_b] < 0.2
+  a <- matrix(0, nb, nb)
+  a[cbind(pair_ends[1, tie], pair_ends[2, tie])] <- 1
+  a <- a + t(a)
+  m <- sum(tie)
+  # Resample people: draw 24 people with replacement, keep the ties among them (copies of one person are not tied).
+  nodes <- matrix(floor(w[(pairs_b + 1):(pairs_b + boots * nb)] * nb) + 1, nrow = boots, byrow = TRUE)
+  # Resample ties: draw m of the m ties with replacement; a tie drawn twice is still one tie.
+  tie_draws <- matrix(w[(pairs_b + boots * nb + 1):per_net], nrow = boots, byrow = TRUE)[, seq_len(m), drop = FALSE]
+  bind_rows(
+    summarise_boot(map_dbl(seq_len(boots), \(b) sum(a[nodes[b, ], nodes[b, ]]) / (nb * (nb - 1))),
+                   "people resampled", m / pairs_b),
+    summarise_boot(map_dbl(seq_len(boots), \(b) length(unique(floor(tie_draws[b, ] * m) + 1)) / pairs_b),
+                   "ties resampled", m / pairs_b)
+  )
+}
+asplit(ub, 1) |>
+  map(one_network) |>
+  list_rbind() |>
+  group_by(method) |>
+  summarise(
+    covers_truth = mean(lo <= 0.2 & 0.2 <= hi),
+    average_observed = mean(observed),
+    spread_of_observed = sd(observed),
+    average_bootstrap_centre = mean(boot_mean),
+    average_bootstrap_sd = mean(boot_sd)
+  ) |>
+  mutate(across(where(is.numeric), \(x) round(x, 3)))
+```
+
+::: {.code-output}
+```text
+```
+:::
+
+## Python
+
+```python
+# 100 random networks of 24 people in which every pair is tied with probability 0.2, so the true density
+# is 0.2. For each network, 100 bootstrap resamples of each of two kinds.
+nb, nets, boots, cap = 24, 100, 100, 100  # cap: room for up to 100 tie draws per resample
+pairs_b = nb * (nb - 1) // 2
+per_net = pairs_b + boots * nb + boots * cap
+ub = stream(99, nets * per_net).reshape(nets, per_net)
+pair_i, pair_j = np.triu_indices(nb, 1)
+
+rows = {"people resampled": [], "ties resampled": []}
+for w in ub:
+    tie = w[:pairs_b] < 0.2
+    a = np.zeros((nb, nb))
+    a[pair_i[tie], pair_j[tie]] = 1
+    a = a + a.T
+    m = int(tie.sum())
+    # Resample people: draw 24 people with replacement, keep the ties among them (copies of one person are not tied).
+    nodes = np.floor(w[pairs_b:pairs_b + boots * nb].reshape(boots, nb) * nb).astype(int)
+    # Resample ties: draw m of the m ties with replacement; a tie drawn twice is still one tie.
+    tie_draws = w[pairs_b + boots * nb:].reshape(boots, cap)[:, :m]
+    for label, values in (
+        ("people resampled", [a[np.ix_(i, i)].sum() / (nb * (nb - 1)) for i in nodes]),
+        ("ties resampled", [len(set(np.floor(d * m).astype(int))) / pairs_b for d in tie_draws]),
+    ):
+        lo, hi = np.quantile(values, [0.025, 0.975])
+        rows[label].append((m / pairs_b, np.mean(values), np.std(values, ddof=1), lo, hi))
+
+print(f"{'method':<17} {'covers truth':>12} {'avg observed':>12} {'spread of obs.':>14} {'avg boot centre':>15} {'avg boot sd':>11}")
+for label, found in rows.items():
+    seen, centre, spread, lo, hi = np.array(found).T
+    print(f"{label:<17} {np.mean((lo <= 0.2) & (0.2 <= hi)):>12.3f} {seen.mean():>12.3f} {seen.std(ddof=1):>14.3f} "
+          f"{centre.mean():>15.3f} {spread.mean():>11.3f}")
+```
+
+::: {.code-output}
+```text
+method            covers truth avg observed spread of obs. avg boot centre avg boot sd
+people resampled         1.000        0.203          0.022           0.195       0.039
+ties resampled           0.010        0.203          0.022           0.129       0.008
+```
+:::
+
+## Rust
+
+```rust
+// 100 random networks of 24 people in which every pair is tied with probability 0.2, so the true density
+// is 0.2. For each network, 100 bootstrap resamples of each of two kinds.
+let (nb, nets, boots, cap) = (24usize, 100usize, 100usize, 100usize); // cap: room for 100 tie draws per resample
+let pairs_b = nb * (nb - 1) / 2;
+let per_net = pairs_b + boots * nb + boots * cap;
+let ub = pm_stream(99, nets * per_net);
+let pair_list: Vec<(usize, usize)> = (0..nb).flat_map(|i| (i + 1..nb).map(move |j| (i, j))).collect();
+// Percentile with linear interpolation (what R and NumPy call type 7).
+let quantile = |sorted: &[f64], q: f64| -> f64 {
+    let pos = q * (sorted.len() - 1) as f64;
+    let (lo, hi) = (pos.floor() as usize, pos.ceil() as usize);
+    sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo as f64)
+};
+let mut rows: Vec<Vec<[f64; 5]>> = vec![Vec::new(); 2];
+for w in ub.chunks(per_net) {
+    let mut a = vec![0.0; nb * nb];
+    let mut m = 0usize;
+    for (k, &(i, j)) in pair_list.iter().enumerate() {
+        if w[k] < 0.2 {
+            a[i * nb + j] = 1.0;
+            a[j * nb + i] = 1.0;
+            m += 1;
+        }
+    }
+    let (mut by_people, mut by_ties) = (Vec::new(), Vec::new());
+    for b in 0..boots {
+        // Resample people: draw 24 people with replacement, keep the ties among them (copies of one person are not tied).
+        let people: Vec<usize> = w[pairs_b + b * nb..pairs_b + (b + 1) * nb].iter().map(|x| (x * nb as f64).floor() as usize).collect();
+        let kept: f64 = people.iter().map(|&p| people.iter().map(|&q| a[p * nb + q]).sum::<f64>()).sum();
+        by_people.push(kept / (nb * (nb - 1)) as f64);
+        // Resample ties: draw m of the m ties with replacement; a tie drawn twice is still one tie.
+        let start = pairs_b + boots * nb + b * cap;
+        let distinct: std::collections::HashSet<usize> = w[start..start + m].iter().map(|x| (x * m as f64).floor() as usize).collect();
+        by_ties.push(distinct.len() as f64 / pairs_b as f64);
+    }
+    for (k, mut values) in [by_people, by_ties].into_iter().enumerate() {
+        let (centre, spread) = mean_sd(&values);
+        values.sort_by(|x, y| x.partial_cmp(y).unwrap());
+        rows[k].push([m as f64 / pairs_b as f64, centre, spread, quantile(&values, 0.025), quantile(&values, 0.975)]);
+    }
+}
+println!("{:<17} {:>12} {:>12} {:>14} {:>15} {:>11}", "method", "covers truth", "avg observed", "spread of obs.", "avg boot centre", "avg boot sd");
+for (label, found) in ["people resampled", "ties resampled"].iter().zip(&rows) {
+    let column = |c: usize| found.iter().map(|r| r[c]).collect::<Vec<f64>>();
+    let covers = found.iter().filter(|r| r[3] <= 0.2 && 0.2 <= r[4]).count() as f64 / nets as f64;
+    let (seen_mean, seen_sd) = mean_sd(&column(0));
+    println!("{:<17} {:>12.3} {:>12.3} {:>14.3} {:>15.3} {:>11.3}", label, covers, seen_mean, seen_sd, mean_sd(&column(1)).0, mean_sd(&column(2)).0);
+}
+```
+
+::: {.code-output}
+```text
+method            covers truth avg observed spread of obs. avg boot centre avg boot sd
+people resampled         1.000        0.203          0.022           0.195       0.039
+ties resampled           0.010        0.203          0.022           0.129       0.008
+```
+:::
+
+:::
+
+Resampling ties collapses: the resampled density averages 0.129 against an observed 0.203 (the 63 percent in action), the bootstrap standard deviation is only 0.008, and the intervals contain the truth in 1 network of 100. Resampling people is off in a different way. Its centre is a little low (0.195, from the copies that are never tied) and its spread is far too large: the average bootstrap standard deviation is 0.039, against a real spread of 0.022 in the observed densities across networks. It "covers" the truth in all 100 networks, but only by being 1.8 times too wide. The reason is that resampling people re-draws their *degrees*, and degrees vary more than a pair-by-pair coin flip does. In a network with a different structure the same method could come out too narrow. Its width is not a property of how the data were collected, so it cannot be trusted in either direction.
+
+What to do instead depends on the question. If you want to know whether a pattern is more than a baseline gives, use a null model, as above. If you want uncertainty for the parameters of a model, simulate networks from the fitted model and refit (a parametric bootstrap; see @sec-ergm). And if you really did sample people at random from a population, as in the egocentric designs of @sec-ego-networks, resampling the sampled people's own summaries can be legitimate; the failure here is using the bootstrap for whole-network structure.
+
 ## A cheat sheet
 
 | Tool | Question | What it holds fixed | Watch out for |
@@ -653,6 +2183,10 @@ Holding every degree fixed raises the average only slightly, to 0.392, and about
 | MRQAP | Is each predictor related to the ties once the others are accounted for? | The same, with several predictors | Overlapping predictors; the default method handles this |
 | Random graph with the same number of ties | Is a feature more than size and density alone would give? | Number of people and ties | An easy standard to beat |
 | Configuration model | Is a feature more than each person's degree would give? | Everyone's number of ties | Rejection sampling can fail on awkward degree sequences |
+| Same degrees by swapping ties | The same, always on simple networks | Everyone's number of ties | Needs enough swaps; knappnet's swap is undirected only |
+| Label permutation | Does an attribute line up with the structure? | The network and the group sizes | Says nothing about how the network arose |
+| Holm or Benjamini-Hochberg | Several things were tested | Adjusts p-values for how many | Decide the tests before looking |
+| Bootstrap by people or ties | How much would my estimate move? | The resampled people or ties | Biased and badly calibrated for network structure |
 
 ## Reading tests honestly
 
@@ -664,9 +2198,34 @@ Holding every degree fixed raises the average only slightly, to 0.392, and about
 
 **Don't hunt.** Test many things and some will pass. Decide what you will test before you look, and say how many things you tried.
 
-**Random draws vary.** Fix the seed, report how many draws you used, and don't read meaning into the last digit. When the stakes are high, run again with more draws.
+**Random draws vary.** Fix the seed, report how many draws you used, and don't read meaning into the last digit. When the stakes are high, run again with more draws. The Monte Carlo error is $\sqrt{p(1-p)/B}$, and a p-value from draws is $(1 + \text{hits})/(B + 1)$, never zero.
+
+**Report the effect, not just the p-value.** A p-value mixes the size of the pattern with the size of the data. Give the share, the correlation or the difference as well.
+
+**Say how many things you tried.** Eight tests at the 5 percent level will pass one by luck about a third of the time. Adjust, or report the count.
+
+**A z-score needs a bell.** When a null is lopsided or takes few values, read the percentile or the p-value from the draws.
+
+**Check that the null doesn't fix your statistic.** A null whose draws all agree on the statistic cannot test it.
 
 **Pick the null that matches the question.** If your claim is "more clustering than a network with these degrees," use the configuration model. If your claim is "more than a random network of this size," the simpler one is the honest comparison. Reporting the easy one when you meant the hard one is a quiet way of overselling.
+
+## Saying it carefully
+
+For each test there is a sentence that the evidence supports and a nearby one that goes further than it can. Every defensible sentence names the network, the statistic, the null (what was held fixed), the number of draws and the size of the effect.
+
+| Test | A defensible sentence | An over-claiming one |
+| --- | --- | --- |
+| QAP correlation | "Across the 45 pairs, friendship and sharing a floor correlate at 0.365. Of all 3,628,800 relabelings of the ten people, 2.4 percent do at least as well. The two patterns line up in this network." | "Sharing a floor makes people friends (p = 0.02)." |
+| MRQAP coefficient | "Holding the (invented) book club fixed, pairs on the same floor are about 0.34 more likely to be friends (permutation p = 0.006, 5,000 relabelings)." | "Floors explain 19 percent of friendship." (The $R^2$ of 0.194 belongs to both predictors together, and describes this network.) |
+| Random ties, same count | "In Krackhardt's firm 37 percent of friendship ties stay inside a department against 22 percent expected, and none of 2,000 random networks with 102 ties reaches that (p below 0.001)." | "Friendship in the firm is organized by department." (Most friendship ties, 63 percent, cross departments.) |
+| Same degrees | "Transitivity of the Florentine marriages (0.191) is unremarkable among 2,000 random networks with the same degrees (percentile 0.79)." | "The marriage network has no clustering structure." (Fifteen families and 20 marriages give a test with little power.) |
+| Many tests | "Of eight pattern-by-relation tests, one (friendship and department) stays below 0.05 after a Holm adjustment (0.013)." | "Advice follows age and tenure (p = 0.04)." (Two of eight raw values near the threshold.) |
+| Bootstrap | "Resampling people or ties gave intervals that, in simulation, were far too wide or far too narrow, so we report no bootstrap interval for network-level statistics." | "The 95 percent bootstrap interval for the density is narrow, so the density is estimated precisely." |
+
+## Where this leads
+
+The ideas of this chapter come back with more machinery. @sec-network-regression fits regressions with several predictors, where QAP's relabeling supplies the p-values, and gives the matrix-against-matrix version of the false-alarm experiment. @sec-ergm turns the null model into a statistical model: instead of drawing networks that share your degrees, it draws networks from a distribution with parameters you estimate, and then checks the fit by comparing the observed network with simulated ones, which is the same logic as the percentile above. Earlier chapters already use the tools you met here: @sec-triads-and-motifs compares the triad census with a ladder of nulls, @sec-small-worlds builds configuration and swap baselines, and @sec-homophily shuffles group labels on the karate club. This chapter adds what they leave out: what a p-value from draws is worth, how many things you tried, and what to do when the null is lopsided or degenerate.
 
 ## Exercises
 
@@ -676,12 +2235,33 @@ Holding every degree fixed raises the average only slightly, to 0.392, and about
 4. **Coding.** Change the seed in the QAP block and rerun it. How much does the p-value move? Then try the exhaustive option (every relabeling, only possible up to ten people) and compare.
 5. **Interpretation.** A report says "the network is significantly clustered (p < 0.05)." Write the questions you'd ask the author before believing it.
 
+6. **By hand.** Eight people are split into two floors of four. How many ways are there to choose floor A? What is the smallest p-value an exact label-permutation test can return, if the mirror image (floors swapped) always counts? What changes if the floors have three and five people?
+7. **By hand.** A p-value near 0.05 is estimated from 1,000 draws. About how far can it move from run to run? How many draws would you want for an error of 0.002?
+8. **By hand.** Five tests give p-values 0.001, 0.012, 0.030, 0.040 and 0.200. Compute the Holm and Benjamini-Hochberg adjusted values. How many are below 0.05 under each?
+9. **Coding.** Krackhardt's data also hold the formal reporting relation (`reports_to`, 20 ties). Run the relabeling test of department against it. What share of the ties stay inside a department, and what do the ones that leave have in common?
+10. **Interpretation.** A paper reports that a network's transitivity is 8 standard deviations above the average of 1,000 random networks with the same number of ties, and concludes that it is "strongly clustered, a small world". Write the questions you would ask before agreeing, and say what you would run to answer them.
+
+::: {.callout-note collapse="true"}
+## Worked answers
+
+1. At least one relabeling lines the two matrices up exactly, so the relabeling distribution contains the value 1, the largest correlation possible. If the matrices as given are aligned, the observed correlation is 1, and the exact p-value is the number of relabelings that reach 1, divided by 24, so at least 1/24. If they are not aligned, the observed correlation is lower and the p-value is larger. A correlation of two 0-1 matrices only asks whether the *same pairs* are tied in both; the names of the people don't enter, which is why a matrix and a relabeled copy of itself can match perfectly.
+2. With about 22 relabelings in the tail of 1,000, the count wobbles by about $\sqrt{22} \approx 4.7$, so the share by about 0.005, or roughly 20 to 25 in 1,000. The formula gives $\sqrt{0.0218 \times 0.9782 / 1000} = 0.0046$. The chapter's exact share, 0.0238, sits inside that range.
+3. Use QAP (or, equivalently, a label permutation) for "do people tend to advise within their own profession?": build a same-profession matrix, keep the advice network and that matrix as they are, and relabel people. Use a null model for a question about the advice network alone, such as "is there more reciprocity than networks with the same number of ties, or the same in- and out-degrees, would give?". In each case say what is held fixed.
+4. At 10,000 relabelings the p-value should move by about 0.0015 between seeds (the chapter's table), so the third decimal is noise. The exhaustive version gives 0.0238 for the chapter's friendship and floor data.
+5. Ask: clustering by which measure (global or average local)? Compared with what (random ties, same degrees, something else), how many draws, which seed? Was this one test of many? Is the network complete or a sample, and who is missing? How big is the effect (the clustering itself, not only the p-value)? Would the conclusion survive dropping a tenth of the ties?
+6. There are $\binom{8}{4} = 70$ ways to choose floor A. The real split and its mirror image always reach the observed count, so the smallest p-value is $2/70 = 0.029$. With floors of three and five there is no mirror image (swapping the labels would make floors of five and three), so each of the $\binom{8}{3} = 56$ splits counts once and the smallest p-value is $1/56 = 0.018$.
+7. The standard deviation is $\sqrt{0.05 \times 0.95 / 1000} = 0.0069$, so about plus or minus 0.007 (a p-value of 0.05 could come back as 0.04 or 0.06). For an error of 0.002 you need $0.05 \times 0.95 / 0.002^2 \approx 11{,}900$ draws.
+8. Holm: $5 \times 0.001 = 0.005$; $4 \times 0.012 = 0.048$; $3 \times 0.030 = 0.09$; $2 \times 0.040 = 0.08$, raised to 0.09 so the values never decrease; $1 \times 0.200 = 0.2$. Two are below 0.05 (0.005 and 0.048). Benjamini-Hochberg: $p \times 5 / \text{rank}$ gives 0.005, 0.030, 0.050, 0.050, 0.200, and taking the running minimum from the largest down leaves them the same. Two are below 0.05 (0.005 and 0.030); the two at 0.050 are not below it.
+9. Of the 20 reporting ties, 16 (80 percent) stay inside a department, against about 22 percent expected, and the relabeling p-value is the smallest 5,000 draws allow, about 0.0002. The four ties that leave a department all go to the CEO, who is alone in department 0. The test is "significant" and also nearly empty of information: the reporting structure is the organization chart that defines departments.
+10. Ask which random networks: the same number of ties only, or the same degrees as well? In @sec-small-worlds the karate club looks nearly twice as clustered as random ties give (0.256 against 0.135) but only a little above networks with its degrees (0.225, with 13 percent of draws at least as clustered). Ask for the percentile and the number of draws, not only z, because a z-score of 8 from a lopsided null means little; ask how big the difference is in transitivity itself; and note that "small world" also needs short distances, which a transitivity z-score says nothing about. To answer, rerun with degree-preserving swaps, report percentiles and the number of draws, and give the clustering and the distances themselves.
+:::
+
 ## Summary
 
 ::: {.callout-tip appearance="simple"}
-Ordinary tests treat each pair of people as an independent observation, which network data can't be, because pairs that share a person are bundled together. QAP keeps the bundling by relabeling people in one matrix and recomputing the correlation, and MRQAP does the same with several predictors. Null models do the job for a single network by drawing random networks that share some features with yours: the same size and number of ties, or the same degrees as well. The friendship network leans toward same-floor friendships (correlation 0.365, a QAP share of 0.022) and is more clustered than random networks with the same size or the same degrees. All of these p-values depend on what chance means, so say what you held fixed.
+Ordinary tests treat each pair of people as an independent observation, which network data can't be, because pairs that share a person are bundled together. QAP keeps the bundling by relabeling people in one matrix and recomputing the correlation, and MRQAP does the same with several predictors. Null models do the job for a single network by drawing random networks that share some features with yours: the same size and number of ties, or the same degrees as well. The friendship network leans toward same-floor friendships (correlation 0.365, a QAP share of 0.022) and is more clustered than random networks with the same size or the same degrees. All of these p-values depend on what chance means, so say what you held fixed. A p-value from random draws is itself an estimate with a Monte Carlo error you can compute, and it is never exactly zero. Report it with an effect size and with the number of things you tried, and read a z-score only when the null is bell-shaped. Some nulls fix the statistic they are asked to test, and the naive bootstrap, which resamples people or ties, is biased for networks. Say what the evidence supports and no more.
 :::
 
 ## Further reading
 
-For the origin of QAP, see @hubert1976quadratic and @hubert1987assignment, and for its use with network data, @krackhardt1987qap and @krackhardt1988predicting. For why the double semi-partialling default is safe with overlapping predictors, see @dekker2007sensitivity. For random graph models, see @erdos1959random and @gilbert1959random, and for the configuration model, @molloy1995critical and @newman2001random. For degree-preserving rewiring, see @maslov2002specificity. For a textbook treatment of testing with network data, see @hanneman2005introduction. To practice in R, Phil Murphy's tutorials on hypothesis testing [@murphyrpubs338798], QAP [@murphyrpubs539996; @murphyrpubs679837] and conditional uniform graphs [@murphyrpubs536741] are good companions.
+For the origin of QAP, see @hubert1976quadratic and @hubert1987assignment, and for its use with network data, @krackhardt1987qap and @krackhardt1988predicting. For why the double semi-partialling default is safe with overlapping predictors, see @dekker2007sensitivity. For random graph models, see @erdos1959random and @gilbert1959random, and for the configuration model, @molloy1995critical and @newman2001random. For degree-preserving rewiring, see @maslov2002specificity. For a textbook treatment of testing with network data, see @hanneman2005introduction. For why permutation p-values should never be zero, see @phipson2010permutation, for tie swapping as a sampler, @fosdick2018configuring, and for the bootstrap, @efron1979bootstrap. For multiple testing, see @holm1979simple and @benjamini1995controlling. For a statistical treatment of network summaries, see @kolaczyk2009statistical and @wasserman1994social. To practice in R, Phil Murphy's tutorials on hypothesis testing [@murphyrpubs338798], QAP [@murphyrpubs539996; @murphyrpubs679837] and conditional uniform graphs [@murphyrpubs536741] are good companions.
