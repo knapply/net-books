@@ -106,42 +106,17 @@ The weights add to $1 + 14.778 + 1.213 + 0.677 = 17.668$. So the chance Cy drops
 
 ```r
 library(knappnet)
-library(dplyr)
-library(tidyr)
-library(purrr)
 
 office_names <- c("Ada", "Ben", "Cy", "Dee", "Eve", "Flo", "Gus", "Hal", "Ivy", "Jay")
 asks <- c(0, 1, 2, 2, 3, 3, 4, 4, 5, 6, 7, 8, 9) + 1
 is_asked <- c(1, 0, 0, 1, 0, 1, 0, 1, 2, 2, 3, 4, 4) + 1
 office <- net_frame(
-  tibble(source = office_names[asks], target = office_names[is_asked]),
-  nodes = tibble(id = office_names), directed = TRUE
+  data.frame(source = office_names[asks], target = office_names[is_asked]),
+  nodes = data.frame(id = office_names), directed = TRUE
 )
 office
-start <- as.matrix(office)
 
-# Two effects: outdegree (a cost for every tie an actor keeps) and reciprocity (a bonus for mutual ties).
-# RSiena estimates these models but has no call for a single change opportunity, so we work it out:
-# the gain of toggling the tie from the actor to j is the change in outdegree and in reciprocity.
-beta <- c(-2, 1.5)
-ministep_probabilities <- \(x, actor, beta) {
-  gain <- ifelse(x[actor, ] == 1, -1, 1) * (beta[1] + beta[2] * x[, actor])
-  gain[actor] <- 0
-  prop.table(exp(gain))
-}
-
-# Cy gets a chance to change. What are Cy's options, and how likely is each?
-chances <- tibble(person = office_names, chance = ministep_probabilities(start, "Cy", beta)) |>
-  mutate(
-    move = case_when(
-      person == "Cy" ~ "change nothing",
-      start["Cy", person] == 1 ~ "drop the tie to",
-      .default = "start asking"
-    ),
-    .before = 1
-  )
-chances |> mutate(chance = round(chance, 3))
-sum(chances$chance)
+# TODO(code, R): needs net_saom_ministep(): the chance of each option when one actor gets a change opportunity (outdegree and reciprocity effects).
 ```
 
 ::: {.code-output}
@@ -163,70 +138,18 @@ sum(chances$chance)
 # 5 Eve               5 Dee    Ada
 # 6 Flo               6 Dee    Ben
 #   ... 4 more rows     ... 7 more rows
-# A tibble: 10 × 3
-   move            person chance
-   <chr>           <chr>   <dbl>
- 1 drop the tie to Ada     0.418
- 2 drop the tie to Ben     0.418
- 3 change nothing  Cy      0.057
- 4 start asking    Dee     0.008
- 5 start asking    Eve     0.008
- 6 start asking    Flo     0.034
- 7 start asking    Gus     0.034
- 8 start asking    Hal     0.008
- 9 start asking    Ivy     0.008
-10 start asking    Jay     0.008
-[1] 1
 ```
 :::
 
 ## Python
 
 ```python
-import numpy as np
-
-office_names = ["Ada", "Ben", "Cy", "Dee", "Eve", "Flo", "Gus", "Hal", "Ivy", "Jay"]
-asks = [0, 1, 2, 2, 3, 3, 4, 4, 5, 6, 7, 8, 9]
-is_asked = [1, 0, 0, 1, 0, 1, 0, 1, 2, 2, 3, 4, 4]
-start = np.zeros((10, 10), dtype=int)
-start[asks, is_asked] = 1
-
-# Two effects: outdegree (a cost for every tie kept) and reciprocity (a bonus for mutual ties).
-beta = np.array([-2.0, 1.5])
-
-def ministep_probabilities(x, actor, beta):
-    # Gain of toggling the tie from actor to j: the change in outdegree and in reciprocity.
-    sign = np.where(x[actor] == 1, -1.0, 1.0)
-    gain = sign * (beta[0] + beta[1] * x[:, actor])
-    gain[actor] = 0.0
-    weight = np.exp(gain)
-    return weight / weight.sum()
-
-chances = ministep_probabilities(start, 2, beta)
-for j, chance in enumerate(chances):
-    if j == 2:
-        what = "change nothing"
-    elif start[2, j] == 1:
-        what = f"drop the tie to {office_names[j]}"
-    else:
-        what = f"start asking {office_names[j]}"
-    print(f"{what:<22} {chance:.3f}")
-print(f"total {chances.sum():.3f}")
+# TODO(code, Python): needs net_saom_ministep(): the chance of each option when one actor gets a change opportunity (outdegree and reciprocity effects).
 ```
 
 ::: {.code-output}
 ```text
-drop the tie to Ada    0.418
-drop the tie to Ben    0.418
-change nothing         0.057
-start asking Dee       0.008
-start asking Eve       0.008
-start asking Flo       0.034
-start asking Gus       0.034
-start asking Hal       0.008
-start asking Ivy       0.008
-start asking Jay       0.008
-total 1.000
+TODO(output)
 ```
 :::
 
@@ -299,84 +222,24 @@ The real power of the SAOM story is that it can be *run*. Start from the observe
 ## R
 
 ```r
-tibble(ties = sum(start), mutual_pairs = sum(start * t(start)) / 2)
-
-# The simulation draws random numbers, and R and Python draw different ones, so the
-# averages below differ from Rust's in the last digit or two.
-set.seed(1)
-# Each change opportunity arrives after an exponential wait; the recursion stops once the period is over.
-run_until_one <- \(x, beta, rate, time) {
-  if (time >= 1) {
-    return(x)
-  }
-  actor <- sample(rownames(x), 1)
-  j <- sample(colnames(x), 1, prob = ministep_probabilities(x, actor, beta))
-  if (j != actor) x[actor, j] <- 1 - x[actor, j]
-  run_until_one(x, beta, rate, time + rexp(1, nrow(x) * rate))
-}
-
-simulate_period <- \(x0, beta, rate = 3) {
-  x <- run_until_one(x0, beta, rate, rexp(1, nrow(x0) * rate))
-  tibble(ties = sum(x), mutual_pairs = sum(x * t(x)) / 2, changed = sum(x != x0))
-}
-
-# Run the office forward one period, 2,000 times, with and without the reciprocity bonus.
-tibble(reciprocity = c(0, 1.5)) |>
-  mutate(averages = map(reciprocity, \(r) {
-    map(1:2000, \(i) simulate_period(start, c(-2, r))) |>
-      list_rbind() |>
-      summarise(across(everything(), mean))
-  })) |>
-  unnest(averages) |>
-  mutate(across(where(is.numeric), \(x) round(x, 2)))
+# TODO(code, R): needs net_saom_simulate(): simulate one period of an actor-oriented model from a starting network.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 1 × 2
-   ties mutual_pairs
-  <dbl>        <dbl>
-1    13            1
-# A tibble: 2 × 4
-  reciprocity  ties mutual_pairs changed
-        <dbl> <dbl>        <dbl>   <dbl>
-1         0    5.78         0.19    13.9
-2         1.5  7.19         1.16    14.1
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-print(f"start: {start.sum()} ties, {(start * start.T).sum() // 2} mutual pairs")
-
-# The simulation draws random numbers, and R and Python draw different ones, so the
-# averages below differ from Rust's in the last digit or two.
-rng = np.random.default_rng(1)
-
-def simulate_period(x0, beta, rate=3.0):
-    x, time, n = x0.copy(), 0.0, len(x0)
-    while True:
-        time += rng.exponential(1 / (n * rate))
-        if time >= 1:
-            break
-        actor = rng.integers(n)
-        j = rng.choice(n, p=ministep_probabilities(x, actor, beta))
-        if j != actor:
-            x[actor, j] = 1 - x[actor, j]
-    return x.sum(), (x * x.T).sum() / 2, (x != x0).sum()
-
-for reciprocity in [0.0, 1.5]:
-    sims = np.array([simulate_period(start, np.array([-2.0, reciprocity])) for _ in range(2000)])
-    ties, mutual, changed = sims.mean(axis=0)
-    print(f"reciprocity {reciprocity:g}: {ties:.2f} ties, {mutual:.2f} mutual pairs, {changed:.2f} ties changed")
+# TODO(code, Python): needs net_saom_simulate(): simulate one period of an actor-oriented model from a starting network.
 ```
 
 ::: {.code-output}
 ```text
-start: 13 ties, 1 mutual pairs
-reciprocity 0: 5.64 ties, 0.17 mutual pairs, 13.96 ties changed
-reciprocity 1.5: 7.22 ties, 1.17 mutual pairs, 14.07 ties changed
+TODO(output)
 ```
 :::
 
@@ -406,8 +269,6 @@ reciprocity 1.5: 7.33 ties, 1.17 mutual pairs, 14.11 ties changed
 
 :::
 
-The R and Python tabs draw different random numbers than Rust does, so their averages differ from these in the last digit or two.
-
 Both settings lose many ties, because the outdegree cost is high. But look at what survives. With no reciprocity bonus, only 0.18 mutual pairs remain on average (the network started with 1). With the bonus, 1.17 remain, and more ties survive overall (7.3 against 5.8). Reciprocity doesn't create ties here, it keeps the returned ones. @fig-saom-sim shows both settings.
 
 ![Averages over 2,000 simulated periods of the office advice network, starting from the real network.](../figures/saom-sim.svg){#fig-saom-sim fig-alt="Two groups of three bars. In the Ties group, the start has 13 ties, the run without reciprocity averages 5.78 and the run with reciprocity 1.5 averages 7.33. In the Mutual pairs group, the start has 1, the run without reciprocity 0.18, and the run with reciprocity 1.17."}
@@ -421,47 +282,24 @@ The rate is the part of the SAOM that people skip over, and it matters most. A r
 ## R
 
 ```r
-# Same office, same coefficients; only the rate (chances per actor per period) changes.
-set.seed(2)
-tibble(rate = c(0.5, 1, 3, 9, 27)) |>
-  mutate(
-    chances_in_all = nrow(start) * rate,
-    runs = map(rate, \(r) map(1:1000, \(i) simulate_period(start, beta, r)) |> list_rbind() |> summarise(across(c(ties, changed), mean)))
-  ) |>
-  unnest(runs) |>
-  mutate(across(where(is.numeric), \(x) round(x, 2)))
+# TODO(code, R): needs net_saom_simulate() with a rate argument, repeated over many runs.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 5 × 4
-   rate chances_in_all  ties changed
-  <dbl>          <dbl> <dbl>   <dbl>
-1   0.5              5 10.9     3.97
-2   1               10  9.41    7.22
-3   3               30  7.29   14.0 
-4   9               90  6.57   17.5 
-5  27              270  6.42   17.5 
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# Same office, same coefficients; only the rate (chances per actor per period) changes.
-for rate in [0.5, 1, 3, 9, 27]:
-    sims = np.array([simulate_period(start, beta, rate) for _ in range(1000)])
-    ties, mutual, changed = sims.mean(axis=0)
-    print(f"rate {rate:>4}: {10 * rate:>5.1f} chances in all, {ties:.2f} ties at the end, {changed:.2f} ties changed")
+# TODO(code, Python): needs net_saom_simulate() with a rate argument, repeated over many runs.
 ```
 
 ::: {.code-output}
 ```text
-rate  0.5:   5.0 chances in all, 10.85 ties at the end, 4.13 ties changed
-rate    1:  10.0 chances in all, 9.53 ties at the end, 7.28 ties changed
-rate    3:  30.0 chances in all, 7.30 ties at the end, 14.07 ties changed
-rate    9:  90.0 chances in all, 6.47 ties at the end, 17.52 ties changed
-rate   27: 270.0 chances in all, 6.35 ties at the end, 17.51 ties changed
+TODO(output)
 ```
 :::
 
@@ -504,111 +342,24 @@ First, what happened between waves, with no model at all?
 ## R
 
 ```r
-nodes <- read.csv("data/sampson/nodes.csv")
-novices <- nodes$name[order(nodes$number)]
-liking <- read.csv("data/sampson/edges.csv") |> filter(relation == "liking")
-
-# One 18 x 18 matrix per wave: 1 when the row novice names the column novice.
-waves <- map(1:3, \(w) {
-  ties <- filter(liking, time == w)
-  x <- matrix(0, 18, 18, dimnames = list(novices, novices))
-  x[cbind(match(ties$from, novices), match(ties$to, novices))] <- 1
-  x
-})
-
-tibble(
-  wave = 1:3,
-  ties = map_dbl(waves, sum),
-  mutual_pairs = map_dbl(waves, \(x) sum(x * t(x)) / 2),
-  fewest_named = map_dbl(waves, \(x) min(rowSums(x))),
-  most_named = map_dbl(waves, \(x) max(rowSums(x)))
-)
-
-# What happened to the ties between consecutive waves?
-tibble(from_wave = 1:2) |>
-  mutate(
-    kept = map_dbl(from_wave, \(w) sum(waves[[w]] * waves[[w + 1]])),
-    dropped = map_dbl(from_wave, \(w) sum(waves[[w]] * (1 - waves[[w + 1]]))),
-    new = map_dbl(from_wave, \(w) sum((1 - waves[[w]]) * waves[[w + 1]]))
-  )
-
-# Does a tie last longer when it is returned? Every ordered pair, both transitions pooled.
-pairs <- map(1:2, \(w) {
-  now <- waves[[w]]
-  tibble(tie = as.vector(now), returned = as.vector(t(now)), later = as.vector(waves[[w + 1]]),
-         self = as.vector(row(now) == col(now)))
-}) |>
-  list_rbind() |>
-  filter(!self)
-pairs |>
-  summarise(.by = c(tie, returned), pairs = n(), tie_later = sum(later), share = round(mean(later), 3)) |>
-  arrange(desc(tie), desc(returned))
+# TODO(code, R): needs net_panel_summary(): ties, mutual pairs, kept, dropped and new ties between waves of a panel.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 3 × 5
-   wave  ties mutual_pairs fewest_named most_named
-  <int> <dbl>        <dbl>        <dbl>      <dbl>
-1     1    55           14            3          4
-2     2    57           15            3          4
-3     3    56           15            3          4
-# A tibble: 2 × 4
-  from_wave  kept dropped   new
-      <int> <dbl>   <dbl> <dbl>
-1         1    35      20    22
-2         2    40      17    16
-# A tibble: 4 × 5
-    tie returned pairs tie_later share
-  <dbl>    <dbl> <int>     <dbl> <dbl>
-1     1        1    58        43 0.741
-2     1        0    54        32 0.593
-3     0        1    54        15 0.278
-4     0        0   446        23 0.052
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-import csv
-
-with open("data/sampson/nodes.csv") as f:
-    number = {r["name"]: int(r["number"]) - 1 for r in csv.DictReader(f)}
-waves = np.zeros((3, 18, 18), dtype=int)
-with open("data/sampson/edges.csv") as f:
-    for r in csv.DictReader(f):
-        if r["relation"] == "liking":
-            waves[int(r["time"]) - 1, number[r["from"]], number[r["to"]]] = 1
-
-for w, x in enumerate(waves, 1):
-    print(f"wave {w}: {x.sum()} ties, {(x * x.T).sum() // 2} mutual pairs, each novice names {x.sum(1).min()} to {x.sum(1).max()}")
-for w in range(2):
-    x, y = waves[w], waves[w + 1]
-    print(f"wave {w + 1} to {w + 2}: {(x * y).sum()} kept, {(x * (1 - y)).sum()} dropped, {((1 - x) * y).sum()} new")
-
-# Does a tie last longer when it is returned? Every ordered pair, both transitions pooled.
-off = ~np.eye(18, dtype=bool)
-tie = np.concatenate([waves[w][off] for w in range(2)])
-returned = np.concatenate([waves[w].T[off] for w in range(2)])
-later = np.concatenate([waves[w + 1][off] for w in range(2)])
-for t in (1, 0):
-    for q in (1, 0):
-        group = (tie == t) & (returned == q)
-        print(f"tie {t}, returned {q}: {group.sum():>3} pairs, {later[group].sum():>2} have a tie later ({later[group].mean():.3f})")
+# TODO(code, Python): needs net_panel_summary(): ties, mutual pairs, kept, dropped and new ties between waves of a panel.
 ```
 
 ::: {.code-output}
 ```text
-wave 1: 55 ties, 14 mutual pairs, each novice names 3 to 4
-wave 2: 57 ties, 15 mutual pairs, each novice names 3 to 4
-wave 3: 56 ties, 15 mutual pairs, each novice names 3 to 4
-wave 1 to 2: 35 kept, 20 dropped, 22 new
-wave 2 to 3: 40 kept, 17 dropped, 16 new
-tie 1, returned 1:  58 pairs, 43 have a tie later (0.741)
-tie 1, returned 0:  54 pairs, 32 have a tie later (0.593)
-tie 0, returned 1:  54 pairs, 15 have a tie later (0.278)
-tie 0, returned 0: 446 pairs, 23 have a tie later (0.052)
+TODO(output)
 ```
 :::
 
@@ -680,99 +431,24 @@ Now the model. We have to choose three numbers: the rate, the outdegree coeffici
 ## R
 
 ```r
-# Per run: ties, mutual pairs, ties that changed from the start, and how unevenly the novices' out-degrees are spread.
-describe_wave <- \(x, x0) {
-  out <- rowSums(x)
-  tibble(ties = sum(x), mutual = sum(x * t(x)) / 2, changed = sum(x != x0),
-         outdegree_sd = sqrt(mean((out - mean(out))^2)))
-}
-simulate_runs <- \(x0, beta, rate, runs) {
-  map(seq_len(runs), \(i) describe_wave(run_until_one(x0, beta, rate, rexp(1, nrow(x0) * rate)), x0)) |>
-    list_rbind()
-}
-
-options(width = 110)  # wide enough to print every column
-observed <- describe_wave(waves[[2]], waves[[1]])
-observed |> mutate(across(everything(), \(x) round(x, 2)))
-
-# Simulate wave 1 forward at every setting on a grid, 300 runs each, and rank the settings by how far
-# the average falls from wave 2 (sum of gaps in ties, mutual pairs and ties changed).
-set.seed(1)
-calibration <- expand_grid(rate = c(3, 3.5, 4), outdegree = c(-1.5, -1.25, -1), reciprocity = c(1, 1.5, 2)) |>
-  mutate(
-    simulated = pmap(list(rate, outdegree, reciprocity), \(r, o, q) {
-      simulate_runs(waves[[1]], c(o, q), r, 300) |> summarise(across(everything(), mean))
-    }),
-    distance = map_dbl(simulated, \(s) abs(s$ties - observed$ties) + abs(s$mutual - observed$mutual) +
-                         abs(s$changed - observed$changed))
-  ) |>
-  arrange(distance) |>
-  unnest(simulated)
-calibration |> slice_head(n = 5) |> mutate(across(where(is.numeric), \(x) round(x, 2)))
+# TODO(code, R): needs net_saom_simulate() summaries for a wave-to-wave model (ties, mutual pairs, ties changed, out-degree spread).
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 1 × 4
-   ties mutual changed outdegree_sd
-  <dbl>  <dbl>   <dbl>        <dbl>
-1    57     15      42         0.37
-# A tibble: 5 × 8
-   rate outdegree reciprocity  ties mutual changed outdegree_sd distance
-  <dbl>     <dbl>       <dbl> <dbl>  <dbl>   <dbl>        <dbl>    <dbl>
-1   3.5     -1            1    58.2   13.7    40.8         1.28     3.56
-2   3.5     -1.25         1.5  54.5   15.4    40.4         1.27     4.44
-3   4       -1.25         1.5  54.3   15.2    43.9         1.3      4.82
-4   4       -1            1    58.2   13.7    45.9         1.33     6.34
-5   3       -1            1    57.6   13.8    37.0         1.26     6.76
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-def describe_wave(x, x0):
-    # ties, mutual pairs, ties that changed from the start, and how unevenly out-degrees are spread
-    return np.array([x.sum(), (x * x.T).sum() / 2, (x != x0).sum(), x.sum(1).std()])
-
-def simulate_runs(x0, beta, rate, runs):
-    return np.array([describe_wave(simulate_final(x0, beta, rate), x0) for _ in range(runs)])
-
-def simulate_final(x0, beta, rate):
-    x, time, n = x0.copy(), 0.0, len(x0)
-    while True:
-        time += rng.exponential(1 / (n * rate))
-        if time >= 1:
-            return x
-        actor = rng.integers(n)
-        j = rng.choice(n, p=ministep_probabilities(x, actor, beta))
-        if j != actor:
-            x[actor, j] = 1 - x[actor, j]
-
-observed = describe_wave(waves[1], waves[0])
-print("observed at wave 2: ties {:.0f}, mutual {:.0f}, changed {:.0f}, out-degree sd {:.2f}".format(*observed))
-
-# Simulate wave 1 forward at every setting on a grid, 300 runs each, and rank the settings by how far
-# the average falls from wave 2 (sum of gaps in ties, mutual pairs and ties changed).
-rng = np.random.default_rng(1)
-grid = []
-for rate in [3, 3.5, 4]:
-    for outdegree in [-1.5, -1.25, -1]:
-        for reciprocity in [1, 1.5, 2]:
-            mean = simulate_runs(waves[0], np.array([outdegree, reciprocity]), rate, 300).mean(axis=0)
-            grid.append((np.abs(mean[:3] - observed[:3]).sum(), rate, outdegree, reciprocity, *mean))
-for row in sorted(grid)[:5]:
-    print("rate {:.1f}, outdegree {:+.2f}, reciprocity {:.1f}: ties {:.1f}, mutual {:.1f}, changed {:.1f}, sd {:.2f} (distance {:.1f})".format(*row[1:], row[0]))
+# TODO(code, Python): needs net_saom_simulate() summaries for a wave-to-wave model (ties, mutual pairs, ties changed, out-degree spread).
 ```
 
 ::: {.code-output}
 ```text
-observed at wave 2: ties 57, mutual 15, changed 42, out-degree sd 0.37
-rate 3.5, outdegree -1.00, reciprocity 1.0: ties 58.3, mutual 13.9, changed 41.3, sd 1.30 (distance 3.1)
-rate 3.5, outdegree -1.25, reciprocity 1.5: ties 54.5, mutual 15.3, changed 40.3, sd 1.28 (distance 4.5)
-rate 4.0, outdegree -1.25, reciprocity 1.5: ties 53.9, mutual 15.2, changed 44.4, sd 1.29 (distance 5.7)
-rate 4.0, outdegree -1.00, reciprocity 1.0: ties 58.5, mutual 13.9, changed 45.6, sd 1.32 (distance 6.2)
-rate 3.0, outdegree -1.00, reciprocity 1.0: ties 57.4, mutual 13.7, changed 37.3, sd 1.25 (distance 6.5)
+TODO(output)
 ```
 :::
 
@@ -833,7 +509,7 @@ rate 3.0, outdegree -1.00, reciprocity 1.0: ties 57.4, mutual 13.5, changed 36.7
 
 :::
 
-The model has to explain the steady totals and the heavy churn together. The five best settings in the Rust run are listed above; the best is a rate of 3.5, an outdegree coefficient of $-1$ and a reciprocity coefficient of $1$. Two things to notice. The runners-up are close behind and sit along a ridge, a line of settings that fit about equally well: a more costly outdegree ($-1.25$) paired with a bigger reciprocity bonus ($1.5$) gives nearly the same wave. Three summary counts cannot pin the coefficients down one by one, which is why real estimation reports standard errors. And R and Python draw different random numbers, so their top-five lists may order the neighbors differently; look for the same neighborhood, a rate of 3 to 4, an outdegree coefficient from $-1.25$ to $-1$ and a reciprocity coefficient from 1 to 1.5.
+The model has to explain the steady totals and the heavy churn together. The five best settings in the Rust run are listed above; the best is a rate of 3.5, an outdegree coefficient of $-1$ and a reciprocity coefficient of $1$. Two things to notice. The runners-up are close behind and sit along a ridge, a line of settings that fit about equally well: a more costly outdegree ($-1.25$) paired with a bigger reciprocity bonus ($1.5$) gives nearly the same wave. Three summary counts cannot pin the coefficients down one by one, which is why real estimation reports standard errors. And a different random seed may order the neighbors differently; look for the same neighborhood, a rate of 3 to 4, an outdegree coefficient from $-1.25$ to $-1$ and a reciprocity coefficient from 1 to 1.5.
 
 One more thing: the simulated out-degree spread is about 1.3 in every setting, while the observed spread is 0.37. We come back to that below.
 
@@ -846,57 +522,24 @@ A model that reproduces the data it was tuned to proves little. The stronger che
 ## R
 
 ```r
-observed_next <- describe_wave(waves[[3]], waves[[2]])
-set.seed(3)
-tribble(~model, ~outdegree, ~reciprocity, "with reciprocity", -1, 1, "without reciprocity", -0.7, 0) |>
-  mutate(runs = map2(outdegree, reciprocity, \(o, q) simulate_runs(waves[[2]], c(o, q), 3.5, 500))) |>
-  select(model, runs) |>
-  unnest(runs) |>
-  pivot_longer(-model, names_to = "statistic") |>
-  summarise(.by = c(model, statistic), simulated = mean(value), low = quantile(value, 0.025),
-            high = quantile(value, 0.975)) |>
-  mutate(observed = unlist(observed_next)[statistic], .after = statistic) |>
-  mutate(across(where(is.numeric), \(x) round(x, 2)))
+# TODO(code, R): needs net_saom_simulate() with and without a reciprocity effect, compared with the observed next wave.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 8 × 6
-  model               statistic    observed simulated   low  high
-  <chr>               <chr>           <dbl>     <dbl> <dbl> <dbl>
-1 with reciprocity    ties            56        59.5  48    71   
-2 with reciprocity    mutual          15        14.5   9    20   
-3 with reciprocity    changed         33        41.4  30    52.5 
-4 with reciprocity    outdegree_sd     0.31      1.31  0.9   1.76
-5 without reciprocity ties            56        59.6  48    71   
-6 without reciprocity mutual          15         8.81  4    14   
-7 without reciprocity changed         33        43.7  32    55.5 
-8 without reciprocity outdegree_sd     0.31      1.31  0.87  1.8 
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-observed_next = describe_wave(waves[2], waves[1])
-labels = ["ties", "mutual pairs", "ties changed", "out-degree sd"]
-for model_name, beta_try in [("with reciprocity", [-1.0, 1.0]), ("without reciprocity", [-0.7, 0.0])]:
-    runs = simulate_runs(waves[1], np.array(beta_try), 3.5, 500)
-    for k, label in enumerate(labels):
-        low, high = np.percentile(runs[:, k], [2.5, 97.5])
-        print(f"{model_name:<20} {label:<14} observed {observed_next[k]:>6.2f}, simulated {runs[:, k].mean():>6.2f} ({low:>5.1f} to {high:>5.1f})")
+# TODO(code, Python): needs net_saom_simulate() with and without a reciprocity effect, compared with the observed next wave.
 ```
 
 ::: {.code-output}
 ```text
-with reciprocity     ties           observed  56.00, simulated  59.14 ( 48.5 to  71.0)
-with reciprocity     mutual pairs   observed  15.00, simulated  14.46 (  9.0 to  20.0)
-with reciprocity     ties changed   observed  33.00, simulated  41.37 ( 30.0 to  52.5)
-with reciprocity     out-degree sd  observed   0.31, simulated   1.31 (  0.9 to   1.7)
-without reciprocity  ties           observed  56.00, simulated  59.74 ( 49.0 to  71.0)
-without reciprocity  mutual pairs   observed  15.00, simulated   8.58 (  4.0 to  14.0)
-without reciprocity  ties changed   observed  33.00, simulated  43.86 ( 33.0 to  55.0)
-without reciprocity  out-degree sd  observed   0.31, simulated   1.33 (  0.9 to   1.8)
+TODO(output)
 ```
 :::
 
@@ -1026,141 +669,24 @@ Partial likelihood is the most technical idea in the chapter. On a first read yo
 ## R
 
 ```r
-# For every event, the counts of every pair at risk. The helper is reused for all the event models below.
-#   inertia: messages s -> r so far     reply: messages r -> s so far
-#   sender_out: everything s has sent    receiver_in: everything r has received
-# `window` is how far back an earlier message still counts (Inf: the whole past).
-rem_design <- \(sender, receiver, n, time = seq_along(sender), window = Inf) {
-  dyads <- expand_grid(s = 1:n, r = 1:n) |> filter(s != r)
-  cell <- \(s, r) s + n * (r - 1)
-  one_hot <- diag(n * n)[cell(sender, receiver), , drop = FALSE]
-  earlier <- outer(time, time, \(now, then) now - then <= window) & lower.tri(diag(length(sender)))
-  past <- earlier %*% one_hot
-  from <- outer(1:(n * n), 1:n, \(id, s) (id - 1) %% n + 1 == s) * 1
-  to <- outer(1:(n * n), 1:n, \(id, r) (id - 1) %/% n + 1 == r) * 1
-  list(
-    stats = list(
-      inertia = past[, cell(dyads$s, dyads$r)],
-      reply = past[, cell(dyads$r, dyads$s)],
-      sender_out = (past %*% from)[, dyads$s],
-      receiver_in = (past %*% to)[, dyads$r]
-    ),
-    chosen = match(cell(sender, receiver), cell(dyads$s, dyads$r))
-  )
-}
-
-# The probability that each event was the pair that sent it, given coefficients b.
-event_probability <- \(design, effects, b) {
-  stats <- design$stats[effects]
-  k <- nrow(stats[[1]])
-  x <- array(unlist(stats), dim = c(k, ncol(stats[[1]]), length(effects)))
-  score <- matrix(matrix(x, ncol = length(effects)) %*% b, nrow = k)
-  score <- score - apply(score, 1, max)
-  exp(score[cbind(seq_len(k), design$chosen)]) / rowSums(exp(score))
-}
-
-# Maximize the log partial likelihood; standard errors from the curvature at the maximum.
-fit_rem <- \(design, effects) {
-  loglik <- \(b) sum(log(event_probability(design, effects, b)))
-  fit <- optim(rep(0, length(effects)), \(b) -loglik(b), method = "BFGS", hessian = TRUE,
-               control = list(reltol = 1e-12))
-  tibble(effect = effects, coefficient = fit$par, se = sqrt(diag(solve(fit$hessian))),
-         loglik = -fit$value, null_loglik = loglik(rep(0, length(effects))))
-}
-
-# Ada = 1, Ben = 2, Cy = 3: Ada to Ben, Ben to Ada, Ada to Ben, Cy to Ada.
-tiny <- rem_design(sender = c(1, 2, 1, 3), receiver = c(2, 1, 2, 1), n = 3)
-b_reply <- log(3)
-tibble(
-  event = 1:4,
-  pair = c("Ada to Ben", "Ben to Ada", "Ada to Ben", "Cy to Ada"),
-  probability = event_probability(tiny, "reply", b_reply)
-) |>
-  mutate(probability = round(probability, 4))
-fit_rem(tiny, "reply") |>
-  mutate(at_ln3 = sum(log(event_probability(tiny, "reply", b_reply)))) |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
+# TODO(code, R): needs net_rem_design(): the statistics (inertia, reply, sender out, receiver in) for a relational event model.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 4 × 3
-  event pair       probability
-  <int> <chr>            <dbl>
-1     1 Ada to Ben      0.167 
-2     2 Ben to Ada      0.375 
-3     3 Ada to Ben      0.3   
-4     4 Cy to Ada       0.0625
-# A tibble: 1 × 6
-  effect coefficient    se loglik null_loglik at_ln3
-  <chr>        <dbl> <dbl>  <dbl>       <dbl>  <dbl>
-1 reply        0.864 0.894  -6.72       -7.17  -6.75
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-from scipy.optimize import minimize
-
-# For every event, the counts of every pair at risk. The helper is reused for all the event models below.
-#   inertia: messages s -> r so far     reply: messages r -> s so far
-#   sender_out: everything s has sent    receiver_in: everything r has received
-# `window` is how far back an earlier message still counts (inf: the whole past).
-def rem_design(sender, receiver, n, time=None, window=np.inf):
-    k = len(sender)
-    time = np.arange(k, dtype=float) if time is None else np.asarray(time, dtype=float)
-    one_hot = np.zeros((k, n * n))
-    one_hot[np.arange(k), sender * n + receiver] = 1
-    earlier = (np.arange(k)[None, :] < np.arange(k)[:, None]) & (time[:, None] - time[None, :] <= window)
-    past = (earlier @ one_hot).reshape(k, n, n)  # past[e, s, r]: messages s -> r before event e
-    s, r = np.array([(a, b) for a in range(n) for b in range(n) if a != b]).T
-    stats = {"inertia": past[:, s, r], "reply": past[:, r, s],
-             "sender_out": past.sum(axis=2)[:, s], "receiver_in": past.sum(axis=1)[:, r]}
-    return stats, sender * (n - 1) + receiver - (receiver > sender)  # the chosen pair's column
-
-def choice_probabilities(design, effects, b):
-    stats, chosen = design
-    x = np.stack([stats[e] for e in effects], axis=2)
-    score = x @ np.atleast_1d(b)
-    p = np.exp(score - score.max(axis=1, keepdims=True))
-    return x, p / p.sum(axis=1, keepdims=True), chosen
-
-# The probability that each event was the pair that sent it, given coefficients b.
-def event_probability(design, effects, b):
-    _, p, chosen = choice_probabilities(design, effects, b)
-    return p[np.arange(len(chosen)), chosen]
-
-# Maximize the log partial likelihood; standard errors from the observed information.
-def fit_rem(design, effects):
-    k = len(effects)
-    best = minimize(lambda b: -np.log(event_probability(design, effects, b)).sum(), np.zeros(k),
-                    method="BFGS", options={"gtol": 1e-10})
-    x, p, _ = choice_probabilities(design, effects, best.x)
-    mean = np.einsum("ep,epa->ea", p, x)
-    info = np.einsum("ep,epa,epb->ab", p, x, x) - mean.T @ mean
-    return {"coef": best.x, "se": np.sqrt(np.diag(np.linalg.inv(info))), "loglik": -best.fun,
-            "null_loglik": np.log(event_probability(design, effects, np.zeros(k))).sum()}
-
-# Ada = 0, Ben = 1, Cy = 2: Ada to Ben, Ben to Ada, Ada to Ben, Cy to Ada.
-tiny = rem_design(np.array([0, 1, 0, 2]), np.array([1, 0, 1, 0]), 3)
-b_reply = np.array([np.log(3)])
-p = event_probability(tiny, ["reply"], b_reply)
-for k, (label, prob) in enumerate(zip(["Ada to Ben", "Ben to Ada", "Ada to Ben", "Cy to Ada"], p), 1):
-    print(f"event {k}: {label:<11} probability {prob:.4f}")
-fit_tiny = fit_rem(tiny, ["reply"])
-print(f"log-likelihood at ln 3: {np.log(p).sum():.3f}, with no effect: {fit_tiny['null_loglik']:.3f}")
-print(f"fitted coefficient {fit_tiny['coef'][0]:+.3f} (se {fit_tiny['se'][0]:.3f}), log-likelihood {fit_tiny['loglik']:.3f}")
+# TODO(code, Python): needs net_rem_design(): the statistics (inertia, reply, sender out, receiver in) for a relational event model.
 ```
 
 ::: {.code-output}
 ```text
-event 1: Ada to Ben  probability 0.1667
-event 2: Ben to Ada  probability 0.3750
-event 3: Ada to Ben  probability 0.3000
-event 4: Cy to Ada   probability 0.0625
-log-likelihood at ln 3: -6.749, with no effect: -7.167
-fitted coefficient +0.864 (se 0.894), log-likelihood -6.715
+TODO(output)
 ```
 :::
 
@@ -1206,7 +732,7 @@ fitted coefficient +0.864 (se 0.894), log-likelihood -6.715
 :::
 
 
-All three tabs reproduce the table: 0.1667, 0.3750, 0.3000 and 0.0625, and a log-likelihood of $-6.749$ against $-7.167$ with no effect. The fitted coefficient on four messages is $+0.864$ with a standard error of 0.894, which is a way of saying that four messages tell us almost nothing. That is what the standard error is for.
+The Rust tab gives the table: 0.1667, 0.3750, 0.3000 and 0.0625, and a log-likelihood of $-6.749$ against $-7.167$ with no effect. The fitted coefficient on four messages is $+0.864$ with a standard error of 0.894, which is a way of saying that four messages tell us almost nothing. That is what the standard error is for.
 
 A standard error is the typical size of the wobble in an estimate, so a coefficient less than about two standard errors from zero is hard to tell from nothing.
 
@@ -1220,72 +746,24 @@ We use the eighty messages from @sec-time. They weren't recorded from real peopl
 ## R
 
 ```r
-# Who wrote to whom, with the eight coworkers numbered 1 to 8.
-sender <- c(
-  6, 2, 5, 7, 4, 4, 6, 5, 3, 4, 6, 0, 5, 6, 2, 3, 1, 5, 7, 2,
-  3, 7, 4, 3, 5, 0, 1, 7, 1, 0, 7, 5, 7, 5, 6, 2, 5, 1, 6, 5,
-  2, 1, 1, 6, 4, 2, 4, 5, 5, 7, 6, 3, 0, 2, 0, 6, 6, 2, 7, 3,
-  3, 4, 7, 7, 1, 6, 1, 6, 4, 1, 0, 7, 0, 1, 7, 4, 3, 3, 4, 3
-) + 1
-receiver <- c(
-  4, 7, 4, 0, 7, 5, 1, 6, 6, 6, 3, 4, 2, 1, 5, 7, 6, 3, 5, 3,
-  5, 2, 2, 2, 3, 3, 3, 1, 5, 3, 3, 4, 4, 2, 7, 7, 6, 6, 5, 3,
-  0, 7, 6, 2, 6, 6, 7, 2, 1, 6, 4, 1, 4, 4, 7, 1, 1, 4, 3, 0,
-  5, 0, 6, 0, 2, 7, 6, 2, 5, 3, 4, 2, 1, 4, 4, 2, 7, 1, 0, 0
-) + 1
-
-# relevent::rem.dyad() fits this model too; here the helpers from the last step do the work.
-model_fit <- fit_rem(rem_design(sender, receiver, 8), c("inertia", "reply"))
-model_fit |>
-  transmute(
-    effect = c("repeating a pair", "replying to a pair"),
-    coefficient, se, rate_multiplier = exp(coefficient)
-  ) |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
-
-c(fitted = model_fit$loglik[1], no_effects = model_fit$null_loglik[1]) |> round(1)
+# TODO(code, R): needs net_rem_fit(): fit a relational event model to a message log.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 2 × 4
-  effect             coefficient    se rate_multiplier
-  <chr>                    <dbl> <dbl>           <dbl>
-1 repeating a pair        -0.754 0.205            0.47
-2 replying to a pair       0.758 0.16             2.13
-    fitted no_effects 
-    -309.5     -322.0 
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-sender = np.array([
-    6, 2, 5, 7, 4, 4, 6, 5, 3, 4, 6, 0, 5, 6, 2, 3, 1, 5, 7, 2,
-    3, 7, 4, 3, 5, 0, 1, 7, 1, 0, 7, 5, 7, 5, 6, 2, 5, 1, 6, 5,
-    2, 1, 1, 6, 4, 2, 4, 5, 5, 7, 6, 3, 0, 2, 0, 6, 6, 2, 7, 3,
-    3, 4, 7, 7, 1, 6, 1, 6, 4, 1, 0, 7, 0, 1, 7, 4, 3, 3, 4, 3,
-])
-receiver = np.array([
-    4, 7, 4, 0, 7, 5, 1, 6, 6, 6, 3, 4, 2, 1, 5, 7, 6, 3, 5, 3,
-    5, 2, 2, 2, 3, 3, 3, 1, 5, 3, 3, 4, 4, 2, 7, 7, 6, 6, 5, 3,
-    0, 7, 6, 2, 6, 6, 7, 2, 1, 6, 4, 1, 4, 4, 7, 1, 1, 4, 3, 0,
-    5, 0, 6, 0, 2, 7, 6, 2, 5, 3, 4, 2, 1, 4, 4, 2, 7, 1, 0, 0,
-])
-
-# The helpers from the last step count the past messages before each event and maximize the likelihood.
-fit = fit_rem(rem_design(sender, receiver, 8), ["inertia", "reply"])
-for label, coef, err in zip(["repeating a pair", "replying to a pair"], fit["coef"], fit["se"]):
-    print(f"{label:<20} coefficient {coef:+.3f} (se {err:.3f}), rate multiplier {np.exp(coef):.2f}")
-print(f"log-likelihood {fit['loglik']:.1f}, against {fit['null_loglik']:.1f} with no effects")
+# TODO(code, Python): needs net_rem_fit(): fit a relational event model to a message log.
 ```
 
 ::: {.code-output}
 ```text
-repeating a pair     coefficient -0.754 (se 0.205), rate multiplier 0.47
-replying to a pair   coefficient +0.758 (se 0.160), rate multiplier 2.13
-log-likelihood -309.5, against -322.0 with no effects
+TODO(output)
 ```
 :::
 
@@ -1363,59 +841,24 @@ The likelihood ratio is a way to ask "did adding these effects help more than lu
 ## R
 
 ```r
-messages <- rem_design(sender, receiver, 8)
-two <- fit_rem(messages, c("inertia", "reply"))
-four <- fit_rem(messages, c("inertia", "reply", "sender_out", "receiver_in"))
-bind_rows(`two effects` = two, `four effects` = four, .id = "model") |>
-  select(model, effect, coefficient, se) |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
-
-# Likelihood ratio test of the two added effects (chi-squared with 2 degrees of freedom).
-gain <- 2 * (four$loglik[1] - two$loglik[1])
-c(statistic = gain, p_value = exp(-gain / 2)) |> round(3)
+# TODO(code, R): needs net_rem_fit() with a likelihood-ratio comparison of nested relational event models.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 6 × 4
-  model        effect      coefficient    se
-  <chr>        <chr>             <dbl> <dbl>
-1 two effects  inertia          -0.754 0.205
-2 two effects  reply             0.758 0.16 
-3 four effects inertia          -0.675 0.234
-4 four effects reply             0.73  0.164
-5 four effects sender_out       -0.077 0.082
-6 four effects receiver_in      -0.021 0.07 
-statistic   p_value 
-    0.939     0.625 
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-messages = rem_design(sender, receiver, 8)
-two = fit_rem(messages, ["inertia", "reply"])
-four = fit_rem(messages, ["inertia", "reply", "sender_out", "receiver_in"])
-for label, f, names in [("two effects", two, ["inertia", "reply"]),
-                        ("four effects", four, ["inertia", "reply", "sender_out", "receiver_in"])]:
-    for name, coef, err in zip(names, f["coef"], f["se"]):
-        print(f"{label:<13} {name:<12} {coef:+.3f} (se {err:.3f})")
-
-# Likelihood ratio test of the two added effects (chi-squared with 2 degrees of freedom).
-gain = 2 * (four["loglik"] - two["loglik"])
-print(f"likelihood ratio {gain:.3f}, p-value {np.exp(-gain / 2):.3f}")
+# TODO(code, Python): needs net_rem_fit() with a likelihood-ratio comparison of nested relational event models.
 ```
 
 ::: {.code-output}
 ```text
-two effects   inertia      -0.754 (se 0.205)
-two effects   reply        +0.758 (se 0.160)
-four effects  inertia      -0.675 (se 0.234)
-four effects  reply        +0.730 (se 0.164)
-four effects  sender_out   -0.077 (se 0.082)
-four effects  receiver_in  -0.021 (se 0.070)
-likelihood ratio 0.939, p-value 0.625
+TODO(output)
 ```
 :::
 
@@ -1466,84 +909,24 @@ Here is a mistake that the model cannot warn you about by itself. Suppose two of
 ## R
 
 ```r
-chatty_sender <- c(
-  1, 6, 3, 0, 0, 5, 0, 4, 4, 1, 0, 0, 0, 1, 1, 1, 7, 4, 1, 7, 0, 0, 1, 0, 0, 1, 1, 6, 1, 1,
-  1, 0, 0, 0, 2, 0, 1, 0, 4, 0, 0, 5, 1, 5, 1, 3, 0, 1, 1, 5, 1, 1, 0, 1, 0, 0, 4, 1, 7, 1,
-  1, 1, 2, 0, 1, 0, 1, 0, 7, 0, 2, 0, 5, 1, 0, 5, 7, 6, 1, 0, 0, 6, 1, 0, 5, 1, 1, 1, 1, 0,
-  0, 5, 1, 1, 0, 3, 0, 1, 0, 0, 7, 1, 1, 1, 5, 1, 1, 2, 1, 1, 3, 6, 0, 6, 0, 3, 4, 0, 1, 4
-) + 1
-chatty_receiver <- c(
-  7, 0, 7, 5, 4, 6, 7, 3, 0, 6, 2, 2, 2, 2, 7, 3, 0, 1, 3, 2, 3, 7, 7, 5, 7, 3, 0, 1, 0, 7,
-  2, 4, 2, 7, 1, 4, 7, 4, 7, 7, 6, 6, 5, 4, 6, 2, 7, 7, 3, 2, 6, 7, 1, 0, 2, 4, 1, 4, 3, 7,
-  6, 2, 6, 6, 5, 5, 3, 6, 0, 5, 7, 7, 2, 3, 5, 2, 5, 1, 2, 1, 4, 1, 3, 7, 6, 6, 5, 0, 6, 5,
-  7, 3, 2, 5, 4, 5, 3, 3, 1, 7, 5, 4, 2, 5, 2, 5, 0, 1, 6, 0, 5, 2, 1, 5, 5, 6, 7, 6, 6, 0
-) + 1
-tibble(coworker = 1:8, messages_sent = tabulate(chatty_sender, 8))
-
-chatty <- rem_design(chatty_sender, chatty_receiver, 8)
-bind_rows(`repeat and reply only` = fit_rem(chatty, c("inertia", "reply")),
-          `plus sender activity` = fit_rem(chatty, c("inertia", "reply", "sender_out")), .id = "model") |>
-  select(model, effect, coefficient, se) |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
+# TODO(code, R): needs net_rem_fit() for a log with a very active sender, plus a per-sender message count.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 8 × 2
-  coworker messages_sent
-     <int>         <int>
-1        1            39
-2        2            44
-3        3             4
-4        4             5
-5        5             7
-6        6             9
-7        7             6
-8        8             6
-# A tibble: 5 × 4
-  model                 effect     coefficient    se
-  <chr>                 <chr>            <dbl> <dbl>
-1 repeat and reply only inertia          0.257 0.039
-2 repeat and reply only reply           -0.004 0.062
-3 plus sender activity  inertia          0.014 0.061
-4 plus sender activity  reply            0.018 0.068
-5 plus sender activity  sender_out       0.071 0.013
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-chatty_sender = np.array([
-    1, 6, 3, 0, 0, 5, 0, 4, 4, 1, 0, 0, 0, 1, 1, 1, 7, 4, 1, 7, 0, 0, 1, 0, 0, 1, 1, 6, 1, 1,
-    1, 0, 0, 0, 2, 0, 1, 0, 4, 0, 0, 5, 1, 5, 1, 3, 0, 1, 1, 5, 1, 1, 0, 1, 0, 0, 4, 1, 7, 1,
-    1, 1, 2, 0, 1, 0, 1, 0, 7, 0, 2, 0, 5, 1, 0, 5, 7, 6, 1, 0, 0, 6, 1, 0, 5, 1, 1, 1, 1, 0,
-    0, 5, 1, 1, 0, 3, 0, 1, 0, 0, 7, 1, 1, 1, 5, 1, 1, 2, 1, 1, 3, 6, 0, 6, 0, 3, 4, 0, 1, 4
-])
-chatty_receiver = np.array([
-    7, 0, 7, 5, 4, 6, 7, 3, 0, 6, 2, 2, 2, 2, 7, 3, 0, 1, 3, 2, 3, 7, 7, 5, 7, 3, 0, 1, 0, 7,
-    2, 4, 2, 7, 1, 4, 7, 4, 7, 7, 6, 6, 5, 4, 6, 2, 7, 7, 3, 2, 6, 7, 1, 0, 2, 4, 1, 4, 3, 7,
-    6, 2, 6, 6, 5, 5, 3, 6, 0, 5, 7, 7, 2, 3, 5, 2, 5, 1, 2, 1, 4, 1, 3, 7, 6, 6, 5, 0, 6, 5,
-    7, 3, 2, 5, 4, 5, 3, 3, 1, 7, 5, 4, 2, 5, 2, 5, 0, 1, 6, 0, 5, 2, 1, 5, 5, 6, 7, 6, 6, 0
-])
-print("messages sent by each coworker:", np.bincount(chatty_sender, minlength=8))
-
-chatty = rem_design(chatty_sender, chatty_receiver, 8)
-for label, names in [("repeat and reply only", ["inertia", "reply"]),
-                     ("plus sender activity", ["inertia", "reply", "sender_out"])]:
-    f = fit_rem(chatty, names)
-    for name, coef, err in zip(names, f["coef"], f["se"]):
-        print(f"{label:<22} {name:<12} {coef:+.3f} (se {err:.3f})")
+# TODO(code, Python): needs net_rem_fit() for a log with a very active sender, plus a per-sender message count.
 ```
 
 ::: {.code-output}
 ```text
-messages sent by each coworker: [39 44  4  5  7  9  6  6]
-repeat and reply only  inertia      +0.257 (se 0.039)
-repeat and reply only  reply        -0.004 (se 0.062)
-plus sender activity   inertia      +0.014 (se 0.061)
-plus sender activity   reply        +0.018 (se 0.068)
-plus sender activity   sender_out   +0.071 (se 0.013)
+TODO(output)
 ```
 :::
 
@@ -1601,86 +984,24 @@ For the stricter null, we keep exactly who wrote to whom, but shuffle the *order
 ## R
 
 ```r
-# 1. Does the story hold in both halves of the log?
-list(first = 1:40, second = 41:80) |>
-  map(\(i) fit_rem(rem_design(sender[i], receiver[i], 8), c("inertia", "reply"))) |>
-  list_rbind(names_to = "half") |>
-  select(half, effect, coefficient, se) |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
-
-# 2. Do a few pairs dominate?
-tibble(sender, receiver) |>
-  count(sender, receiver, sort = TRUE) |>
-  summarise(distinct_pairs = n(), busiest_pair = max(n), top_three_share = round(sum(head(n, 3)) / sum(n), 3))
-
-# 3. Shuffle the order of the messages 200 times: who writes to whom stays, the timing is destroyed.
-set.seed(4)
-shuffled <- map(1:200, \(i) {
-  order <- sample(80)
-  fit_rem(rem_design(sender[order], receiver[order], 8), c("inertia", "reply")) |>
-    select(effect, coefficient)
-}) |>
-  list_rbind()
-shuffled |>
-  left_join(select(two, effect, observed = coefficient), by = "effect") |>
-  summarise(.by = effect, observed = first(observed), shuffled_mean = mean(coefficient),
-            low = quantile(coefficient, 0.025), high = quantile(coefficient, 0.975),
-            share_as_extreme = if (first(effect) == "reply") mean(coefficient >= first(observed))
-                               else mean(coefficient <= first(observed))) |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
+# TODO(code, R): needs net_rem_fit() with split-half refits and a permutation null over event order.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 4 × 4
-  half   effect  coefficient    se
-  <chr>  <chr>         <dbl> <dbl>
-1 first  inertia      -0.705 0.38 
-2 first  reply         0.729 0.296
-3 second inertia      -0.678 0.365
-4 second reply         0.628 0.282
-# A tibble: 1 × 3
-  distinct_pairs busiest_pair top_three_share
-           <int>        <int>           <dbl>
-1             45            4           0.138
-# A tibble: 2 × 6
-  effect  observed shuffled_mean    low   high share_as_extreme
-  <chr>      <dbl>         <dbl>  <dbl>  <dbl>            <dbl>
-1 inertia   -0.754        -0.627 -0.87  -0.449            0.105
-2 reply      0.758         0.672  0.506  0.924            0.21 
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# 1. Does the story hold in both halves of the log?
-for half, i in [("first", slice(0, 40)), ("second", slice(40, 80))]:
-    f = fit_rem(rem_design(sender[i], receiver[i], 8), ["inertia", "reply"])
-    print(f"{half:<7} half: inertia {f['coef'][0]:+.3f} (se {f['se'][0]:.3f}), reply {f['coef'][1]:+.3f} (se {f['se'][1]:.3f})")
-
-# 2. Do a few pairs dominate?
-from collections import Counter
-counts = sorted(Counter(zip(sender, receiver)).values(), reverse=True)
-print(f"{len(counts)} distinct pairs, busiest pair {counts[0]} messages, top three pairs {sum(counts[:3]) / 80:.3f} of all messages")
-
-# 3. Shuffle the order of the messages 200 times: who writes to whom stays, the timing is destroyed.
-rng = np.random.default_rng(4)
-shuffled = np.array([fit_rem(rem_design(sender[o], receiver[o], 8), ["inertia", "reply"])["coef"]
-                     for o in (rng.permutation(80) for _ in range(200))])
-for k, (name, tail) in enumerate([("inertia", "<="), ("reply", ">=")]):
-    low, high = np.percentile(shuffled[:, k], [2.5, 97.5])
-    extreme = (shuffled[:, k] <= two["coef"][k]) if tail == "<=" else (shuffled[:, k] >= two["coef"][k])
-    print(f"{name:<8} observed {two['coef'][k]:+.3f}, shuffled mean {shuffled[:, k].mean():+.3f} ({low:+.3f} to {high:+.3f}), {extreme.mean():.3f} of shuffles as extreme")
+# TODO(code, Python): needs net_rem_fit() with split-half refits and a permutation null over event order.
 ```
 
 ::: {.code-output}
 ```text
-first   half: inertia -0.705 (se 0.380), reply +0.729 (se 0.296)
-second  half: inertia -0.678 (se 0.365), reply +0.628 (se 0.282)
-45 distinct pairs, busiest pair 4 messages, top three pairs 0.138 of all messages
-inertia  observed -0.754, shuffled mean -0.616 (-0.820 to -0.433), 0.105 of shuffles as extreme
-reply    observed +0.758, shuffled mean +0.663 (+0.473 to +0.863), 0.160 of shuffles as extreme
+TODO(output)
 ```
 :::
 
@@ -1739,7 +1060,7 @@ reply    observed +0.758, shuffled mean +0.665 (+0.497 to +0.866), 0.175 of shuf
 
 **No dominating pairs.** The 80 messages use 45 of the 56 possible pairs, the busiest pair has 4 messages, and the top three pairs hold 13.8 percent of all messages. No pair drives the result.
 
-**The stricter null.** In all three tabs, the shuffled order gives mean coefficients near $-0.62$ for inertia and $+0.66$ for reply, with central 95 percent ranges of roughly $-0.85$ to $-0.43$ and $+0.47$ to $+0.87$. The observed $-0.75$ and $+0.76$ sit inside them: between about 10 and 21 percent of the shuffles are at least as extreme, depending on the tab's random draws. This is humbling, and it is the right result to take seriously. The z-values of 3.7 and 4.7 compare the data with a world where every pair is equally likely at every moment. The shuffle compares them with a world where the same pairs are active but the timing is random. Against that stricter world, there is no clear evidence that the *order* matters beyond *which pairs* talk. Most of what the coefficients measure is already in the set of active pairs, which includes pairs that write in both directions. More events, or a model with pair-level terms, would be needed to say more.
+**The stricter null.** In the Rust tab, the shuffled order gives mean coefficients near $-0.62$ for inertia and $+0.67$ for reply, with central 95 percent ranges of roughly $-0.85$ to $-0.43$ and $+0.50$ to $+0.87$. The observed $-0.75$ and $+0.76$ sit inside them: between about 12 and 18 percent of the shuffles are at least as extreme. This is humbling, and it is the right result to take seriously. The z-values of 3.7 and 4.7 compare the data with a world where every pair is equally likely at every moment. The shuffle compares them with a world where the same pairs are active but the timing is random. Against that stricter world, there is no clear evidence that the *order* matters beyond *which pairs* talk. Most of what the coefficients measure is already in the set of active pairs, which includes pairs that write in both directions. More events, or a model with pair-level terms, would be needed to say more.
 
 ![The two event-model coefficients for the eighty invented messages, refitted on each half of the log and with two more effects in the model. Dots are estimates, bars reach two standard errors either side. The halves agree in sign and size, but each half alone is only about two standard errors from zero.](../figures/rem-stability.svg){#fig-rem-stability fig-alt="Two panels with four rows each, estimates as dots with bars of two standard errors either side and a dashed line at zero. all 80 messages: inertia -0.75, reply +0.76; first 40: inertia -0.70, reply +0.73; last 40: inertia -0.68, reply +0.63; all 80, plus activity and popularity: inertia -0.68, reply +0.73. In every row the inertia estimate is below zero and the reply estimate is above zero; in the two half-log rows the inertia bars extend slightly past zero and the reply bars begin just above it."}
 
@@ -1761,7 +1082,7 @@ What none of them shows: that the next event happens *because* of the past event
 
 ### Where tools disagree
 
-Three observed things. Our R, Python and Rust codes give the same event-model coefficients to three decimals, because the partial likelihood has no randomness. The simulations in the SAOM section do not, since R, Python and Rust draw different random numbers, so their averages differ in the last digit or two and their calibration tables can order close neighbors differently. And a tool that is not in this chapter can still differ in *parameterization*: two programs that both say "reciprocity" can count different things. In this chapter the engine's reciprocity statistic counts every mutual pair twice, once for each of its two actors, so we halve it to count pairs. Check the definition before comparing coefficients across software.
+Three observed things. The event-model coefficients have no randomness in them, because the partial likelihood is exact, so any correct program gives the same ones to three decimals. The simulations in the SAOM section do not: a different random number generator gives averages that differ in the last digit or two, and calibration tables that can order close neighbors differently. And a tool that is not in this chapter can still differ in *parameterization*: two programs that both say "reciprocity" can count different things. In this chapter the engine's reciprocity statistic counts every mutual pair twice, once for each of its two actors, so we halve it to count pairs. Check the definition before comparing coefficients across software.
 
 Misconceptions to drop:
 

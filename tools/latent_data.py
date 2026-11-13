@@ -6,6 +6,10 @@ then saves what they computed: the 40 posterior draws of the map (aligned to the
 map, because positions are only defined up to turns, mirror images and shifts) and the
 simulation summaries of the goodness-of-fit check. Needs numpy, scipy, pandas, networkx.
 
+Note: the Python tabs of the chapter are stubs now (no hand-written fitter), so this script
+cannot run until knappnet exposes net_latent_fit() and net_latent_sample(). The CSVs it wrote
+earlier are kept in books/sna/data/latent/.
+
 Usage: python3 tools/latent_data.py      (writes books/sna/data/latent/*.csv)
 """
 import csv

@@ -34,7 +34,7 @@ Each run of a model involves chance, so one run tells you almost nothing. We rep
 
 ::: {.callout-warning appearance="simple"}
 ## The outbreaks here are simulated, not observed
-The karate club's friendships are observed [@zachary1977information]. Every infection in this chapter is invented by a computer and laid over those real ties. The numbers say what *would* happen under stated rules, not what did happen, and nobody should read them as a finding about the club. knappnet doesn't ship a diffusion simulator, so we write one by hand. It's about fifteen lines, and you can read every one. The R, Python and Rust tabs draw different random numbers even from the same seed, so their results agree about, not to the last digit.
+The karate club's friendships are observed [@zachary1977information]. Every infection in this chapter is invented by a computer and laid over those real ties. The numbers say what *would* happen under stated rules, not what did happen, and nobody should read them as a finding about the club. knappnet's R and Python packages do not expose a diffusion simulator yet (`net_spread()` is the missing function, so those tabs are blank), and the Rust tab holds a short simulator you can read line by line. Different languages draw different random numbers even from the same seed, so results from two programs agree about, not to the last digit.
 :::
 
 ## Three stories about spread: SI, SIR and SIS
@@ -120,77 +120,39 @@ For the office the degrees are 2, 3, 3, 2, 2, 2, so $\langle k\rangle = 14/6$ an
 ## R
 
 ```r
-library(dplyr)
-library(purrr)
-library(tibble)
-library(tidyr)
+library(knappnet)
 
-options(width = 110)   # wide enough to print whole tables
+office <- net_frame(data.frame(source = c(1, 1, 2, 3, 4, 5, 2), target = c(2, 3, 3, 4, 5, 6, 6)),
+                    directed = FALSE)
+karate <- net_frame(read.csv("data/karate/edges.csv")[, c("source", "target")], directed = FALSE)
 
-# A symmetric 0/1 adjacency matrix from the two ends of every tie.
-adjacency <- \(from, to, n) {
-  a <- matrix(0, n, n)
-  a[cbind(from, to)] <- 1
-  pmax(a, t(a))
+moments <- function(g) {
+  k <- net_degree(g)
+  lambda <- eigen(as.matrix(g), symmetric = TRUE, only.values = TRUE)$values[1]
+  c(mean_k = mean(k), mean_k2 = mean(k^2), t_c = mean(k) / (mean(k^2) - mean(k)),
+    lambda_1 = lambda, one_over_lambda = 1 / lambda)
 }
 
-office <- adjacency(c(1, 1, 2, 3, 4, 5, 2), c(2, 3, 3, 4, 5, 6, 6), 6)
-ties <- read.csv("data/karate/edges.csv")
-karate <- adjacency(ties$source, ties$target, 34)
-
-moments <- \(a) {
-  k <- rowSums(a)
-  lambda <- max(eigen(a, symmetric = TRUE, only.values = TRUE)$values)
-  tibble(
-    mean_k = mean(k), mean_k2 = mean(k^2),
-    t_c = mean(k) / (mean(k^2) - mean(k)),
-    lambda_1 = lambda, one_over_lambda = 1 / lambda
-  )
-}
-
-list(office = office, karate = karate) |>
-  map(moments) |>
-  bind_rows(.id = "network") |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
+round(rbind(office = moments(office), karate = moments(karate)), 3)
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 2 × 6
-  network mean_k mean_k2   t_c lambda_1 one_over_lambda
-  <chr>    <dbl>   <dbl> <dbl>    <dbl>           <dbl>
-1 office    2.33    5.67 0.7       2.44           0.41 
-2 karate    4.59   35.6  0.148     6.73           0.149
+        mean_k mean_k2   t_c lambda_1 one_over_lambda
+office   2.333   5.667 0.700    2.440           0.410
+karate   4.588  35.647 0.148    6.726           0.149
 ```
 :::
 
 ## Python
 
 ```python
-import numpy as np
-
-def adjacency(src, dst, n):
-    """A symmetric 0/1 adjacency matrix from the two ends of every tie."""
-    a = np.zeros((n, n))
-    a[src, dst] = 1
-    return np.maximum(a, a.T)
-
-office = adjacency([0, 0, 1, 2, 3, 4, 1], [1, 2, 2, 3, 4, 5, 5], 6)
-ties = np.loadtxt("data/karate/edges.csv", delimiter=",", skiprows=1, dtype=int)
-karate = adjacency(ties[:, 0] - 1, ties[:, 1] - 1, 34)
-
-for name, a in [("office", office), ("karate", karate)]:
-    k = a.sum(axis=1)
-    lam = np.linalg.eigvalsh(a)[-1]
-    t_c = k.mean() / ((k ** 2).mean() - k.mean())
-    print(f"{name:7s} <k> {k.mean():.3f}  <k^2> {(k ** 2).mean():.3f}  T_c {t_c:.3f}  "
-          f"lambda_1 {lam:.3f}  1/lambda_1 {1 / lam:.3f}")
+# TODO(code, Python): needs net_epidemic_threshold(): the degree-moment threshold T_c and the largest adjacency eigenvalue for a network.
 ```
 
 ::: {.code-output}
 ```text
-office  <k> 2.333  <k^2> 5.667  T_c 0.700  lambda_1 2.438  1/lambda_1 0.410
-karate  <k> 4.588  <k^2> 35.647  T_c 0.148  lambda_1 6.726  1/lambda_1 0.149
+TODO(output)
 ```
 :::
 
@@ -265,77 +227,24 @@ Here is the whole machine. A function takes the network, the seeds, $\beta$, $\g
 ## R
 
 ```r
-set.seed(2026)
-
-# States: 0 susceptible, 1 infected, 2 recovered. Returns everyone's state after each step.
-spread <- \(a, seeds, beta, gamma, steps = 40, sis = FALSE, thr = 0) {
-  n <- nrow(a)
-  step <- \(s, i) {
-    k <- as.vector(a %*% (s == 1))
-    hit <- if (thr > 0) k >= thr else runif(n) < 1 - (1 - beta)^k
-    caught <- s == 0 & hit
-    recovered <- s == 1 & runif(n) < gamma
-    s |> replace(recovered, if (sis) 0 else 2) |> replace(caught, 1)
-  }
-  accumulate(seq_len(steps), step, .init = replace(numeric(n), seeds, 1))
-}
-
-new_after_one_step <- \(seed, runs = 20000) {
-  map_dbl(seq_len(runs), \(i) sum(spread(office, seed, beta = 0.5, gamma = 0, steps = 1)[[2]]) - 1) |>
-    mean()
-}
-
-tibble(person = c("Chloe", "Ana"), seed = c(3, 1)) |>
-  mutate(
-    degree = rowSums(office)[seed],
-    exact = 0.5 * degree,
-    simulated = round(map_dbl(seed, new_after_one_step), 3)
-  )
+# TODO(code, R): needs net_spread(): SIR, SIS and threshold spreading on a network (states after every step).
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 2 × 5
-  person  seed degree exact simulated
-  <chr>  <dbl>  <dbl> <dbl>     <dbl>
-1 Chloe      3      3   1.5     1.51 
-2 Ana        1      2   1       0.997
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-rng = np.random.default_rng(2026)
-
-def spread(a, seeds, beta, gamma, steps=40, sis=False, thr=0):
-    """States: 0 susceptible, 1 infected, 2 recovered. Returns everyone's state after each step."""
-    n = len(a)
-    s = np.zeros(n, dtype=int)
-    s[seeds] = 1
-    history = [s.copy()]
-    for _ in range(steps):
-        k = a @ (s == 1)
-        hit = k >= thr if thr else rng.random(n) < 1 - (1 - beta) ** k
-        caught = (s == 0) & hit
-        recovered = (s == 1) & (rng.random(n) < gamma)
-        s = np.where(recovered, 0 if sis else 2, s)
-        s = np.where(caught, 1, s)
-        history.append(s.copy())
-    return np.array(history)
-
-def new_after_one_step(seed, runs=20000):
-    return np.mean([(spread(office, [seed], 0.5, 0, steps=1)[1] == 1).sum() - 1 for _ in range(runs)])
-
-for name, seed in [("Chloe", 2), ("Ana", 0)]:
-    degree = int(office[seed].sum())
-    print(f"{name:6s} degree {degree}  exact {0.5 * degree:.3f}  simulated {new_after_one_step(seed):.3f}")
+# TODO(code, Python): needs net_spread(): SIR, SIS and threshold spreading on a network (states after every step).
 ```
 
 ::: {.code-output}
 ```text
-Chloe  degree 3  exact 1.500  simulated 1.500
-Ana    degree 2  exact 1.000  simulated 1.002
+TODO(output)
 ```
 :::
 
@@ -421,97 +330,24 @@ Then SIS on the same network, with recovery chance 0.5 and ten random starters, 
 ## R
 
 ```r
-describe <- \(x) tibble(mean = mean(x), low = unname(quantile(x, 0.025)), high = unname(quantile(x, 0.975)))
-
-# How many people ever catch it, over many runs from one random seed.
-infected_count <- \(a, beta, gamma, runs = 2000) {
-  map_dbl(seq_len(runs), \(i) sum(dplyr::last(spread(a, sample(nrow(a), 1), beta, gamma)) != 0))
-}
-
-tibble(t = c(0.1, 0.15, 0.2, 0.3, 0.5)) |>
-  mutate(
-    count = map(t, \(t) infected_count(karate, t, 1)),
-    attack = map(count, \(x) describe(x / 34)),
-    big_outbreak = map_dbl(count, \(x) mean(x >= 10))
-  ) |>
-  select(-count) |>
-  unnest(attack) |>
-  mutate(across(-t, \(x) round(x, 3)))
-
-# SIS: the share infected after 100 steps, from 10 random starters.
-prevalence <- \(a, beta, gamma, runs = 500) {
-  map_dbl(seq_len(runs), \(i) {
-    final <- dplyr::last(spread(a, sample(nrow(a), 10), beta, gamma, steps = 100, sis = TRUE))
-    mean(final == 1)
-  })
-}
-
-tibble(beta = c(0.1, 0.2, 0.5), gamma = 0.5) |>
-  mutate(
-    ratio = beta / gamma,
-    p = map(beta, \(b) prevalence(karate, b, 0.5)),
-    mean_prevalence = round(map_dbl(p, mean), 3),
-    died_out = round(map_dbl(p, \(x) mean(x == 0)), 3)
-  ) |>
-  select(-p)
+# TODO(code, R): needs net_spread() repeated over many runs, with attack-rate summaries.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 5 × 5
-      t  mean   low  high big_outbreak
-  <dbl> <dbl> <dbl> <dbl>        <dbl>
-1  0.1  0.059 0.029 0.235        0.015
-2  0.15 0.093 0.029 0.412        0.076
-3  0.2  0.146 0.029 0.559        0.192
-4  0.3  0.329 0.029 0.765        0.52 
-5  0.5  0.706 0.029 0.971        0.833
-# A tibble: 3 × 5
-   beta gamma ratio mean_prevalence died_out
-  <dbl> <dbl> <dbl>           <dbl>    <dbl>
-1   0.1   0.5   0.2           0.001    0.992
-2   0.2   0.5   0.4           0.364    0.006
-3   0.5   0.5   1             0.585    0    
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-def describe(x):
-    lo, hi = np.percentile(x, [2.5, 97.5])
-    return np.mean(x), lo, hi
-
-def infected_count(a, beta, gamma, runs=2000):
-    """How many people ever catch it, over many runs from one random seed."""
-    return np.array([(spread(a, [rng.integers(len(a))], beta, gamma)[-1] != 0).sum() for _ in range(runs)])
-
-print("SIR on the karate club, one random seed, infectious for one step (T = beta)")
-for t in [0.1, 0.15, 0.2, 0.3, 0.5]:
-    count = infected_count(karate, t, 1.0)
-    mean, lo, hi = describe(count / 34)
-    print(f"T {t:.2f}  mean attack rate {mean:.3f}  95% of runs in [{lo:.3f}, {hi:.3f}]  "
-          f"big outbreaks (>= 10 people) {np.mean(count >= 10):.3f}")
-
-print("SIS, recovery chance 0.5, 10 random starters, after 100 steps")
-for beta in [0.1, 0.2, 0.5]:
-    p = np.array([(spread(karate, rng.choice(34, 10, replace=False), beta, 0.5, steps=100, sis=True)[-1] == 1).mean()
-                  for _ in range(500)])
-    print(f"beta/gamma {beta / 0.5:.2f}  mean prevalence {p.mean():.3f}  runs where it died out {np.mean(p == 0):.3f}")
+# TODO(code, Python): needs net_spread() repeated over many runs, with attack-rate summaries.
 ```
 
 ::: {.code-output}
 ```text
-SIR on the karate club, one random seed, infectious for one step (T = beta)
-T 0.10  mean attack rate 0.058  95% of runs in [0.029, 0.235]  big outbreaks (>= 10 people) 0.012
-T 0.15  mean attack rate 0.093  95% of runs in [0.029, 0.382]  big outbreaks (>= 10 people) 0.073
-T 0.20  mean attack rate 0.155  95% of runs in [0.029, 0.559]  big outbreaks (>= 10 people) 0.222
-T 0.30  mean attack rate 0.336  95% of runs in [0.029, 0.765]  big outbreaks (>= 10 people) 0.531
-T 0.50  mean attack rate 0.719  95% of runs in [0.029, 0.971]  big outbreaks (>= 10 people) 0.847
-SIS, recovery chance 0.5, 10 random starters, after 100 steps
-beta/gamma 0.20  mean prevalence 0.000  runs where it died out 0.996
-beta/gamma 0.40  mean prevalence 0.365  runs where it died out 0.010
-beta/gamma 1.00  mean prevalence 0.587  runs where it died out 0.000
+TODO(output)
 ```
 :::
 
@@ -584,9 +420,9 @@ beta/gamma 1.00  mean prevalence 0.590  runs where it died out 0.000
 
 :::
 
-Read the first table down. At $T = 0.1$, under $T_c = 0.148$, the mean attack rate is 0.058, barely above the seed alone (0.029), and a big outbreak is rare (about one run in a hundred). At $T = 0.15$, right at the threshold, the mean is 0.093 and 7 percent of runs are big outbreaks. At $T = 0.5$ the mean is 0.719 and about 85 percent of runs are big. But look at the interval at $T = 0.5$, which runs from 0.029 to 0.971. Identical settings give both a non-event and a sweep of the club, and the mean describes neither. With 34 people there's no clean jump at $T_c$ (@fig-diffusion-attack): the curve bends gradually. The threshold is a statement about large networks, and here it's only a rough marker of where outbreaks go from rare to common.
+Read the first table down. At $T = 0.1$, under $T_c = 0.148$, the mean attack rate is 0.059, barely above the seed alone (0.029), and a big outbreak is rare (about one run in a hundred). At $T = 0.15$, right at the threshold, the mean is 0.089 and 7 percent of runs are big outbreaks. At $T = 0.5$ the mean is 0.710 and about 84 percent of runs are big. But look at the interval at $T = 0.5$, which runs from 0.029 to 0.971. Identical settings give both a non-event and a sweep of the club, and the mean describes neither. With 34 people there's no clean jump at $T_c$ (@fig-diffusion-attack): the curve bends gradually. The threshold is a statement about large networks, and here it's only a rough marker of where outbreaks go from rare to common.
 
-The SIS table makes the same point more sharply. A ratio $\beta/\gamma$ of 0.2 is *above* $1/\lambda_1 = 0.149$, and the infection still died out in nearly every run (99.6 percent), because in a small network a lucky stretch of recoveries ends it. It took a ratio of 0.4 for the infection to persist (about 37 percent of the club infected after 100 steps) and 1.0 for it to hold at about 59 percent. The eigenvalue rule describes large networks, where chance extinction is unlikely, and it's a poor guide to 34 people.
+The SIS table makes the same point more sharply. A ratio $\beta/\gamma$ of 0.2 is *above* $1/\lambda_1 = 0.149$, and the infection still died out in nearly every run (99.8 percent), because in a small network a lucky stretch of recoveries ends it. It took a ratio of 0.4 for the infection to persist (about 37 percent of the club infected after 100 steps) and 1.0 for it to hold at about 59 percent. The eigenvalue rule describes large networks, where chance extinction is unlikely, and it's a poor guide to 34 people.
 
 One more caution about $T$. The threshold depends on $T$ alone, because early on only the average number of onward cases matters. The *final size* does not: if people differ in how long they stay infectious, one person's attempts on different neighbors are linked, and two settings with the same $T$ can end differently. Exercise 4 shows it.
 
@@ -601,52 +437,24 @@ The threshold said something about the network as a whole. Now ask about one see
 ## R
 
 ```r
-deg <- rowSums(karate)
-seed_for <- \(rule) switch(rule, hub = which.max(deg), random = sample(34, 1), periphery = which.min(deg))
-steps_to_half <- \(states) which(map_dbl(states, \(s) sum(s == 1)) >= 17)[1] - 1
-
-tibble(rule = c("hub", "random", "periphery")) |>
-  mutate(
-    si_steps = map(rule, \(r) map_dbl(1:2000, \(i) steps_to_half(spread(karate, seed_for(r), 0.2, 0, steps = 60)))),
-    sir_attack = map(rule, \(r) map_dbl(1:2000, \(i) mean(dplyr::last(spread(karate, seed_for(r), 0.2, 0.5)) != 0))),
-    si_steps = map(si_steps, describe),
-    sir_attack = map(sir_attack, describe)
-  ) |>
-  unnest(c(si_steps, sir_attack), names_sep = "_") |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
+# TODO(code, R): needs net_spread() with seed rules (hub, random, periphery) and steps-to-half summaries.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 3 × 7
-  rule      si_steps_mean si_steps_low si_steps_high sir_attack_mean sir_attack_low sir_attack_high
-  <chr>             <dbl>        <dbl>         <dbl>           <dbl>          <dbl>           <dbl>
-1 hub                4.26            3           6             0.543          0.059           0.854
-2 random             6.48            3          12.0           0.352          0.029           0.853
-3 periphery          9.36            4          21             0.199          0.029           0.795
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-deg = karate.sum(axis=1)
-hub, periphery = int(deg.argmax()), int(deg.argmin())
-seed_for = {"hub": lambda: hub, "random": lambda: rng.integers(34), "periphery": lambda: periphery}
-
-for rule, pick_seed in seed_for.items():
-    si = [int(np.argmax((spread(karate, [pick_seed()], 0.2, 0, steps=60) == 1).sum(axis=1) >= 17)) for _ in range(2000)]
-    sir = [(spread(karate, [pick_seed()], 0.2, 0.5)[-1] != 0).mean() for _ in range(2000)]
-    m1, l1, h1 = describe(si)
-    m2, l2, h2 = describe(sir)
-    print(f"{rule:9s} SI steps to half {m1:.2f} [{l1:.0f}, {h1:.0f}]   SIR attack rate {m2:.3f} [{l2:.3f}, {h2:.3f}]")
+# TODO(code, Python): needs net_spread() with seed rules (hub, random, periphery) and steps-to-half summaries.
 ```
 
 ::: {.code-output}
 ```text
-hub       SI steps to half 4.25 [3, 6]   SIR attack rate 0.548 [0.059, 0.853]
-random    SI steps to half 6.56 [3, 13]   SIR attack rate 0.378 [0.029, 0.853]
-periphery SI steps to half 9.11 [4, 20]   SIR attack rate 0.200 [0.029, 0.824]
+TODO(output)
 ```
 :::
 
@@ -683,7 +491,7 @@ periphery SI steps to half 9.24 [4, 22]   SIR attack rate 0.210 [0.029, 0.824]
 
 :::
 
-With the best-connected member as the seed, half the club has it after about 4.3 steps on average. From a random member it takes 6.6, and from the member with one tie, 9.1 (the Rust tab gives 4.3, 6.4 and 9.2). The intervals matter as much as the means: [3, 6] steps for the hub against [4, 20] for the one-tie seed. That seed is slow *and unpredictable*, because everything waits on one tie, and at 0.2 per step it fails four steps in five. The reason is the one-step arithmetic from earlier: the hub expects $17 \times 0.2 = 3.4$ new cases in the first step, a random member $4.59 \times 0.2 = 0.92$, and the one-tie member 0.2. In SIR the mean attack rate follows the same order, 0.55, 0.38 and 0.20. Even the hub's outbreak occasionally stalls: the lower end of its interval, 0.059, is two people.
+With the best-connected member as the seed, half the club has it after about 4.3 steps on average. From a random member it takes 6.4, and from the member with one tie, 9.2. The intervals matter as much as the means: [3, 6] steps for the hub against [4, 22] for the one-tie seed. That seed is slow *and unpredictable*, because everything waits on one tie, and at 0.2 per step it fails four steps in five. The reason is the one-step arithmetic from earlier: the hub expects $17 \times 0.2 = 3.4$ new cases in the first step, a random member $4.59 \times 0.2 = 0.92$, and the one-tie member 0.2. In SIR the mean attack rate follows the same order, 0.53, 0.37 and 0.21. Even the hub's outbreak occasionally stalls: the lower end of its interval, 0.059, is two people.
 
 Three more structural facts push the same way, none of which we simulate here. **Bridges** (ties that join otherwise separate parts, @sec-paths-and-cohesion) are routes for crossing between groups, and an outbreak seeded inside a community tends to saturate it before it crosses the few ties between communities, so spread curves often have a shoulder. **Clustering** puts redundant paths around a case, which for simple contagion mostly wastes attempts. **Hubs** are reached early and reach many, which is why they lower the threshold. @fig-diffusion-seeds shows the three seed rules over time.
 
@@ -698,67 +506,24 @@ A friendship survey misses ties, and an outbreak travels along *all* the contact
 ## R
 
 ```r
-src <- ties$source
-dst <- ties$target
-
-damaged_speed <- \(rule, networks = 200, runs = 5) {
-  map(seq_len(networks), \(i) {
-    keep <- sample(78, 70)
-    a <- adjacency(src[keep], dst[keep], 34)
-    map_dbl(seq_len(runs), \(j) {
-      seed <- if (rule == "hub") which.max(rowSums(a)) else sample(34, 1)
-      states <- spread(a, seed, 0.2, 0)
-      steps_to_half(states)
-    })
-  }) |>
-    unlist()
-}
-
-tibble(rule = c("hub", "random")) |>
-  mutate(steps = map(rule, damaged_speed)) |>
-  mutate(
-    reached_half = map_dbl(steps, \(x) mean(!is.na(x))),
-    mean_steps = map_dbl(steps, \(x) mean(x, na.rm = TRUE))
-  ) |>
-  select(-steps) |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
+# TODO(code, R): needs net_spread() on randomly damaged copies of a network (net_remove_edges() at random).
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 2 × 3
-  rule   reached_half mean_steps
-  <chr>         <dbl>      <dbl>
-1 hub           1           4.63
-2 random        0.995       7.30
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-src, dst = ties[:, 0] - 1, ties[:, 1] - 1
-
-def damaged_speed(rule, networks=200, runs=5):
-    steps = []
-    for _ in range(networks):
-        keep = rng.permutation(78)[:70]          # drop 8 of the 78 ties
-        a = adjacency(src[keep], dst[keep], 34)
-        for _ in range(runs):
-            seed = int(a.sum(axis=1).argmax()) if rule == "hub" else int(rng.integers(34))
-            infected = (spread(a, [seed], 0.2, 0) == 1).sum(axis=1)
-            steps.append(np.argmax(infected >= 17) if infected[-1] >= 17 else np.nan)
-    return np.array(steps)
-
-for rule in ["hub", "random"]:
-    s = damaged_speed(rule)
-    print(f"{rule:7s} reached half the club in {np.mean(~np.isnan(s)):.3f} of runs, mean {np.nanmean(s):.2f} steps")
+# TODO(code, Python): needs net_spread() on randomly damaged copies of a network (net_remove_edges() at random).
 ```
 
 ::: {.code-output}
 ```text
-hub     reached half the club in 1.000 of runs, mean 4.61 steps
-random  reached half the club in 0.991 of runs, mean 7.22 steps
+TODO(output)
 ```
 :::
 
@@ -795,7 +560,7 @@ random  reached half the club in 0.994 of runs, mean 7.27 steps
 
 :::
 
-The hub seed still wins after the damage: half the club in about 4.6 steps, against about 7.2 for a random seed, and a random seed fails to reach half in a small share of runs (0.9 percent in Python, 0.6 in Rust, 0.5 in R), presumably when it starts at a member who has lost their only tie. So the advice "seed the hub" survives this particular stress. It doesn't survive every kind of missing data: real surveys don't lose ties at random, they tend to lose weak ties and ties to people outside the boundary, and hubs are the ones most likely to be mis-measured. A fuller check would rerun this with the damage you think your data has.
+The hub seed still wins after the damage: half the club in about 4.6 steps, against about 7.3 for a random seed, and a random seed fails to reach half in a small share of runs (0.6 percent in the Rust run), presumably when it starts at a member who has lost their only tie. So the advice "seed the hub" survives this particular stress. It doesn't survive every kind of missing data: real surveys don't lose ties at random, they tend to lose weak ties and ties to people outside the boundary, and hubs are the ones most likely to be mis-measured. A fuller check would rerun this with the damage you think your data has.
 
 ### Readings: what fast or slow spread means in different places
 
@@ -833,106 +598,24 @@ We test both claims. The networks have 60 people. The **ring** has everyone tied
 ## R
 
 ```r
-# n people on a ring, each tied to k people on either side; each tie's far end is redrawn with chance p.
-ring <- \(n, k, p) {
-  a <- rep(seq_len(n), each = k)
-  b <- (a - 1 + rep(seq_len(k), n)) %% n + 1
-  b <- ifelse(runif(length(a)) < p, sample.int(n, length(a), replace = TRUE), b)
-  keep <- a != b
-  adjacency(a[keep], b[keep], n)
-}
-clustering <- \(a) {
-  k <- rowSums(a)
-  sum(diag(a %*% a %*% a)) / sum(k * (k - 1))
-}
-start <- \(a) {
-  s <- sample.int(nrow(a), 1)
-  nb <- which(a[s, ] == 1)
-  c(s, nb[sample.int(length(nb), min(2, length(nb)))])
-}
-
-trial <- \(p) {
-  a <- ring(60, 3, p)
-  seeds <- start(a)
-  curve <- \(...) map_dbl(spread(a, seeds, steps = 60, ...), \(s) mean(s == 1))
-  tibble(
-    rule = c("simple", "complex"), degree = mean(rowSums(a)), clustering = clustering(a),
-    curve = list(curve(beta = 0.15, gamma = 0), curve(beta = 0, gamma = 0, thr = 2))
-  )
-}
-
-tibble(p = c(0, 1), network = c("ring lattice", "rewired")) |>
-  mutate(runs = map(p, \(p) bind_rows(map(1:500, \(i) trial(p))))) |>
-  unnest(runs) |>
-  mutate(
-    final = map_dbl(curve, dplyr::last),
-    half = map_dbl(curve, \(h) if (dplyr::last(h) >= 0.5) which(h >= 0.5)[1] - 1 else NA)
-  ) |>
-  summarise(
-    degree = mean(degree), clustering = mean(clustering), reach = mean(final),
-    low = unname(quantile(final, 0.025)), high = unname(quantile(final, 0.975)),
-    steps_to_half = mean(half, na.rm = TRUE),
-    .by = c(network, rule)
-  ) |>
-  mutate(across(where(is.numeric), \(x) round(x, 2)))
+# TODO(code, R): needs net_random_small_world() with net_spread() for simple and complex contagion.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 4 × 8
-  network      rule    degree clustering reach   low  high steps_to_half
-  <chr>        <chr>    <dbl>      <dbl> <dbl> <dbl> <dbl>         <dbl>
-1 ring lattice simple    6          0.6   1     1        1         13.4 
-2 ring lattice complex   6          0.6   1     1        1          7   
-3 rewired      simple    5.66       0.08  1     1        1          6.04
-4 rewired      complex   5.66       0.08  0.38  0.05     1          6.53
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-def ring(n, k, p):
-    """n people on a ring, each tied to k people on either side; each tie's far end is redrawn with chance p."""
-    a = np.repeat(np.arange(n), k)
-    b = (a + np.tile(np.arange(1, k + 1), n)) % n
-    b = np.where(rng.random(len(a)) < p, rng.integers(0, n, len(a)), b)
-    keep = a != b
-    return adjacency(a[keep], b[keep], n)
-
-def clustering(a):
-    k = a.sum(axis=1)
-    return np.trace(a @ a @ a) / (k * (k - 1)).sum()
-
-def start(a):
-    s = rng.integers(len(a))
-    return [s, *rng.permutation(np.flatnonzero(a[s]))[:2]]
-
-rules = {"simple": dict(beta=0.15, gamma=0), "complex": dict(beta=0, gamma=0, thr=2)}
-for p, label in [(0, "ring lattice"), (1, "rewired")]:
-    res = {name: [] for name in rules}
-    degree, clust = [], []
-    for _ in range(500):
-        a = ring(60, 3, p)
-        degree.append(a.sum(axis=1).mean())
-        clust.append(clustering(a))
-        seeds = start(a)
-        for name, kw in rules.items():
-            share = (spread(a, seeds, steps=60, **kw) == 1).sum(axis=1) / 60
-            res[name].append((share[-1], np.argmax(share >= 0.5) if share[-1] >= 0.5 else np.nan))
-    for name, v in res.items():
-        v = np.array(v)
-        mean, lo, hi = describe(v[:, 0])
-        print(f"{label:12s} degree {np.mean(degree):.2f} clustering {np.mean(clust):.2f} {name:7s} "
-              f"reach {mean:.2f} [{lo:.2f}, {hi:.2f}] steps to half {np.nanmean(v[:, 1]):.1f}")
+# TODO(code, Python): needs net_random_small_world() with net_spread() for simple and complex contagion.
 ```
 
 ::: {.code-output}
 ```text
-ring lattice degree 6.00 clustering 0.60 simple  reach 1.00 [1.00, 1.00] steps to half 13.3
-ring lattice degree 6.00 clustering 0.60 complex reach 1.00 [1.00, 1.00] steps to half 7.0
-rewired      degree 5.66 clustering 0.08 simple  reach 1.00 [1.00, 1.00] steps to half 5.9
-rewired      degree 5.66 clustering 0.08 complex reach 0.36 [0.05, 1.00] steps to half 6.4
+TODO(output)
 ```
 :::
 
@@ -1009,7 +692,7 @@ rewired      degree 5.66 clustering 0.08 complex reach 0.39 [0.05, 1.00] steps t
 
 :::
 
-The ring and the rewired network have the same size and nearly the same degree (6.00 and 5.66), but clustering of 0.60 against 0.08. For **simple** contagion, both reach everyone, but the rewired network gets to half in about 6 steps and the ring takes 13.3: the shortcuts do their job. For **complex** contagion the story flips. On the ring it reaches everyone in every run and gets to half in 7.0 steps. On the rewired network the mean reach is only 0.36 (the Rust tab gives 0.39), with an interval of [0.05, 1.00]: 0.05 is the three seeds alone, so in a large share of runs it stalled at once, and in the rest it swept through at about the same speed as on the ring (6.4 steps to half). Complex contagion on a random network is all or nothing, and *more often nothing*. @fig-diffusion-complex shows the average curves.
+The ring and the rewired network have the same size and nearly the same degree (6.00 and 5.66), but clustering of 0.60 against 0.08. For **simple** contagion, both reach everyone, but the rewired network gets to half in about 6 steps and the ring takes 13.4: the shortcuts do their job. For **complex** contagion the story flips. On the ring it reaches everyone in every run and gets to half in 7.0 steps. On the rewired network the mean reach is only 0.39, with an interval of [0.05, 1.00]: 0.05 is the three seeds alone, so in a large share of runs it stalled at once, and in the rest it swept through at about the same speed as on the ring (6.5 steps to half). Complex contagion on a random network is all or nothing, and *more often nothing*. @fig-diffusion-complex shows the average curves.
 
 One hedge. This is a threshold of 2 on a degree-6 network. Raise the threshold to 4 and even the ring stalls (Exercise 5), and the effect of rewiring depends on both numbers. The pattern, clustering helping complex contagion and shortcuts helping simple, is robust. The exact sizes belong to these settings.
 
@@ -1041,87 +724,24 @@ To see this concretely, use the karate club's real ties and give everyone a bina
 ## R
 
 ```r
-faction <- as.integer(read.csv("data/karate/nodes.csv")$faction == "Mr. Hi")
-same_share <- \(x, s, t) mean(x[s] == x[t])
-draw_trait <- \() sample(rep(0:1, 17))
-all_pairs <- which(upper.tri(diag(34)), arr.ind = TRUE)
-
-copy_step <- \(x) {
-  pick <- max.col(karate * matrix(runif(34 * 34), 34), ties.method = "first")   # a random neighbor each
-  ifelse(runif(34) < 0.5, x[pick], x)
-}
-influence <- \() draw_trait() |> copy_step() |> copy_step() |> copy_step() |> same_share(src, dst)
-selection <- \() {
-  x <- draw_trait()
-  w <- ifelse(x[all_pairs[, 1]] == x[all_pairs[, 2]], 4, 1)
-  chosen <- order(-log(runif(nrow(all_pairs))) / w)[1:78]      # weighted draw of 78 pairs without replacement
-  same_share(x, all_pairs[chosen, 1], all_pairs[chosen, 2])
-}
-shared_environment <- \() same_share(ifelse(runif(34) < 0.85, faction, 1 - faction), src, dst)
-
-tibble(
-  story = c("nothing at work", "influence only", "selection only", "shared environment"),
-  make = list(\() same_share(draw_trait(), src, dst), influence, selection, shared_environment)
-) |>
-  mutate(share = map(make, \(f) describe(map_dbl(1:1000, \(i) f())))) |>
-  select(-make) |>
-  unnest(share) |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
+# TODO(code, R): needs net_coevolve(): influence and selection simulations on a network with a node trait.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 4 × 4
-  story               mean   low  high
-  <chr>              <dbl> <dbl> <dbl>
-1 nothing at work    0.485 0.397 0.59 
-2 influence only     0.616 0.462 0.821
-3 selection only     0.777 0.692 0.859
-4 shared environment 0.673 0.487 0.833
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-faction = (np.loadtxt("data/karate/nodes.csv", delimiter=",", skiprows=1, dtype=str, usecols=1) == "Mr. Hi").astype(int)
-pairs = np.triu_indices(34, 1)
-
-def same_share(x, s, t):
-    return (x[s] == x[t]).mean()
-
-def draw_trait():
-    return rng.permutation(np.repeat([0, 1], 17))
-
-def influence():
-    x = draw_trait()
-    for _ in range(3):
-        pick = np.argmax(karate * rng.random((34, 34)), axis=1)          # a random neighbor each
-        x = np.where(rng.random(34) < 0.5, x[pick], x)
-    return same_share(x, src, dst)
-
-def selection():
-    x = draw_trait()
-    w = np.where(x[pairs[0]] == x[pairs[1]], 4.0, 1.0)
-    chosen = np.argsort(-np.log(rng.random(len(w))) / w)[:78]            # weighted draw of 78 pairs without replacement
-    return same_share(x, pairs[0][chosen], pairs[1][chosen])
-
-def shared_environment():
-    return same_share(np.where(rng.random(34) < 0.85, faction, 1 - faction), src, dst)
-
-stories = [("nothing at work", lambda: same_share(draw_trait(), src, dst)), ("influence only", influence),
-           ("selection only", selection), ("shared environment", shared_environment)]
-for name, make in stories:
-    mean, lo, hi = describe([make() for _ in range(1000)])
-    print(f"{name:19s} same-trait share of ties {mean:.3f} [{lo:.3f}, {hi:.3f}]")
+# TODO(code, Python): needs net_coevolve(): influence and selection simulations on a network with a node trait.
 ```
 
 ::: {.code-output}
 ```text
-nothing at work     same-trait share of ties 0.484 [0.397, 0.577]
-influence only      same-trait share of ties 0.611 [0.461, 0.821]
-selection only      same-trait share of ties 0.774 [0.679, 0.859]
-shared environment  same-trait share of ties 0.673 [0.487, 0.821]
+TODO(output)
 ```
 :::
 
@@ -1188,7 +808,7 @@ shared environment  same-trait share of ties 0.677 [0.500, 0.821]
 
 :::
 
-Read the four rows. With nothing at work, the share of same-trait ties is 0.48, and the interval [0.40, 0.58] is the noise you get from 34 people and 78 ties. Influence only gives 0.61 [0.46, 0.82], selection only gives 0.77 [0.68, 0.86], and the shared environment gives 0.67 [0.49, 0.82]. All three mechanisms lift the share well above chance, and the intervals overlap heavily: a share of 0.70, say, sits comfortably inside all three. Selection is highest on average here only because of the settings we picked (a weight of 4, three rounds of copying at 0.5). Other settings reorder them freely, and we tuned none of them. The point isn't which is bigger. A single snapshot's statistic can't tell you which world you are in.
+Read the four rows. With nothing at work, the share of same-trait ties is 0.49, and the interval [0.40, 0.58] is the noise you get from 34 people and 78 ties. Influence only gives 0.61 [0.46, 0.81], selection only gives 0.78 [0.69, 0.86], and the shared environment gives 0.68 [0.50, 0.82]. All three mechanisms lift the share well above chance, and the intervals overlap heavily: a share of 0.70, say, sits comfortably inside all three. Selection is highest on average here only because of the settings we picked (a weight of 4, three rounds of copying at 0.5). Other settings reorder them freely, and we tuned none of them. The point isn't which is bigger. A single snapshot's statistic can't tell you which world you are in.
 
 ### What designs can separate them
 

@@ -22,7 +22,7 @@ This chapter has some formulas. Every one comes with a plain-words callout and a
 
 ::: {.callout-tip appearance="simple"}
 ## Code lives next to the idea
-Each step comes with its code right where it is explained. The Rust blocks in this chapter run top to bottom as one script: the first builds the karate club, and later ones reuse it. The R and Python blocks share their variables the same way, so a later block may use a function an earlier one defined.
+Each step comes with its code right where it is explained. The Rust blocks in this chapter run top to bottom as one script: the first builds the karate club, and later ones reuse it. The R and Python blocks that are filled in share their variables the same way. A block that holds only a `TODO(code)` comment is waiting for a function that knappnet does not expose yet, and the Rust block beside it carries the numbers.
 :::
 
 In @sec-ergm we modeled ties by counting patterns: ties, triangles, same-side pairs. That works well when you know which patterns matter. This chapter takes the opposite road. Instead of choosing patterns, we ask the network to *show us* who is alike, and we let that likeness explain the ties.
@@ -183,120 +183,24 @@ Fitting means finding the positions and the baseline $\alpha$ that make the obse
 ## R
 
 ```r
-# latentnet::ergmm() fits this model too. We write the likelihood out instead, so every
-# piece is visible: classical scaling of the path distances, then a quasi-Newton climb.
-A <- matrix(0, 34, 34)
-A[cbind(edges$source, edges$target)] <- 1
-A <- A + t(A)
-pairs <- which(upper.tri(A), arr.ind = TRUE)
-tied <- A[pairs]
-
-fit_map <- function(dim) {
-  start <- cmdscale(net_distances(club), k = dim)
-  negloglik <- function(par) {
-    z <- matrix(par[-length(par)], 34, dim)
-    eta <- par[length(par)] - sqrt(rowSums((z[pairs[, 1], , drop = FALSE] - z[pairs[, 2], , drop = FALSE])^2) + 1e-12)
-    -sum(tied * eta - pmax(eta, 0) - log1p(exp(-abs(eta))))
-  }
-  gradient <- function(par) {
-    z <- matrix(par[-length(par)], 34, dim)
-    diff <- z[pairs[, 1], , drop = FALSE] - z[pairs[, 2], , drop = FALSE]
-    dist <- sqrt(rowSums(diff^2) + 1e-12)
-    resid <- tied - 1 / (1 + exp(dist - par[length(par)]))
-    step <- -resid / dist * diff
-    # Each pair pushes its first member along `step` and its second member the opposite way.
-    total_by <- function(rows) {
-      sums <- rowsum(step, rows)
-      out <- matrix(0, 34, dim)
-      out[as.integer(rownames(sums)), ] <- sums
-      out
-    }
-    -c(total_by(pairs[, 1]) - total_by(pairs[, 2]), sum(resid))
-  }
-  res <- optim(c(start, 0), negloglik, gradient, method = "BFGS",
-               control = list(maxit = 5000, reltol = 1e-14))
-  list(positions = matrix(res$par[-length(res$par)], 34, dim), alpha = res$par[length(res$par)],
-       loglik = -res$value, steps = res$counts[["gradient"]], converged = res$convergence == 0)
-}
-
-# The likelihood has many hills, and R's search climbs a different one than Rust's
-# does, so the numbers below differ in the first decimals. Python differs too.
-fit <- fit_map(2)
-positions <- fit$positions
-
-options(pillar.sigfig = 4)
-
-tibble(alpha = fit$alpha, loglik = fit$loglik, steps = fit$steps, converged = fit$converged) |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
-
-# Where the two leaders ended up on the map.
-tibble(member = c("Mr. Hi", "officer"), x = positions[c(1, 34), 1], y = positions[c(1, 34), 2]) |>
-  mutate(across(where(is.numeric), \(x) round(x, 2)))
+# TODO(code, R): needs net_latent_fit(x, dim = 2): maximum-likelihood latent distance map (positions, alpha, log-likelihood).
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 1 × 4
-  alpha loglik steps converged
-  <dbl>  <dbl> <dbl> <lgl>    
-1 3.029 -122.7    78 TRUE     
-# A tibble: 2 × 3
-  member      x     y
-  <chr>   <dbl> <dbl>
-1 Mr. Hi  -3.68 -0.4 
-2 officer  3.75 -0.14
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-from scipy.optimize import minimize
-from scipy.sparse.csgraph import shortest_path
-
-A = nx.to_numpy_array(club, nodelist=range(34))
-pair_i, pair_j = np.triu_indices(34, 1)
-tied = A[pair_i, pair_j]
-
-def fit_map(dim):
-    # Start from classical scaling of the path distances, then climb the likelihood.
-    D = shortest_path(A, unweighted=True)
-    J = np.eye(34) - 1 / 34
-    w, v = np.linalg.eigh(-0.5 * J @ D**2 @ J)
-    start = v[:, ::-1][:, :dim] * np.sqrt(w[::-1][:dim])
-
-    def negloglik(par):
-        z, alpha = par[:-1].reshape(34, dim), par[-1]
-        diff = z[pair_i] - z[pair_j]
-        dist = np.sqrt((diff**2).sum(axis=1) + 1e-12)
-        eta = alpha - dist
-        resid = tied - 1 / (1 + np.exp(-eta))
-        grad = np.zeros((34, dim))
-        step = (-resid / dist)[:, None] * diff
-        np.add.at(grad, pair_i, step)
-        np.add.at(grad, pair_j, -step)
-        loglik = (tied * eta - np.logaddexp(0, eta)).sum()
-        return -loglik, -np.append(grad.ravel(), resid.sum())
-
-    res = minimize(negloglik, np.append(start.ravel(), 0.0), jac=True, method="L-BFGS-B",
-                   options={"maxiter": 5000, "ftol": 1e-14})
-    return res.x[:-1].reshape(34, dim), res.x[-1], -res.fun, res
-
-# The likelihood has many hills, and scipy's search climbs a different one than Rust's
-# does, so the numbers below differ in the first decimals. R and Python also differ.
-positions, alpha, loglik, res = fit_map(2)
-print(f"baseline log-odds (alpha): {alpha:.3f}")
-print(f"log-likelihood: {loglik:.2f}")
-print(f"search steps: {res.nit}, converged: {str(res.success).lower()}")
-print(f"Mr. Hi at ({positions[0, 0]:.2f}, {positions[0, 1]:.2f}), the officer at ({positions[33, 0]:.2f}, {positions[33, 1]:.2f})")
+# TODO(code, Python): needs net_latent_fit(x, dim = 2): maximum-likelihood latent distance map (positions, alpha, log-likelihood).
 ```
 
 ::: {.code-output}
 ```text
-baseline log-odds (alpha): 3.052
-log-likelihood: -122.40
-search steps: 2346, converged: true
-Mr. Hi at (3.63, -0.57), the officer at (-3.78, -0.27)
+TODO(output)
 ```
 :::
 
@@ -323,7 +227,7 @@ Mr. Hi at (3.64, -0.52), the officer at (-3.78, -0.31)
 
 :::
 
-The R and Python tabs fit the same model with their own optimizers, which climb a different hill of the likelihood than the Rust search does, so their digits differ from the ones shown here.
+The R and Python tabs are blank here because knappnet does not yet expose a latent space fitter (`net_latent_fit()` is the missing piece), and we do not write the likelihood out by hand. The numbers come from the Rust tab.
 
 Don't be alarmed by a long list of numbers here. The fit is a search, like walking uphill in fog to find the highest point, and the only thing to read from the output is the final score and the baseline.
 
@@ -343,63 +247,24 @@ A map is a picture. To use it, turn it back into numbers: how likely is each pai
 ## R
 
 ```r
-# Distances come from the map, so they differ a little from Rust's.
-# Turn the map into tie probabilities: log-odds = alpha - distance.
-distance <- as.matrix(dist(positions))
-pair_table <- tibble(i = pairs[, 1], j = pairs[, 2]) |>
-  mutate(distance = distance[cbind(i, j)],
-         p = 1 / (1 + exp(distance - fit$alpha)),
-         tied = A[cbind(i, j)] == 1,
-         same_side = side[i] == side[j])
-
-pair_table |> summarise(expected_ties = sum(p), observed_ties = sum(tied))
-
-pair_table |>
-  group_by(tied) |>
-  summarise(pairs = n(), average_chance = mean(p))
-
-pair_table |>
-  group_by(same_side) |>
-  summarise(pairs = n(), average_distance = mean(distance))
+# TODO(code, R): needs net_latent_fit() plus a predict method: tie probabilities for every pair from a fitted map.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 1 × 2
-  expected_ties observed_ties
-          <dbl>         <int>
-1         78.00            78
-# A tibble: 2 × 3
-  tied  pairs average_chance
-  <lgl> <int>          <dbl>
-1 FALSE   483        0.08060
-2 TRUE     78        0.5009 
-# A tibble: 2 × 3
-  same_side pairs average_distance
-  <lgl>     <int>            <dbl>
-1 FALSE       289            9.468
-2 TRUE        272            5.194
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# Distances come from the map, so they differ a little from Rust's.
-# Turn the map into tie probabilities: log-odds = alpha - distance.
-dist = np.linalg.norm(positions[pair_i] - positions[pair_j], axis=1)
-p = 1 / (1 + np.exp(dist - alpha))
-same_side = side[pair_i] == side[pair_j]
-print(f"expected ties {p.sum():.1f} (observed {int(tied.sum())})")
-print(f"average chance of a tie: {p[tied == 1].mean():.3f} for pairs that are tied, {p[tied == 0].mean():.3f} for pairs that are not")
-print(f"average distance: {dist[same_side].mean():.2f} within a side, {dist[~same_side].mean():.2f} between sides")
+# TODO(code, Python): needs net_latent_fit() plus a predict method: tie probabilities for every pair from a fitted map.
 ```
 
 ::: {.code-output}
 ```text
-expected ties 78.0 (observed 78)
-average chance of a tie: 0.502 for pairs that are tied, 0.080 for pairs that are not
-average distance: 5.24 within a side, 9.47 between sides
+TODO(output)
 ```
 :::
 
@@ -439,8 +304,6 @@ average distance: 5.27 within a side, 9.47 between sides
 
 :::
 
-Because the R and Python maps differ a little from the Rust map, the averages they print differ in the first decimals too.
-
 Three things to see. First, the model's expected number of ties is 78.0, exactly the observed number. That is not luck: the likelihood is maximized, among other things, over $\alpha$, and at the maximum the expected number of ties must equal the observed one, the same property an intercept gives an ordinary logistic regression. Second, pairs that are tied get an average chance of about 0.50 and pairs that aren't get about 0.08, so the map separates ties from non-ties, though far from perfectly, as it should for friendships that no map can fully predict. Third, members of the same side are on average 5.3 apart and members of different sides 9.5, so the map found the split on its own.
 
 ::: {.callout-warning appearance="simple"}
@@ -457,38 +320,24 @@ Why two dimensions? Mostly because we can draw two. More dimensions always fit a
 ## R
 
 ```r
-tibble(dim = 1:3) |>
-  mutate(fit = map(dim, fit_map),
-         loglik = map_dbl(fit, "loglik"),
-         alpha = map_dbl(fit, "alpha")) |>
-  select(!fit) |>
-  mutate(across(where(is.numeric), \(x) round(x, 2)))
+# TODO(code, R): needs net_latent_fit() over several dim values: log-likelihood and alpha by dimension.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 3 × 3
-    dim  loglik alpha
-  <dbl>   <dbl> <dbl>
-1     1 -159.2   0.4 
-2     2 -122.7   3.03
-3     3  -83.31 17.98
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-for dim in (1, 2, 3):
-    _, a, ll, _ = fit_map(dim)
-    print(f"{dim} dimension(s): log-likelihood {ll:8.2f}, alpha {a:6.2f}")
+# TODO(code, Python): needs net_latent_fit() over several dim values: log-likelihood and alpha by dimension.
 ```
 
 ::: {.code-output}
 ```text
-1 dimension(s): log-likelihood  -159.14, alpha   0.42
-2 dimension(s): log-likelihood  -122.40, alpha   3.05
-3 dimension(s): log-likelihood   -73.83, alpha  47.28
+TODO(output)
 ```
 :::
 
@@ -511,8 +360,6 @@ for dim in 1..=3 {
 
 :::
 
-Again, the R and Python optimizers end at different hills, so their log-likelihoods and baselines differ from these, most of all in three dimensions, where the search runs off along the ridge described below.
-
 Going from one dimension to two raises the log-likelihood from $-160$ to $-122$, a big gain for 34 more numbers. Three dimensions look better still, at $-84$, but look at $\alpha$: it jumped to nearly 14. That is a warning sign. With enough room, the model can place members so that ties and non-ties separate almost perfectly, and then the likelihood has no peak: it keeps rising as the positions spread out and $\alpha$ grows. In a longer search it climbed past $-59$ with $\alpha$ near 100. A fit like that is memorizing the network, and a map that memorizes tells you nothing. With only 34 people, two dimensions is as far as the data will carry us. In larger networks you would compare models by how well they predict ties left out of the fit.
 
 ::: {.callout-tip title="An everyday picture"}
@@ -534,45 +381,24 @@ These two rules are price tags. You start with how badly the model fits, which i
 ## R
 
 ```r
-# Count the free numbers: every position, minus the shifts and turns that change nothing, plus alpha.
-n_pairs <- nrow(pairs)
-tibble(dim = 1:2) |>
-  mutate(fit = map(dim, fit_map),
-         loglik = map_dbl(fit, "loglik"),
-         free_numbers = 34 * dim - dim - dim * (dim - 1) / 2 + 1,
-         aic = -2 * loglik + 2 * free_numbers,
-         bic = -2 * loglik + free_numbers * log(n_pairs)) |>
-  select(!fit) |>
-  mutate(across(where(is.numeric), \(x) round(x, 1)))
+# TODO(code, R): needs net_latent_fit() with AIC and BIC (free-number count) for each dimension.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 2 × 5
-    dim loglik free_numbers   aic   bic
-  <dbl>  <dbl>        <dbl> <dbl> <dbl>
-1     1 -159.2           34 386.4 533.6
-2     2 -122.7           66 377.5 663.3
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# Count the free numbers: every position, minus the shifts and turns that change nothing, plus alpha.
-n_pairs = len(tied)
-print(f"{'dim':>3} {'free numbers':>13} {'log-lik':>9} {'AIC':>7} {'BIC':>7}")
-for dim in (1, 2):
-    _, _, ll, _ = fit_map(dim)
-    free = 34 * dim - dim - dim * (dim - 1) // 2 + 1
-    print(f"{dim:>3} {free:>13} {ll:9.1f} {-2 * ll + 2 * free:7.1f} {-2 * ll + free * np.log(n_pairs):7.1f}")
+# TODO(code, Python): needs net_latent_fit() with AIC and BIC (free-number count) for each dimension.
 ```
 
 ::: {.code-output}
 ```text
-dim  free numbers   log-lik     AIC     BIC
-  1            34    -159.1   386.3   533.5
-  2            66    -122.4   376.8   662.6
+TODO(output)
 ```
 :::
 
@@ -614,76 +440,24 @@ It is tempting to read the map like a street map: that cluster is the "inner cir
 ## R
 
 ```r
-pair_loglik <- function(z, a) {
-  eta <- a - sqrt(rowSums((z[pairs[, 1], , drop = FALSE] - z[pairs[, 2], , drop = FALSE])^2))
-  sum(tied * eta - pmax(eta, 0) - log1p(exp(-abs(eta))))
-}
-
-turn <- 0.7
-rotation <- matrix(c(cos(turn), sin(turn), -sin(turn), cos(turn)), 2, 2)
-mirror <- diag(c(1, -1))
-shift <- c(5, -3)
-changes <- list(
-  "as fitted" = positions,
-  "turned by 0.7 radians" = positions %*% rotation,
-  "mirrored" = positions %*% mirror,
-  "shifted by (5, -3)" = sweep(positions, 2, shift, "+"),
-  "all three together" = sweep(positions %*% rotation %*% mirror, 2, shift, "+"),
-  "stretched 1.3 times sideways" = sweep(positions, 2, c(1.3, 1), "*")
-)
-
-tibble(change = names(changes),
-       loglik = map_dbl(changes, \(z) pair_loglik(z, fit$alpha)),
-       largest_distance_change = map_dbl(changes, \(z) max(abs(as.vector(dist(z)) - as.vector(dist(positions)))))) |>
-  mutate(across(where(is.numeric), \(x) round(x, 4)))
+# TODO(code, R): needs net_latent_loglik(): log-likelihood of a map, to show turns, mirrors and shifts change nothing.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 6 × 3
-  change                       loglik largest_distance_change
-  <chr>                         <dbl>                   <dbl>
-1 as fitted                    -122.7                   0    
-2 turned by 0.7 radians        -122.7                   0    
-3 mirrored                     -122.7                   0    
-4 shifted by (5, -3)           -122.7                   0    
-5 all three together           -122.7                   0    
-6 stretched 1.3 times sideways -132.4                   5.635
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-def pair_loglik(z, a):
-    eta = a - np.linalg.norm(z[pair_i] - z[pair_j], axis=1)
-    return (tied * eta - np.logaddexp(0, eta)).sum()
-
-turn = 0.7
-rotation = np.array([[np.cos(turn), -np.sin(turn)], [np.sin(turn), np.cos(turn)]])
-mirror = np.diag([1.0, -1.0])
-shift = np.array([5.0, -3.0])
-changes = {
-    "as fitted": positions,
-    "turned by 0.7 radians": positions @ rotation,
-    "mirrored": positions @ mirror,
-    "shifted by (5, -3)": positions + shift,
-    "all three together": positions @ rotation @ mirror + shift,
-    "stretched 1.3 times sideways": positions * np.array([1.3, 1.0]),
-}
-for name, z in changes.items():
-    gap = np.abs(np.linalg.norm(z[pair_i] - z[pair_j], axis=1) - dist).max()
-    print(f"{name:<29} log-likelihood {pair_loglik(z, alpha):9.4f}, largest change in a distance {gap:.4f}")
+# TODO(code, Python): needs net_latent_loglik(): log-likelihood of a map, to show turns, mirrors and shifts change nothing.
 ```
 
 ::: {.code-output}
 ```text
-as fitted                     log-likelihood -122.4019, largest change in a distance 0.0000
-turned by 0.7 radians         log-likelihood -122.4019, largest change in a distance 0.0000
-mirrored                      log-likelihood -122.4019, largest change in a distance 0.0000
-shifted by (5, -3)            log-likelihood -122.4019, largest change in a distance 0.0000
-all three together            log-likelihood -122.4019, largest change in a distance 0.0000
-stretched 1.3 times sideways  log-likelihood -132.0727, largest change in a distance 5.6579
+TODO(output)
 ```
 :::
 
@@ -753,48 +527,24 @@ The long inequality says that going straight from person $i$ to person $k$ is ne
 ## R
 
 ```r
-# Chance of a tie for every pair, from the map (zero on the diagonal).
-P <- 1 / (1 + exp(distance - fit$alpha))
-diag(P) <- 0
-overall <- sum(A) / (34 * 33)
-# Each triangle is counted six times by the trace.
-count_triangles <- \(M) sum(diag(M %*% M %*% M)) / 6
-
-tibble(source = c("the club", "the fitted map", "every pair with the same chance"),
-       triangles = c(count_triangles(A), count_triangles(P), count_triangles(overall * (1 - diag(34))))) |>
-  mutate(triangles = round(triangles, 1))
+# TODO(code, R): needs net_latent_fit() predict method plus expected triangle counts under the fitted map.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 3 × 2
-  source                          triangles
-  <chr>                               <dbl>
-1 the club                             45  
-2 the fitted map                       41.8
-3 every pair with the same chance      16.1
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# Chance of a tie for every pair, from the map (zero on the diagonal).
-P = np.zeros((34, 34))
-P[pair_i, pair_j] = P[pair_j, pair_i] = p
-density = A.sum() / (34 * 33)
-triangles = lambda M: np.trace(M @ M @ M) / 6    # each triangle is counted six times by the trace
-
-print(f"triangles in the club:                        {triangles(A):6.1f}")
-print(f"expected from the fitted map:                 {triangles(P):6.1f}")
-print(f"expected if every pair had chance {density:.3f}:    {triangles(density * (1 - np.eye(34))):6.1f}")
+# TODO(code, Python): needs net_latent_fit() predict method plus expected triangle counts under the fitted map.
 ```
 
 ::: {.code-output}
 ```text
-triangles in the club:                          45.0
-expected from the fitted map:                   41.3
-expected if every pair had chance 0.139:      16.1
+TODO(output)
 ```
 :::
 
@@ -844,138 +594,24 @@ Think about what to measure, though. Positions are only defined up to turns, mir
 ## R
 
 ```r
-# Log-likelihood of the ties of member i alone.
-node_loglik <- function(z, a, i) {
-  eta <- a - sqrt(rowSums(sweep(z[-i, , drop = FALSE], 2, z[i, ])^2))
-  sum(A[i, -i] * eta - pmax(eta, 0) - log1p(exp(-abs(eta))))
-}
-
-# Nudge member i and keep the move with the Metropolis probability (Normal(0, 10) prior on each coordinate).
-move_member <- function(z, i, a, step = 0.5, prior_sd = 10) {
-  moved <- z
-  moved[i, ] <- z[i, ] + step * rnorm(2)
-  log_accept <- node_loglik(moved, a, i) - node_loglik(z, a, i) -
-    (sum(moved[i, ]^2) - sum(z[i, ]^2)) / (2 * prior_sd^2)
-  if (log(runif(1)) < log_accept) moved else z
-}
-
-# Visit the members one at a time (recursion instead of a loop).
-move_all <- function(z, members, a) {
-  if (length(members) == 0) z else move_all(move_member(z, members[1], a), members[-1], a)
-}
-
-move_alpha <- function(z, a, step = 0.2, prior_sd = 10) {
-  proposal <- a + step * rnorm(1)
-  log_accept <- pair_loglik(z, proposal) - pair_loglik(z, a) - (proposal^2 - a^2) / (2 * prior_sd^2)
-  if (log(runif(1)) < log_accept) proposal else a
-}
-
-run_chain <- function(z, a, sweeps) {
-  if (sweeps == 0) return(list(z = z, alpha = a))
-  z <- move_all(z, 1:34, a)
-  run_chain(z, move_alpha(z, a), sweeps - 1)
-}
-
-# 40 chains of 100 sweeps, each started at the fitted map; the last state of each is one draw.
-set.seed(1)
-draws <- map(1:40, \(chain) run_chain(positions, fit$alpha, 100))
-
-apart <- \(z, i, j) sqrt(sum((z[i, ] - z[j, ])^2))
-draw_table <- tibble(
-  leaders_apart = map_dbl(draws, \(d) apart(d$z, 1, 34)),
-  member2_lean = map_dbl(draws, \(d) apart(d$z, 3, 1) - apart(d$z, 3, 34)),
-  alpha = map_dbl(draws, "alpha"),
-  loglik = map_dbl(draws, \(d) pair_loglik(d$z, d$alpha))
-)
-
-draw_table |>
-  map(\(x) tibble(mean = mean(x), low = quantile(x, 0.025, names = FALSE), high = quantile(x, 0.975, names = FALSE))) |>
-  bind_rows(.id = "quantity") |>
-  mutate(across(where(is.numeric), \(x) round(x, 2)))
-
-# member2_lean is the distance from member 2 to Mr. Hi minus the distance to the officer.
-tibble(nearer_Mr_Hi = sum(draw_table$member2_lean < 0), of_draws = nrow(draw_table))
-
-tibble(quantity = c("leaders_apart", "member2_lean", "alpha", "loglik"),
-       at_fitted_map = c(apart(positions, 1, 34), apart(positions, 3, 1) - apart(positions, 3, 34), fit$alpha, fit$loglik)) |>
-  mutate(at_fitted_map = round(at_fitted_map, 2))
+# TODO(code, R): needs net_latent_sample(): a Metropolis sampler for the positions and alpha, with distance summaries for the draws.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 4 × 4
-  quantity         mean     low    high
-  <chr>           <dbl>   <dbl>   <dbl>
-1 leaders_apart    7.74    5.86    9.34
-2 member2_lean    -1.25   -3.2     1.09
-3 alpha            3.36    2.85    3.88
-4 loglik        -155    -164.3  -147.7 
-# A tibble: 1 × 2
-  nearer_Mr_Hi of_draws
-         <int>    <int>
-1           31       40
-# A tibble: 4 × 2
-  quantity      at_fitted_map
-  <chr>                 <dbl>
-1 leaders_apart          7.43
-2 member2_lean          -0.99
-3 alpha                  3.03
-4 loglik              -122.7 
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-rng = np.random.default_rng(1)
-
-def node_loglik(z, a, i):
-    """Log-likelihood of the ties of member i alone."""
-    eta = a - np.linalg.norm(np.delete(z, i, axis=0) - z[i], axis=1)
-    return (np.delete(A[i], i) * eta - np.logaddexp(0, eta)).sum()
-
-def run_chain(z, a, sweeps, step=0.5, alpha_step=0.2, prior_sd=10.0):
-    """Random-walk Metropolis: nudge each member in turn, then alpha. Normal(0, 10) priors."""
-    z = z.copy()
-    for _ in range(sweeps):
-        for i in range(34):
-            old, new = z[i].copy(), z[i] + step * rng.standard_normal(2)
-            before = node_loglik(z, a, i)
-            z[i] = new
-            log_accept = node_loglik(z, a, i) - before - (new @ new - old @ old) / (2 * prior_sd**2)
-            if np.log(rng.uniform()) >= log_accept:
-                z[i] = old
-        a_new = a + alpha_step * rng.standard_normal()
-        log_accept = pair_loglik(z, a_new) - pair_loglik(z, a) - (a_new**2 - a**2) / (2 * prior_sd**2)
-        if np.log(rng.uniform()) < log_accept:
-            a = a_new
-    return z, a
-
-# 40 chains of 100 sweeps, each started at the fitted map; the last state of each is one draw.
-draws = [run_chain(positions, alpha, 100) for _ in range(40)]
-apart = lambda z, i, j: np.linalg.norm(z[i] - z[j])
-summaries = {
-    "distance from Mr. Hi to the officer": [apart(z, 0, 33) for z, _ in draws],
-    "member 2: distance to Mr. Hi minus to the officer": [apart(z, 2, 0) - apart(z, 2, 33) for z, _ in draws],
-    "alpha": [a for _, a in draws],
-    "log-likelihood of the map": [pair_loglik(z, a) for z, a in draws],
-}
-for name, values in summaries.items():
-    low, high = np.quantile(values, [0.025, 0.975])
-    print(f"{name}: mean {np.mean(values):.2f}, 95% range {low:.2f} to {high:.2f}")
-closer = sum(value < 0 for value in summaries["member 2: distance to Mr. Hi minus to the officer"])
-print(f"member 2 is nearer Mr. Hi than the officer in {closer} of {len(draws)} draws")
-print(f"at the fitted map: {apart(positions, 0, 33):.2f}, {apart(positions, 2, 0) - apart(positions, 2, 33):.2f}, {alpha:.2f}, {pair_loglik(positions, alpha):.2f}")
+# TODO(code, Python): needs net_latent_sample(): a Metropolis sampler for the positions and alpha, with distance summaries for the draws.
 ```
 
 ::: {.code-output}
 ```text
-distance from Mr. Hi to the officer: mean 7.79, 95% range 6.27 to 9.40
-member 2: distance to Mr. Hi minus to the officer: mean -1.34, 95% range -4.05 to 1.85
-alpha: mean 3.32, 95% range 2.76 to 3.94
-log-likelihood of the map: mean -157.13, 95% range -168.98 to -147.26
-member 2 is nearer Mr. Hi than the officer in 31 of 40 draws
-at the fitted map: 7.42, -1.29, 3.05, -122.40
+TODO(output)
 ```
 :::
 
@@ -1027,7 +663,7 @@ at the fitted map: 7.41, -1.27, 3.06, -122.33
 :::
 
 
-The Rust chains put the leaders 7.8 apart on average, with a 95% range of 5.2 to 9.6 (the fitted map says 7.4). For member 2, the distance to Mr. Hi minus the distance to the officer averages $-1.3$, with a range from $-4.2$ to $+2.6$ that crosses zero, and 31 of the 40 draws put member 2 nearer Mr. Hi. So the data lean toward Mr. Hi without settling it, which agrees with the block model's verdict on that member. Two more things to see. First, the typical draw has a log-likelihood near $-157$ while the best map has $-122$. That is how posteriors behave when there are many unknowns: the best map is an unusually good one, not a typical one. Second, the chains are short, and they were still drifting. In Python, the mean distance between the leaders was 7.8, 8.2 and 8.4 when the same 40 chains ran for 100, 200 and 400 sweeps. A published analysis would run far longer, from several starts, and check trace plots. Treat the cloud in @fig-latent-posterior (drawn from the Python chains) as an illustration of how wide the uncertainty can be, not as a calibrated interval.
+The Rust chains put the leaders 7.8 apart on average, with a 95% range of 5.2 to 9.6 (the fitted map says 7.4). For member 2, the distance to Mr. Hi minus the distance to the officer averages $-1.3$, with a range from $-4.2$ to $+2.6$ that crosses zero, and 31 of the 40 draws put member 2 nearer Mr. Hi. So the data lean toward Mr. Hi without settling it, which agrees with the block model's verdict on that member. Two more things to see. First, the typical draw has a log-likelihood near $-157$ while the best map has $-122$. That is how posteriors behave when there are many unknowns: the best map is an unusually good one, not a typical one. Second, the chains are short, and they were still drifting. In earlier runs of the same sampler, the mean distance between the leaders was 7.8, 8.2 and 8.4 when the 40 chains ran for 100, 200 and 400 sweeps. A published analysis would run far longer, from several starts, and check trace plots. Treat the cloud in @fig-latent-posterior (drawn from a saved copy of those earlier chains) as an illustration of how wide the uncertainty can be, not as a calibrated interval.
 
 ![The fitted map of the karate club (large markers) with 40 posterior draws of every member's position (small dots). Each draw was turned and mirrored to match the fitted map, because a map is only defined up to such moves. The cloud around a member shows how far the data let that member's place move.](../figures/latent-posterior.svg){#fig-latent-posterior fig-alt="A scatter of 34 large hollow markers, blue circles for Mr. Hi's side and orange squares for the officer's side, each surrounded by 40 small dots of the same color. The dots lie a root-mean-square 0.8 map units from the fitted position for member 33, the tightest cloud, and 3.8 units for member 18, the widest. The 12 members with at most two friends average 3.3 units, and the 4 members with ten or more friends average 1.0."}
 
@@ -1078,165 +714,24 @@ Here the code asks the block model to find its own best grouping. Look at who en
 ## R
 
 ```r
-# Peixoto's description length has no R package that works from a plain network, so we write
-# it out: the cost in nats of the network given the groups, of the groups, and of the ties between them.
-m_ties <- sum(A) / 2
-degree <- rowSums(A)
-ln_fact <- function(k) lgamma(k + 1)
-ln_multiset <- function(bins, items) {
-  if (items == 0) 0 else ln_fact(bins + items - 1) - ln_fact(items) - ln_fact(bins - 1)
-}
-
-# `adj` is the adjacency matrix to describe; it defaults to the karate club.
-description_length <- function(blocks, degree_corrected = FALSE, adj = A) {
-  labels <- sort(unique(blocks))
-  n <- length(blocks)
-  k <- length(labels)
-  degree <- rowSums(adj)
-  m_ties <- sum(adj) / 2
-  member <- outer(blocks, labels, "==") * 1
-  between <- t(member) %*% adj %*% member   # ties between groups, counted twice inside a group
-  size <- colSums(member)
-  stubs <- colSums(member * degree)
-  # One count per pair of groups (r <= s); a group's own ties were counted twice.
-  counts <- between
-  diag(counts) <- diag(between) / 2
-  counts <- counts[upper.tri(counts, diag = TRUE)]
-  network <- -sum(ln_fact(counts)) - sum(diag(between) / 2) * log(2)
-  groups <- log(n) + ln_fact(n) - sum(ln_fact(size)) + ln_fact(n - 1) - ln_fact(k - 1) - ln_fact(n - k)
-  if (degree_corrected) {
-    network <- network + sum(ln_fact(stubs)) - sum(ln_fact(degree))
-    popularity <- sum(map2_dbl(size, stubs, ln_multiset))
-  } else {
-    network <- network + sum(stubs * log(size))
-    popularity <- 0
-  }
-  ties <- ln_multiset(k * (k + 1) / 2, m_ties)
-  c(network = network, groups = groups, ties = ties, popularity = popularity,
-    total = network + groups + ties + popularity)
-}
-
-fit_blocks <- function(degree_corrected, restarts = 5, max_groups = 6, adj = A) {
-  n <- nrow(adj)
-  # Greedy search: move one member at a time to the group that shortens the description most.
-  length_of <- function(blocks) description_length(blocks, degree_corrected, adj)[["total"]]
-  best_group <- function(blocks, v, k) {
-    lengths <- map_dbl(seq_len(k) - 1, \(g) length_of(replace(blocks, v, g)))
-    if (min(lengths) < length_of(blocks) - 1e-9) which.min(lengths) - 1 else blocks[v]
-  }
-  # Visit the members in the given order, one at a time (recursion instead of a loop).
-  sweep_once <- function(blocks, order, k) {
-    if (length(order) == 0) blocks
-    else sweep_once(replace(blocks, order[1], best_group(blocks, order[1], k)), order[-1], k)
-  }
-  # Sweep again and again until a whole sweep changes nothing.
-  settle <- function(blocks, k) {
-    moved <- sweep_once(blocks, sample(n), k)
-    if (identical(moved, blocks)) blocks else settle(moved, k)
-  }
-  starts <- rep(seq_len(max_groups), each = restarts)
-  candidates <- map(starts, \(k) settle(sample((0:(n - 1)) %% k), k))
-  best <- candidates[[which.min(map_dbl(candidates, length_of))]]
-  # Name the groups in order of their first member.
-  match(best, unique(best)) - 1
-}
-
-set.seed(1)
-found <- fit_blocks(FALSE)
-
-tibble(member = 0:33, group = found) |>
-  summarise(size = n(), first_members = paste(head(member, 8), collapse = " "), .by = group)
+# TODO(code, R): needs net_sbm_fit() and net_sbm_description_length(): the stochastic block model search and its description length.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 2 × 3
-  group  size first_members   
-  <dbl> <int> <chr>           
-1     0     5 0 1 2 32 33     
-2     1    29 3 4 5 6 7 8 9 10
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-from math import lgamma, log
-
-m = club.number_of_edges()
-degree = A.sum(axis=1)
-
-def ln_fact(k):
-    return lgamma(k + 1)
-
-def ln_multiset(bins, items):
-    return ln_fact(bins + items - 1) - ln_fact(items) - ln_fact(bins - 1) if items else 0.0
-
-def description_length(blocks, degree_corrected=False, adj=None):
-    """Peixoto's description length in nats: network, groups, ties, member popularities, total.
-    `adj` is the adjacency matrix to describe; it defaults to the karate club."""
-    adj = A if adj is None else adj
-    degree, m = adj.sum(axis=1), int(adj.sum() / 2)
-    blocks = np.asarray(blocks)
-    labels = np.unique(blocks)
-    n, k = len(blocks), len(labels)
-    member = (blocks[:, None] == labels[None, :]).astype(float)
-    between = member.T @ adj @ member         # ties between groups, counted twice inside a group
-    size, stubs = member.sum(axis=0), member.T @ degree
-    network = 0.0
-    for r in range(k):
-        for s in range(r, k):
-            count = int(between[r, s] / 2 if r == s else between[r, s])
-            network -= ln_fact(count) + (count * log(2) if r == s else 0.0)
-    groups = log(n) + ln_fact(n) - sum(ln_fact(int(x)) for x in size)
-    groups += ln_fact(n - 1) - ln_fact(k - 1) - ln_fact(n - k)
-    if degree_corrected:
-        network += sum(ln_fact(int(x)) for x in stubs) - sum(ln_fact(int(x)) for x in degree)
-        popularity = sum(ln_multiset(int(x), int(t)) for x, t in zip(size, stubs))
-    else:
-        network += sum(t * log(x) for x, t in zip(size, stubs))
-        popularity = 0.0
-    ties = ln_multiset(k * (k + 1) // 2, m)
-    return network, groups, ties, popularity, network + groups + ties + popularity
-
-def fit_blocks(degree_corrected, restarts=5, seed=1, max_groups=6, adj=None):
-    # Greedy search: move one member at a time to the group that shortens the description most.
-    adj = A if adj is None else adj
-    n = len(adj)
-    rng = np.random.default_rng(seed)
-    best, best_len = None, np.inf
-    for k in range(1, max_groups + 1):
-        for _ in range(restarts):
-            blocks = rng.permutation(np.arange(n) % k)
-            length = description_length(blocks, degree_corrected, adj)[-1]
-            improved = True
-            while improved:
-                improved = False
-                for v in rng.permutation(n):
-                    for g in range(k):
-                        trial = blocks.copy()
-                        trial[v] = g
-                        trial_len = description_length(trial, degree_corrected, adj)[-1]
-                        if trial_len < length - 1e-9:
-                            blocks, length, improved = trial, trial_len, True
-            if length < best_len - 1e-9:
-                best, best_len = blocks, length
-    # Name the groups in order of their first member.
-    _, first, inverse = np.unique(best, return_index=True, return_inverse=True)
-    return np.argsort(np.argsort(first))[inverse]
-
-found = fit_blocks(False)
-print(f"{found.max() + 1} groups found")
-for g in range(found.max() + 1):
-    members = [int(i) for i in np.flatnonzero(found == g)]
-    print(f"group {g} ({len(members)} members): {members}")
+# TODO(code, Python): needs net_sbm_fit() and net_sbm_description_length(): the stochastic block model search and its description length.
 ```
 
 ::: {.code-output}
 ```text
-2 groups found
-group 0 (5 members): [0, 1, 2, 32, 33]
-group 1 (29 members): [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
+TODO(output)
 ```
 :::
 
@@ -1279,42 +774,24 @@ This step scores three groupings side by side. Look at the last column, the tota
 ## R
 
 ```r
-# Score three groupings with the same yardstick. Shorter is better.
-list("one group" = rep(0, 34), "the club's two sides" = side, "hubs and the rest (found)" = found) |>
-  map(description_length) |>
-  bind_rows(.id = "grouping") |>
-  select(grouping, network, groups, ties, total) |>
-  mutate(across(where(is.numeric), \(x) round(x, 1)))
+# TODO(code, R): needs net_sbm_description_length(): score any grouping with the same description-length yardstick.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 3 × 5
-  grouping                  network groups  ties total
-  <chr>                       <dbl>  <dbl> <dbl> <dbl>
-1 one group                   231.1    3.5   0   234.7
-2 the club's two sides        204.3   28.6   8.1 241  
-3 hubs and the rest (found)   187.7   19.6   8.1 215.3
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# Score three groupings with the same yardstick. Shorter is better.
-print(f"{'':<26} {'network':>8} {'groups':>8} {'ties':>8} {'total':>8}")
-for label, blocks in [("one group", np.zeros(34, dtype=int)), ("the club's two sides", side),
-                      ("hubs and the rest (found)", found)]:
-    network, groups, ties, _, total = description_length(blocks)
-    print(f"{label:<26} {network:8.1f} {groups:8.1f} {ties:8.1f} {total:8.1f}")
+# TODO(code, Python): needs net_sbm_description_length(): score any grouping with the same description-length yardstick.
 ```
 
 ::: {.code-output}
 ```text
-                            network   groups     ties    total
-one group                     231.1      3.5      0.0    234.7
-the club's two sides          204.3     28.6      8.1    241.0
-hubs and the rest (found)     187.7     19.6      8.1    215.3
+TODO(output)
 ```
 :::
 
@@ -1356,46 +833,24 @@ Is the hubs-and-the-rest grouping a solid winner or a close call? One way to ask
 ## R
 
 ```r
-# What would it cost to move one member into the other group? Positive means the description gets longer.
-base <- description_length(found)[["total"]]
-tibble(member = c(0, 2, 5, 9)) |>
-  mutate(to_group = 1 - found[member + 1],
-         cost = map2_dbl(member, to_group,
-                         \(m, g) description_length(replace(found, m + 1, g))[["total"]] - base),
-         cost = round(cost, 2))
+# TODO(code, R): needs net_sbm_move_delta(): change in description length from moving one member to another group.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 4 × 3
-  member to_group  cost
-   <dbl>    <dbl> <dbl>
-1      0        1 14.8 
-2      2        1  2.44
-3      5        0  4.08
-4      9        0  9.77
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# What would it cost to move one member into the other group? Positive means the description gets longer.
-base = description_length(found)[-1]
-for member in [0, 2, 5, 9]:
-    target = 1 - found[member]
-    moved = found.copy()
-    moved[member] = target
-    cost = description_length(moved)[-1] - base
-    print(f"move member {member:>2} to group {target}: {cost:+.2f}")
+# TODO(code, Python): needs net_sbm_move_delta(): change in description length from moving one member to another group.
 ```
 
 ::: {.code-output}
 ```text
-move member  0 to group 1: +14.80
-move member  2 to group 1: +2.44
-move member  5 to group 0: +4.08
-move member  9 to group 0: +9.77
+TODO(output)
 ```
 :::
 
@@ -1432,44 +887,24 @@ The hubs group exists because some members have many more friends than others. B
 ## R
 
 ```r
-# Degree-corrected blocks let each member have their own popularity, so hubs no longer need a group of their own.
-corrected <- fit_blocks(TRUE)
-bind_rows(
-  "fitted, degree-corrected" = description_length(corrected, TRUE),
-  "hubs and the rest, degree-corrected" = description_length(found, TRUE),
-  .id = "grouping"
-) |>
-  mutate(n_groups = c(n_distinct(corrected), n_distinct(found)), .after = grouping) |>
-  select(grouping, n_groups, network, groups, popularity, total) |>
-  mutate(across(where(is.numeric), \(x) round(x, 1)))
+# TODO(code, R): needs net_sbm_fit(degree_corrected = TRUE): the degree-corrected block model and its description length.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 2 × 6
-  grouping                            n_groups network groups popularity total
-  <chr>                                  <dbl>   <dbl>  <dbl>      <dbl> <dbl>
-1 fitted, degree-corrected                   1   139.2    3.5       85   227.7
-2 hubs and the rest, degree-corrected        2   130.2   19.6       76.3 234.2
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# Degree-corrected blocks let each member have their own popularity, so hubs no longer need a group of their own.
-corrected = fit_blocks(True)
-network, groups, _, popularity, total = description_length(corrected, True)
-print(f"{corrected.max() + 1} group found, description length {total:.1f}")
-print(f"(network {network:.1f}, groups {groups:.1f}, member popularities {popularity:.1f})")
-print(f"hubs-and-the-rest, degree-corrected: {description_length(found, True)[-1]:.1f}")
+# TODO(code, Python): needs net_sbm_fit(degree_corrected = TRUE): the degree-corrected block model and its description length.
 ```
 
 ::: {.code-output}
 ```text
-1 group found, description length 227.7
-(network 139.2, groups 3.5, member popularities 85.0)
-hubs-and-the-rest, degree-corrected: 234.2
+TODO(output)
 ```
 :::
 
@@ -1536,144 +971,24 @@ and $\ell$ is the log-likelihood, the same kind of score as for the map. A tiny 
 ## R
 
 ```r
-# Six people: two triangles, 1-2-3 and 4-5-6, joined by the single tie 3-4.
-six <- matrix(0, 6, 6)
-six[cbind(c(1, 1, 2, 4, 4, 5, 3), c(2, 3, 3, 5, 6, 6, 4))] <- 1
-six <- six + t(six)
-
-# The block probability matrix (ties found over pairs possible, both read in both directions) and the
-# log-likelihood it gives, for any grouping of any network.
-block_fit <- function(adj, group) {
-  member <- outer(group, sort(unique(group)), "==") * 1
-  size <- colSums(member)
-  ties <- t(member) %*% adj %*% member                                    # ordered ties between groups
-  possible <- outer(size, size) - diag(size, nrow = length(size))         # ordered pairs between groups
-  omega <- ties / possible
-  omega[possible == 0] <- 0
-  chance <- (member %*% omega %*% t(member))[upper.tri(adj)]
-  y <- adj[upper.tri(adj)]
-  list(omega = omega, loglik = sum(log(chance[y == 1])) + sum(log(1 - chance[y == 0])))
-}
-
-two_ways <- map(list("one group" = rep(1, 6), "two triangles" = c(1, 1, 1, 2, 2, 2)), \(group) block_fit(six, group))
-
-tibble(grouping = names(two_ways), log_likelihood = round(unname(map_dbl(two_ways, "loglik")), 3))
-round(two_ways[["two triangles"]]$omega, 3)
-
-# Log-likelihood, then -2 x log-likelihood plus penalties (BIC), and its ICL cousin. Lower is better.
-bic_icl <- function(adj, group) {
-  n <- nrow(adj)
-  k <- length(unique(group))
-  loglik <- block_fit(adj, group)$loglik
-  size <- as.vector(table(group))
-  free <- k * (k + 1) / 2
-  bic <- -2 * loglik + free * log(n * (n - 1) / 2)
-  # ICL also pays for the labels: -2 x sum of log(share of the member's group), plus a penalty for the shares.
-  icl <- bic - 2 * sum(size * log(size / n)) + (k - 1) * log(n)
-  tibble(groups = k, loglik = loglik, bic = bic, icl = icl)
-}
-
-hubs <- as.integer(found)   # group 0 holds the five hubs, group 1 everyone else
-groupings <- list("one group" = rep(0, 34),
-                  "the club's two sides" = side,
-                  "hubs and the rest" = hubs,
-                  "hubs, then the rest by side" = ifelse(hubs == 0, 0, 1 + side))
-
-groupings |>
-  map(\(group) bic_icl(A, group)) |>
-  bind_rows(.id = "grouping") |>
-  mutate(dl_total = map_dbl(groupings, \(group) description_length(group)[["total"]])) |>
-  mutate(across(where(is.numeric), \(x) round(x, 1)))
-
-round(block_fit(A, hubs)$omega, 3)
+# TODO(code, R): needs net_sbm_block_fit(): block probability matrix, log-likelihood, BIC and ICL for any grouping.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 2 × 2
-  grouping      log_likelihood
-  <chr>                  <dbl>
-1 one group            -10.36 
-2 two triangles         -3.139
-      [,1]  [,2]
-[1,] 1.000 0.111
-[2,] 0.111 1.000
-# A tibble: 4 × 6
-  grouping                    groups loglik   bic   icl dl_total
-  <chr>                        <dbl>  <dbl> <dbl> <dbl>    <dbl>
-1 one group                        1 -226.2 458.7 458.7    234.7
-2 the club's two sides             2 -198.5 416   466.6    241  
-3 hubs and the rest                2 -179.4 377.8 409.7    215.3
-4 hubs, then the rest by side      3 -169   376   451.7    231.2
-      [,1]  [,2]
-[1,] 0.500 0.372
-[2,] 0.372 0.047
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-from scipy.special import xlogy
-
-# Six people: two triangles, 0-1-2 and 3-4-5, joined by the single tie 2-3.
-six = np.zeros((6, 6))
-for u, v in [(0, 1), (0, 2), (1, 2), (3, 4), (3, 5), (4, 5), (2, 3)]:
-    six[u, v] = six[v, u] = 1
-
-def block_fit(adj, group):
-    """Block probability matrix (ties found over pairs possible) and the log-likelihood it gives."""
-    group = np.asarray(group)
-    member = np.eye(group.max() + 1)[group]
-    size = member.sum(axis=0)
-    ties = member.T @ adj @ member                      # ordered ties between groups
-    pairs = np.outer(size, size) - np.diag(size)        # ordered pairs between groups
-    omega = np.divide(ties, pairs, out=np.zeros_like(ties), where=pairs > 0)
-    chance = (member @ omega @ member.T)[np.triu_indices(len(adj), 1)]
-    y = adj[np.triu_indices(len(adj), 1)]
-    return omega, np.log(chance[y == 1]).sum() + np.log(1 - chance[y == 0]).sum()
-
-for label, group in [("one group", [0] * 6), ("two triangles", [0, 0, 0, 1, 1, 1])]:
-    omega, loglik = block_fit(six, group)
-    print(f"{label}: block probabilities {np.round(omega, 3).tolist()}, log-likelihood {loglik:.3f}")
-
-def bic_icl(adj, group):
-    """Log-likelihood, -2 x log-likelihood plus penalties (BIC), and its ICL cousin. Lower is better."""
-    n, group = len(adj), np.asarray(group)
-    k = group.max() + 1
-    _, loglik = block_fit(adj, group)
-    size = np.bincount(group, minlength=k)
-    free = k * (k + 1) // 2
-    bic = -2 * loglik + free * np.log(n * (n - 1) / 2)
-    # ICL also pays for the labels: -2 x sum of log(share of the member's group), plus a penalty for the shares.
-    icl = bic - 2 * (size * np.log(size / n)).sum() + (k - 1) * np.log(n)
-    return loglik, bic, icl
-
-hubs = (found > 0).astype(int)
-groupings = {
-    "one group": np.zeros(34, dtype=int),
-    "the club's two sides": side,
-    "hubs and the rest": hubs,
-    "hubs, then the rest by side": np.where(hubs == 0, 0, 1 + side),
-}
-print(f"{'':<29} {'groups':>6} {'log-lik':>8} {'BIC':>7} {'ICL':>7} {'description length':>19}")
-for label, group in groupings.items():
-    loglik, bic, icl = bic_icl(A, group)
-    print(f"{label:<29} {group.max() + 1:>6} {loglik:8.1f} {bic:7.1f} {icl:7.1f} {description_length(group)[-1]:19.1f}")
-omega, _ = block_fit(A, hubs)
-print("block probabilities for hubs and the rest:", np.round(omega, 3).tolist())
+# TODO(code, Python): needs net_sbm_block_fit(): block probability matrix, log-likelihood, BIC and ICL for any grouping.
 ```
 
 ::: {.code-output}
 ```text
-one group: block probabilities [[0.467]], log-likelihood -10.364
-two triangles: block probabilities [[1.0, 0.111], [0.111, 1.0]], log-likelihood -3.139
-                              groups  log-lik     BIC     ICL  description length
-one group                          1   -226.2   458.7   458.7               234.7
-the club's two sides               2   -198.5   416.0   466.6               241.0
-hubs and the rest                  2   -179.4   377.8   409.7               215.3
-hubs, then the rest by side        3   -169.0   376.0   451.7               231.2
-block probabilities for hubs and the rest: [[0.5, 0.372], [0.372, 0.047]]
+TODO(output)
 ```
 :::
 
@@ -1801,152 +1116,31 @@ In the degree-corrected model each person gets a personal popularity number, $\t
 
 ### Stress tests: is the structure more than degrees? {#sec-sbm-stress}
 
-Build a network with no groups at all and the club's degrees: tie every pair with chance proportional to the product of the two members' degrees (the Chung-Lu model, with the club's degrees and chances capped at 1). Fit the plain model and the degree-corrected one to 20 such networks and ask how much shorter than one group the found description is. Then do a second, different stress: drop 8 of the 78 ties (about 10 percent) at random, 20 times, refit, and measure how well the new grouping matches the full-network grouping with the adjusted Rand index (@sec-subgroups, where 0 is chance level and 1 is identical). In this run the block search is the engine's own for Rust and the chapter's greedy search for R and Python, so the digits differ a little.
+Build a network with no groups at all and the club's degrees: tie every pair with chance proportional to the product of the two members' degrees (the Chung-Lu model, with the club's degrees and chances capped at 1). Fit the plain model and the degree-corrected one to 20 such networks and ask how much shorter than one group the found description is. Then do a second, different stress: drop 8 of the 78 ties (about 10 percent) at random, 20 times, refit, and measure how well the new grouping matches the full-network grouping with the adjusted Rand index (@sec-subgroups, where 0 is chance level and 1 is identical). The block search is the engine's own.
 
 ::: {.panel-tabset group="language"}
 
 ## R
 
 ```r
-# Agreement of two groupings: 0 for chance level, 1 for identical.
-adjusted_rand <- function(a, b) {
-  table_ab <- table(a, b)
-  pairs_in <- \(x) sum(x * (x - 1) / 2)
-  expected <- pairs_in(rowSums(table_ab)) * pairs_in(colSums(table_ab)) / pairs_in(length(a))
-  (pairs_in(table_ab) - expected) / ((pairs_in(rowSums(table_ab)) + pairs_in(colSums(table_ab))) / 2 - expected)
-}
-
-
-# A network with no groups by construction: the chance of a tie is proportional to the product of the two
-# members' degrees (the Chung-Lu model), using the club's own degrees. Hub-to-hub chances are capped at 1.
-chung_lu_chance <- pmin(outer(degree, degree) / sum(degree), 1)
-diag(chung_lu_chance) <- 0
-
-chung_lu <- function() {
-  upper <- (matrix(runif(34 * 34), 34, 34) < chung_lu_chance) & upper.tri(chung_lu_chance)
-  1 * (upper | t(upper))
-}
-
-# Groups found, and how many nats shorter than one group the found description is.
-groups_and_gain <- function(adj, degree_corrected) {
-  blocks <- fit_blocks(degree_corrected, restarts = 3, max_groups = 4, adj = adj)
-  one <- description_length(rep(0, 34), degree_corrected, adj)[["total"]]
-  tibble(groups = n_distinct(blocks), gain = one - description_length(blocks, degree_corrected, adj)[["total"]])
-}
-
-set.seed(7)
-nulls <- map(1:20, \(i) chung_lu())
-
-compare_with_nulls <- function(degree_corrected) {
-  club_fit <- groups_and_gain(A, degree_corrected)
-  null_fit <- bind_rows(map(nulls, \(x) groups_and_gain(x, degree_corrected)))
-  tibble(club_groups = club_fit$groups, club_gain = club_fit$gain,
-         nulls_with_two_or_more = sum(null_fit$groups >= 2),
-         null_median_gain = median(null_fit$gain), null_largest_gain = max(null_fit$gain))
-}
-
-bind_rows("plain" = compare_with_nulls(FALSE), "degree-corrected" = compare_with_nulls(TRUE), .id = "model") |>
-  mutate(across(where(is.numeric), \(x) round(x, 1)))
-
-set.seed(5)
-tie_rows <- which(upper.tri(A) & A == 1, arr.ind = TRUE)
-
-# Drop 8 of the 78 ties (about 10 percent) at random and fit the plain model again.
-drop_eight <- function(i) {
-  gone <- tie_rows[sample(nrow(tie_rows), 8), , drop = FALSE]
-  thinned <- A
-  thinned[gone] <- 0
-  thinned[gone[, 2:1]] <- 0
-  blocks <- fit_blocks(FALSE, restarts = 3, max_groups = 4, adj = thinned)
-  tibble(groups = n_distinct(blocks), agreement = adjusted_rand(found, blocks))
-}
-
-after_drop <- bind_rows(map(1:20, drop_eight))
-count(after_drop, groups)
-after_drop |>
-  summarise(median_agreement = median(agreement), lowest = min(agreement)) |>
-  mutate(across(where(is.numeric), \(x) round(x, 2)))
+# TODO(code, R): needs net_sbm_fit() on simulated Chung-Lu networks (net_random_chung_lu()) and net_compare_partitions() on refits.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 2 × 6
-  model            club_groups club_gain nulls_with_two_or_more null_median_gain
-  <chr>                  <dbl>     <dbl>                  <dbl>            <dbl>
-1 plain                      2      19.3                     20              7.1
-2 degree-corrected           1       0                        0              0  
-# ℹ 1 more variable: null_largest_gain <dbl>
-# A tibble: 1 × 2
-  groups     n
-   <int> <int>
-1      2    20
-# A tibble: 1 × 2
-  median_agreement lowest
-             <dbl>  <dbl>
-1                1   0.84
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-def adjusted_rand(a, b):
-    """Agreement of two groupings, 0 for chance level and 1 for identical."""
-    table = np.array([[np.sum((a == x) & (b == y)) for y in np.unique(b)] for x in np.unique(a)])
-    pairs = lambda x: (x * (x - 1) / 2).sum()
-    expected = pairs(table.sum(axis=1)) * pairs(table.sum(axis=0)) / pairs(np.array([len(a)]))
-    return (pairs(table) - expected) / ((pairs(table.sum(axis=1)) + pairs(table.sum(axis=0))) / 2 - expected)
-
-
-rng = np.random.default_rng(7)
-
-# A network with no groups by construction: the chance of a tie is proportional to the product of the two
-# members' degrees (the Chung-Lu model), using the club's own degrees. Hub-to-hub chances are capped at 1.
-chance = np.minimum(np.outer(degree, degree) / degree.sum(), 1.0)
-np.fill_diagonal(chance, 0)
-
-def chung_lu():
-    upper = np.triu(rng.uniform(size=(34, 34)) < chance, 1)
-    return (upper | upper.T).astype(float)
-
-def groups_and_gain(adj, degree_corrected):
-    """Groups found, and how many nats shorter than one group the found description is."""
-    blocks = fit_blocks(degree_corrected, restarts=3, max_groups=4, adj=adj)
-    one = description_length(np.zeros(34, dtype=int), degree_corrected, adj)[-1]
-    return blocks.max() + 1, one - description_length(blocks, degree_corrected, adj)[-1]
-
-nulls = [chung_lu() for _ in range(20)]
-club_fits = {"plain": groups_and_gain(A, False), "degree-corrected": groups_and_gain(A, True)}
-null_fits = {"plain": np.array([groups_and_gain(x, False) for x in nulls]),
-             "degree-corrected": np.array([groups_and_gain(x, True) for x in nulls])}
-for model in club_fits:
-    groups, gain = club_fits[model]
-    found_null = null_fits[model]
-    print(f"{model:<17} club: {groups} groups, gain {gain:5.1f} nats | 20 Chung-Lu networks: "
-          f"{(found_null[:, 0] >= 2).sum()} with two or more groups, gain median {np.median(found_null[:, 1]):.1f}, "
-          f"largest {found_null[:, 1].max():.1f}")
-
-rng = np.random.default_rng(5)
-upper_ties = np.argwhere(np.triu(A, 1) > 0)
-groups_found, agreement = [], []
-for _ in range(20):
-    gone = upper_ties[rng.choice(len(upper_ties), size=8, replace=False)]      # about 10 percent of the ties
-    thinned = A.copy()
-    thinned[gone[:, 0], gone[:, 1]] = thinned[gone[:, 1], gone[:, 0]] = 0
-    blocks = fit_blocks(False, restarts=3, max_groups=4, adj=thinned)
-    groups_found.append(blocks.max() + 1)
-    agreement.append(adjusted_rand(found, blocks))
-counts = ", ".join(f"{g} groups: {c}" for g, c in zip(*np.unique(groups_found, return_counts=True)))
-print("groups found after dropping 8 of 78 ties, 20 times:", counts)
-print(f"agreement with the full-network grouping: median {np.median(agreement):.2f}, lowest {np.min(agreement):.2f}")
+# TODO(code, Python): needs net_sbm_fit() on simulated Chung-Lu networks (net_random_chung_lu()) and net_compare_partitions() on refits.
 ```
 
 ::: {.code-output}
 ```text
-plain             club: 2 groups, gain  19.3 nats | 20 Chung-Lu networks: 19 with two or more groups, gain median 8.1, largest 18.4
-degree-corrected  club: 1 groups, gain   0.0 nats | 20 Chung-Lu networks: 0 with two or more groups, gain median 0.0, largest 0.0
-groups found after dropping 8 of 78 ties, 20 times: 2 groups: 20
-agreement with the full-network grouping: median 1.00, lowest 0.84
+TODO(output)
 ```
 :::
 
@@ -2061,7 +1255,7 @@ agreement with the full-network grouping: median 1.00, lowest 0.66
 :::
 
 
-The plain model finds two or more groups in all 20 Chung-Lu networks (in Rust and R; 19 of 20 in Python), which have no groups by construction. The gain over one group is a median of 8.6 nats there and at most 16.7, against 19.3 for the real club. Two readings follow. The club has more hub structure than degrees alone give, since it beats all 20 nulls, but the margin is not large, and a little under half of its gain turns up in networks with the same degrees and nothing else. And the degree-corrected model finds one group in the club and in all 20 nulls, which is the right answer for the nulls. The drop test points the other way: after dropping 8 ties, the plain model found two groups in all 20 runs, and the grouping agreed with the original with a median adjusted Rand index of 1.00 (lowest 0.66). A grouping can be stable under missing ties and still be mostly a statement about degrees, which is why you run both. A fixed-degree null made by rewiring ties (@sec-tests-and-null-models) would be stricter, because Chung-Lu matches degrees only on average.
+The plain model finds two or more groups in all 20 Chung-Lu networks (in the Rust run), which have no groups by construction. The gain over one group is a median of 8.6 nats there and at most 16.7, against 19.3 for the real club. Two readings follow. The club has more hub structure than degrees alone give, since it beats all 20 nulls, but the margin is not large, and a little under half of its gain turns up in networks with the same degrees and nothing else. And the degree-corrected model finds one group in the club and in all 20 nulls, which is the right answer for the nulls. The drop test points the other way: after dropping 8 ties, the plain model found two groups in all 20 runs, and the grouping agreed with the original with a median adjusted Rand index of 1.00 (lowest 0.66). A grouping can be stable under missing ties and still be mostly a statement about degrees, which is why you run both. A fixed-degree null made by rewiring ties (@sec-tests-and-null-models) would be stricter, because Chung-Lu matches degrees only on average.
 
 ### A generative model, not a community finder {#sec-sbm-generative}
 
@@ -2076,110 +1270,24 @@ A model that explains the ties can still be wrong in ways the likelihood does no
 ## R
 
 ```r
-# Four summaries of a network: spread of degrees, busiest member, triangles, pairs two steps apart.
-summary_of <- function(a) {
-  deg <- rowSums(a)
-  tibble(spread = sqrt(mean((deg - mean(deg))^2)), busiest = max(deg),
-         triangles = sum(diag(a %*% a %*% a)) / 6,
-         two_steps = sum(((a %*% a) > 0) & (a == 0) & upper.tri(a)))
-}
-
-simulate_summaries <- function(chance, how_many = 200) {
-  map(seq_len(how_many), \(i) {
-    upper <- (matrix(runif(34 * 34), 34, 34) < chance) & upper.tri(chance)
-    summary_of(1 * (upper | t(upper)))
-  }) |>
-    bind_rows()
-}
-
-# Chance of a tie for every pair under three fitted models.
-omega_hubs <- block_fit(A, hubs)$omega
-member_hubs <- outer(hubs, 0:1, "==") * 1
-models <- list("same chance for all" = matrix(overall, 34, 34),
-               "latent space map" = P,
-               "hubs and the rest" = member_hubs %*% omega_hubs %*% t(member_hubs))
-
-set.seed(3)
-runs <- map(models, simulate_summaries)
-seen <- summary_of(A)
-
-runs |>
-  map(\(r) tibble(statistic = names(r), club = unlist(seen, use.names = FALSE),
-                  median = map_dbl(r, median),
-                  low = map_dbl(r, \(x) quantile(x, 0.025, names = FALSE)),
-                  high = map_dbl(r, \(x) quantile(x, 0.975, names = FALSE)))) |>
-  bind_rows(.id = "model") |>
-  mutate(across(where(is.numeric), \(x) round(x, 1)))
+# TODO(code, R): needs net_latent_simulate() and net_sbm_simulate(): networks drawn from a fitted model, for posterior predictive checks.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 12 × 6
-   model               statistic  club median   low  high
-   <chr>               <chr>     <dbl>  <dbl> <dbl> <dbl>
- 1 same chance for all spread      3.8    1.9   1.4   2.4
- 2 same chance for all busiest    17      9     7    11  
- 3 same chance for all triangles  45     15     6    33  
- 4 same chance for all two_steps 265    224   159   284  
- 5 latent space map    spread      3.8    2.3   1.7   2.8
- 6 latent space map    busiest    17      9     7    12  
- 7 latent space map    triangles  45     42    24    66.1
- 8 latent space map    two_steps 265    159.5 123   194  
- 9 hubs and the rest   spread      3.8    3.8   3     4.5
-10 hubs and the rest   busiest    17     16    12    20  
-11 hubs and the rest   triangles  45     33    13    61  
-12 hubs and the rest   two_steps 265    283.5 218   358  
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-rng = np.random.default_rng(3)
-
-def summary(adj):
-    deg = adj.sum(axis=1)
-    reach_two = ((adj @ adj) > 0) & (adj == 0) & ~np.eye(34, dtype=bool)
-    return np.array([deg.std(), deg.max(), np.trace(adj @ adj @ adj) / 6, reach_two.sum() / 2])
-
-def simulate(chance, how_many=200):
-    out = []
-    for _ in range(how_many):
-        upper = np.triu(rng.uniform(size=(34, 34)) < chance, 1)
-        out.append(summary((upper | upper.T).astype(float)))
-    return np.array(out)
-
-# Chance of a tie for every pair under three fitted models.
-omega_hubs, _ = block_fit(A, hubs)
-models = {
-    "same chance for all": np.full((34, 34), density),
-    "latent space map": P,
-    "hubs and the rest": (np.eye(2)[hubs] @ omega_hubs @ np.eye(2)[hubs].T),
-}
-runs = {name: simulate(chance) for name, chance in models.items()}
-seen = summary(A)
-print(f"{'model':<22} {'statistic':<22} {'club':>8} {'median':>8} {'low':>8} {'high':>8}")
-for name in models:
-    for k, stat in enumerate(["degree spread (sd)", "busiest member", "triangles", "pairs two steps apart"]):
-        low, mid, high = np.quantile(runs[name][:, k], [0.025, 0.5, 0.975])
-        print(f"{name:<22} {stat:<22} {seen[k]:8.1f} {mid:8.1f} {low:8.1f} {high:8.1f}")
+# TODO(code, Python): needs net_latent_simulate() and net_sbm_simulate(): networks drawn from a fitted model, for posterior predictive checks.
 ```
 
 ::: {.code-output}
 ```text
-model                  statistic                  club   median      low     high
-same chance for all    degree spread (sd)          3.8      1.9      1.5      2.4
-same chance for all    busiest member             17.0      9.0      7.0     11.0
-same chance for all    triangles                  45.0     16.0      5.0     32.0
-same chance for all    pairs two steps apart     265.0    225.0    159.9    286.2
-latent space map       degree spread (sd)          3.8      2.2      1.7      2.6
-latent space map       busiest member             17.0      9.0      7.0     12.0
-latent space map       triangles                  45.0     40.5     24.0     68.0
-latent space map       pairs two steps apart     265.0    158.5    127.0    191.1
-hubs and the rest      degree spread (sd)          3.8      3.8      3.0      4.7
-hubs and the rest      busiest member             17.0     16.0     13.0     20.0
-hubs and the rest      triangles                  45.0     34.0     14.0     66.0
-hubs and the rest      pairs two steps apart     265.0    291.5    221.0    356.1
+TODO(output)
 ```
 :::
 
@@ -2242,7 +1350,7 @@ hubs and the rest      pairs two steps apart     265.0    284.5    221.9    346.
 :::
 
 
-@fig-latent-gof draws the table from the Python run. A model fits a summary when the club's value falls inside its bar.
+@fig-latent-gof draws the table from a saved earlier run of the same simulations. A model fits a summary when the club's value falls inside its bar.
 
 ![Goodness of fit by simulation. For each of three fitted models, 200 networks were simulated and four summaries computed. Bars show the middle 95 percent, dots the median, and the dashed line the karate club's own value. A model fits a summary when the line falls inside its bar.](../figures/latent-gof.svg){#fig-latent-gof fig-alt="Four small panels with three horizontal bars each, for the models with the same chance for every pair, the latent space map and hubs and the rest, with a dashed vertical line at the club's value. degree spread (sd): the club's 3.82 lies inside the interval of hubs and the rest; busiest member: the club's 17 lies inside the interval of hubs and the rest; triangles: the club's 45 lies inside the interval of latent space map, hubs and the rest; pairs two steps apart: the club's 265 lies inside the interval of same chance for all, hubs and the rest."}
 
@@ -2319,7 +1427,7 @@ Each of these has a number in this chapter.
 
 ## Where the tools disagree
 
-- **Same model, different digits.** The R, Python and Rust fits climb different hills of the same likelihood. For the two-dimensional map, the log-likelihood printed is $-122.7$ (R), $-122.40$ (Python) and $-122.33$ (Rust); in three dimensions, the baseline $\alpha$ was 17.98, 47.28 and 13.75, because each search ran off along the ridge to a different place.
+- **Same model, different digits.** Different optimizers climb different hills of the same likelihood. Earlier runs of this chapter with three different optimizers gave a two-dimensional log-likelihood of $-122.7$, $-122.40$ and $-122.33$ (the Rust tab prints the last); in three dimensions, the baseline $\alpha$ was 17.98, 47.28 and 13.75, because each search ran off along the ridge to a different place.
 - **Same data, different criteria.** BIC, ICL and description length disagree on whether the club's sides beat one group, and on the three-block grouping.
 - **Fixed or free number of groups.** @sec-case-karate fits two-block degree-corrected models and gets a split of 17 and 17. The description-length fit here, which chooses the number of groups, finds one group. They answer different questions.
 - **Not compared.** We did not run other packages for latent space models or block models, so we cannot say how their defaults (priors, how distance enters, which approximations) would change these numbers. Report the software and its settings.
@@ -2363,12 +1471,12 @@ A defensible sentence for the club: "A two-dimensional latent space model fitted
 1. The nearer the pair, the likelier the tie, so Ben and Cleo win. The log-odds are $\alpha - d$: Ana and Ben (distance 2) have log-odds 0, so a chance of 0.50. Ben and Cleo (distance 1) have log-odds 1, so 0.73. Ana and Cleo (distance 3) have log-odds $-1$, so 0.27. Ben and Cleo are the most likely pair and Ana and Cleo the least.
 2. A distance of 3 leaves the pair at roughly even odds, and doubling it makes a tie unlikely. At distance 3 the log-odds are $0.06$, so the chance is $1/(1 + e^{-0.06}) = 0.515$, a coin flip. At distance 6 the log-odds are $-2.94$ and the chance is $1/(1 + e^{2.94}) = 0.05$. Three steps of distance take a pair from even odds to about one in twenty.
 3. The model did not get the club wrong; it answered a different question. It was asked for the shortest description of the ties, and the five hubs buy more than the two sides do: naming the sides costs 28.6 nats and saves 26.8 on the ties. The sides are real. What the model says is that, from these 78 ties, they are a softer signal than who is busy. Also say that a little under half of the hub block's gain turns up in networks with the same degrees and no groups, so even the hubs block is partly a statement about degrees.
-4. Starting again from a different seed gave the same grouping, so the search is steady here. With the engine's search, seed 2 and one restart gave the same five-hub grouping and the same description length, 215.3, as seeds 3, 4 and 5. On a network this small the search always lands in the same place. The greedy searches in the R and Python tabs are less steady, which is why they restart, and on a larger network restarts matter for any search. Report how many you ran and whether they agreed.
+4. Starting again from a different seed gave the same grouping, so the search is steady here. With the engine's search, seed 2 and one restart gave the same five-hub grouping and the same description length, 215.3, as seeds 3, 4 and 5. On a network this small the search always lands in the same place. On a larger network restarts matter for any search. Report how many you ran and whether they agreed.
 5. Putting only the two leaders in a group is a worse story than the five hubs. Members 0 and 33 alone against everyone else give 225.2, which is 9.9 nats longer than the fitted 215.3 and still shorter than the 234.7 of one group. Two leaders are most of the story, but members 1, 2 and 32 are also busy and belong with them.
 6. Compare a model with grade in it against one without, and check on ties the model has not seen. Fit the map without grade, and then with grade as a covariate: $\operatorname{logit} P_{ij} = \alpha + \beta\,|\text{grade}_i - \text{grade}_j| - \lVert z_i - z_j \rVert$. If friendships follow grade, $\beta$ is clearly negative and the map has less to do. To guard against memorizing, hold out a random tenth of the pairs, fit on the rest, and compare the held-out log-likelihood of each model; watch $\alpha$ for runaway values; and check the fit with simulated networks as in this chapter.
 7. The three-block version explains the network worse than the two triangles, and it costs more numbers. Inside the blocks: $\{1,2\}$, $\{3,4\}$ and $\{5,6\}$ are each one tied pair, so $\hat\omega = 1$. Between $\{1,2\}$ and $\{3,4\}$, 2 of 4 pairs are tied (1-3 and 2-3), so 0.5. Between $\{3,4\}$ and $\{5,6\}$, 2 of 4 (4-5 and 4-6), so 0.5. Between $\{1,2\}$ and $\{5,6\}$, none, so 0. The log-likelihood is $4 \ln 0.5 + 4 \ln 0.5 = -5.55$. That is worse than the two triangles' $-3.14$, and it needs six numbers instead of three. The triangles are the better description on both counts.
 8. AIC says two dimensions, BIC says one, and that disagreement is itself the finding. AIC: $-2 \times (-160.2) + 2 \times 34 = 388.4$ for one dimension and $244.7 + 132 = 376.7$ for two, so AIC prefers two. BIC: $320.4 + 34 \ln 561 = 535.6$ and $244.7 + 66 \ln 561 = 662.4$, so BIC prefers one. Next, report both, and settle it with held-out ties or a goodness-of-fit check, because the rules disagree about how much a free number should cost.
-9. The distance between the leaders keeps creeping up, so the chains had not settled. In Python, the mean distance between the leaders was 7.8, 8.2 and 8.4 for 100, 200 and 400 sweeps. It keeps creeping up, so the chains had not settled. Run longer from several starts and look at trace plots before quoting an interval.
+9. The distance between the leaders keeps creeping up, so the chains had not settled. In earlier runs, the mean distance between the leaders was 7.8, 8.2 and 8.4 for 100, 200 and 400 sweeps. It keeps creeping up, so the chains had not settled. Run longer from several starts and look at trace plots before quoting an interval.
 10. A claim about a horizontal axis needs checking, because axes can be turned freely. Ask how "seniority" was matched to the axis, since a map can be turned or mirrored without changing the fit, so no axis is "horizontal" in any lasting sense. Then check: correlate the fitted positions with seniority after fitting (the direction of best agreement, not the axis), or put seniority in as a covariate and see how much the map changes. Add the uncertainty: refit from other starts or draw posterior chains, and see whether the pattern survives.
 :::
 
