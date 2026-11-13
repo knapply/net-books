@@ -73,7 +73,25 @@ count(nodes, faction, name = "members")
 
 ::: {.code-output}
 ```text
-pending
+# A tibble: 1 × 5
+  members  ties distinct_pairs pieces isolated
+    <int> <int>          <int>  <int>    <int>
+1      34    78             78      1        0
+# A tibble: 7 × 2
+  contexts  ties
+     <int> <int>
+1        1     6
+2        2    24
+3        3    27
+4        4    12
+5        5     7
+6        6     1
+7        7     1
+# A tibble: 2 × 2
+  faction members
+  <chr>     <int>
+1 Mr. Hi       17
+2 Officer      17
 ```
 :::
 
@@ -199,7 +217,7 @@ kinds <- edges |>
     .default = "across"
   ))
 kinds |>
-  summarise(ties = n(), contexts = sum(contexts), contexts_per_tie = round(mean(contexts), 2), .by = kind)
+  summarise(ties = n(), contexts_per_tie = round(mean(contexts), 2), contexts = sum(contexts), .by = kind)
 
 # The ties that cross the line, strongest first.
 kinds |> filter(kind == "across") |> arrange(desc(contexts), source, target) |> select(source, target, contexts)
@@ -207,7 +225,26 @@ kinds |> filter(kind == "across") |> arrange(desc(contexts), source, target) |> 
 
 ::: {.code-output}
 ```text
-pending
+# A tibble: 3 × 4
+  kind            ties contexts_per_tie contexts
+  <chr>          <int>            <dbl>    <int>
+1 inside Mr. Hi     35             3.03      106
+2 across            11             2.27       25
+3 inside officer    32             3.12      100
+# A tibble: 11 × 3
+   source target contexts
+    <int>  <int>    <int>
+ 1      9     34        4
+ 2      9     31        3
+ 3      9     33        3
+ 4     14     34        3
+ 5      1     32        2
+ 6      2     31        2
+ 7      3     28        2
+ 8      3     29        2
+ 9      3     33        2
+10      3     10        1
+11     20     34        1
 ```
 :::
 
@@ -341,7 +378,13 @@ zachary <- as.integer(!(1:34 %in% which(bfs(max_flow(capacity, 1, 34)$left, star
 
 ::: {.code-output}
 ```text
-pending
+# A tibble: 4 × 5
+  capacity   cut      value near_mr_hi wrong
+  <chr>      <chr>    <dbl>      <int> <chr>
+1 contexts   smallest    22         16 9    
+2 contexts   largest     22         16 9    
+3 unweighted smallest    10         15 3, 9 
+4 unweighted largest     10         17 9, 10
 ```
 :::
 
@@ -471,7 +514,19 @@ scores |>
 
 ::: {.code-output}
 ```text
-pending
+# A tibble: 5 × 6
+  member degree strength betweenness closeness eigenvector
+   <int>  <dbl>    <dbl>       <dbl>     <dbl>       <dbl>
+1     34     17       48       161.      0.55        1    
+2      1     16       42       231.      0.569       0.952
+3     33     12       38        76.7     0.516       0.827
+4      3     10       33        75.9     0.559       0.85 
+5      2      9       29        28.5     0.485       0.712
+# A tibble: 2 × 6
+  member degree strength betweenness closeness eigenvector
+   <int>  <int>    <int>       <int>     <int>       <int>
+1      1      2        2           1         1           2
+2     34      1        1           2         3           1
 ```
 :::
 
@@ -583,7 +638,10 @@ tibble(
 
 ::: {.code-output}
 ```text
-pending
+# A tibble: 1 × 4
+  decided right wrong abstains_for         
+    <dbl> <int> <dbl> <chr>                
+1      28    28     0 9, 14, 20, 25, 26, 32
 ```
 :::
 
@@ -709,7 +767,20 @@ partitions |>
 
 ::: {.code-output}
 ```text
-pending
+# A tibble: 11 × 5
+   method                  groups modularity adjusted_rand wrong  
+   <chr>                    <int>      <dbl>         <dbl> <chr>  
+ 1 Real split                   2      0.358         1     ""     
+ 2 Zachary min cut              2      0.371         0.882 "9"    
+ 3 Louvain                      4      0.419         0.392 "9, 10"
+ 4 Fast greedy                  3      0.381         0.568 "9, 10"
+ 5 Label propagation            3      0.374         0.591 "3, 9" 
+ 6 Leading eigenvector          4      0.393         0.435 "9"    
+ 7 Infomap                      3      0.402         0.591 "9, 10"
+ 8 Girvan-Newman, 2 groups      2      0.36          0.772 "3, 9" 
+ 9 Spectral: Fiedler            2      0.36          0.772 "3, 9" 
+10 Spectral: modularity         2      0.371         0.882 "9"    
+11 Best modularity (exact)      4      0.42          0.465 "9"    
 ```
 :::
 
@@ -936,7 +1007,27 @@ tibble(resolution = c(0.3, 0.5, 0.7, 1, 1.5, 2)) |>
 
 ::: {.code-output}
 ```text
-pending
+# A tibble: 2 × 6
+  groups seeds ari_lowest ari_highest share_9_wrong share_10_wrong
+   <int> <int>      <dbl>       <dbl>         <dbl>          <dbl>
+1      3     1      0.591       0.591             1          1    
+2      4   199      0.37        0.509             1          0.518
+# A tibble: 4 × 4
+  groups seeds ari_lowest ari_highest
+   <int> <int>      <dbl>       <dbl>
+1      1     2      0           0    
+2      2   105      0.072       0.882
+3      3    79      0.231       0.742
+4      4    14      0.344       0.662
+# A tibble: 6 × 4
+  resolution groups   ari wrong
+       <dbl>  <int> <dbl> <chr>
+1        0.3      2 0.772 9, 10
+2        0.5      2 0.772 9, 10
+3        0.7      3 0.591 9, 10
+4        1        4 0.392 9, 10
+5        1.5      5 0.314 9, 10
+6        2        8 0.23  3, 31
 ```
 :::
 
@@ -1136,7 +1227,15 @@ partitions[["Degree-corrected SBM"]] <- corrected$z
 
 ::: {.code-output}
 ```text
-pending
+# A tibble: 2 × 6
+  model     real_split best_found starts_reaching_best group_sizes adjusted_rand
+  <chr>          <dbl>      <dbl>                <int> <chr>               <dbl>
+1 two-block      -198.      -179.                  176 5 and 29           -0.012
+2 degree-c…      -743.      -739.                   28 17 and 17           0.772
+# A tibble: 1 × 2
+  small_group     corrected_wrong
+  <chr>           <chr>          
+1 1, 2, 3, 33, 34 9, 10          
 ```
 :::
 
@@ -1304,7 +1403,7 @@ The plain two-block model prefers a partition of 5 and 29 members, with a log-li
 
 The degree-corrected model finds two groups of 17, with agreement 0.772. It is much closer, and it still moves members 9 and 10 to the other side. Its best log-likelihood is $-739.4$, and the real split scores $-743.2$. So by this model, the real split is not the best two-group story, and the model prefers the one that moves 9 and 10. That is a difference of 3.8 log-likelihood units. It isn't a test, but it shows the same two members in a third method.
 
-Note too how many random starts reach the best answer: 172 of 200 for the plain model, but only 32 of 200 for the degree-corrected one. A fit from a single start can land on a worse partition, so restart.
+Note too how many random starts reach the best answer: 172 of 200 for the plain model, but only 32 of 200 for the degree-corrected one (the R tab draws other starts: 176 and 28). A fit from a single start can land on a worse partition, so restart.
 
 ## Step 6: stress tests
 
@@ -1344,7 +1443,11 @@ bind_rows(summary_of(trials$spectral, "Spectral: modularity"), summary_of(trials
 
 ::: {.code-output}
 ```text
-pending
+# A tibble: 2 × 6
+  method          mean_ari lowest_ari share_9_wrong share_10_wrong share_3_wrong
+  <chr>              <dbl>      <dbl>         <dbl>          <dbl>         <dbl>
+1 Spectral: modu…    0.842      0.483         0.845           0.13         0.025
+2 Louvain            0.438      0.277         0.935           0.59         0.065
 ```
 :::
 
@@ -1451,7 +1554,17 @@ without_leaders |>
 
 ::: {.code-output}
 ```text
-pending
+# A tibble: 3 × 3
+  piece  size members                                                           
+  <int> <int> <chr>                                                             
+1     1    26 2, 3, 4, 8, 9, 10, 13, 14, 15, 16, 18, 19, 20, 21, 22, 23, 24, 25…
+2     2     5 5, 6, 7, 11, 17                                                   
+3     3     1 12                                                                
+# A tibble: 2 × 4
+  method               groups adjusted_rand wrong                         
+  <chr>                 <int>         <dbl> <chr>                         
+1 Louvain                   5         0.339 9, 10                         
+2 Spectral: modularity      2         0.165 5, 6, 7, 9, 10, 11, 17, 29, 31
 ```
 :::
 
@@ -1520,7 +1633,7 @@ Spectral: modularity  groups 2, adjusted Rand 0.114, wrong [5, 6, 7, 9, 10, 11, 
 
 Without the leaders the club doesn't fall into two camps. It falls into a large piece of 26 members, a piece of five (5, 6, 7, 11 and 17) and one member alone (12). Those six are connected to the rest of the club only through member 1: remove the instructor and they are cut loose. Nothing similar happens when the administrator leaves.
 
-Louvain on the remaining 32 finds five groups, with agreement 0.339. The spectral split of the modularity matrix no longer follows the sides at all (agreement 0.114). It sets apart twelve members, nine from Mr. Hi's side and three from the officer's (10, 29 and 31), from everyone else. So the factions were not a pattern the ties would produce without the two leaders. The recovery in Step 4 leaned heavily on them.
+Louvain on the remaining 32 finds five groups, with agreement 0.339. The spectral split of the modularity matrix no longer follows the sides at all (agreement 0.114 in Rust and Python, 0.165 in R, because member 12 has no ties left and its side is arbitrary). It sets apart twelve members, nine from Mr. Hi's side and three from the officer's (10, 29 and 31), from everyone else. So the factions were not a pattern the ties would produce without the two leaders. The recovery in Step 4 leaned heavily on them.
 
 ### Compare with random networks
 
@@ -1585,7 +1698,12 @@ tibble(
 
 ::: {.code-output}
 ```text
-pending
+# A tibble: 3 × 5
+  null                      observed null_mean null_highest share_as_high
+  <chr>                        <dbl>     <dbl>        <dbl>         <dbl>
+1 shuffle sides                0.358    -0.026        0.218             0
+2 rewire ties                  0.358    -0.018        0.102             0
+3 rewire ties, best Louvain    0.419     0.294        0.348             0
 ```
 :::
 
@@ -1674,7 +1792,7 @@ rewire ties, best Louvain      0.419     0.293    0.349         0.000
 
 :::
 
-The real split is far from either null. Shuffling the sides gives an average modularity near $-0.03$ and a highest value of 0.179 in 2,000 draws; none reaches 0.358. Rewiring the ties gives a similar picture, with a highest value of 0.127 in 200 draws. So the sides are strongly aligned with the ties, much more than degrees alone would produce.
+The real split is far from either null. Shuffling the sides gives an average modularity near $-0.03$ and a highest value of 0.179 in 2,000 draws (0.218 in R's draws); none reaches 0.358. Rewiring the ties gives a similar picture, with a highest value of 0.127 in 200 draws. So the sides are strongly aligned with the ties, much more than degrees alone would produce.
 
 The last row is a warning for anyone who reads a modularity value as a verdict. In random networks with these degrees, Louvain still finds a partition with an average modularity of 0.293 and up to 0.349 in 200 draws. Against that yardstick the club's 0.419 stands out, but a modularity of 0.3 on its own is not evidence of anything.
 
@@ -1705,7 +1823,12 @@ wrong_by_method |>
 
 ::: {.code-output}
 ```text
-pending
+# A tibble: 3 × 4
+  member methods_wrong    of methods                                            
+   <int>         <int> <dbl> <chr>                                              
+1      9            11    11 Zachary min cut; Louvain; Fast greedy; Label propa…
+2     10             4    11 Louvain; Fast greedy; Infomap; Degree-corrected SBM
+3      3             3    11 Label propagation; Girvan-Newman, 2 groups; Spectr…
 ```
 :::
 
