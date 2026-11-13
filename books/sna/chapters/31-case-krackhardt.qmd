@@ -2,61 +2,1035 @@
 
 ::: {.callout-note appearance="simple"}
 ## Prerequisites
-Ego networks, Multiplex and multilayer networks, and Network regression.
+@sec-centrality, @sec-ego-networks, @sec-multilayer and @sec-network-regression, plus the idea of a degree-preserving null network from @sec-tests-and-null-models. You will use in-degree and betweenness, constraint, layer overlap and a regression on pairs.
 :::
-
-## Introduction
-
-Advice, friendship and reporting among 21 managers: structure, brokerage, layer overlap and a regression, and what an organization chart hides.
-
-TODO(prose, see docs/VOICE.md): motivating question, the idea in plain words, what the reader can
-do after this chapter.
 
 ## The question
 
-TODO(prose): concept, definition, a small worked example by hand.
+Every company has two organizations. One is on the wall: a chart of who reports to whom. The other is in people's heads and calendars: whom you ask when something breaks, and whom you would have lunch with. The chart is easy to get. The second one has to be asked for, and it is where the interesting questions are. Does the chart tell you who people turn to? And who sits in the gaps between groups that the chart never drew?
 
-Every code example uses this three-tab block, followed by its output. The tab text is placeholder until
-the library interface is final; the comment names the measure it will call.
+David Krackhardt asked 21 managers of a small manufacturing firm exactly that. He asked each one whom they go to for advice and who they count as a friend, and he took the formal reporting lines from company records [@krackhardt1987cognitive]. That gives three networks on the same 21 people. You met them in @sec-centrality (who gets asked), @sec-multilayer (how the layers overlap) and @sec-network-regression (what predicts an advice tie). This chapter puts those pieces to work on one question.
+
+> **What does the formal chart hide? Who is central in advice and in friendship compared with the chart, who brokers between groups, and how much of the advice network is the chart itself?**
+
+Notice what the question leaves out. It doesn't ask whether the firm performed well, whether advice made anyone better at their job, or whether the CEO should have been asked more often. Three networks at one moment can describe how this firm was wired. They can't tell you what the wiring did.
+
+The plan has seven steps, the same habits as in @sec-case-florentine:
+
+1. Look at the data and say what it can't show.
+2. Ask what the chart carries: how much of advice and friendship follows its lines.
+3. Ask who is central in advice and compare it with the chart.
+4. Ask who brokers, in each layer.
+5. Ask what predicts an advice tie, with the chart in the model.
+6. Stress-test: leave out ties, answers and people, and compare with random networks that keep every manager's degrees.
+7. Write down what we can and can't say, in a paragraph someone else could check.
+
+## The data and its limits
+
+The data are 21 managers, with their age, years at the firm, level and department, and three directed relations among them. The three kinds of tie have different meanings, and it matters which one you are reading.
+
+- **Advice (190 arcs).** An arc from $i$ to $j$ means manager $i$ says he goes to $j$ for advice.
+- **Friendship (102 arcs).** An arc from $i$ to $j$ means manager $i$ names $j$ as a friend.
+- **Reports to (20 arcs).** An arc from $i$ to $j$ means $i$ reports to $j$ on the company's chart. This one comes from records, not from anyone's answer.
+
+Before any number, ask what the table is and isn't.
+
+- **Each manager's own report.** Advice and friendship are what each manager said about *himself*. Krackhardt's study also collected what every manager believed about everyone else's ties, a "cognitive social structure". The copy bundled with this book is the version that keeps only each manager's own row (see the data folder's README), so we can't ask whether managers agreed on who was friends with whom.
+- **Named, not observed.** A missing arc means "not named". It doesn't mean "never asked", and it doesn't mean "not friends". People forget, and people leave out ties they would rather not report.
+- **One firm, one moment.** Twenty-one managers of one company, with no dates. We can't see who became close first, or what changed after.
+- **Small, and different kinds of tie.** 21 managers means 420 ordered pairs. Advice and friendship are answers to questions; reporting is a rule, so a direction means something different in each (@sec-multilayer).
+- **What isn't in the table.** No performance, no pay, no job titles beyond level, no physical layout, no history. Any of these could explain why someone is sought out, and none can be checked here.
+
+The first block loads the files and runs the usual checks: counts, repeated rows, ties of a manager to himself, and whether the chart looks like a chart. Then it does the first thing worth doing with an organization chart. It sorts every ordered pair of managers by the formal link between them, in this order of priority: $i$ goes to his own boss, $i$ goes to one of his own direct reports, the two are in the same department with no direct line, or they are in different departments with no direct line. For each kind it counts the pairs, the advice arcs and the friendship arcs, and divides.
 
 ::: {.panel-tabset group="language"}
 
 ## R
 
 ```r
-# TODO(code, R): compare the three layers of the organization
+library(knappnet)
+library(dplyr)
+library(purrr)
+library(tibble)
+
+# Krackhardt's 21 managers: who they are, and three relations among them. Managers are numbered 1 to 21.
+nodes <- read.csv("data/krackhardt/nodes.csv") |> as_tibble()
+edges <- read.csv("data/krackhardt/edges.csv") |> as_tibble()
+n <- nrow(nodes)
+yrs <- nodes$age
+ten <- nodes$tenure
+lvl <- nodes$level
+dpt <- nodes$department
+
+# One 21 x 21 table per relation: a 1 in row i, column j means manager i names manager j.
+layer <- edges |>
+  split(~relation) |>
+  map(\(e) {
+    m <- matrix(0, n, n)
+    m[cbind(e$from, e$to)] <- 1
+    m
+  })
+
+# Checks before any measure.
+tibble(rows = nrow(edges), distinct_rows = nrow(distinct(edges)), self_ties = sum(edges$from == edges$to),
+       advice = sum(layer$advice), friendship = sum(layer$friendship), reports_to = sum(layer$reports_to),
+       with_one_boss = sum(rowSums(layer$reports_to) == 1))
+list(by_level = map_int(set_names(1:3), \(k) sum(lvl == k)), by_department = map_int(set_names(0:4), \(k) sum(dpt == k)))
+
+# Every ordered pair of managers has one kind of formal link, in this order of priority.
+kinds <- c("goes to own boss", "goes to own direct report", "same department, no direct line", "other department, no direct line")
+dyads <- tibble(i = as.vector(row(layer$advice)), j = as.vector(col(layer$advice))) |>
+  filter(i != j) |>
+  mutate(
+    kind = case_when(
+      layer$reports_to[cbind(i, j)] == 1 ~ kinds[1],
+      layer$reports_to[cbind(j, i)] == 1 ~ kinds[2],
+      dpt[i] == dpt[j] ~ kinds[3],
+      .default = kinds[4]
+    ),
+    kind = factor(kind, levels = kinds),
+    said_advice = layer$advice[cbind(i, j)],
+    said_friend = layer$friendship[cbind(i, j)]
+  )
+
+dyads |>
+  summarise(pairs = n(), advice = sum(said_advice), advice_share = round(mean(said_advice), 3),
+            friends = sum(said_friend), friends_share = round(mean(said_friend), 3), .by = kind) |>
+  arrange(kind)
 ```
+
+::: {.code-output}
+```text
+pending
+```
+:::
 
 ## Python
 
 ```python
-# TODO(code, Python): compare the three layers of the organization
+import csv
+
+import networkx as nx
+import numpy as np
+
+# Krackhardt's 21 managers: who they are, and three relations among them. Managers are numbered 1 to 21.
+with open("data/krackhardt/nodes.csv") as f:
+    nodes = list(csv.DictReader(f))
+with open("data/krackhardt/edges.csv") as f:
+    rows = list(csv.DictReader(f))
+n = len(nodes)
+age, tenure, level, dept = (np.array([int(r[k]) for r in nodes]) for k in ("age", "tenure", "level", "department"))
+
+# One 21 x 21 table per relation: layer[k][i, j] counts how often manager i names manager j.
+layer = {k: np.zeros((n, n), dtype=int) for k in ("advice", "friendship", "reports_to")}
+for r in rows:
+    layer[r["relation"]][int(r["from"]) - 1, int(r["to"]) - 1] += 1
+advice, friendship, reports_to = layer["advice"], layer["friendship"], layer["reports_to"]
+
+# Checks before any measure.
+print(f"rows {len(rows)}: " + ", ".join(f"{k} {m.sum()}" for k, m in layer.items()))
+print(f"largest count in a cell {max(m.max() for m in layer.values())}, self-ties {sum(np.trace(m) for m in layer.values())}, managers with one boss {(reports_to.sum(axis=1) == 1).sum()}")
+print("by level: " + ", ".join(f"{k}: {(level == k).sum()}" for k in (1, 2, 3)) + "; by department (0 is the CEO's): " + ", ".join(f"{k}: {(dept == k).sum()}" for k in range(5)))
+
+off = ~np.eye(n, dtype=bool)
+# Every ordered pair of managers has one kind of formal link, in this order of priority.
+kind = np.full((n, n), 3)
+kind[dept[:, None] == dept[None, :]] = 2
+kind[reports_to.T == 1] = 1
+kind[reports_to == 1] = 0
+names = ["goes to own boss", "goes to own direct report", "same department, no direct line", "other department, no direct line"]
+print(f"{'':<34}{'pairs':>6}{'advice':>8}{'share':>7}{'friends':>9}{'share':>7}")
+for k, name in enumerate(names):
+    cell = (kind == k) & off
+    a, f = advice[cell].sum(), friendship[cell].sum()
+    print(f"{name:<34}{cell.sum():>6}{a:>8}{a / cell.sum():>7.3f}{f:>9}{f / cell.sum():>7.3f}")
 ```
+
+::: {.code-output}
+```text
+rows 312: advice 190, friendship 102, reports_to 20
+largest count in a cell 1, self-ties 0, managers with one boss 20
+by level: 1: 1, 2: 4, 3: 16; by department (0 is the CEO's): 0: 1, 1: 5, 2: 8, 3: 3, 4: 4
+                                   pairs  advice  share  friends  share
+goes to own boss                      20      19  0.950       12  0.600
+goes to own direct report             20      10  0.500        4  0.200
+same department, no direct line       62      25  0.403       23  0.371
+other department, no direct line     318     136  0.428       63  0.198
+```
+:::
 
 ## Rust
 
 ```rust
-// TODO(code, Rust): compare the three layers of the organization
+use knappnet::{compute_degree, DegreeMode, Graph};
+
+// Krackhardt's 21 managers: who they are, and three relations among them. Managers are numbered 1 to 21; positions are 0 to 20.
+let node_text = std::fs::read_to_string("data/krackhardt/nodes.csv")?;
+let edge_text = std::fs::read_to_string("data/krackhardt/edges.csv")?;
+let column = |k: usize| -> Vec<i64> {
+    node_text.lines().skip(1).map(|l| l.split(',').nth(k).unwrap().parse().unwrap()).collect()
+};
+let (age, tenure, level, dept) = (column(1), column(2), column(3), column(4));
+let n = age.len();
+
+// One 21 x 21 table per relation: layer[k][i][j] counts how often manager i names manager j.
+let names = ["advice", "friendship", "reports_to"];
+let mut layer = vec![vec![vec![0.0_f64; n]; n]; 3];
+let mut rows = 0;
+for line in edge_text.lines().skip(1) {
+    let p: Vec<&str> = line.split(',').collect();
+    let k = names.iter().position(|&r| r == p[2]).unwrap();
+    layer[k][p[0].parse::<usize>().unwrap() - 1][p[1].parse::<usize>().unwrap() - 1] += 1.0;
+    rows += 1;
+}
+
+// A network from a table. Directed: every nonzero cell is an arc. Undirected: a tie if either manager names the other.
+let build = |m: &Vec<Vec<f64>>, directed: bool| -> Result<Graph, knappnet::Error> {
+    let k = m.len();
+    let ties: Vec<(i64, i64)> = (0..k).flat_map(|i| (0..k).map(move |j| (i, j)))
+        .filter(|&(i, j)| m[i][j] > 0.0 && (directed || m[j][i] == 0.0 || i < j))
+        .map(|(i, j)| (i as i64, j as i64)).collect();
+    let (from, to): (Vec<i64>, Vec<i64>) = ties.into_iter().unzip();
+    Graph::from_edges(k, &from, &to, None, directed)
+};
+
+// Checks before any measure.
+let total = |k: usize| layer[k].iter().flatten().sum::<f64>();
+let widest = layer.iter().flatten().flatten().cloned().fold(0.0, f64::max);
+let on_diagonal: f64 = (0..3).map(|k| (0..n).map(|i| layer[k][i][i]).sum::<f64>()).sum();
+let one_boss = (0..n).filter(|&i| layer[2][i].iter().sum::<f64>() == 1.0).count();
+println!("rows {rows}: advice {}, friendship {}, reports_to {}", total(0), total(1), total(2));
+println!("largest count in a cell {widest}, self-ties {on_diagonal}, managers with one boss {one_boss}");
+let tally = |values: &[i64], range: std::ops::RangeInclusive<i64>| -> String {
+    range.map(|k| format!("{k}: {}", values.iter().filter(|&&v| v == k).count())).collect::<Vec<_>>().join(", ")
+};
+println!("by level: {}; by department (0 is the CEO's): {}", tally(&level, 1..=3), tally(&dept, 0..=4));
+
+let all_arcs = |m: &Vec<Vec<f64>>| -> Vec<(usize, usize)> {
+    (0..n).flat_map(|i| (0..n).map(move |j| (i, j))).filter(|&(i, j)| i != j && m[i][j] > 0.0).collect()
+};
+let everyone: Vec<(usize, usize)> = (0..n).flat_map(|i| (0..n).map(move |j| (i, j))).filter(|&(i, j)| i != j).collect();
+// Every ordered pair of managers has one kind of formal link, in this order of priority.
+let kind = |i: usize, j: usize| -> usize {
+    if layer[2][i][j] > 0.0 { 0 } else if layer[2][j][i] > 0.0 { 1 } else if dept[i] == dept[j] { 2 } else { 3 }
+};
+let labels = ["goes to own boss", "goes to own direct report", "same department, no direct line", "other department, no direct line"];
+println!("{:<34}{:>6}{:>8}{:>7}{:>9}{:>7}", "", "pairs", "advice", "share", "friends", "share");
+for (k, label) in labels.iter().enumerate() {
+    let cell: Vec<(usize, usize)> = everyone.iter().cloned().filter(|&(i, j)| kind(i, j) == k).collect();
+    let count = |m: usize| cell.iter().filter(|&&(i, j)| layer[m][i][j] > 0.0).count();
+    let size = cell.len() as f64;
+    println!("{label:<34}{:>6}{:>8}{:>7.3}{:>9}{:>7.3}", cell.len(), count(0), count(0) as f64 / size, count(1), count(1) as f64 / size);
+}
 ```
 
+::: {.code-output}
+```text
+rows 312: advice 190, friendship 102, reports_to 20
+largest count in a cell 1, self-ties 0, managers with one boss 20
+by level: 1: 1, 2: 4, 3: 16; by department (0 is the CEO's): 0: 1, 1: 5, 2: 8, 3: 3, 4: 4
+                                   pairs  advice  share  friends  share
+goes to own boss                      20      19  0.950       12  0.600
+goes to own direct report             20      10  0.500        4  0.200
+same department, no direct line       62      25  0.403       23  0.371
+other department, no direct line     318     136  0.428       63  0.198
+```
 :::
 
-::: {.code-output}
-TODO(output): the printed result of the code above, once it runs.
 :::
+
+
+The files are clean. There are 312 rows, 190 + 102 + 20, no manager names himself, no row repeats, and 20 of the 21 managers have exactly one boss, as a chart should. The firm has one CEO (manager 7), four vice presidents and 16 managers, spread over four departments. The CEO is in department 0, meaning none, so "same department" is false for every pair that includes him.
+
+## Step 1: what the chart carries
+
+Nineteen of the 20 managers who have a boss go to him for advice (0.950). The reverse direction is common too: half of the bosses (10 of 20, 0.500) go to a direct report. But those 20 boss lines carry only 19 of the 190 advice arcs, 10%. Most of the advice network lives elsewhere: 136 of the 190 arcs (72%) run between managers who are in different departments and have no direct line. The advice rate there, 0.428, is about the same as inside a department with no direct line (0.403). In friendship, by contrast, the department matters: 0.371 inside a department against 0.198 across departments. Friendship is also the layer that most often follows a boss line (12 of 20 managers name their boss as a friend).
+
+So the chart is nearly sufficient for the boss line and nearly irrelevant to the rest of advice. Advice is dense, 190 of 420 ordered pairs, with 0.474 of its arcs returned; friendship has 102 and returns 0.451 (@sec-paths-and-cohesion), and @fig-krackhardt-layers draws the three layers.
+
+## Step 2: who is central in advice, and who is on top of the chart?
+
+Start with the simplest question you can ask of a person in a directed network. How many people name him? That count is his in-degree, and in an advice network it is a plain measure of being sought out (@sec-centrality). The chart has its own versions: the level, and how many people report directly to a manager.
+
+Here is a tiny version by hand. Three managers: B is the boss, and A and C report to B. Advice arcs are A to B, C to B and C to A, so the in-degrees are B 2, A 1, C 0. The chart ranks B first (two people report to him), with A and C tied (nobody reports to them). The advice ranking agrees on B and splits A and C. A **rank correlation** puts a number on that agreement. Replace every value by its rank, with tied values sharing the average of their ranks, and take the ordinary correlation of the ranks. It is 1 when two orderings match, 0 when they are unrelated and $-1$ when one is the reverse of the other (Spearman's coefficient).
+
+In symbols, with $r_i$ the rank of manager $i$ on one measure and $s_i$ the rank on another,
+
+$$ \rho = \frac{\sum_i (r_i - \bar r)(s_i - \bar s)}{\sqrt{\sum_i (r_i - \bar r)^2 \,\sum_i (s_i - \bar s)^2}}. $$
+
+The block prints five managers: the three most often asked for advice, the CEO and the manager with the most direct reports. It then compares the advice ordering of all 21 managers with the chart's (level and direct reports), and with three other orderings, two of which will serve as rival explanations later.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+adv_in <- colSums(layer$advice)
+
+tibble(manager = 1:21, level = lvl, department = dpt, tenure = ten, advice_in = adv_in, advice_rank = rank(-adv_in),
+       direct_reports = colSums(layer$reports_to), friend_in = colSums(layer$friendship)) |>
+  # The three managers most often asked for advice, the CEO (manager 7), and the manager with the most direct reports (14).
+  slice(c(2, 18, 21, 7, 14))
+
+# How well does the chart's ordering agree with the advice ordering? Rank correlations over all 21 managers.
+others <- list(
+  `level (higher up the chart)` = -lvl, `direct reports` = colSums(layer$reports_to),
+  `friendship in-degree` = colSums(layer$friendship), tenure = ten, age = yrs
+)
+enframe(map_dbl(others, \(x) cor(adv_in, x, method = "spearman")), name = "advice_in_degree_vs", value = "spearman") |>
+  mutate(spearman = round(spearman, 3))
+tibble(tenure_vs_level = round(cor(ten, -lvl, method = "spearman"), 3))
+```
+
+::: {.code-output}
+```text
+pending
+```
+:::
+
+## Python
+
+```python
+def ranks(x):
+    # 1 for the smallest; tied values share the average of their ranks
+    return np.array([(x < v).sum() + ((x == v).sum() + 1) / 2 for v in x])
+
+def spearman(x, y):
+    return np.corrcoef(ranks(x), ranks(y))[0, 1]
+
+advice_in, friend_in, direct = advice.sum(axis=0), friendship.sum(axis=0), reports_to.sum(axis=0)
+
+print("manager level dept tenure  advice in (rank)  direct reports  friend in")
+# The three managers most often asked for advice, the CEO (manager 7), and the manager with the most direct reports (14).
+for v in (1, 17, 20, 6, 13):
+    print(f"{v + 1:>7} {level[v]:>5} {dept[v]:>4} {tenure[v]:>6}  {advice_in[v]:>9} ({ranks(-advice_in)[v]:>3})  {direct[v]:>14}  {friend_in[v]:>9}")
+
+# How well does the chart's ordering agree with the advice ordering? Rank correlations over all 21 managers.
+for label, other in [("level (higher up the chart)", -level), ("direct reports", direct), ("friendship in-degree", friend_in), ("tenure", tenure), ("age", age)]:
+    print(f"advice in-degree vs {label:<28}{spearman(advice_in, other):>7.3f}")
+print(f"tenure vs level (higher up the chart){'':<11}{spearman(tenure, -level):>7.3f}")
+```
+
+::: {.code-output}
+```text
+manager level dept tenure  advice in (rank)  direct reports  friend in
+      2     2    4     20         18 (1.0)               3         10
+     18     2    3      9         15 (2.5)               2          4
+     21     2    1     13         15 (2.5)               4          5
+      7     1    0     30         13 (4.5)               4          3
+     14     2    2     10         10 (8.0)               7          5
+advice in-degree vs level (higher up the chart)   0.671
+advice in-degree vs direct reports                0.648
+advice in-degree vs friendship in-degree          0.139
+advice in-degree vs tenure                        0.684
+advice in-degree vs age                           0.042
+tenure vs level (higher up the chart)             0.431
+```
+:::
+
+## Rust
+
+```rust
+// Average ranks (tied values share the mean of their ranks) and the rank correlation.
+let ranks = |x: &[f64]| -> Vec<f64> {
+    x.iter().map(|&v| x.iter().filter(|&&u| u < v).count() as f64
+        + (x.iter().filter(|&&u| u == v).count() as f64 + 1.0) / 2.0).collect()
+};
+let spearman = |x: &[f64], y: &[f64]| -> f64 {
+    let (rx, ry) = (ranks(x), ranks(y));
+    let (mx, my) = (rx.iter().sum::<f64>() / n as f64, ry.iter().sum::<f64>() / n as f64);
+    let cov: f64 = rx.iter().zip(&ry).map(|(a, b)| (a - mx) * (b - my)).sum();
+    cov / (rx.iter().map(|a| (a - mx).powi(2)).sum::<f64>() * ry.iter().map(|b| (b - my).powi(2)).sum::<f64>()).sqrt()
+};
+
+let graphs: Vec<Graph> = (0..3).map(|k| build(&layer[k], true)).collect::<Result<_, _>>()?;
+let advice_in = compute_degree(&graphs[0], DegreeMode::In, true);
+let friend_in = compute_degree(&graphs[1], DegreeMode::In, true);
+let direct = compute_degree(&graphs[2], DegreeMode::In, true);
+let as_f64 = |v: &[i64]| -> Vec<f64> { v.iter().map(|&x| x as f64).collect() };
+let (level_up, tenure_f, age_f) = (as_f64(&level).iter().map(|x| -x).collect::<Vec<f64>>(), as_f64(&tenure), as_f64(&age));
+
+println!("manager level dept tenure  advice in (rank)  direct reports  friend in");
+let advice_rank = ranks(&advice_in.iter().map(|x| -x).collect::<Vec<f64>>());
+// The three managers most often asked for advice, the CEO (manager 7), and the manager with the most direct reports (14).
+for v in [1usize, 17, 20, 6, 13] {
+    println!("{:>7} {:>5} {:>4} {:>6}  {:>9} ({:>3.1})  {:>14}  {:>9}", v + 1, level[v], dept[v], tenure[v],
+             advice_in[v], advice_rank[v], direct[v], friend_in[v]);
+}
+
+// How well does the chart's ordering agree with the advice ordering? Rank correlations over all 21 managers.
+for (label, other) in [("level (higher up the chart)", &level_up), ("direct reports", &direct), ("friendship in-degree", &friend_in), ("tenure", &tenure_f), ("age", &age_f)] {
+    println!("advice in-degree vs {label:<28}{:>7.3}", spearman(&advice_in, other));
+}
+println!("tenure vs level (higher up the chart){:<11}{:>7.3}", "", spearman(&tenure_f, &level_up));
+```
+
+::: {.code-output}
+```text
+manager level dept tenure  advice in (rank)  direct reports  friend in
+      2     2    4     20         18 (1.0)               3         10
+     18     2    3      9         15 (2.5)               2          4
+     21     2    1     13         15 (2.5)               4          5
+      7     1    0     30         13 (4.5)               4          3
+     14     2    2     10         10 (8.0)               7          5
+advice in-degree vs level (higher up the chart)   0.671
+advice in-degree vs direct reports                0.648
+advice in-degree vs friendship in-degree          0.139
+advice in-degree vs tenure                        0.684
+advice in-degree vs age                           0.042
+tenure vs level (higher up the chart)             0.431
+```
+:::
+
+:::
+
+
+Manager 2, a vice president with 20 years at the firm, is named by 18 of the 20 other managers. The two next most-asked managers, 18 and 21, are also vice presidents, named by 15 each. The CEO, manager 7, is named by 13, tied with manager 1 for fourth place, and manager 14, who has the most direct reports (7), is named by 10. So the people the firm turns to are mostly senior, but they are not the same people as the top of the chart.
+
+How closely do the orderings agree? Advice in-degree has a rank correlation of 0.671 with the level and 0.648 with the number of direct reports. That is a clear overlap, and it is far from 1. With friendship in-degree it is 0.139, so being sought out for advice and being named a friend are nearly unrelated orderings. This agrees with @sec-multilayer.
+
+Look at tenure, too. It agrees with advice (0.684) as well as level does, age doesn't at all (0.042), and tenure itself is only moderately tied to the chart (0.431 with level). So asking the long-serving is not just the chart in disguise. We come back to that under rival explanations.
+
+## Step 3: who brokers?
+
+A manager can be central and still not be the one who connects groups. The structural holes idea from @sec-ego-networks asks about the second: does a person's circle consist of people who already know each other, or of people who don't? Burt's **constraint** puts a number on it. It is low when a person's contacts are not tied to each other and high when his contacts form one closed circle [@burt1992structural]. Low constraint means freedom to broker.
+
+As in @sec-multilayer, we ignore direction here, so that a pair is tied if either manager names the other. The block prints the three least constrained managers in each layer with their betweenness (the share of shortest routes between other pairs that pass through them), their number of contacts, their level and the number of different department codes among their contacts. It adds the range of constraint, how closely constraint tracks the number of contacts, and where the CEO falls.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+either <- \(m) pmax(m, t(m)) # a tie if either manager names the other
+
+c("advice", "friendship") |>
+  set_names() |>
+  map(\(k) {
+    tie <- either(layer[[k]])
+    g <- as_net_frame(tie, directed = FALSE)
+    b <- tibble(manager = 1:21, constraint = net_constraint(g), betweenness = net_betweenness(g), contacts = net_degree(g),
+                level = lvl, departments = map_int(1:21, \(v) n_distinct(dpt[tie[v, ] > 0])))
+    list(
+      least_constrained = slice_min(b, constraint, n = 3, with_ties = FALSE) |>
+        mutate(across(c(constraint, betweenness), \(x) round(x, 3))),
+      summary = tibble(lowest = min(b$constraint), highest = max(b$constraint),
+                       vs_contacts = cor(b$constraint, b$contacts, method = "spearman"),
+                       ceo = b$constraint[7], ceo_rank = rank(b$constraint)[7]) |>
+        mutate(across(where(is.numeric), \(x) round(x, 3)))
+    )
+  })
+```
+
+::: {.code-output}
+```text
+pending
+```
+:::
+
+## Python
+
+```python
+def either(m):
+    return ((m + m.T) > 0).astype(int)  # a tie if either manager names the other
+
+for k in ("advice", "friendship"):
+    g = nx.from_numpy_array(either(layer[k]))
+    cons, btw = nx.constraint(g), nx.betweenness_centrality(g, normalized=False)
+    c = np.array([cons[v] for v in range(n)])
+    contacts = np.array([g.degree(v) for v in range(n)])
+    print(f"{k}: manager constraint betweenness contacts level departments")
+    for v in np.argsort(c, kind="stable")[:3]:
+        print(f"  {v + 1:>7} {c[v]:>10.3f} {btw[v]:>11.1f} {contacts[v]:>8} {level[v]:>5} {len({dept[u] for u in g.neighbors(v)}):>11}")
+    print(f"  constraint {c.min():.3f} to {c.max():.3f}, rank correlation with contacts {spearman(c, contacts):.3f}; "
+          f"the CEO: {c[6]:.3f}, rank {ranks(c)[6]:.0f} of 21 (1 = least constrained)")
+```
+
+::: {.code-output}
+```text
+advice: manager constraint betweenness contacts level departments
+        9      0.182         6.5       16     3           5
+       15      0.189         9.1       20     3           5
+       20      0.190         5.9       17     3           4
+  constraint 0.182 to 0.243, rank correlation with contacts -0.904; the CEO: 0.198, rank 7 of 21 (1 = least constrained)
+friendship: manager constraint betweenness contacts level departments
+       17      0.188        43.9       18     3           5
+       11      0.194        28.0       14     3           4
+       10      0.204         6.2        8     3           3
+  constraint 0.188 to 0.589, rank correlation with contacts -0.904; the CEO: 0.438, rank 20 of 21 (1 = least constrained)
+```
+:::
+
+## Rust
+
+```rust
+use knappnet::metrics::brokerage::{compute_constraint, StructuralHoleOptions};
+use knappnet::{compute_betweenness, BetweennessOptions};
+
+for k in 0..2 {
+    let g = build(&layer[k], false)?; // a tie if either manager names the other
+    let c = compute_constraint(&g, StructuralHoleOptions::default())?;
+    let btw = compute_betweenness(&g, BetweennessOptions::default())?;
+    let contacts = compute_degree(&g, DegreeMode::All, true);
+    let departments = |v: usize| -> usize {
+        (0..n).filter(|&u| layer[k][v][u] > 0.0 || layer[k][u][v] > 0.0).map(|u| dept[u])
+            .collect::<std::collections::BTreeSet<i64>>().len()
+    };
+    println!("{}: manager constraint betweenness contacts level departments", names[k]);
+    let mut order: Vec<usize> = (0..n).collect();
+    order.sort_by(|&a, &b| c[a].partial_cmp(&c[b]).unwrap().then(a.cmp(&b)));
+    for &v in &order[..3] {
+        println!("  {:>7} {:>10.3} {:>11.1} {:>8} {:>5} {:>11}", v + 1, c[v], btw[v], contacts[v], level[v], departments(v));
+    }
+    println!("  constraint {:.3} to {:.3}, rank correlation with contacts {:.3}; the CEO: {:.3}, rank {:.0} of 21 (1 = least constrained)",
+             c.iter().cloned().fold(f64::MAX, f64::min), c.iter().cloned().fold(f64::MIN, f64::max),
+             spearman(&c, &contacts), c[6], ranks(&c)[6]);
+}
+```
+
+::: {.code-output}
+```text
+advice: manager constraint betweenness contacts level departments
+        9      0.182         6.5       16     3           5
+       15      0.189         9.1       20     3           5
+       20      0.190         5.9       17     3           4
+  constraint 0.182 to 0.243, rank correlation with contacts -0.904; the CEO: 0.198, rank 7 of 21 (1 = least constrained)
+friendship: manager constraint betweenness contacts level departments
+       17      0.188        43.9       18     3           5
+       11      0.194        28.0       14     3           4
+       10      0.204         6.2        8     3           3
+  constraint 0.188 to 0.589, rank correlation with contacts -0.904; the CEO: 0.438, rank 20 of 21 (1 = least constrained)
+```
+:::
+
+:::
+
+
+The advice layer is so dense that nobody can broker much. Constraint runs only from 0.182 to 0.243, and it follows how many contacts a manager has: the rank correlation between constraint and contacts is $-0.904$. The least constrained managers (9, 15 and 20) are simply the ones with the most advice contacts, all at level 3, and their contacts spread across four or five department codes.
+
+Friendship is where brokers show up. Constraint runs from 0.188 to 0.589. Manager 17 has the lowest constraint, 0.188, and the highest betweenness, 43.9, which is the number @sec-multilayer found by looking at the same layer. He has 18 friendship contacts spread across all five department codes. Manager 11 is next (constraint 0.194, betweenness 28.0). Neither is a vice president. Both are level 3 managers, and manager 17 is not a notable figure in advice at all. Compare the CEO: his friendship constraint, 0.438, is the second highest of the 21, because he has few friendship contacts and they know each other.
+
+That is the first answer to the question. The chart puts the CEO and the vice presidents on top, and the advice network does too. The friendship network is held together by managers the chart doesn't single out.
+
+One caution. Constraint follows the number of contacts ($-0.904$ in both layers), so a low value partly says "has many contacts". Read it beside betweenness. And manager 17's position rests on 18 friendships he named; @sec-multilayer found that he still ranks first on betweenness when only friendships that both people name are kept.
+
+## Step 4: how much is the chart, and what else predicts advice?
+
+Put the chart and the other layers into one model. @sec-network-regression regressed advice on friendship, reporting, same department and the differences in level, age and tenure, and tested each coefficient by relabeling the managers (MRQAP with double semi-partialling [@krackhardt1988predicting; @dekker2007sensitivity]). The block below repeats that regression with the same seed and the same 5,000 relabelings, so R and Rust print the same numbers as that chapter, and the Python tab draws its own relabelings.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# The same model as in the network regression chapter: advice on six pair-level predictors, 5,000 relabelings.
+predictors <- list(
+  friendship = layer$friendship, reports_to = layer$reports_to,
+  same_dept = outer(dpt, dpt, "==") * 1,
+  level_gap = outer(lvl, lvl, "-"), # row's level minus column's level
+  age_gap = abs(outer(yrs, yrs, "-")),
+  tenure_gap = abs(outer(ten, ten, "-"))
+)
+fit <- net_mrqap(layer$advice, predictors, reps = 5000, seed = 1)
+
+tibble(
+  term = names(predictors),
+  coefficient = fit$coefficients[-1],
+  t = fit$t[-1],
+  p = fit$p.value[-1, "Pr(>=|b|)"]
+) |>
+  mutate(across(where(is.numeric), \(v) round(v, 3)))
+tibble(intercept = round(fit$coefficients[[1]], 3), r_squared = round(fit$r.squared, 3), dyads = fit$dyads)
+```
+
+::: {.code-output}
+```text
+pending
+```
+:::
+
+## Python
+
+```python
+preds = {"friendship": friendship, "reports_to": reports_to, "same_dept": (dept[:, None] == dept[None, :]) * 1,
+         "level_gap": level[:, None] - level[None, :], "age_gap": np.abs(age[:, None] - age[None, :]),
+         "tenure_gap": np.abs(tenure[:, None] - tenure[None, :])}
+
+def ols(y, D):
+    gram_inv = np.linalg.inv(D.T @ D)
+    beta = gram_inv @ D.T @ y
+    resid = y - D @ beta
+    return beta, beta / np.sqrt(np.diag(gram_inv) * (resid @ resid) / (len(y) - D.shape[1])), resid
+
+def relabel(v, p):
+    # put the pair values back into a table, move the people about, read the pairs off again
+    m = np.zeros((n, n))
+    m[off] = v
+    return m[np.ix_(p, p)][off]
+
+y = advice[off].astype(float)
+D = np.column_stack([np.ones(len(y))] + [m[off] for m in preds.values()])
+beta, t, resid = ols(y, D)
+
+# Double semi-partialling: relabel what is left of predictor k once the others are removed.
+rest = {k: D[:, k] - np.delete(D, k, axis=1) @ np.linalg.lstsq(np.delete(D, k, axis=1), D[:, k], rcond=None)[0] for k in range(1, 7)}
+rng, hits = np.random.default_rng(1), np.zeros(7)
+for _ in range(5000):
+    p = rng.permutation(n)
+    for k in range(1, 7):
+        Dp = D.copy()
+        Dp[:, k] = relabel(rest[k], p)
+        hits[k] += abs(ols(y, Dp)[1][k]) >= abs(t[k]) - 1e-10
+
+print(f"{'':<12}{'coefficient':>12}{'t':>7}{'p':>7}")
+for k, label in enumerate(preds, start=1):
+    print(f"{label:<12}{beta[k]:>12.3f}{t[k]:>7.2f}{hits[k] / 5000:>7.3f}")
+print(f"intercept {beta[0]:.3f}, R-squared {1 - resid @ resid / ((y - y.mean()) @ (y - y.mean())):.3f} on {len(y)} dyads")
+```
+
+::: {.code-output}
+```text
+             coefficient      t      p
+friendship         0.116   2.05  0.176
+reports_to         0.434   3.61  0.001
+same_dept         -0.066  -1.10  0.338
+level_gap          0.083   2.72  0.265
+age_gap           -0.004  -1.45  0.322
+tenure_gap        -0.009  -2.46  0.091
+intercept 0.539, R-squared 0.113 on 420 dyads
+```
+:::
+
+## Rust
+
+```rust
+use knappnet::matrix::Dense;
+use knappnet::qap::{fit_mrqap, MrqapMethod, MrqapOptions, Permutations};
+
+// Tables as the QAP code wants them, and one number per ordered pair for each predictor.
+let from_pairs = |f: &dyn Fn(usize, usize) -> f64| -> Dense {
+    let mut d = Dense::zeros(n, n);
+    (0..n).for_each(|i| (0..n).for_each(|j| d.set(i, j, f(i, j))));
+    d
+};
+let labels = ["friendship", "reports_to", "same_dept", "level_gap", "age_gap", "tenure_gap"];
+let mats = vec![
+    from_pairs(&|i, j| layer[1][i][j]), from_pairs(&|i, j| layer[2][i][j]),
+    from_pairs(&|i, j| if dept[i] == dept[j] { 1.0 } else { 0.0 }),
+    from_pairs(&|i, j| (level[i] - level[j]) as f64), // row's level minus column's level
+    from_pairs(&|i, j| (age[i] - age[j]).abs() as f64),
+    from_pairs(&|i, j| (tenure[i] - tenure[j]).abs() as f64),
+];
+let options = MrqapOptions { method: MrqapMethod::DoubleSemiPartialling,
+                             permutations: Permutations::Random { reps: 5_000, seed: 1 }, ..Default::default() };
+let fit = fit_mrqap(&from_pairs(&|i, j| layer[0][i][j]), &mats, options)?;
+println!("{:<12}{:>12}{:>7}{:>7}", "", "coefficient", "t", "p");
+for (k, label) in labels.iter().enumerate() {
+    println!("{:<12}{:>12.3}{:>7.2}{:>7.3}", label, fit.coefficients[k + 1], fit.t[k + 1], fit.tails[k + 1].compute_p_abs());
+}
+println!("intercept {:.3}, R-squared {:.3} on {} dyads", fit.coefficients[0], fit.r_squared, fit.dyads);
+```
+
+::: {.code-output}
+```text
+             coefficient      t      p
+friendship         0.116   2.05  0.172
+reports_to         0.434   3.61  0.000
+same_dept         -0.066  -1.10  0.342
+level_gap          0.083   2.72  0.269
+age_gap           -0.004  -1.45  0.317
+tenure_gap        -0.009  -2.46  0.097
+intercept 0.539, R-squared 0.113 on 420 dyads
+```
+:::
+
+:::
+
+
+The table is the one in @sec-network-regression, so read the details there. The response is 1 or 0, so a coefficient is a change in the chance of an advice tie.
+
+- **reports_to, 0.434.** A pair where $i$ reports to $j$ has a chance of an advice tie that is 43 points higher. It is the only coefficient that survives relabeling: its p-value is below 0.001.
+- **friendship, 0.116.** Friends are about 12 points more likely to have an advice tie, with a permutation p-value near 0.17. The overlap between friendship and advice is real in the descriptive sense, and not distinguishable from chance once the people's own bundles of ties are taken into account.
+- **level_gap, 0.083, and tenure_gap, $-0.009$.** Asking up, and asking someone of similar tenure, each go with a higher chance, but the permutation p-values are about 0.27 and 0.10. An ordinary t test would call the first clearly significant (2.72). It isn't, because the level gap is built from two people's levels, which vary mostly by person.
+- **same_dept and age_gap** are small and nowhere near significant.
+
+The model explains 11.3% of the variation across the 420 ordered pairs. After accounting for the chart, friendship and differences in level, age and tenure, most of who asks whom is left over. That agrees with the fit check in @sec-network-regression, where the model didn't reproduce how different managers are in how many people they ask. Read the regression as a description of which patterns go with advice here, not as a mechanism.
+
+## Step 5: stress tests
+
+Everything so far came from one table. How much of it would survive if the table were a little different? Two tests perturb the data, one removes a person and one compares with random networks.
+
+**Drop ties and answers.** In the first block, every one of the 190 advice arcs is removed in turn. Then every manager's answers are removed in turn, as if that manager had not returned the questionnaire. After each change we ask: is manager 2 still first on in-degree, are managers 2, 18 and 21 still the top three, and how much does the rank correlation with the chart level move (it was 0.671)?
+
+**Remove a broker.** Take a manager out of the friendship network, with ties in either direction, and compute the mean distance among the other 20. The block does this for the two least constrained brokers (17 and 11), the CEO and manager 14. Mean distance falls when a peripheral person is removed, so read the numbers as an ordering of how much each manager's routes matter, not as a measure of harm.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# For each table: is manager 2 still first on advice in-degree, are managers 2, 18, 21 still the top three,
+# and how well does the advice ordering still agree with the chart's levels?
+check <- \(tables) {
+  scores <- map(tables, colSums)
+  tibble(
+    cases = length(scores),
+    manager_2_first = sum(map_lgl(scores, \(s) s[2] > max(s[-2]))),
+    same_top_three = sum(map_lgl(scores, \(s) identical(sort(order(-s, seq_along(s))[1:3]), c(2L, 18L, 21L)))),
+    rho_low = min(map_dbl(scores, \(s) cor(s, -lvl, method = "spearman"))),
+    rho_high = max(map_dbl(scores, \(s) cor(s, -lvl, method = "spearman")))
+  ) |>
+    mutate(across(starts_with("rho"), \(x) round(x, 3)))
+}
+arcs <- which(layer$advice == 1, arr.ind = TRUE)
+list(
+  drop_one_arc = map(seq_len(nrow(arcs)), \(k) replace(layer$advice, arcs[k, 1] + n * (arcs[k, 2] - 1), 0)),
+  drop_one_managers_answers = map(1:21, \(k) replace(layer$advice, k + n * (0:(n - 1)), 0))
+) |>
+  map(check) |>
+  list_rbind(names_to = "stress")
+
+# Take one manager out of the friendship network and measure what is left (ties in either direction).
+without <- \(drop) as_net_frame(pmax(layer$friendship, t(layer$friendship))[setdiff(1:21, drop), setdiff(1:21, drop)],
+                                directed = FALSE)
+removed <- c(NA, 17, 11, 7, 14)
+tibble(
+  removed,
+  mean_distance = map_dbl(removed, \(v) net_mean_distance(without(v))),
+  pieces = map_int(removed, \(v) net_components(without(v), mode = "weak")$no)
+) |>
+  mutate(mean_distance = round(mean_distance, 3))
+```
+
+::: {.code-output}
+```text
+pending
+```
+:::
+
+## Python
+
+```python
+def check(tables):
+    # For each table: is manager 2 still first on advice in-degree, are managers 2, 18, 21 still the top three,
+    # and how well does the advice ordering still agree with the chart's levels?
+    scores = [t.sum(axis=0) for t in tables]
+    first = sum(x[1] > np.delete(x, 1).max() for x in scores)
+    same_three = sum(set(np.argsort(-x, kind="stable")[:3] + 1) == {2, 18, 21} for x in scores)
+    rho = [spearman(x, -level) for x in scores]
+    return f"{len(scores)} cases: manager 2 first in {first}, same top three in {same_three}, rank correlation with level {min(rho):.3f} to {max(rho):.3f}"
+
+def without(m, i, j):
+    out = m.copy()
+    out[i, j] = 0
+    return out
+
+print("drop one advice arc, " + check([without(advice, i, j) for i, j in zip(*np.nonzero(advice))]))
+print("drop one manager's answers, " + check([without(advice, k, slice(None)) for k in range(n)]))
+
+# Take one manager out of the friendship network and measure what is left (ties in either direction).
+def without_manager(m, drop):
+    keep = [v for v in range(n) if v != drop]
+    g = nx.from_numpy_array(((m + m.T) > 0).astype(int)[np.ix_(keep, keep)])
+    return nx.average_shortest_path_length(g), nx.number_connected_components(g)
+
+print(f"{'removed':<18}{'mean distance':>14}{'pieces':>8}")
+for label, v in [("nobody", None), ("manager 17", 16), ("manager 11", 10), ("manager 7 (CEO)", 6), ("manager 14", 13)]:
+    dist, pieces = without_manager(friendship, v)
+    print(f"{label:<18}{dist:>14.3f}{pieces:>8}")
+```
+
+::: {.code-output}
+```text
+drop one advice arc, 190 cases: manager 2 first in 190, same top three in 190, rank correlation with level 0.636 to 0.682
+drop one manager's answers, 21 cases: manager 2 first in 21, same top three in 21, rank correlation with level 0.646 to 0.708
+removed            mean distance  pieces
+nobody                     1.648       1
+manager 17                 1.784       1
+manager 11                 1.742       1
+manager 7 (CEO)            1.616       1
+manager 14                 1.637       1
+```
+:::
+
+## Rust
+
+```rust
+use knappnet::metrics::descriptive::{compute_mean_distance, PathOptions};
+use knappnet::metrics::topography::{find_components, ComponentKind};
+
+// For each table: is manager 2 still first on advice in-degree, are managers 2, 18, 21 still the top three,
+// and how well does the advice ordering still agree with the chart's levels?
+let check = |tables: Vec<Vec<Vec<f64>>>| -> String {
+    let scores: Vec<Vec<f64>> = tables.iter().map(|t| (0..n).map(|j| (0..n).map(|i| t[i][j]).sum()).collect()).collect();
+    let first = scores.iter().filter(|x| (0..n).all(|v| v == 1 || x[v] < x[1])).count();
+    let same_three = scores.iter().filter(|x| {
+        let mut order: Vec<usize> = (0..n).collect();
+        order.sort_by(|&a, &b| x[b].partial_cmp(&x[a]).unwrap().then(a.cmp(&b)));
+        let mut top: Vec<usize> = order[..3].iter().map(|v| v + 1).collect();
+        top.sort();
+        top == [2, 18, 21]
+    }).count();
+    let rho: Vec<f64> = scores.iter().map(|x| spearman(x, &level_up)).collect();
+    format!("{} cases: manager 2 first in {first}, same top three in {same_three}, rank correlation with level {:.3} to {:.3}",
+            scores.len(), rho.iter().cloned().fold(f64::MAX, f64::min), rho.iter().cloned().fold(f64::MIN, f64::max))
+};
+let arcs = all_arcs(&layer[0]);
+let drop_arc: Vec<Vec<Vec<f64>>> = arcs.iter().map(|&(i, j)| { let mut m = layer[0].clone(); m[i][j] = 0.0; m }).collect();
+let drop_manager: Vec<Vec<Vec<f64>>> = (0..n).map(|k| { let mut m = layer[0].clone(); m[k] = vec![0.0; n]; m }).collect();
+println!("drop one advice arc, {}", check(drop_arc));
+println!("drop one manager's answers, {}", check(drop_manager));
+
+// Take one manager out of the friendship network and measure what is left (ties in either direction).
+let paths = PathOptions::default();
+let without = |drop: Option<usize>| -> Result<(f64, usize), knappnet::Error> {
+    let keep: Vec<usize> = (0..n).filter(|&v| Some(v) != drop).collect();
+    let sub: Vec<Vec<f64>> = keep.iter().map(|&i| keep.iter().map(|&j| layer[1][i][j]).collect()).collect();
+    let g = build(&sub, false)?;
+    Ok((compute_mean_distance(&g, paths, true)?, find_components(&g, ComponentKind::Weak).count()))
+};
+println!("{:<18}{:>14}{:>8}", "removed", "mean distance", "pieces");
+for (label, v) in [("nobody", None), ("manager 17", Some(16)), ("manager 11", Some(10)), ("manager 7 (CEO)", Some(6)), ("manager 14", Some(13))] {
+    let (dist, pieces) = without(v)?;
+    println!("{label:<18}{dist:>14.3}{pieces:>8}");
+}
+```
+
+::: {.code-output}
+```text
+drop one advice arc, 190 cases: manager 2 first in 190, same top three in 190, rank correlation with level 0.636 to 0.682
+drop one manager's answers, 21 cases: manager 2 first in 21, same top three in 21, rank correlation with level 0.646 to 0.708
+removed            mean distance  pieces
+nobody                     1.648       1
+manager 17                 1.784       1
+manager 11                 1.742       1
+manager 7 (CEO)            1.616       1
+manager 14                 1.637       1
+```
+:::
+
+:::
+
+
+The advice ranking is hard to move. Manager 2 stays first in all 190 single-arc removals and all 21 non-response cases, the top three never change, and the rank correlation with the chart stays between 0.636 and 0.708 (observed 0.671). A lead of three in-degree points over the next manager is the reason. Those tests only *remove* arcs. They say nothing about arcs that were never reported, or reported wrongly.
+
+The broker is a different story. Without manager 17, the mean friendship distance among the other 20 managers rises from 1.648 to 1.784, and without manager 11 to 1.742. Take the CEO out and it goes down to 1.616, and manager 14 gives 1.637. The network stays in one piece in all four cases. Managers 17 and 11 matter to friendship routes in a way the CEO and the manager with the most direct reports don't. We tested only these four, so this isn't a ranking of all 21.
+
+**Compare with random networks.** The last test asks whether the pattern is more than a consequence of who asks many people and who is asked by many. We keep every manager's number of advice arcs sent and received exactly as they are, and swap ties at random so that everything else is shuffled [@maslov2002specificity]. (@sec-triads-and-motifs did this for the triad census; the R tab uses the same hand-written swap, and each language draws its own random networks, so the digits differ a little.) We make 1,000 such networks and compute three statistics on each: how many of the 20 reporting lines carry an advice arc, what share of advice arcs ask up the chart, and what share stay inside a department.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# knappnet's R package cannot rewire a directed network yet, so we write the swap ourselves:
+# take two ties a -> b and c -> d and turn them into a -> d and c -> b, unless that would
+# make a loop or repeat a tie. Every manager keeps the same in- and out-degree.
+swap_once <- function(e, pick) {
+  i <- pick[[1]]
+  j <- pick[[2]]
+  new_i <- e$from[i] * n + e$to[j]
+  new_j <- e$from[j] * n + e$to[i]
+  ok <- i != j && e$from[i] != e$to[j] && e$from[j] != e$to[i] &&
+    !(new_i %in% e$code) && !(new_j %in% e$code)
+  if (!ok) return(e)
+  e$to[c(i, j)] <- e$to[c(j, i)]
+  e$code <- e$from * n + e$to
+  e
+}
+# Apply the swaps one after another, each picking up the network the last one left.
+# (A short recursive helper stands in for a loop.)
+walk <- function(e, picks, i = 1) {
+  if (i > ncol(picks)) e else walk(swap_once(e, picks[, i]), picks, i + 1)
+}
+chain <- function(e, steps) {
+  walk(e, matrix(sample.int(length(e$from), 2 * steps, replace = TRUE), nrow = 2))
+}
+
+arcs <- which(layer$advice == 1, arr.ind = TRUE)
+start <- list(from = arcs[, 1], to = arcs[, 2])
+start$code <- start$from * n + start$to
+bosses <- which(layer$reports_to == 1, arr.ind = TRUE)
+boss_code <- bosses[, 1] * n + bosses[, 2]
+
+# Reporting lines used, share asking up the chart, share inside a department.
+statistics <- \(e) c(reporting_lines_used = sum(e$code %in% boss_code), asks_up = mean(lvl[e$from] > lvl[e$to]),
+                     same_department = mean(dpt[e$from] == dpt[e$to]))
+
+# Forget the start with 2,000 swaps, then make each of 1,000 networks with 600 more swaps.
+set.seed(1)
+burned <- start |> chain(500) |> chain(500) |> chain(500) |> chain(500)
+draws <- map(1:1000, \(k) chain(burned, 600)) |>
+  map(\(e) as_tibble_row(statistics(e))) |>
+  list_rbind()
+
+observed <- statistics(start)
+as_high <- map_dbl(names(observed), \(s) mean(draws[[s]] >= observed[[s]] - 1e-9))
+tibble(
+  statistic = names(observed),
+  observed = unname(observed),
+  null_mean = unname(map_dbl(draws, mean)),
+  low_5 = unname(map_dbl(draws, \(x) quantile(x, 0.05))),
+  high_95 = unname(map_dbl(draws, \(x) quantile(x, 0.95))),
+  share_as_high = as_high
+) |>
+  mutate(across(where(is.numeric), \(x) round(x, 3)))
+```
+
+::: {.code-output}
+```text
+pending
+```
+:::
+
+## Python
+
+```python
+def statistics(arcs):
+    # arcs: an array with one row (asker, asked) per advice arc
+    i, j = arcs[:, 0], arcs[:, 1]
+    return np.array([reports_to[i, j].sum(), (level[i] > level[j]).mean(), (dept[i] == dept[j]).mean()])
+
+observed = statistics(np.argwhere(advice))
+
+# A chain of degree-preserving swaps (every manager keeps the same in- and out-degree): 4,000 to forget the start,
+# then a network after every 400 more. NetworkX swaps three ties at a time and changes the network in place.
+g = nx.DiGraph(advice)
+nx.directed_edge_swap(g, nswap=4000, max_tries=400_000, seed=1)
+draws = []
+for k in range(1000):
+    nx.directed_edge_swap(g, nswap=400, max_tries=40_000, seed=2 + k)
+    draws.append(statistics(np.array(g.edges())))
+draws = np.array(draws)
+
+print(f"{'':<26}{'observed':>9}{'null mean':>10}{'middle 90%':>16}{'as high':>9}")
+for k, label in enumerate(["reporting lines used", "asks up the chart", "same department"]):
+    low, high = np.percentile(draws[:, k], [5, 95])
+    print(f"{label:<26}{observed[k]:>9.3f}{draws[:, k].mean():>10.3f}{low:>9.3f} to {high:<5.3f}{np.mean(draws[:, k] >= observed[k] - 1e-9):>9.3f}")
+```
+
+::: {.code-output}
+```text
+                           observed null mean      middle 90%  as high
+reporting lines used         19.000    13.606   11.000 to 16.000    0.001
+asks up the chart             0.300     0.312    0.300 to 0.321    0.994
+same department               0.242     0.204    0.179 to 0.226    0.012
+```
+:::
+
+## Rust
+
+```rust
+use knappnet::metrics::rewiring::run_directed_edge_swap;
+
+// Reporting lines used, share asking up the chart, share inside a department.
+let statistics = |arcs: &[(usize, usize)]| -> [f64; 3] {
+    let share = |f: &dyn Fn(usize, usize) -> bool| arcs.iter().filter(|&&(i, j)| f(i, j)).count() as f64 / arcs.len() as f64;
+    [arcs.iter().filter(|&&(i, j)| layer[2][i][j] > 0.0).count() as f64,
+     share(&|i, j| level[i] > level[j]), share(&|i, j| dept[i] == dept[j])]
+};
+let observed = statistics(&all_arcs(&layer[0]));
+
+// Rebuild a network from the swapped ties.
+let rebuild = |arcs: &Vec<(u32, u32)>| {
+    let (from, to): (Vec<i64>, Vec<i64>) = arcs.iter().map(|a| (a.0 as i64, a.1 as i64)).unzip();
+    Graph::from_edges(n, &from, &to, None, true)
+};
+// A chain of degree-preserving swaps (every manager keeps the same in- and out-degree): 4,000 to forget the start,
+// then a network after every 400 more. The engine swaps three ties at a time.
+let mut state = rebuild(&run_directed_edge_swap(&graphs[0], 4_000, 400_000, 1)?)?;
+let mut draws: Vec<[f64; 3]> = Vec::new();
+for k in 0..1_000u64 {
+    let arcs = run_directed_edge_swap(&state, 400, 40_000, 2 + k)?;
+    draws.push(statistics(&arcs.iter().map(|&(a, b)| (a as usize, b as usize)).collect::<Vec<_>>()));
+    state = rebuild(&arcs)?;
+}
+
+println!("{:<26}{:>9}{:>10}{:>16}{:>9}", "", "observed", "null mean", "middle 90%", "as high");
+for (k, label) in ["reporting lines used", "asks up the chart", "same department"].iter().enumerate() {
+    let mut v: Vec<f64> = draws.iter().map(|d| d[k]).collect();
+    v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    // A percentile by straight-line interpolation between neighboring draws.
+    let percentile = |p: f64| {
+        let pos = p * (v.len() - 1) as f64;
+        let (lo, hi) = (pos.floor() as usize, pos.ceil() as usize);
+        v[lo] + (v[hi] - v[lo]) * (pos - lo as f64)
+    };
+    println!("{label:<26}{:>9.3}{:>10.3}{:>9.3} to {:<5.3}{:>9.3}", observed[k], v.iter().sum::<f64>() / v.len() as f64,
+             percentile(0.05), percentile(0.95), v.iter().filter(|&&x| x >= observed[k] - 1e-9).count() as f64 / v.len() as f64);
+}
+```
+
+::: {.code-output}
+```text
+                           observed null mean      middle 90%  as high
+reporting lines used         19.000    13.575   11.000 to 16.000    0.001
+asks up the chart             0.300     0.312    0.300 to 0.321    0.994
+same department               0.242     0.204    0.179 to 0.232    0.010
+```
+:::
+
+:::
+
+
+Read the last column first: the share of random networks at least as high as the real value. For reporting lines it is 0.001 (Rust). In the random networks about 13.6 of the 20 boss lines carry an advice arc, and the middle 90% runs from 11 to 16. The real firm has 19. So the chart's pull on advice is more than the numbers of people who ask and are asked would produce.
+
+The share that asks up the chart does *not* survive this comparison. The real 0.300 is at the bottom of the null range (0.300 to 0.321, mean 0.312), and 99% of the random networks are at least as high. Advice goes up the chart as often as it does because vice presidents are asked a lot, not because of how the asking is arranged beyond that. The department share is higher than the random networks give, 0.242 against about 0.204, with about 1% of draws as high. That's a modest effect on 190 arcs.
+
+One caution: fixing the degrees is a strong baseline. If the chart *causes* the vice presidents' popularity, "explained by degrees" and "explained by the chart" are the same story told twice (@sec-tests-and-null-models).
+
+## Step 6: what we can say, what we cannot
+
+::: {.callout-tip appearance="simple"}
+## What we can say
+- In these 21 managers' own reports, advice follows the chart at its boss lines: 19 of 20 managers go to their own boss, more than the numbers asked and asking would give (about 13.6 of 20 in random networks with the same degrees).
+- Most advice does not follow the chart: 136 of the 190 arcs (72%) run between departments with no direct reporting line.
+- Being sought out for advice agrees with level, direct reports and tenure (rank correlations 0.65 to 0.68), and with age not at all (0.042). The CEO is named by 13 managers, tied for fourth.
+- Friendship is brokered by managers who are not at the top of the chart. Manager 17 has the lowest friendship constraint (0.188) and the highest betweenness (43.9); the CEO has the second highest constraint (0.438).
+- Of the predictors of advice we tried, only the reporting line separates from chance once the relabeling respects the people (p below 0.001). The model explains 11.3% of the variation in pairs.
+- The top of the advice ranking survives leaving out any one arc or any one manager's answers.
+:::
+
+::: {.callout-warning appearance="simple"}
+## What we cannot say
+- Anything about performance. Nothing in the file says how well the firm or any manager did, so we cannot say that being sought out, or brokering, helped or hurt.
+- That the chart *caused* the advice pattern, or the reverse. Boss lines are partly how a firm decides whom you ask, so advice and reporting are tied by design.
+- That manager 17 is a "key person". He has an unusual position in friendship, in one firm at one moment. What he did with it is not in the data.
+- That managers agree about who is whose friend. We have each manager's own report only.
+- That an absent arc means no tie. It means the manager didn't name that person.
+- Anything about other firms, or about this firm at another time.
+:::
+
+Several rival explanations fit the same table. Each is something to check with other data, not with this network.
+
+- **Seniority and know-how.** Tenure orders advice as well as level does (0.684 against 0.671), and the two are only moderately related (0.431). People may be asked because they have been around, not because of their box on the chart.
+- **Work flow.** Departments are one way to divide a firm. Who depends on whom for parts, approvals or information is another, and the chart can hide it.
+- **The questionnaire.** Asking "whom do you go to for advice?" invites naming your boss. A boss line could be a courtesy as much as a habit.
+- **Physical layout and shared history.** Friendship may follow who sits near whom or who joined together. We have neither.
+
+## Step 7: write the result
+
+The last step is to say what you found in a form that carries its own limits. The template follows the interpretation cards in the book; here it is filled in from the numbers above.
+
+> In this firm of 21 managers (each manager's own report of whom he goes to for advice and names as a friend, plus the company's reporting lines; one moment, no dates), advice is dense (190 of 420 possible arcs) and friendship sparser (102). Advice follows the chart at the boss line (19 of 20 managers go to their own boss, against about 13.6 expected in 1,000 random networks that keep every manager's numbers of advice arcs sent and received) but mostly runs elsewhere: 136 of 190 advice arcs cross departments with no direct line. The managers most often asked for advice are vice presidents (managers 2, 18 and 21, named by 18, 15 and 15 colleagues); the CEO is named by 13, tied for fourth. Friendship is brokered by managers further down the chart: manager 17 has the lowest constraint (0.188) and the highest betweenness (43.9). Manager 2 stays first in all 190 single-arc removals and in all 21 cases where one manager's answers are removed, and the rank correlation between being asked and the chart level stays between 0.64 and 0.71. These are descriptions of how the firm was wired. The data do not show performance, why managers chose these ties, or whether the pattern holds elsewhere.
+
+Read that against the checklist. Does it say what the tie means and whose report it is? What it was compared with? What was perturbed and how often the answer held? What the numbers don't show? A reader who disagrees should be able to find the place where they disagree.
 
 ## Exercises
 
-1. TODO(exercise): a by-hand exercise on a tiny network.
-2. TODO(exercise): a coding exercise on a dataset from the appendix.
-3. TODO(exercise): an interpretation exercise.
+1. **By hand.** Five managers: 2 and 3 report to 1, and 4 and 5 report to 2. Advice arcs: 2 to 1, 3 to 1, 3 to 2, 4 to 2, 5 to 1, 5 to 4. How many of the four reporting lines carry an advice arc? What is each manager's advice in-degree, and the average rank of each?
+2. **Coding.** Repeat Step 2 with out-degree: who asks the most people for advice, and how does that ordering agree with the chart?
+3. **Coding.** Repeat Step 3 on friendships that both managers name (keep $i \to j$ only if $j \to i$ is also there). Does manager 17 still have the lowest constraint?
+4. **Coding.** In Step 5, drop a random 10% of the advice arcs 1,000 times with a fixed seed. How often does manager 2 stay first? How wide is the range of the rank correlation with level?
+5. **Design.** Name three attributes or data sources that would let you test the rival explanations (seniority, work flow, the questionnaire). For each, say what result would make you prefer the rival to the chart.
+6. **Interpretation.** A consultant writes: "Manager 17 holds the firm's friendships together, so promoting him will improve cooperation." Write two sentences on what the analysis supports and two on what it doesn't.
 
 ## Summary
 
 ::: {.callout-tip appearance="simple"}
-TODO(summary): three to five sentences, then the one-line takeaway.
+We took one question, what the organization chart hides, through seven steps: check the data and its limits, ask what the chart carries, compare who is sought out with the chart, look for brokers, fit a regression, stress-test, and write the result with its limits. Advice follows the chart at the boss line, and that is more than the numbers asked and asking would produce, but most advice crosses departments with no line on the chart. The most-asked managers are vice presidents, the CEO is tied for fourth, and the managers who broker friendship are lower on the chart. The advice ranking survives dropped arcs and non-response. None of it says anything about performance or cause. A good analysis states what the numbers show and what they cannot.
 :::
 
 ## Further reading
 
-TODO(refs): cite with `@key` from `shared/bib/references.bib`.
+For the study and the data, read @krackhardt1987cognitive, and @wasserman1994social for the data set as it is printed. For perceived networks and power in organizations, see @krackhardt1990assessing. For constraint and brokerage, see @burt1992structural and, for the link between brokerage and ideas in one company, @burt2004structural. For the regression, see @krackhardt1988predicting and @dekker2007sensitivity, and for the layers, @sec-multilayer. For how stable centrality scores are when data are missing or wrong, see @borgatti2006robustness. For degree-preserving swaps, see @maslov2002specificity.
