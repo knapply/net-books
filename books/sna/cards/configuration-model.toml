@@ -1,0 +1,57 @@
+id = "configuration-model"
+title = "The configuration model and degree-preserving randomization"
+kind = "model"
+chapter = "small-worlds"
+summary = "A family of random networks in which every node keeps its observed degree and everything else is random, used as the baseline for asking how much of a pattern is only a consequence of who has how many ties."
+answers = "Is this pattern (clustering, distance, mixing, a node's position) more than what the degree sequence alone would produce?"
+
+data_requirements = [
+  "A network whose degrees you take as given. Say whether it is read as undirected or directed, and how loops and repeated ties were handled.",
+  "Enough nodes and ties that many distinct random networks exist. In very small networks the draws are nearly the same network.",
+  "A statistic you can recompute on each random network, and a fixed random seed with the number of draws recorded.",
+]
+
+assumptions = [
+  "Holding degrees fixed is the right thing to hold fixed. If degrees are themselves partly the outcome you are studying, the baseline removes part of the finding.",
+  "The random networks are simple (no loops, no repeated ties). Plain stub pairing rarely gives a simple network when degrees are uneven, so tie swapping starting from the observed network is the practical route.",
+  "Swapping has been run long enough to forget the starting network. The chapter uses ten times the number of ties; check that the result does not change with more swaps.",
+  "Ties are exchangeable apart from degree. Geography, groups, time and other structure are not preserved, so they are not ruled out either.",
+]
+
+readings = [
+  { context = "Marriage or alliance network among families", high = "Observed clustering well above the same-degree baseline suggests closure that a few well-connected families do not explain by themselves.", low = "Observed clustering close to the baseline means a few busy families account for it. In a network of 15 families the baseline varies a lot, so be cautious either way." },
+  { context = "Friendship or advice network inside an organization", high = "More closure, or a different mixing pattern, than the degrees imply. Check groups, teams and survey design before reading it as social.", low = "In a dense network most triangles are expected from degrees alone, so a small gap is the usual result." },
+  { context = "Supply, transport or infrastructure network", high = "Structure beyond the degree sequence, such as geographic constraints or planned redundancy.", low = "The pattern follows from hubs and spokes; the degrees carry it." },
+  { context = "Online platform with follows or links", high = "Closure or reciprocity beyond what popularity explains.", low = "The pattern is what popularity (many followers) produces by itself." },
+]
+
+pitfalls = [
+  "Calling the configuration model the null model. It is one baseline among several, and the choice of what to hold fixed is part of the question.",
+  "Pairing stubs and ignoring loops and repeated ties in small or hub-heavy networks. The chapter shows no simple network in 100,000 pairings for two of its three examples.",
+  "Reporting only the average of the random draws. Report how often a draw is at least as extreme as the observed value.",
+  "Using a different clustering measure for the observed network and for the draws.",
+  "Treating a match with the baseline as evidence that nothing is going on. It says what degrees explain, not what else is present.",
+]
+
+checks = [
+  "Give the number of draws and the seed, and rerun with another seed to see how much the share of draws at least as extreme moves.",
+  "Double the number of swaps and confirm the answer holds.",
+  "Compare with the baseline that keeps only the number of nodes and ties, to see how much the degree constraint changes the picture.",
+  "Drop a random tenth of the ties from the observed network and recompute, to see whether the gap to the baseline is larger than the noise from missing data.",
+]
+
+do_not_claim = [
+  "That the network arose by random pairing of stubs.",
+  "That a statistic is explained, in a causal sense, by degree. It is only reproduced by random networks with the same degrees.",
+  "That a small gap to the baseline proves absence of structure, in a network of a few dozen nodes.",
+]
+
+report_template = "In this {tie_meaning} network of {n} {node_type}, {statistic} is {observed}. Random networks that keep every node's degree (made by {swaps} tie swaps, {reps} draws, seed {seed}) average {baseline}, and {share} of them are at least as extreme as the observed value. This compares the network with one baseline and does not say how it arose. {caveat}"
+
+related = ["small-world", "degree-distribution", "clustering"]
+sources = ["molloy1995critical", "newman2001random", "maslov2002specificity"]
+
+[knappnet]
+rust = "run_double_edge_swap(&graph, 10 * m, 1_000_000, seed) from knappnet::metrics::rewiring, repeated from the observed network"
+r = "net_random_config(degrees, simple = TRUE) draws from degrees; the engine's tie swapping is not exposed in R yet, so chapter 9 writes the swap by hand"
+python = "networkx.double_edge_swap(G, nswap=10 * m, max_tries=1_000_000, seed=seed) on a copy of the observed network"
