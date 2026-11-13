@@ -5,6 +5,14 @@
 @sec-networks-as-data and @sec-centrality. We use the ten-person friendship network from @sec-centrality again, so it helps to have it in mind.
 :::
 
+::: {.callout-note title="The short version"}
+This chapter steps back from individual people and asks about the whole network. How many steps apart are people? Is everyone connected, or are there separate islands? What share of the possible ties actually exist? Are ties returned, and do friends of friends become friends? How easily could the network be broken, and where is it tightest? Each question gets one or two simple numbers, and the chapter shows how each one can mislead you.
+:::
+
+::: {.callout-note title="Why you might care"}
+These are the numbers behind claims like "everyone is six steps from everyone", "that team is tight-knit" and "that supply chain has a single point of failure". If you know how to read them, and where they go wrong (a network in pieces, or a bigger network that always looks sparser), you can tell a solid claim from a slick one.
+:::
+
 ## From people to the whole network
 
 @sec-centrality scored *people*. This chapter steps back and asks questions about the network as a whole. How far apart are people? Does everyone belong to one connected group, or several? Do friends of friends tend to be friends? How tightly knit is the whole thing, and where is it tightest?
@@ -42,6 +50,8 @@ Three summaries come straight out of that table, and you'll see them in almost e
 - **Eccentricity** is a person's largest distance to anyone: how far they are from the person furthest from them. It's the number in the right-hand column.
 - **Diameter** is the largest distance in the whole network: the farthest apart any two people are. Here it's 4, between Jo and the five people at the other end of the table.
 - **Mean distance** (the average path length) is the average distance over all pairs of people. Here it's about 1.98. In this network, the typical pair of people is two steps apart.
+
+The code below builds the friendship network, finds every distance and prints the three summaries. Look for the diameter of 4 and the mean of about 1.98.
 
 ::: {.panel-tabset group="language"}
 
@@ -155,17 +165,29 @@ The mean of 1.978 and the diameter of 4 match the distance table: the largest en
 
 ### The definitions, precisely
 
-The plain-words versions above hide a few details that matter as soon as you compare networks or write a result down. Here they are with symbols. Write $n$ for the number of people.
+This section is the formal one. On a first read you can skip to "Six degrees" and you'll still have the plain ideas of distance, diameter and mean distance. The plain-words versions above hide a few details that matter as soon as you compare networks or write a result down. Here they are with symbols. Write $n$ for the number of people.
 
 A **walk** of length $\ell$ from person $i$ to person $j$ is a list of people $i = v_0, v_1, \dots, v_\ell = j$ in which each person is tied to the next. The **distance** $d(i,j)$ is the smallest length of any walk from $i$ to $j$. (A shortest walk can't revisit anyone, so it is automatically a path, which is why "shortest path" and "shortest walk" mean the same thing.) We set $d(i,i) = 0$, and $d(i,j) = \infty$ when there is no walk at all. In an undirected network $d(i,j) = d(j,i)$. In a directed one the walk has to follow the arrows, so $d(i,j)$ and $d(j,i)$ can differ, and one can be infinite while the other is small.
 
+::: {.callout-tip title="In plain words"}
+A walk of length $\ell$ (the Greek letter ell) is a trip of $\ell$ steps, written as the list of people you pass through, from $v_0$ (where you start, $i$) to $v_\ell$ (where you finish, $j$). The distance is the smallest number of steps any such trip needs, 0 to yourself and infinity if no trip exists. In the five-person network below, Ana to Eli can go Ana, Ben, Dev, Eli: that list has 4 people, which is a walk of length 3, and nothing shorter works, so $d(\text{Ana}, \text{Eli}) = 3$.
+:::
+
 A pair can have more than one shortest path. Write $\sigma_{ij}$ for how many there are; the betweenness of @sec-centrality is built from these counts.
+
+::: {.callout-tip title="In plain words"}
+$\sigma_{ij}$ (sigma) is a head count of the shortest trips from $i$ to $j$. Two people on opposite corners of a square have $\sigma = 2$, one way around each side. In the five-person network every pair has exactly one shortest path, so every $\sigma$ is 1.
+:::
 
 From the distances come three summaries:
 
 $$
 \varepsilon(i) = \max_{j} d(i,j), \qquad D = \max_{i} \varepsilon(i), \qquad r = \min_{i} \varepsilon(i).
 $$
+
+::: {.callout-tip title="In plain words"}
+The symbol $\varepsilon$ (epsilon) of $i$ is the eccentricity: person $i$'s distance to whoever is farthest from them. "$\max_j$" means "take the biggest value over every person $j$". $D$ is the biggest eccentricity in the network, so it is the farthest apart any two people are. $r$, the radius, uses "min" instead: it is the smallest eccentricity, held by the most central person. In the five-person example just below, Ana's farthest person is Eli, 3 steps away, so $\varepsilon(\text{Ana}) = 3$; Ben's farthest is Eli at 2. So $D = 3$ and $r = 2$.
+:::
 
 Here $\varepsilon(i)$ is the **eccentricity** of person $i$, $D$ is the **diameter** and $r$ is the **radius**. The people whose eccentricity equals the radius form the **center** of the network, and those whose eccentricity equals the diameter form its **periphery**. In a connected, undirected network the two are tied together by $r \le D \le 2r$. The first inequality is clear from the definitions. For the second, pick a central person $c$. Everyone is within $r$ steps of $c$, so any two people are within $2r$ steps of each other, by going through $c$.
 
@@ -175,6 +197,10 @@ $$
 L = \frac{1}{n(n-1)} \sum_{i \neq j} d(i,j), \qquad
 H = \left[ \frac{1}{n(n-1)} \sum_{i \neq j} \frac{1}{d(i,j)} \right]^{-1}.
 $$
+
+::: {.callout-tip title="In plain words"}
+Both are averages of distances over every ordered pair of different people ($i \neq j$ means "$i$ and $j$ are not the same person"; there are $n(n-1)$ such pairs). $L$ is the ordinary average: add up all the distances and divide by the number of pairs. $H$ first adds up the reciprocals, $1/d$, so a person one step away counts 1 and a person three steps away counts a third, averages those, and then flips the answer back. In the five-person example, the ten pairs of people have distances adding to $5 + 8 + 3 = 16$, so $L = 16/10 = 1.6$ (counting each pair once or twice gives the same average), and the reciprocals add to $22/3$, so $H = 30/22 \approx 1.364$ (see the arithmetic below).
+:::
 
 $L$ is the **mean distance**, also called the average path length. $H$ is the **harmonic mean distance**: add up the *reciprocals* of the distances, average them, and take the reciprocal of that average, with the convention $1/\infty = 0$. Its inverse, $E = 1/H$, goes by the name **global efficiency** [@marchiori2000harmony; @latora2001efficient]. Two facts about $H$ are worth keeping. First, whenever every pair can reach each other, $H \le L$, because a harmonic mean never exceeds the arithmetic mean. Second, and this is the reason it exists, $H$ is still defined when some pairs *can't* reach each other: an unreachable pair adds $1/\infty = 0$ to the sum instead of poisoning it with an infinity. We'll see shortly why that matters.
 
@@ -189,6 +215,8 @@ Let's check all of this on five people, small enough to do on paper. Ben, Cleo a
 | Eli | 3 | 2 | 2 | 1 | 0 | 3 |
 
 The radius is 2 and the diameter is 3, so $2 \le 3 \le 4$ holds. The center is Ben, Cleo and Dev; the periphery is Ana and Eli. There are ten pairs: five at distance 1 (Ana and Ben, Ben and Cleo, Ben and Dev, Cleo and Dev, Dev and Eli), four at distance 2 (Ana and Cleo, Ana and Dev, Ben and Eli, Cleo and Eli) and one, Ana and Eli, at distance 3. So $L = (5 \cdot 1 + 4 \cdot 2 + 1 \cdot 3)/10 = 1.6$. For the harmonic version the reciprocals add up to $5 + 4/2 + 1/3 = 22/3$, their average over the ten pairs is $22/30$, and so $H = 30/22 \approx 1.364$. As promised, $H < L$.
+
+The code below computes the same numbers by machine. Look for whether they agree with the paper results above.
 
 ::: {.panel-tabset group="language"}
 
@@ -347,7 +375,17 @@ Components matter for a practical reason: many measures break, or quietly change
 
 Here is the precise version. Say that $i$ and $j$ are *joined* when $d(i,j) < \infty$. In an undirected network, being joined is reflexive (everyone is joined to themselves), symmetric (if $i$ reaches $j$ then $j$ reaches $i$) and transitive (a walk from $i$ to $j$ followed by a walk from $j$ to $k$ is a walk from $i$ to $k$). A relation with those three properties splits the people into groups that don't overlap, and those groups are the components. Their sizes add up to $n$. The biggest is the **largest component** (when it holds most of the people it is often called the *giant* component). A person with no ties at all is an **isolate** and counts as a component of size one, so a roster that includes 200 people nobody named has 200 extra components.
 
+::: {.callout-tip title="In plain words"}
+Two people are "joined" if there is any route between them. The three properties say: everyone is joined to themselves, if $i$ reaches $j$ then $j$ reaches $i$, and routes can be chained ($i$ to $j$ and $j$ to $k$ gives $i$ to $k$). Those three guarantee that the groups can't overlap, the way "lives in the same household" splits everyone in a town into separate households. Add Kai and Lou to the ten-person friendship network and the two groups have 10 and 2 people, which add up to all 12.
+:::
+
 For a directed network, the **weak components** are the components you get after erasing the arrowheads. Two people are in the same **strong component** when each can reach the other by following arrows: $d(i,j) < \infty$ *and* $d(j,i) < \infty$. That relation is also reflexive, symmetric and transitive, so strong components don't overlap either.
+
+::: {.callout-tip title="In plain words"}
+Strong components are groups in which everybody can reach everybody by following the arrows. Writing $d(i,j) < \infty$ just says "there is a route from $i$ to $j$". In the one-way loop of three people, A reaches B reaches C reaches A, so they are one strong component of size 3.
+:::
+
+The code below adds a separate pair, Kai and Lou, to the friendship network and counts the pieces. Look for two components, of sizes 10 and 2.
 
 ::: {.panel-tabset group="language"}
 
@@ -523,6 +561,8 @@ strong  2 with sizes [3, 2]
 
 :::
 
+The machine agrees with the paper: one weak component holding all five people, and two strong ones, of sizes 3 and 2.
+
 ### When the network falls apart: what happens to distances
 
 Everything we computed about distance quietly assumed you can get from anyone to anyone. With Kai and Lou added, who know only each other, that is no longer true: 40 of the 132 ordered pairs of people (about 30%) have no route at all. Software has to do *something* with those pairs, and three conventions are in use.
@@ -531,7 +571,7 @@ Everything we computed about distance quietly assumed you can get from anyone to
 2. **Average over the pairs that do have a route.** This is the default in igraph and in knappnet.
 3. **Count an unreachable pair as infinitely far.** Then the mean distance and the diameter are infinite, which is honest and not very useful.
 
-Convention 2 is the one to be careful with, because it can move in the wrong direction.
+Convention 2 is the one to be careful with, because it can move in the wrong direction. The code below measures the share of pairs with no route, then the mean distance (averaged over reachable pairs) and the harmonic version, with and without Kai and Lou. Look for the two measures moving in opposite directions.
 
 ::: {.panel-tabset group="language"}
 
@@ -646,6 +686,10 @@ $$
 \text{density} = \frac{\text{number of ties}}{n(n-1)/2}.
 $$
 
+::: {.callout-tip title="In plain words"}
+There are $n$ people and each could be tied to the $n - 1$ others, but that counts every pair twice, so halve it: $n(n-1)/2$ pairs. Density is the number of ties that exist divided by that number of possible ties. The friendship network has $n = 10$, so $10 \times 9 / 2 = 45$ possible pairs; 18 are tied, and $18/45 = 0.40$.
+:::
+
 For a directed network, divide by $n(n-1)$, because each pair can have a tie in each direction. The friendship network has 18 ties out of 45 possible, so its density is 0.40.
 
 ![Density is the share of possible ties that are present. With six people there are 15 possible ties.](../figures/density-dice.svg){#fig-density-dice fig-alt="Three drawings of six people on a circle. A path of five ties has density 0.33. A ring with three crossing ties, nine in all, has density 0.60. All fifteen ties give density 1.00."}
@@ -655,6 +699,8 @@ Density is the first thing people reach for and the first thing people over-read
 **It depends on size.** In a group of ten, a typical person can know everyone. In a group of ten thousand, no one can. Density falls as networks grow, so comparing the density of a team of eight with that of a company of eight thousand tells you almost nothing. Compare networks of similar size, or use degree, which doesn't shrink the same way.
 
 **High density isn't always good.** A very dense group can be warm and supportive, and it can also be redundant, closed to outsiders and slow to hear new things, as in the strength-of-weak-ties argument from @sec-foundations. For covert groups there's an additional tension. Ties help a group coordinate, but they also give investigators more to find, so a secret network often can't afford high density. Everton and Cunningham [@everton2015dark] look at how centralization and density together shape how a dark network copes with a hostile environment, and the broader question of what such structure does and doesn't tell us is treated in @cunningham2016understanding.
+
+The code below asks for the density of the friendship network. Look for 0.400.
 
 ::: {.panel-tabset group="language"}
 
@@ -709,7 +755,13 @@ $$
 \text{density} = \frac{2m}{n(n-1)} = \frac{\bar{k}}{n-1}.
 $$
 
+::: {.callout-tip title="In plain words"}
+$m$ is the number of ties and $\bar{k}$ (k-bar) is the average number of ties per person. Add up everybody's ties and each tie is counted twice, once at each end, so the total is $2m$, and also $n$ people times the average, $n\bar{k}$. The first form of density divides that by the number of ordered pairs, and cancelling the $n$ gives the second: the average person's ties as a share of the $n - 1$ other people. In the friendship network $m = 18$ and $n = 10$, so $\bar{k} = 3.6$ and $3.6/9 = 0.40$ again (worked by hand).
+:::
+
 Now picture a team of 8 and a company of 800 in which everyone has about four ties. The team's density is $4/7 \approx 0.57$; the company's is $4/799 \approx 0.005$. Nobody in the company is less sociable, yet the density is a hundred times lower. People's ties don't grow with the size of the group they belong to, so density falls toward zero as networks grow.
+
+The code below builds rings in which everyone has four ties, however big the ring, and grows them from 20 to 500 people. Look at how density collapses while the ties per person stay at four.
 
 ::: {.panel-tabset group="language"}
 
@@ -792,6 +844,8 @@ for n in [20usize, 100, 500] {
 
 :::
 
+The ties per person never changed, yet density fell from 0.211 to 0.008. That is the size effect in numbers.
+
 ![Density is mean degree divided by n - 1. Hold the number of ties per person fixed and density falls toward zero as the network grows. The circles mark the rings of 20, 100 and 500 people from the code.](../figures/paths-density-size.svg){#fig-density-size fig-alt="A chart with the number of people from 10 to 10,000 on a log scale across the bottom and density from 0 to 1 up the side. Two curves fall steeply and then flatten near zero: one for everyone having 4 ties, one for 10 ties. Three circles on the 4-tie curve mark 20 people at 0.211, 100 people at 0.040 and 500 people at 0.008."}
 
 The rings show something about distance too. Each person knows only their neighbors, so the mean distance grows in step with the size of the ring (2.9, 12.9 and 62.9): the extreme case, in which every tie is local. Real networks with a few long-range ties grow far more slowly [@newman2018networks], which is the surprise behind the small-world idea of @sec-small-worlds. A ring and a social network can have the same number of ties per person and completely different distances.
@@ -812,6 +866,8 @@ The rings show something about distance too. Each person knows only their neighb
 Two more whole-network measures look at the smallest structures inside the network.
 
 **Reciprocity** is the share of ties that are returned. If Ana goes to Chloe for advice and Chloe goes to Ana, that's a reciprocated tie. In the advice network from @sec-getting-started, only that one pair is mutual, so two of seven ties are reciprocated, about 0.29. Reciprocity depends on what the tie means. Friendship is often reciprocated; advice-seeking tends not to be, because it follows expertise or rank. A low number isn't a flaw. It's a clue about the relationship.
+
+The code below enters the five-person advice network and prints its reciprocity. Look for 2 of the 7 ties being returned.
 
 ::: {.panel-tabset group="language"}
 
@@ -907,11 +963,19 @@ $$
 r = \frac{2M}{2M + A}.
 $$
 
+::: {.callout-tip title="In plain words"}
+Every pair of people is in exactly one of three states, and $M$, $A$ and $N$ count them: mutual (both ties), asymmetric (one tie) or null (no tie). A mutual pair holds two ties and an asymmetric pair holds one, which is where $2M + A$ comes from. Of those ties, the ones in mutual pairs, $2M$, are returned. So $r$ is simply "returned ties divided by all ties". In the advice network $M = 1$, $A = 5$ and $N = 4$ (ten pairs in all), so $r = 2/7 = 0.286$.
+:::
+
 In the advice network $M = 1$ (Ana and Chloe), $A = 5$ and $N = 4$, so $r = 2/7$.
 
 Here is the part people miss. Suppose ties were handed out at random, each possible tie present with probability equal to the density $\Delta$. Then any tie you pick has a return tie with probability about $\Delta$, so reciprocity should be compared with the density, not with zero. The advice network has density $7/20 = 0.35$ and reciprocity 0.286: its ties are returned *no more* often than chance alone would return them. (With five people "chance" is a noisy yardstick, but the logic is the same for large networks.) Garlaschelli and Loffredo [@garlaschelli2004patterns] turned this into one number, $\rho = (r - \Delta)/(1 - \Delta)$, which is above zero when ties are returned more often than chance, near zero for chance, and below zero for less.
 
-The same network, four conventions:
+::: {.callout-tip title="In plain words"}
+$\Delta$ (capital delta) is the density, and $\rho$ (rho) compares what we see, $r$, with what chance would give, $\Delta$, scaled so that 1 is "everything returned". For the advice network, $\Delta = 0.35$ and $r = 0.286$, so $\rho = (0.286 - 0.35)/(1 - 0.35) \approx -0.099$ (worked by hand, and it matches the last convention below). A bit below zero says these ties are returned no more often than chance.
+:::
+
+The same network, four conventions. The code below asks for each one in turn. Look at how far apart the four answers are:
 
 ::: {.panel-tabset group="language"}
 
@@ -998,6 +1062,8 @@ How to read it depends on what the tie means. In a **friendship network** high r
 
 ![Local clustering for the person in the middle: of all pairs of their friends, what share are friends with each other?](../figures/clustering-idea.svg){#fig-clustering-idea fig-alt="Three drawings of a person in the middle tied to four friends. In the first no two friends are tied, giving 0 of 6, clustering 0.00. In the second two pairs of friends are tied, 2 of 6, clustering 0.33. In the third all pairs are tied, 6 of 6, clustering 1.00."}
 
+The code below computes transitivity for the friendship network and for the five-person network. Look for 0.579 and 0.429.
+
 ::: {.panel-tabset group="language"}
 
 ## R
@@ -1054,6 +1120,10 @@ $$
 C = \frac{3T}{\sum_i \binom{k_i}{2}}.
 $$
 
+::: {.callout-tip title="In plain words"}
+$\binom{k}{2}$ (read "k choose 2") is the number of pairs you can pick from $k$ friends, which is $k(k-1)/2$. The sum adds that up over everyone, so the bottom is the number of connected triples: a person together with two of their friends. $T$ is the number of triangles; each triangle is a closed triple at each of its three corners, so $3T$ counts the closed triples. $C$ is "closed triples divided by all triples". In the five-person network the friend counts 1, 3, 2, 3, 1 give $0 + 3 + 1 + 3 + 0 = 7$ triples, and one triangle gives $3/7 \approx 0.43$.
+:::
+
 In the five-person network of this chapter there is one triangle (Ben, Cleo, Dev) and the people have 1, 3, 2, 3 and 1 friends, which gives $0 + 3 + 1 + 3 + 0 = 7$ triples, so $C = 3/7 \approx 0.43$. In the ten-person friendship network, 11 triangles and 57 triples give $33/57 = 0.579$. How to read transitivity, how it differs from the average of the local clustering values, and what to compare it with are covered in depth in @sec-triads-and-motifs. Here we only need the definition.
 
 
@@ -1061,7 +1131,7 @@ Sociologically, transitivity is the measure of **closure**. It echoes Simmel's p
 
 ### The triad census
 
-Reciprocity and transitivity are both ways of summarizing what the three-person pieces of a network look like. You can go further and count *every* kind of triple. A set of three people can be connected in 16 different ways once you track direction, and Holland and Leinhardt [@holland1970method] proposed counting how many triples of each type a network contains. This is the **triad census**. @fig-triad-types shows all sixteen.
+Reciprocity and transitivity are both ways of summarizing what the three-person pieces of a network look like. You can go further and count *every* kind of triple. A **triad** is any set of three people. They can be connected in 16 different ways once you track direction, and Holland and Leinhardt [@holland1970method] proposed counting how many triples of each type a network contains. This is the **triad census**. @fig-triad-types shows all sixteen.
 
 ![All sixteen triad types. In each triangle the same three people sit in the same places and only the ties differ. Counting how often each type occurs across all triples of people is a way to ask about reciprocity, ranking and exchange.](../figures/triad-types.svg){#fig-triad-types fig-alt="A four by four grid of the sixteen directed triangles, each with its census code and a plain description, from 003 with no ties to 300 with every pair mutual."}
 
@@ -1073,6 +1143,8 @@ The codes follow the Holland and Leinhardt convention: three digits count the **
 - **The bottom rows, lots going on.** 201 is two mutual pairs. 120D, 120U and 120C are one mutual pair plus two one-way ties in three arrangements. 210 is two mutual pairs and one one-way tie, and 300 is everyone mutual.
 
 Many theories of hierarchy predict that a network will contain many transitive triples and few cyclic ones, because rank produces pecking orders and not loops [@holland1976local]. If you see the opposite, something other than rank is organizing the ties.
+
+The code below counts the triad types in the five-person advice network. Look for the few types that are not zero.
 
 ::: {.panel-tabset group="language"}
 
@@ -1193,7 +1265,13 @@ $$
 \kappa(G) \le \lambda(G) \le \delta(G).
 $$
 
+::: {.callout-tip title="In plain words"}
+$\kappa$ (kappa) is the fewest people you must remove to break the network, $\lambda$ (lambda) is the fewest ties, and $\delta$ (delta) is the smallest number of ties any one person has. The chain says: breaking by removing people is never harder than breaking by removing ties, which is never harder than isolating your loneliest person. In the five-person network from earlier, Ben is a cut point so $\kappa = 1$, the bridge Ana-Ben gives $\lambda = 1$, and Ana has one tie, so $\delta = 1$: $1 \le 1 \le 1$ (worked by hand).
+:::
+
 The right-hand inequality is easy to see: cut every tie of the person with the fewest ties and you have isolated them. The left-hand one says it is never harder to break a network by removing people than by removing ties, because for any set of ties that disconnects it, removing one end of each tie does the job with no more removals. A network is **k-connected** when $\kappa \ge k$, so that at least $k$ people must go before it falls apart. For any network of three or more people, $\kappa = 1$ means there is a cut point; every tree is like that.
+
+The code below finds the cut points and bridges of the friendship network, then counts connectivity by brute force. Look for Hana and Ivo as cut points.
 
 ::: {.panel-tabset group="language"}
 
@@ -1301,6 +1379,10 @@ The whole friendship network has two cut points, Hana and Ivo, and two bridges, 
 
 Pick two people, $s$ and $t$, who are not tied directly. Menger's theorem [@menger1927allgemeinen] says that the smallest number of *other* people whose removal separates $s$ from $t$ equals the largest number of routes from $s$ to $t$ that share nobody in between. A matching version holds for ties: the fewest ties whose removal separates them equals the most routes that share no tie.
 
+::: {.callout-tip title="In plain words"}
+Think of two towns joined by roads through other towns. Menger's theorem says the number of towns you would have to close to cut them off equals the number of roads between them that share no town in the middle. Fewer ways around means easier to cut, and many ways around means hard to cut. It is one idea told two ways.
+:::
+
 One direction is plain common sense. If you have found $k$ routes that share nobody in between, any set of people that separates $s$ from $t$ must contain at least one person from each route, so it has at least $k$ people. The surprise is the other direction: you can always find a separating set that is *exactly* as small as the number of routes. A consequence, again due to Whitney, is that a network is $k$-connected exactly when every pair of people is joined by $k$ routes that share nobody in between. "Hard to cut" and "many independent ways around" are one idea seen from two sides, which is why both phrasings appear when sociologists talk about cohesion.
 
 @fig-menger is small enough to check by hand. Six people sit on a ring, and there is one extra tie between $a$ and $c$.
@@ -1308,6 +1390,8 @@ One direction is plain common sense. If you have found $k$ routes that share nob
 ![Menger's theorem on six people. The blue route (s, a, b, t) and the orange route (s, d, c, t) share nobody in between, so at least two people must be removed to separate s from t. Removing a and d (dashed rings) does separate them, so two is exactly the number.](../figures/paths-menger.svg){#fig-menger fig-alt="Six circles on a hexagon labeled s, a, b, t, c and d, joined in a ring, plus a grey line between a and c across the middle. The ring path s, a, b, t is drawn thick blue and the ring path s, d, c, t is drawn thick orange. The circles a and d have dashed rings around them."}
 
 Between $s$ and $t$ there are two routes that share nobody in between: $s, a, b, t$ and $s, d, c, t$. There can't be a third, because $s$ has only two ties. And no single person separates them: take out $a$ and $s, d, c, t$ is left; take out $b$ and $s, a, c, t$ is left; take out $c$ and $s, a, b, t$ is left; take out $d$ and $s, a, b, t$ is left. So the fewest people is 2, exactly as the two routes predicted. Which two? $\{a, d\}$ (both of $s$'s neighbors) works, and so do $\{b, c\}$ and $\{a, c\}$: three different sets, all of size 2.
+
+The code below finds the separating sets of the six-person ring. Look for none of size one and three of size two.
 
 ::: {.panel-tabset group="language"}
 
@@ -1421,9 +1505,15 @@ So far we've summarized a network with a single number. But a network can be den
 
 A **k-core** is a group in which everyone has at least $k$ ties to others in the group [@seidman1983network]. You find it by *peeling*: remove everyone with fewer than $k$ ties, which may leave others with fewer than $k$, so remove them too, and repeat until no one can be removed. What's left is the k-core. A person's **core number** is the largest $k$ for which they survive.
 
+::: {.callout-tip title="In plain words"}
+Keep asking everyone in the group, "do you have at least $k$ friends inside the group?", and send home anyone who says no. Sending people home can drop others below $k$, so keep asking until nobody leaves. Who is left is the k-core. In the friendship network the 3-core is the seven-person dense group: Jo goes first, then Ivo, then Hana.
+:::
+
 ![k-cores. A person's core number is the largest k for which they belong to a group where everyone has at least k ties inside the group. Seven people are in the 3-core.](../figures/cores.svg){#fig-cores fig-alt="The ten-person friendship network. Seven nodes drawn as blue circles form the dense cluster. Hana, drawn as an orange square, hangs off it. Ivo and Jo, drawn as purple diamonds, trail off at the far end."}
 
 In the friendship network, seven people form the 3-core, Hana has core number 2, and Ivo and Jo have core number 1. Notice what that does and doesn't capture. Hana had the highest betweenness in @sec-centrality, yet her core number is only 2. That's not a contradiction: she holds a position, but she isn't inside the dense group. There's a fast algorithm for the whole decomposition [@batagelj2003algorithm].
+
+The code below gives each person's core number. Look for seven threes, a two and two ones.
 
 ::: {.panel-tabset group="language"}
 
@@ -1500,6 +1590,8 @@ The ideas above are easier to trust once they've been through real data and a li
 ### The Florentine marriages: how connected, and where does it break?
 
 The setting is the one from @sec-centrality: fifteen leading Florentine families around 1430 and the marriages among them, studied by Padgett and Ansell [@padgett1993robust]. The first question is structural. Is it in one piece, how far apart are the families, and what holds it together?
+
+The code below measures the marriage network end to end. Look at the radius, the diameter, the cut points and the bridges.
 
 ::: {.panel-tabset group="language"}
 
@@ -1679,6 +1771,8 @@ Two sentences you could write about this network. The defensible one: "In this m
 ### Stress check: take families and marriages away
 
 Cut points describe what happens when one family goes. A stress check asks more: what if two go, or a marriage is missing from the records?
+
+The code below removes each family in turn, then each pair, then each marriage, and records the pieces left. Look at how few single removals do any damage.
 
 ::: {.panel-tabset group="language"}
 
@@ -1885,6 +1979,8 @@ A sentence you can defend: "The mean distance of 2.49 is ordinary for a network 
 ### Krackhardt's managers: three relations, one table
 
 For a directed example we return to Krackhardt's 21 managers [@krackhardt1987cognitive]: who goes to whom for advice, who names whom a friend, and who reports to whom. Directed ties raise two questions that undirected networks hide. Are ties returned? And can you actually follow the arrows from anyone to anyone?
+
+The code below builds one summary column per relation: density, reciprocity, components and distances. Look for how the three relations differ.
 
 ::: {.panel-tabset group="language"}
 
@@ -2121,13 +2217,13 @@ Whole-network measures are tempting because they give one number per network. Th
 ## Answers
 
 1. The paths from Ana to Eli are Ana, Ben, Dev, Eli (3 steps, the shortest) and Ana, Ben, Cleo, Dev, Eli (4 steps). There are 5 walks of exactly five steps, found by counting the entries of the fifth power of the adjacency matrix; one of them is the walk drawn in the figure.
-2. Undirected: $38 / (20 \cdot 19 / 2) = 38/190 = 0.2$. Directed: $38 / (20 \cdot 19) = 38/380 = 0.1$. The same number of ties is half as dense when each pair can hold two.
+2. Density is the share of possible ties that exist, so it is 0.2 for undirected ties and 0.1 for directed ones. Undirected: $38 / (20 \cdot 19 / 2) = 38/190 = 0.2$. Directed: $38 / (20 \cdot 19) = 38/380 = 0.1$. The same number of ties is half as dense when each pair can hold two.
 3. Jo has one tie, so Jo is peeled first; then Ivo has one tie left and goes; then Hana has two and goes. Everyone remaining has at least three ties inside the seven-person group. The order doesn't matter because removing people only ever lowers the degrees of the people who stay, so anyone who is removable at some moment is still removable later, and the final set is the same whatever order you peel in.
 4. Avoid comparing density directly (it falls with size) and be careful with mean distance (it grows with size). Compare mean degree, or compare each company with a random network of its own size and number of ties, or compare measures that are not driven by size, such as reciprocity against density.
 5. Useful questions: How many people are on each ward (density falls with size)? What counts as a tie (a conversation, a shared patient, a handover)? Were the ties measured the same way and over the same period? Does density measure teamwork, or just how many people have to talk? What are the outcomes? Is a dense ward redundant rather than efficient? Were any staff missing, so that the true density differs?
-6. The distances are 1, 1, 1, 2, 2, 3 for six pairs, so $L = 10/6 \approx 1.667$. The reciprocals add to $3 + 2/2 + 1/3 = 13/3$, their mean is $13/18$, and $H = 18/13 \approx 1.385$. $H$ is smaller, as it must be: a harmonic mean is never larger than the arithmetic mean of the same positive numbers.
+6. $H$ comes out smaller than $L$, as it always must. The distances are 1, 1, 1, 2, 2, 3 for six pairs, so $L = 10/6 \approx 1.667$. The reciprocals add to $3 + 2/2 + 1/3 = 13/3$, their mean is $13/18$, and $H = 18/13 \approx 1.385$. $H$ is smaller, as it must be: a harmonic mean is never larger than the arithmetic mean of the same positive numbers.
 7. Still two: $s$ has only two ties, so there can't be more, and $s, a, b, t$ and $s, d, c, t$ still share nobody in between. The separating sets of two people are $\{a, d\}$, $\{b, c\}$ and $\{b, d\}$. The set $\{a, c\}$, which worked before, no longer does, because $s, d, b, t$ is a route around it.
-8. Cut points: 2, 7, 14, 18 and 21, which are the CEO (7) and the four vice presidents. The 20 arrows connect 21 managers into a tree, and a connected network with $n$ people and $n - 1$ ties has no cycle, so every tie is the only route between its two ends.
+8. Because the chart is a tree, every tie is a bridge, and every manager who is not at the bottom is a cut point. The cut points are 2, 7, 14, 18 and 21, which are the CEO (7) and the four vice presidents. The 20 arrows connect 21 managers into a tree, and a connected network with $n$ people and $n - 1$ ties has no cycle, so every tie is the only route between its two ends.
 9. Five pieces: one of 7 families and four single families (Acciaiuoli, Ginori, Lamberteschi and Pazzi).
 10. For example: How many people are in each network, since mean distance grows with size? Are both networks in one piece, and how were unreachable pairs treated? Are ties the same kind and equally well measured? Is mean distance the right notion of "connected" for the question (compare the diameter, the harmonic mean distance, or the vertex connectivity)? Does anyone use the routes the number counts?
 :::
