@@ -128,39 +128,30 @@ The blocks in this chapter run top to bottom as one script per language, like ce
 
 ```r
 library(knappnet)
-library(dplyr)
-library(purrr)
-library(tibble)
-library(tidyr)
 
 people <- c("Ana", "Ben", "Chloe", "Dev", "Eli")
-ties <- tibble(
+ties <- data.frame(
   source = c("Ana", "Ana", "Ben", "Chloe", "Dev", "Dev", "Eli"),
   target = c("Ben", "Chloe", "Chloe", "Ana", "Ana", "Chloe", "Chloe")
 )
+g <- net_frame(ties, nodes = data.frame(id = people), directed = TRUE)
 
 # Edge list to adjacency matrix: row = sender, column = receiver.
-m <- matrix(0, 5, 5, dimnames = list(people, people))
-m[cbind(ties$source, ties$target)] <- 1
+m <- as.matrix(g)
+dimnames(m) <- list(people, people)
 m
 
 # Matrix to adjacency list: for each row, the columns holding a 1.
-tibble(person = people, goes_to = map_chr(people, \(p) paste(people[m[p, ] == 1], collapse = ", ")))
+lapply(setNames(people, people), \(p) people[m[p, ] == 1])
 
 # Row sums are out-degrees, column sums are in-degrees; the whole table sums to the number of ties.
-tibble(person = people, goes_to = rowSums(m), comes_to_them = colSums(m))
+data.frame(goes_to = rowSums(m), comes_to_them = colSums(m))
 sum(m)
 
 # And back to an edge list.
-back <- which(m == 1, arr.ind = TRUE) |>
-  as_tibble() |>
-  transmute(source = people[row], target = people[col]) |>
-  arrange(match(source, people), match(target, people))
-tibble(rows = nrow(back), same_as_the_table = isTRUE(all.equal(back, ties)))
-
-# The package's own view of the same network.
-g <- net_frame(ties, nodes = tibble(id = people), directed = TRUE)
-all(as.matrix(g) == m)
+at <- which(m == 1, arr.ind = TRUE)
+at <- at[order(at[, 1], at[, 2]), ]
+data.frame(source = people[at[, 1]], target = people[at[, 2]], row.names = NULL)
 ```
 
 ::: {.code-output}
@@ -338,23 +329,21 @@ The second block shows three of these on a file that arrives with two small mist
 raw <- c("Ana,Ben", "ana,Chloe", "Ben,Chloe", "Chloe ,Ana", "Dev,Ana", "Dev,Chloe", "Eli,Chloe")
 rows <- strsplit(raw, ",")
 roster <- c("Ana", "Ben", "Chloe", "Dev", "Eli")
-
 seen <- unique(unlist(rows))
-tibble(names_seen = length(seen), not_on_roster = toString(sprintf("'%s'", sort(setdiff(seen, roster), method = "radix"))))
+c(names_seen = length(seen))
+setdiff(seen, roster)   # the names that are not on the roster
 
-title <- \(s) paste0(toupper(substring(s, 1, 1)), tolower(substring(s, 2)))
-clean <- map(rows, \(r) title(trimws(r)))
+# Trim the spaces and fix the capitals, then count again.
+fix <- \(s) paste0(toupper(substring(trimws(s), 1, 1)), tolower(substring(trimws(s), 2)))
+clean <- lapply(rows, fix)
 seen <- unique(unlist(clean))
-tibble(
-  names_seen = length(seen),
-  not_on_roster = length(setdiff(seen, roster)),
-  repeated_rows = length(clean) - n_distinct(map_chr(clean, paste, collapse = ","))
-)
+c(names_seen = length(seen), not_on_roster = length(setdiff(seen, roster)),
+  repeated_rows = length(clean) - length(unique(sapply(clean, paste, collapse = ","))))
 
 # Files that number people from 1 need care before they become positions from 0.
 club <- read.csv("data/karate/edges.csv")
 ids <- sort(unique(c(club$source, club$target)))
-tibble(different = length(ids), first = min(ids), last = max(ids))
+c(different = length(ids), first = min(ids), last = max(ids))
 
 # Someone on the roster who is in no tie is an isolate; the tie file alone would never show them.
 setdiff(c(roster, "Faye"), unlist(clean))
@@ -503,30 +492,33 @@ Krackhardt's 21 managers give three relations among the same people: who goes to
 
 ```r
 krack <- read.csv("data/krackhardt/edges.csv")
-# Row i, column j is 1 when manager i names manager j. Files number people from 1.
-table_of <- \(rows, relation, n = 21) {
-  r <- rows[rows$relation == relation, ]
-  m <- matrix(0, n, n)
-  m[cbind(r$from, r$to)] <- 1
-  m
-}
 
-c("advice", "friendship", "reports_to") |>
-  map(\(relation) {
-    a <- table_of(krack, relation)
-    mutual <- sum(a * t(a)) / 2
-    tibble(
-      relation, arcs = sum(a), mutual, asym = sum(a) - 2 * mutual,
-      null = 21 * 20 / 2 - mutual - (sum(a) - 2 * mutual),
-      returned = round(2 * mutual / sum(a), 3),
-      either = sum(pmax(a, t(a))) / 2, both = mutual
-    )
-  }) |>
-  list_rbind()
+# One tie table with a relation column; one network per relation.
+relations <- c("advice", "friendship", "reports_to")
+nets <- lapply(setNames(relations, relations), \(relation) {
+  rows <- krack[krack$relation == relation, ]
+  net_frame(data.frame(source = rows$from, target = rows$to), nodes = data.frame(id = 1:21), directed = TRUE)
+})
+arcs <- sapply(nets, \(g) nrow(g$edges))
 
-advice <- table_of(krack, "advice")
-tibble(directed = sum(advice) / 21, either = sum(pmax(advice, t(advice))) / 21, both = sum(advice * t(advice)) / 21) |>
-  mutate(across(everything(), \(x) round(x, 2)))
+# Reciprocity: the share of arcs that are returned.
+data.frame(arcs, returned = round(sapply(nets, net_reciprocity), 3))
+
+# Keep a pair if either manager names the other ("max") or only if both do ("min").
+# (The reporting line has no mutual pair, so "both" would leave an empty network.)
+pair_rules <- lapply(nets[1:2], \(g) list(either = net_symmetrize(g, "max"), both = net_symmetrize(g, "min")))
+data.frame(
+  directed_arcs = arcs[1:2],
+  either = sapply(pair_rules, \(r) nrow(r$either$edges)),
+  both = sapply(pair_rules, \(r) nrow(r$both$edges))
+)
+
+# Mean degree under each rule: a decision in one line of code.
+data.frame(
+  directed = round(sapply(nets[1:2], net_avg_degree, mode = "out"), 2),
+  either = round(sapply(pair_rules, \(r) net_avg_degree(r$either)), 2),
+  both = round(sapply(pair_rules, \(r) net_avg_degree(r$both)), 2)
+)
 ```
 
 ::: {.code-output}
@@ -652,21 +644,12 @@ By hand for friendship: $n = 21$, $N = 420$, $m = 102$, so $\mathbb{E}[M] = 210 
 
 ```r
 # With m arcs placed at random among the N = n(n - 1) ordered pairs, a pair is mutual with probability m(m - 1) / (N(N - 1)).
-c("advice", "friendship") |>
-  map(\(relation) {
-    a <- table_of(krack, relation)
-    expected <- 210 * sum(a) * (sum(a) - 1) / (420 * 419)
-    tibble(relation, mutual = sum(a * t(a)) / 2, expected = round(expected, 2), ratio = round(mutual / expected, 2))
-  }) |>
-  list_rbind()
+mutual <- sapply(pair_rules, \(r) nrow(r$both$edges))
+expected <- 210 * arcs[1:2] * (arcs[1:2] - 1) / (420 * 419)
+data.frame(mutual, expected = round(expected, 2), ratio = round(mutual / expected, 2))
 
 # Does the ranking of managers survive the choice of rule? Rank correlation of degree under either and under both.
-c("advice", "friendship") |>
-  map(\(relation) {
-    a <- table_of(krack, relation)
-    tibble(relation, rho = round(cor(rowSums(pmax(a, t(a))), rowSums(a * t(a)), method = "spearman"), 3))
-  }) |>
-  list_rbind()
+round(sapply(pair_rules, \(r) cor(net_degree(r$either), net_degree(r$both), method = "spearman")), 3)
 ```
 
 ::: {.code-output}
@@ -785,31 +768,34 @@ For valued data in the wild we use Zachary's karate club [@zachary1977informatio
 
 ```r
 # An email log has one row per message, so the same pair can appear many times.
-log <- tibble(
+emails <- data.frame(
   source = c("Ana", "Ana", "Ben", "Ana", "Ben", "Chloe", "Dev", "Ana", "Dev"),
   target = c("Ben", "Ben", "Ana", "Chloe", "Chloe", "Chloe", "Chloe", "Ben", "Chloe")
 )
-g <- net_frame(log, directed = TRUE)
-tibble(messages = nrow(log), is_simple = net_is_simple(g), to_oneself = sum(log$source == log$target))
+g <- net_frame(emails, directed = TRUE)
+data.frame(messages = nrow(emails), is_simple = net_is_simple(g), to_oneself = sum(emails$source == emails$target))
 
 # Collapsing parallel ties into one tie with a count keeps the information in a weight.
 w <- net_simplify(g, combine = "count")
 w$edges
-tibble(person = w$nodes$id, out_strength = net_strength(w, mode = "out"), in_degree = net_degree(w, mode = "in"))
+data.frame(out_strength = net_strength(w, mode = "out"), in_degree = net_degree(w, mode = "in"), row.names = w$nodes$id)
 
 # A loop is one tie, but counts twice toward the degree in an undirected network.
 u <- net_symmetrize(w)
-tibble(person = u$nodes$id, degree = net_degree(u), degree_without_loop = net_degree(u, loops = FALSE))
+data.frame(degree = net_degree(u), degree_without_loop = net_degree(u, loops = FALSE), row.names = u$nodes$id)
 
 # Karate: ties valued by the number of settings (of 8) in which two members interacted.
-karate <- net_frame(club, nodes = tibble(id = 1:34), directed = FALSE, weight = "contexts", weight_type = "strength")
-1:6 |>
-  map(\(k) {
-    h <- net_dichotomize(karate, k, ">=")
-    cc <- net_components(h)
-    tibble(at_least = k, ties = nrow(h$edges), density = round(net_density(h), 3), pieces = cc$no, largest = max(cc$csize))
-  }) |>
-  list_rbind()
+club <- read.csv("data/karate/edges.csv")
+karate <- net_frame(club, nodes = data.frame(id = 1:34), directed = FALSE, weight = "contexts", weight_type = "strength")
+cutoffs <- 1:6
+kept <- lapply(cutoffs, \(k) net_dichotomize(karate, k, ">="))
+data.frame(
+  at_least = cutoffs,
+  ties = sapply(kept, \(h) nrow(h$edges)),
+  density = round(sapply(kept, net_density), 3),
+  pieces = sapply(kept, \(h) net_components(h)$no),
+  largest = sapply(kept, \(h) max(net_components(h)$csize))
+)
 ```
 
 ::: {.code-output}
@@ -1017,32 +1003,33 @@ Krackhardt's managers come with an attribute table: age, years with the firm, le
 ## R
 
 ```r
-managers <- read.csv("data/krackhardt/nodes.csv") |> as_tibble()
-advice <- table_of(krack, "advice")
-managers <- managers |> mutate(asked = colSums(advice)[name], asks = rowSums(advice)[name])
+managers <- read.csv("data/krackhardt/nodes.csv")
+advice <- nets$advice
+managers$asked <- net_degree(advice, mode = "in")[managers$name]
+managers$asks <- net_degree(advice, mode = "out")[managers$name]
 
 # Join checks: one row per manager, and every manager in a tie is in the table.
-in_ties <- unique(c(krack$from, krack$to))
-tibble(rows = nrow(managers), different_names = n_distinct(managers$name), in_ties_not_in_table = length(setdiff(in_ties, managers$name)))
+c(rows = nrow(managers), different_names = length(unique(managers$name)),
+  in_ties_not_in_table = length(setdiff(c(krack$from, krack$to), managers$name)))
 
-managers |>
-  group_by(level) |>
-  summarise(managers = n(), asked = mean(asked), asks = mean(asks)) |>
-  mutate(across(c(asked, asks), \(x) round(x, 2)))
-managers |>
-  group_by(department) |>
-  summarise(managers = n(), asked = mean(asked), asks = mean(asks)) |>
-  mutate(across(c(asked, asks), \(x) round(x, 2)))
+# Average in the table, by level and by department.
+by_level <- aggregate(cbind(asked, asks) ~ level, data = managers, FUN = mean)
+by_level$managers <- as.vector(table(managers$level))
+by_level[c("asked", "asks")] <- round(by_level[c("asked", "asks")], 2)
+by_level
+by_department <- aggregate(cbind(asked, asks) ~ department, data = managers, FUN = mean)
+by_department$managers <- as.vector(table(managers$department))
+by_department[c("asked", "asks")] <- round(by_department[c("asked", "asks")], 2)
+by_department
 
 # What a missing row looks like once joined: manager 7 vanishes from the table, the ties stay.
-short <- filter(managers, name != 7)
-krack |>
-  filter(relation == "advice") |>
-  summarise(name_someone_missing = sum(!from %in% short$name | !to %in% short$name), of = n())
+short <- managers[managers$name != 7, ]
+tie_rows <- krack[krack$relation == "advice", ]
+c(name_someone_missing = sum(!tie_rows$from %in% short$name | !tie_rows$to %in% short$name), of = nrow(tie_rows))
 
 # The package refuses to build a network from ties that name someone who is not in the node table.
-advice_edges <- krack |> filter(relation == "advice") |> select(source = from, target = to)
-tryCatch(net_frame(advice_edges, nodes = transmute(short, id = name), directed = TRUE), error = \(e) conditionMessage(e))
+advice_edges <- data.frame(source = tie_rows$from, target = tie_rows$to)
+tryCatch(net_frame(advice_edges, nodes = data.frame(id = short$name), directed = TRUE), error = \(e) conditionMessage(e))
 ```
 
 ::: {.code-output}
@@ -1198,23 +1185,25 @@ The sixth block writes the five-person network in several formats, prints one so
 ## R
 
 ```r
-dir <- tempdir()
-five <- net_frame(ties, nodes = tibble(id = people), directed = TRUE)
-files <- tibble(format = c("pajek", "dl", "graphml", "gml", "csv"), ext = c("net", "dl", "graphml", "gml", "csv")) |>
-  mutate(path = file.path(dir, paste0("advice.", ext)))
-walk2(files$path, files$format, \(path, format) net_write(five, path, format = format))
+five <- net_frame(ties, nodes = data.frame(id = people), directed = TRUE)
+formats <- c(pajek = "net", dl = "dl", graphml = "graphml", gml = "gml", csv = "csv")
+paths <- setNames(file.path(tempdir(), paste0("advice.", formats)), names(formats))
+invisible(Map(\(path, format) net_write(five, path, format = format), paths, names(paths)))
 
 # One of them, to read: Pajek lists the vertices, then the arcs.
-readLines(files$path[files$format == "pajek"])
+readLines(paths[["pajek"]])
 
 # Read each back: same people, same ties, same direction?
-files |>
-  mutate(back = map2(path, format, \(path, format) net_read(path, format = format, directed = TRUE, weight_type = "strength"))) |>
-  transmute(format, lines = map_int(path, \(p) length(readLines(p))), nodes = map_int(back, \(b) nrow(b$nodes)),
-            ties = map_int(back, \(b) nrow(b$edges)), directed = map_lgl(back, \(b) b$directed))
+back <- Map(\(path, format) net_read(path, format = format, directed = TRUE, weight_type = "strength"), paths, names(paths))
+data.frame(
+  lines = sapply(paths, \(p) length(readLines(p))),
+  nodes = sapply(back, \(b) nrow(b$nodes)),
+  ties = sapply(back, \(b) nrow(b$edges)),
+  directed = sapply(back, \(b) b$directed)
+)
 
 # A plain edge list has no way to say "directed": the reader must be told.
-once <- net_read(files$path[files$format == "csv"], directed = FALSE)
+once <- net_read(paths[["csv"]], directed = FALSE)
 nrow(net_simplify(once)$edges)
 ```
 
@@ -1366,29 +1355,27 @@ The last block reshapes a wide nomination table, splits the multiplex table, and
 
 ```r
 # A survey often arrives wide: one row per respondent, one column per nomination slot.
-wide <- tibble(
+wide <- data.frame(
   person = c("Ana", "Ben", "Chloe", "Dev"),
   first = c("Ben", "Chloe", "Ana", "Ana"),
   second = c("Chloe", NA, NA, "Chloe"),
   third = NA_character_
 )
-long <- wide |>
-  pivot_longer(c(first, second, third), values_to = "goes_to", values_drop_na = TRUE) |>
-  select(person, goes_to)
-long
-tibble(slots = nrow(wide) * 3, ties = nrow(long))
+long <- data.frame(person = rep(wide$person, 3), goes_to = unlist(wide[c("first", "second", "third")], use.names = FALSE))
+long <- long[!is.na(long$goes_to), ]
+long[order(match(long$person, wide$person)), ]
+c(slots = nrow(wide) * 3, ties = nrow(long))
 
 # One edge table with a relation column holds all three Krackhardt networks at once.
-edges <- read.csv("data/krackhardt/edges.csv") |> as_tibble()
-count(edges, relation)
-advice_only <- filter(edges, relation == "advice")
-tibble(ties = nrow(advice_only), managers = n_distinct(c(advice_only$from, advice_only$to)))
+table(krack$relation)
+advice_only <- krack[krack$relation == "advice", ]
+c(ties = nrow(advice_only), managers = length(unique(c(advice_only$from, advice_only$to))))
 
 # Two-mode data are already tidy as one row per attendance.
-attend <- read.csv("data/southern_women/edges.csv") |> as_tibble()
-tibble(attendances = nrow(attend), women = n_distinct(attend$woman), events = n_distinct(attend$event))
-count(attend, woman) |> summarise(fewest = min(n), most = max(n))
-count(attend, event) |> summarise(fewest = min(n), most = max(n))
+attend <- read.csv("data/southern_women/edges.csv")
+c(attendances = nrow(attend), women = length(unique(attend$woman)), events = length(unique(attend$event)))
+range(table(attend$woman))   # fewest and most events per woman
+range(table(attend$event))   # fewest and most women per event
 ```
 
 ::: {.code-output}

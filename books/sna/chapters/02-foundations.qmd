@@ -90,39 +90,28 @@ Is 0.286 high or low? That depends on what you'd expect by chance, and on what t
 
 ```r
 library(knappnet)
-library(dplyr)
-library(purrr)
 
 people <- c("Ana", "Ben", "Chloe", "Dev", "Eli")
 
 # The advice network: one row per tie, from the person who asks to the person asked.
-ties <- tibble(
+ties <- data.frame(
   source = c("Ana", "Ana", "Ben", "Chloe", "Dev", "Dev", "Eli"),
   target = c("Ben", "Chloe", "Chloe", "Ana", "Ana", "Chloe", "Chloe")
 )
-advice <- net_frame(ties, nodes = tibble(id = people), directed = TRUE)
+advice <- net_frame(ties, nodes = data.frame(id = people), directed = TRUE)
 
 # How many people each person goes to (out) and how many go to them (in).
-degrees <- tibble(
-  person = people,
+degrees <- data.frame(
   out = net_degree(advice, mode = "out"),
-  `in` = net_degree(advice, mode = "in")
+  `in` = net_degree(advice, mode = "in"),
+  row.names = people, check.names = FALSE
 )
 degrees
-degrees |> summarise(sum_out = sum(out), sum_in = sum(`in`), ties = nrow(ties))
+colSums(degrees)  # each sum is the number of ties
 
-# The dyad census. Pair people up (alphabetically, so Ana-Chloe and Chloe-Ana are one pair):
-# a pair that appears twice is mutual, once is asymmetric, and a pair that never appears is null.
-dyads <- ties |>
-  mutate(a = pmin(source, target), b = pmax(source, target)) |>
-  count(a, b)
-tibble(
-  mutual = sum(dyads$n == 2),
-  asymmetric = sum(dyads$n == 1),
-  null = choose(length(people), 2) - nrow(dyads),
-  reciprocity = net_reciprocity(advice),
-  density = net_density(advice)
-)
+# Counting mutual, one-sided and empty pairs (the dyad census) is in the Rust tab:
+# knappnet has no dyad-census function yet. Reciprocity and density are here.
+c(reciprocity = net_reciprocity(advice), density = net_density(advice))
 ```
 
 ::: {.code-output}
@@ -308,23 +297,26 @@ Many classic measures were designed for yes-or-no ties, so people often turn a w
 
 ```r
 # Messages per week between five people.
-messages <- tibble(
+messages <- data.frame(
   source = c("Ana", "Ana", "Ana", "Ana", "Ben", "Ben"),
   target = c("Ben", "Chloe", "Dev", "Eli", "Chloe", "Dev"),
   messages = c(10, 1, 1, 1, 6, 6)
 )
-talk <- net_frame(messages, nodes = tibble(id = people), directed = FALSE, weight = "messages", weight_type = "strength")
+talk <- net_frame(messages, nodes = data.frame(id = people), directed = FALSE,
+                  weight = "messages", weight_type = "strength")
 
 # Degree counts contacts; strength adds up the messages.
-tibble(person = people, degree = net_degree(talk), strength = net_strength(talk))
+data.frame(degree = net_degree(talk), strength = net_strength(talk), row.names = people)
 
 # The same network at three cutoffs: keep only ties with at least this many messages.
-c(1, 2, 7) |>
-  map(\(cutoff) {
-    kept <- net_frame(filter(messages, messages >= cutoff), nodes = tibble(id = people), directed = FALSE)
-    tibble(cutoff = cutoff, ties = nrow(kept$edges), density = net_density(kept), pieces = net_components(kept)$no)
-  }) |>
-  list_rbind()
+cutoffs <- c(1, 2, 7)
+kept <- lapply(cutoffs, \(k) net_dichotomize(talk, k, ">="))
+data.frame(
+  cutoff = cutoffs,
+  ties = sapply(kept, \(g) nrow(g$edges)),
+  density = sapply(kept, net_density),
+  pieces = sapply(kept, \(g) net_components(g)$no)
+)
 ```
 
 ::: {.code-output}
@@ -479,21 +471,19 @@ A walk can revisit people, so $A^k$ counts more than the routes you'd draw on a 
 
 ```r
 # A triangle with a tail: Ana-Ben, Ana-Chloe, Ben-Chloe, Chloe-Dev, Dev-Eli.
-office <- tibble(
+office <- data.frame(
   source = c("Ana", "Ana", "Ben", "Chloe", "Dev"),
   target = c("Ben", "Chloe", "Chloe", "Dev", "Eli")
 )
-net <- net_frame(office, nodes = tibble(id = people), directed = FALSE)
-tibble(person = people, degree = net_degree(net))
+net <- net_frame(office, nodes = data.frame(id = people), directed = FALSE)
+setNames(net_degree(net), people)
 
-# The adjacency matrix: put a 1 at each tie's row and column, then mirror it.
-a <- matrix(0, 5, 5, dimnames = list(people, people))
-a[cbind(match(office$source, people), match(office$target, people))] <- 1
-a <- a + t(a)
-
-a                 # who is tied to whom
-a %*% a           # walks of length 2; the diagonal is the degree
-tibble(trace_of_cube = sum(diag(a %*% a %*% a)), triangles = trace_of_cube / 6)
+# The adjacency matrix: a 1 in each tied pair's row and column.
+a <- as.matrix(net)
+dimnames(a) <- list(people, people)
+a                # who is tied to whom
+a %*% a          # walks of length 2; the diagonal is the degree
+sum(diag(a %*% a %*% a)) / 6   # triangles: the trace of the cube, divided by 6
 ```
 
 ::: {.code-output}
@@ -630,20 +620,15 @@ Back to the advice network. Ignoring direction, everyone is connected to Chloe o
 
 ```r
 # Distances in the triangle-with-a-tail network (one row per person).
-net_distances(net)
-
-tibble(
-  person = people,
-  eccentricity = net_eccentricity(net)
-)
-tibble(diameter = net_diameter(net), mean_distance = net_mean_distance(net))
+d <- net_distances(net)
+dimnames(d) <- list(people, people)
+d
+setNames(net_eccentricity(net), people)
+c(diameter = net_diameter(net), mean_distance = net_mean_distance(net))
 
 # Components of the advice network: weak (ignore arrows) and strong (follow them).
-tibble(
-  kind = c("weak", "strong"),
-  pieces = map_int(kind, \(k) net_components(advice, mode = k)$no),
-  sizes = map_chr(kind, \(k) paste(sort(net_components(advice, mode = k)$csize, decreasing = TRUE), collapse = " "))
-)
+net_components(advice)$csize
+net_components(advice, mode = "strong")$csize
 ```
 
 ::: {.code-output}
@@ -766,16 +751,21 @@ Density feels like a measure of how cohesive a group is, and for groups of about
 
 ```r
 # A ring: each person is tied to the next two people around the circle, so everyone has four ties.
-c(8, 20, 100, 500) |>
-  map(\(n) {
-    i <- 0:(n - 1)
-    ring <- net_frame(
-      tibble(source = as.character(c(i, i)), target = as.character(c((i + 1) %% n, (i + 2) %% n))),
-      nodes = tibble(id = as.character(i)), directed = FALSE
-    )
-    tibble(people = n, ties = nrow(ring$edges), mean_degree = net_avg_degree(ring), density = net_density(ring))
-  }) |>
-  list_rbind()
+ring <- \(n) {
+  i <- 0:(n - 1)
+  net_frame(
+    data.frame(source = as.character(c(i, i)), target = as.character(c((i + 1) %% n, (i + 2) %% n))),
+    nodes = data.frame(id = as.character(i)), directed = FALSE
+  )
+}
+sizes <- c(8, 20, 100, 500)
+rings <- lapply(sizes, ring)
+data.frame(
+  people = sizes,
+  ties = sapply(rings, \(g) nrow(g$edges)),
+  mean_degree = sapply(rings, net_avg_degree),
+  density = sapply(rings, net_density)
+)
 ```
 
 ::: {.code-output}
@@ -856,12 +846,13 @@ On the advice network, "either" gives six ties (the pairs that are mutual or asy
 
 ```r
 # "max" keeps a pair if either person goes to the other; "min" only if both do.
-c(either = "max", both = "min") |>
-  map(\(rule) {
-    g <- net_symmetrize(advice, rule)
-    tibble(ties = nrow(g$edges), density = net_density(g), pieces = net_components(g)$no)
-  }) |>
-  list_rbind(names_to = "rule")
+rules <- c(either = "max", both = "min")
+symmetrized <- lapply(rules, \(rule) net_symmetrize(advice, rule))
+data.frame(
+  ties = sapply(symmetrized, \(g) nrow(g$edges)),
+  density = sapply(symmetrized, net_density),
+  pieces = sapply(symmetrized, \(g) net_components(g)$no)
+)
 ```
 
 ::: {.code-output}
@@ -934,18 +925,15 @@ The by-hand part is a short list. The data has 15 families and 20 marriages, and
 ```r
 rows <- read.csv("data/florentine/edges.csv")
 ids <- sort(unique(c(rows$source, rows$target)))
-florence <- net_frame(rows, nodes = tibble(id = ids), directed = FALSE)
+florence <- net_frame(rows, nodes = data.frame(id = ids), directed = FALSE)
 
 # The degree sequence, from smallest to largest, and the handshake check.
 degrees <- net_degree(florence)
-tibble(
-  degree_sequence = paste(sort(degrees), collapse = " "),
-  sum_of_degrees = sum(degrees),
-  twice_the_ties = 2 * nrow(rows)
-)
+sort(degrees)
+c(sum_of_degrees = sum(degrees), twice_the_ties = 2 * nrow(rows))
 
 # Pieces, and the farthest apart any two families are.
-tibble(pieces = net_components(florence)$no, diameter = net_diameter(florence))
+c(pieces = net_components(florence)$no, diameter = net_diameter(florence))
 ```
 
 ::: {.code-output}
@@ -1046,24 +1034,18 @@ The claim is "the Medici have strictly the most marriages". Real data has errors
 ```r
 # Rebuild the network without the marriages in `drop` (row numbers), and answer the two questions.
 after <- function(drop) {
-  g <- net_frame(slice(rows, -drop), nodes = tibble(id = ids), directed = FALSE, quiet = TRUE)
+  g <- net_frame(rows[-drop, ], nodes = data.frame(id = ids), directed = FALSE, quiet = TRUE)
   d <- net_degree(g)
-  tibble(
-    medici_strictly_top = d[ids == "Medici"] == max(d) && sum(d == max(d)) == 1,
-    medici_top_or_tied = d[ids == "Medici"] == max(d),
-    splits = net_components(g)$no > 1
-  )
+  medici <- d[ids == "Medici"]
+  c(strictly_top = medici == max(d) && sum(d == max(d)) == 1,
+    top_or_tied = medici == max(d),
+    splits = net_components(g)$no > 1)
 }
-
-bind_rows(
-  `drop one marriage` = map(1:20, after) |> list_rbind(),
-  `drop two marriages` = combn(20, 2, simplify = FALSE) |> map(after) |> list_rbind(),
-  .id = "scenario"
-) |>
-  summarise(
-    cases = n(), strictly_top = sum(medici_strictly_top), top_or_tied = sum(medici_top_or_tied),
-    network_splits = sum(splits), .by = scenario
-  )
+scenarios <- list(
+  `drop one marriage` = lapply(1:20, after),
+  `drop two marriages` = lapply(combn(20, 2, simplify = FALSE), after)
+)
+sapply(scenarios, \(runs) c(cases = length(runs), colSums(do.call(rbind, runs))))
 ```
 
 ::: {.code-output}
@@ -1321,105 +1303,24 @@ The network is five coworkers. Ana, Ben and Chloe like each other, Dev and Eli l
 ## R
 
 ```r
-# Signed ties among five coworkers: +1 means they get on, -1 means they don't.
-signed <- tibble(
-  a = c("Ana", "Ana", "Ben", "Dev", "Ana", "Chloe", "Chloe", "Ben"),
-  b = c("Ben", "Chloe", "Chloe", "Eli", "Dev", "Dev", "Eli", "Eli"),
-  sign = c(1, 1, 1, 1, -1, -1, -1, -1)
-)
-signed_plus <- bind_rows(signed, tibble(a = "Ben", b = "Dev", sign = 1)) # Ben also likes Dev
-
-# Every triangle (three people all tied to each other) and how many of its ties are negative.
-triangles_of <- function(ties) {
-  s <- matrix(0, 5, 5, dimnames = list(people, people)) # a symmetric sign matrix; 0 means no tie
-  s[cbind(ties$a, ties$b)] <- ties$sign
-  s <- s + t(s)
-  trio <- combn(people, 3)
-  tibble(x = trio[1, ], y = trio[2, ], z = trio[3, ]) |>
-    mutate(xy = s[cbind(x, y)], xz = s[cbind(x, z)], yz = s[cbind(y, z)]) |>
-    filter(xy != 0, xz != 0, yz != 0) |>
-    mutate(negatives = (xy < 0) + (xz < 0) + (yz < 0), balanced = negatives %% 2 == 0)
-}
-
-# Every split into two camps (Ana always in the first): how many ties does the best one break?
-best_split <- function(ties) {
-  camps <- cbind(1, as.matrix(expand.grid(rep(list(c(1, -1)), 4))))
-  together <- camps[, match(ties$a, people)] * camps[, match(ties$b, people)]
-  broken <- rowSums(together != matrix(ties$sign, nrow(camps), nrow(ties), byrow = TRUE))
-  best <- camps[which.min(broken), ]
-  tibble(fewest_broken = min(broken), camp_1 = paste(people[best == 1], collapse = " "), camp_2 = paste(people[best == -1], collapse = " "))
-}
-
-list(`the office` = signed, `plus Ben likes Dev` = signed_plus) |>
-  map(\(ties) {
-    tri <- triangles_of(ties)
-    bind_cols(tibble(ties = nrow(ties), triangles = nrow(tri), balanced = sum(tri$balanced)), best_split(ties))
-  }) |>
-  list_rbind(names_to = "network")
-
-# The triangles that break the rule once Ben likes Dev.
-triangles_of(signed_plus) |> filter(!balanced) |> select(x, y, z, negatives)
+# TODO(code, R): needs signed-balance tools: net_balance() (balanced and unbalanced triangles of a signed network) and a two-camp frustration search such as net_frustration().
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 2 × 7
-  network             ties triangles balanced fewest_broken camp_1        camp_2
-  <chr>              <int>     <int>    <int>         <dbl> <chr>         <chr> 
-1 the office             8         4        4             0 Ana Ben Chloe Dev E…
-2 plus Ben likes Dev     9         7        4             1 Ana Ben Chloe Dev E…
-# A tibble: 3 × 4
-  x     y     z     negatives
-  <chr> <chr> <chr>     <int>
-1 Ana   Ben   Dev           1
-2 Ben   Chloe Dev           1
-3 Ben   Dev   Eli           1
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-from itertools import combinations
-
-# Signed ties among five coworkers: +1 means they get on, -1 means they don't.
-signed = {("Ana", "Ben"): 1, ("Ana", "Chloe"): 1, ("Ben", "Chloe"): 1, ("Dev", "Eli"): 1,
-          ("Ana", "Dev"): -1, ("Chloe", "Dev"): -1, ("Chloe", "Eli"): -1, ("Ben", "Eli"): -1}
-signed_plus = {**signed, ("Ben", "Dev"): 1}  # Ben also likes Dev
-
-def sign(ties, a, b):
-    """The sign between two people, or None if they are not tied."""
-    return ties.get((a, b)) or ties.get((b, a))
-
-def check(label, ties):
-    # Every triangle (three people all tied to each other) and how many of its ties are negative.
-    triangles = {t: sum(sign(ties, a, b) < 0 for a, b in combinations(t, 2))
-                 for t in combinations(people, 3) if all(sign(ties, a, b) for a, b in combinations(t, 2))}
-    balanced = sum(k % 2 == 0 for k in triangles.values())
-    # Every split into two camps (Ana always in camp 0): how many ties does each one break?
-    def broken(mask):
-        camp = {p: 0 if i == 0 else (mask >> (i - 1)) & 1 for i, p in enumerate(people)}
-        return sum((camp[a] == camp[b]) != (s > 0) for (a, b), s in ties.items()), camp
-    best = min((broken(m)[0], m) for m in range(16))
-    fewest, camp = best[0], broken(best[1])[1]
-    side = lambda wanted: " ".join(p for p in people if camp[p] == wanted)
-    print(f"{label}: {len(ties)} ties, {len(triangles)} triangles, {balanced} balanced")
-    print(f"  fewest ties that break a two-camp split: {fewest} ({side(0)} | {side(1)})")
-    bad = [f"{' '.join(t)} ({k} negative)" for t, k in triangles.items() if k % 2 == 1]
-    if bad:
-        print("  unbalanced:", ", ".join(bad))
-
-check("the office", signed)
-check("plus Ben likes Dev", signed_plus)
+# TODO(code, Python): needs signed-balance tools: net_balance() (balanced and unbalanced triangles of a signed network) and a two-camp frustration search such as net_frustration().
 ```
 
 ::: {.code-output}
 ```text
-the office: 8 ties, 4 triangles, 4 balanced
-  fewest ties that break a two-camp split: 0 (Ana Ben Chloe | Dev Eli)
-plus Ben likes Dev: 9 ties, 7 triangles, 4 balanced
-  fewest ties that break a two-camp split: 1 (Ana Ben Chloe | Dev Eli)
-  unbalanced: Ana Ben Dev (1 negative), Ben Chloe Dev (1 negative), Ben Dev Eli (1 negative)
+TODO(output)
 ```
 :::
 

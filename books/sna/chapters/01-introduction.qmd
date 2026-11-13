@@ -190,33 +190,28 @@ Now the same steps in code. The tabs below hold the same steps in R, Python and 
 
 ```r
 library(knappnet)
-library(dplyr)
-library(purrr)
 
 people <- c("Ana", "Ben", "Chloe", "Dev", "Eli")
+nodes <- data.frame(id = people)
 
 # Team 1: everyone talks to everyone (all ten pairs). Team 2: Ana is the hub.
-pairs <- combn(people, 2)
+pairs <- t(combn(people, 2))
 teams <- list(
-  `everyone talks` = tibble(source = pairs[1, ], target = pairs[2, ]),
-  `Ana is the hub` = tibble(source = "Ana", target = people[-1])
-) |>
-  map(\(ties) net_frame(ties, nodes = tibble(id = people), directed = FALSE))
+  `everyone talks` = net_frame(data.frame(source = pairs[, 1], target = pairs[, 2]), nodes = nodes, directed = FALSE),
+  `Ana is the hub` = net_frame(data.frame(source = "Ana", target = people[-1]), nodes = nodes, directed = FALSE)
+)
 
 # One row per team: ties, density, and how many groups are left once Ana is gone.
-teams |>
-  map(\(g) tibble(
-    ties = nrow(g$edges),
-    density = net_density(g),
-    groups_without_ana = net_components(net_subnetwork(g, people[-1]))$no
-  )) |>
-  list_rbind(names_to = "team")
+data.frame(
+  ties = sapply(teams, \(g) nrow(g$edges)),
+  density = sapply(teams, net_density),
+  groups_without_ana = sapply(teams, \(g) net_components(net_subnetwork(g, people[-1]))$no)
+)
 
 # Each person's degree, one column per team.
-teams |>
-  map(net_degree) |>
-  as_tibble() |>
-  mutate(person = people, .before = 1)
+degrees <- sapply(teams, net_degree)
+rownames(degrees) <- people
+degrees
 ```
 
 ::: {.code-output}
@@ -324,22 +319,12 @@ The crisis test asks about one person at a time. Run it for everyone and you get
 ## R
 
 ```r
-library(tidyr)
-
 # A third team: a chain, Ana-Ben-Chloe-Dev-Eli.
-chain <- net_frame(
-  tibble(source = people[-5], target = people[-1]),
-  nodes = tibble(id = people), directed = FALSE
-)
+chain <- net_frame(data.frame(source = people[-5], target = people[-1]), nodes = nodes, directed = FALSE)
+teams <- c(teams, list(`a chain` = chain))
 
-# For each team and each person: how many groups are left among the other four if that person goes.
-c(teams, list(`a chain` = chain)) |>
-  map(\(g) tibble(
-    person = people,
-    groups_left = map_int(people, \(p) net_components(net_subnetwork(g, setdiff(people, p)))$no)
-  )) |>
-  list_rbind(names_to = "team") |>
-  pivot_wider(names_from = person, values_from = groups_left)
+# Rows: the team. Columns: who goes. Cells: how many groups are left among the other four.
+t(sapply(teams, \(g) sapply(people, \(p) net_components(net_subnetwork(g, setdiff(people, p)))$no)))
 ```
 
 ::: {.code-output}
@@ -424,18 +409,12 @@ Toy examples are for learning the vocabulary. The test is a real network, so let
 florence <- net_frame(read.csv("data/florentine/edges.csv"), directed = FALSE)
 
 # The size of the network and how many of the possible pairs are married.
-tibble(
-  families = nrow(florence$nodes),
-  marriages = nrow(florence$edges),
-  density = net_density(florence),
-  mean_degree = net_avg_degree(florence)
-)
+c(families = nrow(florence$nodes), marriages = nrow(florence$edges),
+  density = net_density(florence), mean_degree = net_avg_degree(florence))
 
 # The three families with the most marriages (ties broken by name).
-florence$nodes |>
-  mutate(degree = net_degree(florence)) |>
-  arrange(desc(degree), id) |>
-  slice_head(n = 3)
+degree <- setNames(net_degree(florence), florence$nodes$id)
+degree[order(-degree, names(degree))][1:3]
 ```
 
 ::: {.code-output}

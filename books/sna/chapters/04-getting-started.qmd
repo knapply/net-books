@@ -34,7 +34,7 @@ Three things to know.
 
 - **A Rust toolchain.** The R package and the Python backend compile the engine when you install them, and the Rust code needs it directly. Install it with `rustup` from <https://www.rust-lang.org/tools/install>, then check it with `rustc --version` at a terminal.
 - **The Python tabs in this book use plain NetworkX.** The backend is a speed-up that leaves NetworkX code as it is; you can add it later without touching the examples. NetworkX's algorithms are the reference implementations in many places, which is why we use it for the cross-checks (@sec-reproducibility says more about pinning versions).
-- **The R tabs load a few tidyverse packages** (`dplyr`, `purrr`, `tibble`, `tidyr`). They are ordinary packages from CRAN.
+- **The R tabs use base R and the knappnet package, nothing else.** Where a tab is a short comment that begins with `TODO`, knappnet does not expose that step yet, and the Rust tab shows how it is done.
 
 To check that the install worked, load the library and build the smallest network you can. If you can do that, everything in the chapter will run.
 
@@ -44,8 +44,6 @@ To check that the install worked, load the library and build the smallest networ
 
 ```r
 library(knappnet)
-library(dplyr)
-library(purrr)
 net_frame(data.frame(source = "a", target = "b"), directed = FALSE)
 ```
 
@@ -147,15 +145,14 @@ You'll meet layouts properly in @sec-visualization. A layout assigns each person
 
 ```r
 library(knappnet)
-library(dplyr)
 
 # A network is two tables. The edge table has one row per tie; the node
 # table lists the people, in order.
-edges <- tibble(
+edges <- data.frame(
   source = c("Ana", "Ana", "Ben", "Chloe", "Dev", "Dev", "Eli"),
   target = c("Ben", "Chloe", "Chloe", "Ana", "Ana", "Chloe", "Chloe")
 )
-people <- tibble(id = c("Ana", "Ben", "Chloe", "Dev", "Eli"))
+people <- data.frame(id = c("Ana", "Ben", "Chloe", "Dev", "Eli"))
 
 # Directed, because advice goes from the person who asks to the person asked.
 g <- net_frame(edges, nodes = people, directed = TRUE)
@@ -164,18 +161,17 @@ g <- net_frame(edges, nodes = people, directed = TRUE)
 g
 
 # Steps 2 and 3: degree in each direction, and betweenness as a plain count of routes.
-people |>
-  mutate(
-    out = net_degree(g, mode = "out"),
-    `in` = net_degree(g, mode = "in"),
-    betweenness = net_betweenness(g)
-  )
+data.frame(
+  out = net_degree(g, mode = "out"),
+  `in` = net_degree(g, mode = "in"),
+  betweenness = net_betweenness(g),
+  row.names = people$id, check.names = FALSE
+)
 
 # Step 4: a stress layout; the seed fixes the starting guess.
 layout <- net_layout(g, method = "stress", seed = 1)
-people |>
-  mutate(x = layout[, 1], y = layout[, 2]) |>
-  mutate(across(c(x, y), \(v) round(v, 3)))
+rownames(layout) <- people$id
+round(layout, 3)
 ```
 
 ::: {.code-output}
@@ -365,25 +361,22 @@ The data file has one row per tie, with a column naming the relation, so the adv
 ## R
 
 ```r
-krack <- read.csv("data/krackhardt/edges.csv") |> as_tibble()
+krack <- read.csv("data/krackhardt/edges.csv")
 
 # One tie table with a relation column; the advice network is the rows that say "advice".
-advice_edges <- krack |>
-  filter(relation == "advice") |>
-  select(source = from, target = to)
-advice <- net_frame(advice_edges, nodes = tibble(id = 1:21), directed = TRUE)
+rows <- krack[krack$relation == "advice", ]
+advice_edges <- data.frame(source = rows$from, target = rows$to)
+advice <- net_frame(advice_edges, nodes = data.frame(id = 1:21), directed = TRUE)
 advice
 
 # Compare with what we know: 21 managers, 190 ties, and in-degrees that add up to out-degrees.
-tibble(
-  ties = nrow(advice_edges),
+c(ties = nrow(advice_edges),
   in_total = sum(net_degree(advice, mode = "in")),
   out_total = sum(net_degree(advice, mode = "out")),
   density = round(net_density(advice), 3),
   returned = round(net_reciprocity(advice), 3),
   weak_pieces = net_components(advice)$no,
-  strong_pieces = net_components(advice, mode = "strong")$no
-)
+  strong_pieces = net_components(advice, mode = "strong")$no)
 ```
 
 ::: {.code-output}
@@ -509,8 +502,7 @@ Three questions from the earlier sections, on 21 people. By hand you can't list 
 ## R
 
 ```r
-spearman <- \(x, y) cor(x, y, method = "spearman")
-managers <- tibble(
+managers <- data.frame(
   manager = 1:21,
   asked = net_degree(advice, mode = "in"),
   asks = net_degree(advice, mode = "out"),
@@ -518,14 +510,14 @@ managers <- tibble(
 )
 
 # The five highest, ties broken by the smaller manager number.
-managers |> arrange(desc(asked), manager) |> select(manager, asked) |> head(5)
-managers |> arrange(desc(asks), manager) |> select(manager, asks) |> head(5)
-managers |> arrange(desc(routes), manager) |> select(manager, routes) |> head(5) |> mutate(routes = round(routes, 2))
+top5 <- \(column) head(managers[order(-managers[[column]], managers$manager), c("manager", column)], 5)
+top5("asked")
+top5("asks")
+transform(top5("routes"), routes = round(routes, 2))
 
 # Do the three say the same thing? Rank correlations.
-tibble(asked_vs_routes = spearman(managers$asked, managers$routes),
-       asked_vs_asks = spearman(managers$asked, managers$asks)) |>
-  mutate(across(everything(), \(x) round(x, 3)))
+round(c(asked_vs_routes = cor(managers$asked, managers$routes, method = "spearman"),
+        asked_vs_asks = cor(managers$asked, managers$asks, method = "spearman")), 3)
 ```
 
 ::: {.code-output}
@@ -651,104 +643,24 @@ Surveys miss ties, people forget, files are truncated. One cheap way to find out
 ## R
 
 ```r
-# Park and Miller's little generator, so every language draws the same "random" numbers.
-uniform <- \(count, seed) {
-  states <- accumulate(seq_len(count), \(state, i) (state * 48271) %% 2147483647, .init = seed)
-  states[-1] / 2147483647
-}
-top_three <- \(scores) order(-scores, seq_along(scores))[1:3]
-draws <- matrix(uniform(200 * nrow(advice_edges), 1), nrow = 200, byrow = TRUE)
-base <- list(asked = top_three(managers$asked), routes = top_three(net_betweenness(advice)))
-
-drops <- map(1:200, \(rep) {
-  h <- net_frame(advice_edges[draws[rep, ] >= 0.1, ], nodes = tibble(id = 1:21), directed = TRUE)
-  tibble(
-    ties = net_degree(h, mode = "all") |> sum() / 2,
-    asked_top = list(top_three(net_degree(h, mode = "in"))),
-    routes_top = list(top_three(net_betweenness(h)))
-  ) |>
-    mutate(asked_kept = length(intersect(base$asked, asked_top[[1]])), routes_kept = length(intersect(base$routes, routes_top[[1]])))
-}) |>
-  list_rbind()
-
-drops |>
-  summarise(
-    mean_ties_left = mean(ties),
-    asked_all_three = mean(asked_kept == 3), asked_average = mean(asked_kept),
-    routes_all_three = mean(routes_kept == 3), routes_average = mean(routes_kept)
-  ) |>
-  mutate(across(everything(), \(x) round(x, 3)))
-
-# How often each of the original top three stayed in the top three, out of 200 draws.
-bind_rows(
-  tibble(list = "asked", manager = sort(base$asked), stayed = map_int(sort(base$asked), \(m) sum(map_lgl(drops$asked_top, \(t) m %in% t)))),
-  tibble(list = "routes", manager = sort(base$routes), stayed = map_int(sort(base$routes), \(m) sum(map_lgl(drops$routes_top, \(t) m %in% t))))
-)
+# TODO(code, R): needs a stability check: net_stability() (drop a random share of ties many times, recompute a measure, report how often the top ranks survive), with a seeded generator shared across languages.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 1 × 5
-  mean_ties_left asked_all_three asked_average routes_all_three routes_average
-           <dbl>           <dbl>         <dbl>            <dbl>          <dbl>
-1           171.             0.5          2.49            0.715           2.72
-# A tibble: 6 × 3
-  list   manager stayed
-  <chr>    <int>  <int>
-1 asked        2    198
-2 asked       18    157
-3 asked       21    143
-4 routes       7    143
-5 routes      18    200
-6 routes      21    200
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-from collections import Counter
-
-def uniform(count, seed):
-    """Park and Miller's little generator, so every language draws the same "random" numbers."""
-    state, out = seed, []
-    for _ in range(count):
-        state = state * 48271 % 2147483647
-        out.append(state / 2147483647)
-    return out
-
-arcs = [(int(r["from"]), int(r["to"])) for r in rows]
-draws = uniform(200 * len(arcs), 1)
-base = {"asked": {m for m, _ in top(asked, 3)}, "routes": {m for m, _ in top(routes, 3)}}
-
-kept_counts, asked_kept, routes_kept = [], [], []
-stayed = {"asked": Counter(), "routes": Counter()}
-for rep in range(200):
-    kept = [t for t, d in zip(arcs, draws[rep * len(arcs):(rep + 1) * len(arcs)]) if d >= 0.1]
-    h = nx.DiGraph()
-    h.add_nodes_from(nodes)
-    h.add_edges_from(kept)
-    kept_counts.append(len(kept))
-    now = {"asked": {m for m, _ in top(dict(h.in_degree()), 3)},
-           "routes": {m for m, _ in top(nx.betweenness_centrality(h, normalized=False), 3)}}
-    asked_kept.append(len(base["asked"] & now["asked"]))
-    routes_kept.append(len(base["routes"] & now["routes"]))
-    for name in stayed:
-        stayed[name].update(base[name] & now[name])
-
-asked_kept, routes_kept = np.array(asked_kept), np.array(routes_kept)
-print(f"ties left on average: {np.mean(kept_counts):.1f}")
-print(f"top three asked:  all three kept in {np.mean(asked_kept == 3):.3f} of draws, {asked_kept.mean():.3f} of 3 on average")
-print(f"top three routes: all three kept in {np.mean(routes_kept == 3):.3f} of draws, {routes_kept.mean():.3f} of 3 on average")
-print("stayed in the top three, of 200 draws:", {name: {m: stayed[name][m] for m in sorted(base[name])} for name in stayed})
+# TODO(code, Python): needs a stability check: net_stability() (drop a random share of ties many times, recompute a measure, report how often the top ranks survive), with a seeded generator shared across languages.
 ```
 
 ::: {.code-output}
 ```text
-ties left on average: 170.9
-top three asked:  all three kept in 0.500 of draws, 2.490 of 3 on average
-top three routes: all three kept in 0.715 of draws, 2.715 of 3 on average
-stayed in the top three, of 200 draws: {'asked': {2: 198, 18: 157, 21: 143}, 'routes': {7: 143, 18: 200, 21: 200}}
+TODO(output)
 ```
 :::
 
@@ -823,13 +735,13 @@ Question 2 deserves a worked example, because the same word means different thin
 
 ```r
 # The same measure with and without the division by the largest possible count.
-tibble(
+data.frame(
   network = c("five coworkers: Ana", "managers: manager 18"),
   raw = c(net_betweenness(g)[1], net_betweenness(advice)[18]),
   normalized = c(net_betweenness(g, normalized = TRUE)[1], net_betweenness(advice, normalized = TRUE)[18]),
   largest_count = c(4 * 3, 20 * 19)
 ) |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
+  transform(raw = round(raw, 3), normalized = round(normalized, 3))
 ```
 
 ::: {.code-output}
@@ -890,15 +802,16 @@ Mistakes are the most useful thing to see in a first chapter, because you will m
 
 ```r
 # A tie whose endpoint is misspelled, so it names nobody on the roster.
-typo <- tibble(source = c("Ana", "Ben"), target = c("Ben", "Chlo"))
+typo <- data.frame(source = c("Ana", "Ben"), target = c("Ben", "Chlo"))
 tryCatch(net_frame(typo, nodes = people, directed = TRUE), error = \(e) conditionMessage(e))
 
 # Unless you allow it, and then the sixth person appears.
 allowed <- net_frame(typo, nodes = people, directed = TRUE, add_nodes = TRUE, quiet = TRUE)
-tibble(people_on_the_roster = 5, people_in_the_network = nrow(allowed$nodes), extra = setdiff(allowed$nodes$id, people$id))
+c(people_on_the_roster = nrow(people), people_in_the_network = nrow(allowed$nodes))
+setdiff(allowed$nodes$id, people$id)
 
 # The same person listed twice.
-tryCatch(net_frame(edges, nodes = bind_rows(people, tibble(id = "Ana")), directed = TRUE), error = \(e) conditionMessage(e))
+tryCatch(net_frame(edges, nodes = rbind(people, data.frame(id = "Ana")), directed = TRUE), error = \(e) conditionMessage(e))
 
 # An id that counts from 1 where the code counts from 0: R counts from 1, but one past the end is NA, not an error.
 people$id[6]

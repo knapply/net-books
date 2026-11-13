@@ -69,136 +69,24 @@ Two more layouts of the same five people come from the other families. A **spect
 ## R
 
 ```r
-library(knappnet)
-library(dplyr)
-library(purrr)
-library(tibble)
-library(tidyr)
-
-# Stress: the sum over pairs of (page distance - graph distance)^2 / graph distance^2.
-stress <- \(points, d) {
-  page <- as.matrix(dist(points))
-  keep <- upper.tri(page)
-  sum((page[keep] - d[keep])^2 / d[keep]^2)
-}
-d5 <- abs(outer(1:5, 1:5, "-"))
-line <- cbind(0:4, 0)
-radius <- 1 / (2 * sin(pi / 5))
-pentagon <- radius * cbind(cos(2 * pi * (0:4) / 5), sin(2 * pi * (0:4) / 5))
-tibble(layout = c("straight line", "pentagon with side 1"), stress = round(c(stress(line, d5), stress(pentagon, d5)), 3))
-
-# Which pair does the most damage on the pentagon?
-page <- as.matrix(dist(pentagon))
-error <- (page - d5)^2 / d5^2
-error[!upper.tri(error)] <- 0
-worst <- which(error == max(error), arr.ind = TRUE)
-tibble(pair = paste(LETTERS[worst[1, ]], collapse = ""), steps_apart = d5[worst], on_the_page = round(page[worst], 3))
-
-# Spectral layout: eigenvectors of the second- and third-smallest eigenvalues of the Laplacian.
-fix_sign <- \(v) v * sign(v[which(abs(v) > 1e-9)[1]])
-spectral <- \(a) {
-  vectors <- eigen(diag(rowSums(a)) - a, symmetric = TRUE)$vectors
-  n <- nrow(a)
-  cbind(fix_sign(vectors[, n - 1]), fix_sign(vectors[, n - 2]))
-}
-a5 <- (d5 == 1) * 1
-round(spectral(a5), 3) + 0
-
-# Classical scaling of the path distances recovers the straight line.
-round(net_mds(d5, 2)$points, 3) + 0
+# TODO(code, R): needs net_layout_stress() on hand-placed coordinates with the scale-free score, and net_layout(method = "spectral") for the Laplacian eigenvector layout.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 2 × 2
-  layout               stress
-  <chr>                 <dbl>
-1 straight line          0   
-2 pentagon with side 1   1.10
-# A tibble: 1 × 3
-  pair  steps_apart on_the_page
-  <chr>       <int>       <dbl>
-1 AE              4           1
-       [,1]   [,2]
-[1,]  0.602  0.512
-[2,]  0.372 -0.195
-[3,]  0.000 -0.632
-[4,] -0.372 -0.195
-[5,] -0.602  0.512
-     Dim1
-[1,]    2
-[2,]    1
-[3,]    0
-[4,]   -1
-[5,]   -2
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-import csv
-import math
-
-import networkx as nx
-import numpy as np
-
-def read(path):
-    with open(path) as f:
-        return list(csv.DictReader(f))
-
-# Stress: the sum over pairs of (page distance - graph distance)^2 / graph distance^2.
-def stress(points, d):
-    n = len(points)
-    return sum((np.linalg.norm(points[i] - points[j]) - d[i, j]) ** 2 / d[i, j] ** 2 for i in range(n) for j in range(i + 1, n))
-
-d5 = np.array([[abs(i - j) for j in range(5)] for i in range(5)], dtype=float)
-line = np.array([[i, 0.0] for i in range(5)])
-radius = 1 / (2 * math.sin(math.pi / 5))
-pentagon = np.array([[radius * math.cos(2 * math.pi * i / 5), radius * math.sin(2 * math.pi * i / 5)] for i in range(5)])
-print(f"stress of the straight line {stress(line, d5):.3f}, of the pentagon with side 1 {stress(pentagon, d5):.3f}")
-
-# Which pair does the most damage on the pentagon?
-page = np.linalg.norm(pentagon[:, None] - pentagon[None], axis=2)
-worst = max(((i, j) for i in range(5) for j in range(i + 1, 5)), key=lambda p: (page[p] - d5[p]) ** 2 / d5[p] ** 2)
-print(f"worst pair: {'ABCDE'[worst[0]]}{'ABCDE'[worst[1]]}, {d5[worst]:.0f} steps apart and {page[worst]:.3f} apart on the page")
-
-# Spectral layout: eigenvectors of the second- and third-smallest eigenvalues of the Laplacian.
-def fix_sign(v):
-    return v * np.sign(v[np.flatnonzero(np.abs(v) > 1e-9)[0]])
-
-def spectral(a):
-    values, vectors = np.linalg.eigh(np.diag(a.sum(axis=1)) - a)
-    return np.column_stack([fix_sign(vectors[:, 1]), fix_sign(vectors[:, 2])])
-
-print(np.round(spectral(nx.to_numpy_array(nx.path_graph(5))), 3) + 0)
-
-# Classical scaling of the path distances recovers the straight line.
-def classical_mds(dist, k=2):
-    """Torgerson's classical scaling: double-centre the squared distances and keep the top eigenvectors."""
-    n = len(dist)
-    j = np.eye(n) - np.ones((n, n)) / n
-    values, vectors = np.linalg.eigh(-0.5 * j @ (dist ** 2) @ j)
-    top = np.argsort(values)[::-1][:k]
-    return vectors[:, top] * np.sqrt(np.maximum(values[top], 0))
-
-print(np.round(classical_mds(d5), 3) + 0)
+# TODO(code, Python): needs net_layout_stress() on hand-placed coordinates with the scale-free score, and a spectral layout method.
 ```
 
 ::: {.code-output}
 ```text
-stress of the straight line 0.000, of the pentagon with side 1 1.096
-worst pair: AE, 4 steps apart and 1.000 apart on the page
-[[ 0.602  0.512]
- [ 0.372 -0.195]
- [ 0.    -0.632]
- [-0.372 -0.195]
- [-0.602  0.512]]
-[[ 2.  0.]
- [ 1.  0.]
- [ 0.  0.]
- [-1.  0.]
- [-2.  0.]]
+TODO(output)
 ```
 :::
 
@@ -314,134 +202,24 @@ The last column asks whether the middle of the picture is where the well-connect
 ## R
 
 ```r
-# The karate club, its graph distances, and six stored layouts of it.
-members <- read.csv("data/karate/nodes.csv") |> as_tibble()
-ties <- read.csv("data/karate/edges.csv") |> as_tibble()
-club <- net_frame(select(ties, source, target), nodes = select(members, id), directed = FALSE)
-d <- net_distances(club)
-degree <- net_degree(club)
-
-layouts <- read.csv("data/layouts/karate_layouts.csv") |>
-  as_tibble() |>
-  summarize(points = list(cbind(x, y)), .by = layout) |>
-  deframe()
-
-# Pairs of ties that share no member, with the four members named.
-tie_pairs <- expand_grid(i = seq_len(nrow(ties)), j = seq_len(nrow(ties))) |>
-  filter(i < j) |>
-  mutate(a = ties$source[i], b = ties$target[i], c = ties$source[j], e = ties$target[j]) |>
-  filter(a != c, a != e, b != c, b != e)
-
-# Scale-free stress, correlation of page and graph distance, how much farther apart the factions sit, and crossings.
-quality <- \(points) {
-  page <- as.matrix(dist(points))
-  keep <- upper.tri(page)
-  p <- page[keep]
-  g <- d[keep]
-  scale <- sum(p / g) / sum((p / g)^2)
-  same <- outer(members$faction, members$faction, "==")[keep]
-  ccw <- \(a, b, c) (points[c, 2] - points[a, 2]) * (points[b, 1] - points[a, 1]) - (points[b, 2] - points[a, 2]) * (points[c, 1] - points[a, 1])
-  tibble(
-    stress = mean(((scale * p - g) / g)^2),
-    distance_r = cor(p, g),
-    sides_apart = mean(p[!same]) / mean(p[same]),
-    crossings = with(tie_pairs, sum(ccw(a, b, c) * ccw(a, b, e) < -1e-9 & ccw(c, e, a) * ccw(c, e, b) < -1e-9))
-  )
-}
-
-# Is the middle of the picture where the well-connected people are?
-centre_link <- \(points) {
-  from_centre <- sqrt(rowSums(sweep(points, 2, colMeans(points))^2))
-  if (sd(from_centre) < 1e-6) NA_real_ else cor(degree, from_centre, method = "spearman")
-}
-
-cat(sprintf("%d members, %d ties, longest distance %d\n", nrow(club$nodes), nrow(ties), max(d)))
-c("random", "circle", "force", "stress", "spectral", "mds") |>
-  map(\(name) bind_cols(layout = name, quality(layouts[[name]]), centre_vs_degree = centre_link(layouts[[name]]))) |>
-  list_rbind() |>
-  mutate(across(c(stress, distance_r, centre_vs_degree), \(x) round(x, 3)), sides_apart = round(sides_apart, 2))
+# TODO(code, R): needs a layout-quality table: net_layout_quality() (scale-free stress, distance correlation, faction separation, edge crossings, centre-versus-degree).
 ```
 
 ::: {.code-output}
 ```text
-34 members, 78 ties, longest distance 5
-# A tibble: 6 × 6
-  layout   stress distance_r sides_apart crossings centre_vs_degree
-  <chr>     <dbl>      <dbl>       <dbl>     <int>            <dbl>
-1 random    0.377     -0.085        1.02       596            0.35 
-2 circle    0.292      0.156        1.28       608           NA    
-3 force     0.089      0.876        2.08        72           -0.563
-4 stress    0.068      0.884        1.79        86           -0.622
-5 spectral  0.387      0.591        1.97        60           -0.535
-6 mds       0.131      0.864        2.25        69           -0.402
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# The karate club, its graph distances, and six stored layouts of it.
-members = [int(r["id"]) for r in read("data/karate/nodes.csv")]
-faction = np.array([r["faction"] for r in read("data/karate/nodes.csv")])
-club = nx.Graph()
-club.add_nodes_from(members)
-club.add_edges_from((int(r["source"]), int(r["target"])) for r in read("data/karate/edges.csv"))
-lengths = dict(nx.all_pairs_shortest_path_length(club))
-d = np.array([[lengths[a][b] for b in members] for a in members], dtype=float)
-degree = np.array([club.degree(v) for v in members])
-
-layouts = {}
-for r in read("data/layouts/karate_layouts.csv"):
-    layouts.setdefault(r["layout"], []).append((float(r["x"]), float(r["y"])))
-layouts = {name: np.array(points) for name, points in layouts.items()}
-
-def ccw(a, b, c):
-    return (c[1] - a[1]) * (b[0] - a[0]) - (b[1] - a[1]) * (c[0] - a[0])
-
-def quality(points):
-    """Scale-free stress, correlation of page and graph distance, how much farther apart the factions sit, and crossings."""
-    n = len(points)
-    page = np.linalg.norm(points[:, None] - points[None], axis=2)
-    keep = np.triu_indices(n, 1)
-    p, g = page[keep], d[keep]
-    scale = (p / g).sum() / ((p / g) ** 2).sum()
-    same = (faction[:, None] == faction[None])[keep]
-    ties = list(club.edges())
-    crossings = 0
-    for i, (a, b) in enumerate(ties):
-        for c, e in ties[i + 1:]:
-            if len({a, b, c, e}) == 4:
-                pa, pb, pc, pe = (points[x - 1] for x in (a, b, c, e))
-                crossings += ccw(pa, pb, pc) * ccw(pa, pb, pe) < -1e-9 and ccw(pc, pe, pa) * ccw(pc, pe, pb) < -1e-9
-    return np.mean(((scale * p - g) / g) ** 2), np.corrcoef(p, g)[0, 1], p[~same].mean() / p[same].mean(), int(crossings)
-
-def ranks(x):
-    # 1 for the smallest; tied values share the average of their ranks
-    x = np.asarray(x)
-    return np.array([(x < v).sum() + ((x == v).sum() + 1) / 2 for v in x])
-
-def spearman(x, y):
-    return np.corrcoef(ranks(x), ranks(y))[0, 1]
-
-print(f"{club.number_of_nodes()} members, {club.number_of_edges()} ties, longest distance {int(d.max())}")
-print(f"{'layout':<9}{'stress':>8}{'distance r':>12}{'sides apart':>13}{'crossings':>11}{'centre vs degree':>18}")
-for name in ["random", "circle", "force", "stress", "spectral", "mds"]:
-    s, r, ratio, crossings = quality(layouts[name])
-    from_centre = np.linalg.norm(layouts[name] - layouts[name].mean(axis=0), axis=1)
-    link = "n/a" if from_centre.std() < 1e-6 else f"{spearman(degree, from_centre):.3f}"
-    print(f"{name:<9}{s:>8.3f}{r:>12.3f}{ratio:>13.2f}{crossings:>11}{link:>18}")
+# TODO(code, Python): needs a layout-quality table: net_layout_quality() (scale-free stress, distance correlation, faction separation, edge crossings, centre-versus-degree).
 ```
 
 ::: {.code-output}
 ```text
-34 members, 78 ties, longest distance 5
-layout     stress  distance r  sides apart  crossings  centre vs degree
-random      0.377      -0.085         1.02        596             0.350
-circle      0.292       0.156         1.28        608               n/a
-force       0.089       0.876         2.08         72            -0.563
-stress      0.068       0.884         1.79         86            -0.622
-spectral    0.387       0.591         1.97         60            -0.535
-mds         0.131       0.864         2.25         69            -0.402
+TODO(output)
 ```
 :::
 
@@ -556,25 +334,19 @@ On the question about the middle: for the stress layout the rank correlation bet
 
 Two practical points hide in the scores above. The first is why they are called scale-free. The raw version of stress, the sum from the formula earlier, depends on how big you drew the picture, because $\lVert x_i - x_j \rVert$ grows with the drawing while $d_{ij}$ does not. The block below scores the circle, force and stress layouts both ways, then enlarges the stress layout tenfold. The raw number explodes from 37.9 to 42,409.3 while the picture, and its scale-free score, have not changed. If you compare two layouts on raw stress and one was drawn bigger, you have compared sizes.
 
-The second point is that tools differ. The engine in Rust and R has a stress layout and a force layout and, with a seed, makes the same pictures again; the block checks this against the stored files. NetworkX has no stress layout. Its nearest neighbor is Kamada and Kawai's [@kamada1989algorithm], and its force layout is its own implementation, so the Python tab prints scores for those instead. They are close to the engine's for Kamada-Kawai and a little worse for the spring layout, but they are different pictures, not the same ones.
+The second point is that tools differ. The engine in Rust and R has a stress layout and a force layout and, with a seed, makes the same pictures again; the block checks this against the stored files. NetworkX has no stress layout. Its nearest neighbor is Kamada and Kawai's [@kamada1989algorithm], and its force layout is its own implementation, so a NetworkX picture is a different picture, not the same one. The Python tab is a stub until a Python function scores a layout.
 
 ::: {.panel-tabset group="language"}
 
 ## R
 
 ```r
-# Raw stress depends on the size of the drawing; the scale-free version does not.
-raw_stress <- \(points) {
-  page <- as.matrix(dist(points))
-  keep <- upper.tri(page)
-  sum((page[keep] - d[keep])^2 / d[keep]^2)
-}
-c("circle", "force", "stress") |>
-  map(\(name) tibble(layout = name, raw_stress = raw_stress(layouts[[name]]), scale_free = quality(layouts[[name]])$stress)) |>
-  list_rbind() |>
-  mutate(across(where(is.double), \(x) round(x, 3)))
-tibble(raw = raw_stress(10 * layouts$stress), scale_free = quality(10 * layouts$stress)$stress) |>
-  mutate(raw = round(raw, 1), scale_free = round(scale_free, 3))
+library(knappnet)
+
+members <- read.csv("data/karate/nodes.csv")
+ties <- read.csv("data/karate/edges.csv")
+club <- net_frame(ties[c("source", "target")], nodes = members["id"], directed = FALSE)
+stored <- read.csv("data/layouts/karate_layouts.csv")
 
 # The engine makes the stored layouts, and with a seed it makes the same ones again.
 again <- list(
@@ -582,7 +354,11 @@ again <- list(
   force = net_layout(club, "fr", seed = 1),
   stress = net_layout(club, "stress", seed = 1)
 )
-tibble(layout = names(again), largest_difference = map_dbl(names(again), \(name) max(abs(unname(again[[name]]) - unname(layouts[[name]])))))
+sapply(names(again), \(name) {
+  old <- as.matrix(stored[stored$layout == name, c("x", "y")])
+  max(abs(unname(again[[name]]) - unname(old)))
+})
+# Raw and scale-free stress of these layouts need a layout-quality function (see the Rust tab).
 ```
 
 ::: {.code-output}
@@ -609,30 +385,12 @@ tibble(layout = names(again), largest_difference = map_dbl(names(again), \(name)
 ## Python
 
 ```python
-# Raw stress depends on the size of the drawing; the scale-free version does not.
-def raw_stress(points):
-    page = np.linalg.norm(points[:, None] - points[None], axis=2)
-    keep = np.triu_indices(len(points), 1)
-    return float(((page[keep] - d[keep]) ** 2 / d[keep] ** 2).sum())
-
-for name in ["circle", "force", "stress"]:
-    print(f"{name:<7} raw stress {raw_stress(layouts[name]):7.3f}, scale-free {quality(layouts[name])[0]:.3f}")
-print(f"stress layout drawn ten times larger: raw {raw_stress(10 * layouts['stress']):.1f}, scale-free {quality(10 * layouts['stress'])[0]:.3f}")
-
-# NetworkX has no stress layout; Kamada-Kawai is the nearest thing, and its force layout is its own implementation.
-as_array = lambda layout: np.array([layout[v] for v in members])
-for label, points in [("kamada_kawai_layout", as_array(nx.kamada_kawai_layout(club))), ("spring_layout, seed 1", as_array(nx.spring_layout(club, seed=1)))]:
-    print(f"NetworkX {label:<22} scale-free stress {quality(points)[0]:.3f}, crossings {quality(points)[3]}")
+# TODO(code, Python): needs scale-free stress from net_layout_quality(); no Python function scores a layout yet.
 ```
 
 ::: {.code-output}
 ```text
-circle  raw stress 169.104, scale-free 0.292
-force   raw stress 467.594, scale-free 0.089
-stress  raw stress  37.906, scale-free 0.068
-stress layout drawn ten times larger: raw 42409.3, scale-free 0.068
-NetworkX kamada_kawai_layout    scale-free stress 0.069, crossings 69
-NetworkX spring_layout, seed 1  scale-free stress 0.105, crossings 87
+TODO(output)
 ```
 :::
 
@@ -681,7 +439,7 @@ stress  largest difference from the stored layout 0.000000
 
 
 
-The Python lines say that NetworkX's Kamada-Kawai scores 0.069 against the engine's stress layout at 0.068, and that its spring layout scores 0.105 against the engine's force layout at 0.089. The Rust tab asks the engine for the circle, force and stress layouts again with seed 1 and finds that the largest difference from any stored coordinate is 0.000000, so the stored files are exactly what the engine makes; the R tab makes the same check through `net_layout`.
+The Rust tab asks the engine for the circle, force and stress layouts again with seed 1 and finds that the largest difference from any stored coordinate is 0.000000, so the stored files are exactly what the engine makes; the R tab makes the same check through `net_layout`. The R and Python tabs for the scores themselves are stubs: knappnet has no function that scores a layout yet.
 
 ## Distance on the page is a hint, not a measurement
 
@@ -708,60 +466,24 @@ The second bullet says a different run can give a different picture. How differe
 ## R
 
 ```r
-# Seeds: the same force layout from twenty seeds.
-runs <- read.csv("data/layouts/fr_seeds.csv") |>
-  as_tibble() |>
-  summarize(points = list(cbind(x, y)), .by = seed)
-page_distances <- \(points) as.matrix(dist(points))[upper.tri(diag(34))]
-runs <- runs |>
-  mutate(
-    stress = map_dbl(points, \(p) quality(p)$stress),
-    agreement = map_dbl(points, \(p) cor(page_distances(points[[1]]), page_distances(p)))
-  )
-tibble(
-  seeds = nrow(runs),
-  stress_min = min(runs$stress), stress_median = median(runs$stress), stress_max = max(runs$stress),
-  agreement_min = min(runs$agreement[-1]), agreement_max = max(runs$agreement[-1])
-) |>
-  mutate(across(where(is.double), \(x) round(x, 3)))
-runs$points[[1]][1, ] |> round(2)
-runs$points[[2]][1, ] |> round(2)
+# TODO(code, R): needs a seed-stability check: net_layout_stress() over twenty seeded force layouts, plus the correlation of their page distances.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 1 × 6
-  seeds stress_min stress_median stress_max agreement_min agreement_max
-  <int>      <dbl>         <dbl>      <dbl>         <dbl>         <dbl>
-1    20      0.087          0.09      0.094         0.958         0.984
-    x     y 
--1.42  0.57 
-    x     y 
--1.46  0.64 
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# Seeds: the same force layout from twenty seeds.
-runs = {}
-for r in read("data/layouts/fr_seeds.csv"):
-    runs.setdefault(int(r["seed"]), []).append((float(r["x"]), float(r["y"])))
-runs = {seed: np.array(points) for seed, points in runs.items()}
-page_distances = lambda points: np.linalg.norm(points[:, None] - points[None], axis=2)[np.triu_indices(34, 1)]
-stresses = np.array([quality(points)[0] for points in runs.values()])
-agreement = np.array([np.corrcoef(page_distances(runs[1]), page_distances(runs[s]))[0, 1] for s in range(2, 21)])
-print(f"{len(runs)} seeds: scale-free stress from {stresses.min():.3f} to {stresses.max():.3f}, median {np.median(stresses):.3f}")
-print(f"page distances of seed 1 against each other seed: r from {agreement.min():.3f} to {agreement.max():.3f}")
-print("member 1 sits at", np.round(runs[1][0], 2), "with seed 1 and", np.round(runs[2][0], 2), "with seed 2")
+# TODO(code, Python): needs a seed-stability check: net_layout_stress() over twenty seeded force layouts, plus the correlation of their page distances.
 ```
 
 ::: {.code-output}
 ```text
-20 seeds: scale-free stress from 0.087 to 0.094, median 0.090
-page distances of seed 1 against each other seed: r from 0.958 to 0.984
-member 1 sits at [-1.42  0.57] with seed 1 and [-1.46  0.64] with seed 2
+TODO(output)
 ```
 :::
 
@@ -834,88 +556,24 @@ The block below does the arithmetic, then goes further and draws the club as a s
 ## R
 
 ```r
-# Encoding: node size from degree. Radius proportional to degree exaggerates; radius proportional to its square root does not.
-low <- min(degree)
-high <- max(degree)
-cat(sprintf("degree runs from %d to %d, a ratio of %.0f to 1\n", low, high, high / low))
-cat(sprintf("radius = 2 x degree:       radii %.1f and %.1f px, areas differ %.0f to 1\n", 2 * low, 2 * high, (high / low)^2))
-cat(sprintf("radius = 2 x sqrt(degree): radii %.1f and %.1f px, areas differ %.0f to 1\n", 2 * sqrt(low), 2 * sqrt(high), high / low))
-
-# Draw with a string: circles for one faction, squares for the other, line width from the number of shared contexts.
-points <- layouts$stress
-lowest <- apply(points, 2, min)
-span <- max(apply(points, 2, max) - lowest)
-place <- \(v) 30 + 440 * (points[v, ] - lowest) / span
-line_tags <- ties |>
-  mutate(
-    from = map(source, place), to = map(target, place),
-    tag = sprintf('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="#999" stroke-width="%.1f"/>',
-                  map_dbl(from, 1), map_dbl(from, 2), map_dbl(to, 1), map_dbl(to, 2), 0.5 + 0.5 * contexts)
-  ) |>
-  pull(tag)
-node_tags <- members |>
-  mutate(
-    x = map_dbl(id, \(v) place(v)[[1]]), y = map_dbl(id, \(v) place(v)[[2]]), r = 2 + 2 * sqrt(degree),
-    tag = if_else(faction == "Mr. Hi",
-      sprintf('<circle cx="%.1f" cy="%.1f" r="%.1f" fill="#0072B2"/>', x, y, r),
-      sprintf('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="#E69F00"/>', x - r, y - r, 2 * r, 2 * r))
-  ) |>
-  pull(tag)
-svg <- c('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500">', line_tags, node_tags, "</svg>") |> paste(collapse = "\n")
-n_tags <- \(tag) lengths(regmatches(svg, gregexpr(tag, svg, fixed = TRUE)))
-cat(sprintf("%d lines, %d circles, %d squares\n", n_tags("<line"), n_tags("<circle"), n_tags("<rect")))
-cat(sprintf("line widths run from %.1f px (%d context) to %.1f px (%d contexts)\n",
-            0.5 + 0.5 * min(ties$contexts), min(ties$contexts), 0.5 + 0.5 * max(ties$contexts), max(ties$contexts)))
+# TODO(code, R): needs encodings in the plotting call: net_plot() with node size from degree, shapes by group, line width from a tie value, and SVG output.
 ```
 
 ::: {.code-output}
 ```text
-degree runs from 1 to 17, a ratio of 17 to 1
-radius = 2 x degree:       radii 2.0 and 34.0 px, areas differ 289 to 1
-radius = 2 x sqrt(degree): radii 2.0 and 8.2 px, areas differ 17 to 1
-78 lines, 17 circles, 17 squares
-line widths run from 1.0 px (1 context) to 4.0 px (7 contexts)
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# Encoding: node size from degree. Radius proportional to degree exaggerates; radius proportional to its square root does not.
-low, high = degree.min(), degree.max()
-print(f"degree runs from {low} to {high}, a ratio of {high / low:.0f} to 1")
-print(f"radius = 2 x degree:       radii {2 * low:.1f} and {2 * high:.1f} px, areas differ {(high / low) ** 2:.0f} to 1")
-print(f"radius = 2 x sqrt(degree): radii {2 * math.sqrt(low):.1f} and {2 * math.sqrt(high):.1f} px, areas differ {high / low:.0f} to 1")
-
-# Draw with a string: circles for one faction, squares for the other, line width from the number of shared contexts.
-contexts = {(int(r["source"]), int(r["target"])): int(r["contexts"]) for r in read("data/karate/edges.csv")}
-points = layouts["stress"]
-lowest, span = points.min(axis=0), (points.max(axis=0) - points.min(axis=0)).max()
-place = lambda v: 30 + 440 * (points[v - 1] - lowest) / span
-parts = ['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500">']
-for (a, b), w in contexts.items():
-    (x1, y1), (x2, y2) = place(a), place(b)
-    parts.append(f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="#999" stroke-width="{0.5 + 0.5 * w:.1f}"/>')
-for v in members:
-    x, y = place(v)
-    r = 2 + 2 * math.sqrt(degree[v - 1])
-    if faction[v - 1] == "Mr. Hi":
-        parts.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{r:.1f}" fill="#0072B2"/>')
-    else:
-        parts.append(f'<rect x="{x - r:.1f}" y="{y - r:.1f}" width="{2 * r:.1f}" height="{2 * r:.1f}" fill="#E69F00"/>')
-parts.append("</svg>")
-svg = "\n".join(parts)
-print(f"{svg.count('<line')} lines, {svg.count('<circle')} circles, {svg.count('<rect')} squares")
-print(f"line widths run from {0.5 + 0.5 * min(contexts.values()):.1f} px ({min(contexts.values())} context) to {0.5 + 0.5 * max(contexts.values()):.1f} px ({max(contexts.values())} contexts)")
+# TODO(code, Python): needs encodings in the plotting call: net_plot() with node size from degree, shapes by group, line width from a tie value, and SVG output.
 ```
 
 ::: {.code-output}
 ```text
-degree runs from 1 to 17, a ratio of 17 to 1
-radius = 2 x degree:       radii 2.0 and 34.0 px, areas differ 289 to 1
-radius = 2 x sqrt(degree): radii 2.0 and 8.2 px, areas differ 17 to 1
-78 lines, 17 circles, 17 squares
-line widths run from 1.0 px (1 context) to 4.0 px (7 contexts)
+TODO(output)
 ```
 :::
 
@@ -993,60 +651,24 @@ The matrix for the club sorted by side is the picture to try when the node-link 
 ## R
 
 ```r
-# The matrix, sorted by faction.
-order_ids <- members |> arrange(faction != "Mr. Hi", id) |> pull(id)
-cat(sprintf("Mr. Hi rows end with member %d; Officer rows start with member %d\n", order_ids[17], order_ids[18]))
-sizes <- members |> count(hi = faction == "Mr. Hi")
-n_hi <- sizes$n[sizes$hi]
-n_of <- sizes$n[!sizes$hi]
-capacity <- tibble(
-  block = c("Mr. Hi block", "Officer block", "between the blocks"),
-  possible = c(n_hi * (n_hi - 1) / 2, n_of * (n_of - 1) / 2, n_hi * n_of)
-)
-ties |>
-  mutate(block = case_when(
-    members$faction[source] == "Mr. Hi" & members$faction[target] == "Mr. Hi" ~ "Mr. Hi block",
-    members$faction[source] != "Mr. Hi" & members$faction[target] != "Mr. Hi" ~ "Officer block",
-    .default = "between the blocks")) |>
-  count(block, name = "ties") |>
-  left_join(capacity, by = "block") |>
-  arrange(match(block, capacity$block)) |>
-  mutate(density = round(ties / possible, 3))
+# TODO(code, R): needs net_plot_matrix() with a group order, and net_block_summary() for the block densities of a two-faction partition.
 ```
 
 ::: {.code-output}
 ```text
-Mr. Hi rows end with member 22; Officer rows start with member 10
-# A tibble: 3 × 4
-  block               ties possible density
-  <chr>              <int>    <dbl>   <dbl>
-1 Mr. Hi block          35      136   0.257
-2 Officer block         32      136   0.235
-3 between the blocks    11      289   0.038
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# The matrix, sorted by faction.
-order = sorted(members, key=lambda v: (faction[v - 1] != "Mr. Hi", v))
-print(f"Mr. Hi rows end with member {order[16]}; Officer rows start with member {order[17]}")
-a = nx.to_numpy_array(club, nodelist=order)
-hi = [i for i, v in enumerate(order) if faction[v - 1] == "Mr. Hi"]
-of = [i for i, v in enumerate(order) if faction[v - 1] != "Mr. Hi"]
-within_hi, within_of, between = a[np.ix_(hi, hi)].sum() / 2, a[np.ix_(of, of)].sum() / 2, a[np.ix_(hi, of)].sum()
-print(f"Mr. Hi block: {len(hi)} members, {within_hi:.0f} ties, density {within_hi / (len(hi) * (len(hi) - 1) / 2):.3f}")
-print(f"Officer block: {len(of)} members, {within_of:.0f} ties, density {within_of / (len(of) * (len(of) - 1) / 2):.3f}")
-print(f"between the blocks: {between:.0f} ties, density {between / (len(hi) * len(of)):.3f}")
+# TODO(code, Python): needs a sorted adjacency-matrix plot and block densities for a two-faction partition.
 ```
 
 ::: {.code-output}
 ```text
-Mr. Hi rows end with member 22; Officer rows start with member 10
-Mr. Hi block: 17 members, 35 ties, density 0.257
-Officer block: 17 members, 32 ties, density 0.235
-between the blocks: 11 ties, density 0.038
+TODO(output)
 ```
 :::
 
