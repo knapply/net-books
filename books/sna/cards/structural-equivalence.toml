@@ -1,0 +1,64 @@
+id = "structural-equivalence"
+title = "Structural equivalence (distance between tie profiles)"
+kind = "measure"
+chapter = "positions-and-roles"
+summary = "How far apart two people's patterns of ties to everyone else are, so that people with the same ties to the same others come out close or at distance 0."
+answers = "Who stands in the same pattern of ties to the same people as whom, ignoring whether they know each other?"
+
+data_requirements = [
+  "One relation among the same set of people. Directed ties are best, because a profile is each person's row and column of the tie table.",
+  "Mostly complete data on who is tied to whom: a missing tie moves two people apart.",
+  "Enough ties for profiles to vary. A person with no ties, or whose only tie is to the other person in the pair, has a profile with no variation and an undefined correlation.",
+  "Binary or valued ties; say which. Weights change what a difference means.",
+]
+
+assumptions = [
+  "Two people are alike when they tie to the same particular people. People with the same role but different contacts are not close under this measure.",
+  "The pair's own ties to each other are left out. Programs differ on this, so state it.",
+  "Euclidean distance grows with how many ties people have, so people with few ties are close to each other whatever they tie to. Correlation looks at overlap instead and can give different positions on sparse data.",
+  "Distances are not positions. Turning them into positions needs a clustering method, a linkage and a number of groups, and each is a choice.",
+  "With the pair's own ties left out, exact equivalence is not always transitive, so exact classes can fail to be clean.",
+]
+
+readings = [
+  { context = "Organization (advice, email)", high = "Two people far apart go to different people or are gone to by different people. This is expected between people in different units.", low = "Two people go to and are gone to by the same others: near-duplicates in the network, such as two assistants who serve the same boss. It does not show they have the same job." },
+  { context = "Supply chain (who buys from whom)", high = "Different suppliers and customers. Retailers in different regions are far apart even though they play the same part, which is why regular equivalence fits this setting better.", low = "Firms that share suppliers and customers: close substitutes in the network, and a sign of shared exposure." },
+  { context = "Online platform (follows, replies)", high = "Accounts with different audiences or targets.", low = "Accounts followed by or replying to the same accounts. Could be a community, a coordinated set of accounts or a recommendation effect. The ties do not say which." },
+  { context = "Sparse questionnaire data (each person names a few others)", high = "Profiles differ in the few people named.", low = "With Euclidean distance, almost everyone is close to everyone, because sparse profiles cannot differ much. Compare with correlation before reading anything into groups." },
+]
+
+pitfalls = [
+  "Reading a distance table as positions. A cluster count and a linkage are choices, and different ones give different groups: on the chapter's office, average and complete linkage disagree.",
+  "Expecting leaders, managers and staff from structural equivalence. People in the same role who tie to different people are not close, so it finds near-duplicates better than parts.",
+  "Using Euclidean distance on very sparse profiles. In the monastery's first liking wave it puts 15 of 18 novices in one group, and one minus the correlation does not.",
+  "Ignoring that one missing tie moves two people apart. The chapter's office goes from distance 0 to distance 1 when one tie is forgotten.",
+  "Mixing conventions across programs without checking what is left out of the profile, and whether the correlation or the distance was clustered.",
+  "Treating equivalent people as interchangeable. They share ties, not skills or authority.",
+]
+
+checks = [
+  "Compute both Euclidean distance and one minus the correlation, cluster each, and compare the partitions (adjusted Rand index). Report both if they disagree.",
+  "Try more than one linkage and more than one number of groups, and report the one you chose and why.",
+  "Drop each tie in turn (or a random tenth of them several times), redo the split and compare with the original partition.",
+  "Compare the mistakes of the positions against a fair baseline: redo the whole procedure on random networks that keep each person's out-degree.",
+  "Compare the positions with what you know (department, level, floor) with the adjusted Rand index, and say that a low value means the pattern is not the chart, not that it is wrong.",
+  "List the people with no ties or very few ties before interpreting any cluster.",
+]
+
+do_not_claim = [
+  "That two people in the same cluster play the same role, know each other or have the same job.",
+  "That the number of positions is the true number. It is the number you cut the tree at.",
+  "That positions found from one relation are positions in the organization or community. Another relation may give different ones.",
+  "That a distance of zero means interchangeable. It means identical tie profiles in this data.",
+  "That a position tells you why people are tied, what they did or what they want.",
+]
+
+report_template = "In the {relation} network of {n} {node_type} and {m} ties, {distance} distances between tie profiles (the pair's own ties left out), clustered by {linkage} linkage into {k} positions of sizes {sizes}, give an adjusted Rand index of {ari} with {reference}. The split changes when one tie is dropped in {unstable} of {m} cases. The positions describe patterns in this relation as collected; they do not show roles, groups or what anyone did."
+
+related = ["blockmodel", "partition-comparison", "null-models-choice", "permutation-test"]
+sources = ["lorrain1971structural", "burt1976positions", "wasserman1994social", "breiger1975algorithm", "hubert1985comparing"]
+
+[knappnet]
+rust = "compute_structural_equivalence(&graph, EquivalenceOptions { method: EquivalenceMethod::Euclidean, ..Default::default() })"
+r = "net_struct_equiv(g, method = \"euclidean\")"
+python = "profile = np.hstack([m, m.T]); full = ((profile[:, None] - profile[None]) ** 2).sum(axis=2); d = np.sqrt(np.maximum(full - 2 * (m ** 2 + m.T ** 2), 0))"

@@ -1,0 +1,64 @@
+id = "blockmodel"
+title = "Blockmodel (positions, block densities and the image matrix)"
+kind = "model"
+chapter = "positions-and-roles"
+summary = "Given a partition of people into positions, the density of ties between every pair of positions and a 0, 1 or regular code for each block, with a count of the mistakes against that ideal image."
+answers = "If the people are grouped into positions, what pattern of ties between positions describes the network, and how well does that small pattern fit the real ties?"
+
+data_requirements = [
+  "One relation among the same set of people, and a partition of them into positions. The partition may come from clustering, CONCOR, an attribute or theory, but it must be given.",
+  "Directed ties if possible: blocks from position r to s and from s to r are different blocks.",
+  "Enough people in each position for a density to mean something. A position of one person has no within-position density.",
+  "Binary ties, or valued ties with the density read as the mean tie value.",
+]
+
+assumptions = [
+  "Everyone in a block is treated alike: the ties from position r to position s are summarized by one number.",
+  "The image cutoff is a convention. The chapter uses the density of the whole network; the cutoff that minimizes mistakes for all-0 or all-1 blocks is one half.",
+  "A regular block (every person has a tie into the block and every person in the other position is reached) is a different ideal from a oneblock. A split is a regular equivalence when every block is null or regular.",
+  "The number of positions is a choice. More positions always fit better and cost k squared densities.",
+  "If the positions were found from the same ties, a test against random splits of the same sizes is a floor and not a verdict.",
+]
+
+readings = [
+  { context = "Organization (advice, reporting)", high = "A dense block from position r to s: people in r go to people in s for advice. A staircase of ones is compatible with a hierarchy of advice. It does not show authority.", low = "A sparse block: people in r rarely go to people in s. Two positions that never go to each other may still fill the same part." },
+  { context = "Supply chain or food web", high = "Dense or regular blocks between tiers: each firm or species in one tier is linked to some in the next. Regular blocks, not dense ones, are the usual pattern.", low = "Empty blocks between tiers that are not adjacent. A tie that crosses tiers may be an error or a real exception." },
+  { context = "Online platform", high = "A dense block from one kind of account to another, for example replies from many accounts to a few.", low = "Little traffic between two kinds of account. The positions do not say what kind of account is in each." },
+  { context = "Sparse ranked-choice data", high = "A block with a density above the overall density.", low = "When every block has density under one half, the best all-0 or all-1 image has one mistake per tie whatever the split. Use the likelihood or density instead." },
+]
+
+pitfalls = [
+  "Choosing the number of positions by the number of mistakes. Mistakes fall as positions are added, and fall almost as much on random networks with the same out-degrees.",
+  "Using shuffled labels as the only baseline. Positions chosen from the ties beat random splits by design; repeat the whole search on random networks.",
+  "Calling a block with a third of its cells filled a oneblock or a zeroblock without saying why. Check whether it is regular.",
+  "Reading the image as a hierarchy or as teamwork. In the chapter's office, staff do not tie to each other, which says nothing about their culture.",
+  "Forgetting that the image depends on the cutoff, and that a blockmodel of one relation is not a blockmodel of another.",
+  "Treating the stochastic blockmodel and the plain blockmodel as the same thing. The first estimates the positions and the number of blocks as well.",
+]
+
+checks = [
+  "Count the mistakes against the best all-0 or all-1 image and against the empty image. In a network with density under one half the empty image makes one mistake per tie.",
+  "Compare with a null for the labels (exact if the splits can be listed, shuffled otherwise), and with a refit on random networks that keep each person's out-degree.",
+  "Plot the mistakes (or the log-likelihood) against the number of positions with the baselines, and look for where the real curve leaves the baseline.",
+  "Test whether every block is null, complete or regular if the claim is about regular equivalence.",
+  "Drop each tie in turn and compare the positions with the original (adjusted Rand index).",
+  "Redo the blockmodel with each relation alone and with the relations stacked, and report all of them.",
+]
+
+do_not_claim = [
+  "That the positions are roles, groups or titles, or that they describe what people did.",
+  "That a high share of explained tie variation proves the positions are real. Sparse networks are mostly zeros.",
+  "That the number of positions is the true number.",
+  "That a 1 in the image means everyone in the block is tied. It means the density is at least the cutoff.",
+  "That blockmodels from different relations or different cutoffs can be compared without saying how each was built.",
+]
+
+report_template = "In the {relation} network of {n} {node_type} and {m} ties, a split into {k} positions of sizes {sizes} ({how_found}) has block densities from {low} to {high} and makes {errors} mistakes against the best all-0 or all-1 image, against {baseline_errors} for one block. Repeating the whole procedure on random networks that keep each person's out-degree gives {refit_mean} on average and {refit_best} at best. The positions describe the pattern of ties in this relation; they do not show roles, groups or intent."
+
+related = ["structural-equivalence", "modularity", "partition-comparison", "null-models-choice"]
+sources = ["white1976social", "arabie1978constructing", "doreian2005generalized", "holland1983stochastic", "wasserman1994social"]
+
+[knappnet]
+rust = "build_block_model(&graph, &membership, BlockModelOptions::default())"
+r = "net_blockmodel(g, membership = positions)"
+python = "z = (pos[:, None] == np.arange(pos.max() + 1)).astype(float); ties = z.T @ m @ z; size = z.sum(axis=0); density = ties / (np.outer(size, size) - np.diag(size))"
