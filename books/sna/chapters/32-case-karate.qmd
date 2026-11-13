@@ -2,12 +2,44 @@
 
 ::: {.callout-note appearance="simple"}
 ## Prerequisites
-@sec-subgroups, @sec-latent-space, @sec-homophily and @sec-centrality.
+@sec-subgroups, @sec-latent-space, @sec-homophily and @sec-centrality. You will use communities and modularity, block models, and the idea of comparing a network with random ones.
 :::
 
-## Step 0: the data and its limits
+## The question
 
-PROSE
+In the early 1970s the anthropologist Wayne Zachary spent about three years with a university karate club of 34 members [@zachary1977information]. He recorded who spent time with whom outside the club's activities. Then a dispute between the club's part-time instructor and its administrator split the club in two, and each member took a side.
+
+That club is one of the most reused networks in the field. Girvan and Newman tested their community method on it [@girvan2002community], and since then "does the method recover the karate club's two factions?" has become a stock check for community detection. This chapter asks that question as carefully as we can, and then asks the harder one: **what does a good score on this check actually tell you?**
+
+> **How well do communities, centrality and a statistical model recover the two factions of the karate club, which members do they get wrong, and what can we conclude from that?**
+
+Notice what the question leaves out. It doesn't ask *why* members chose their sides, or whether the friendship ties *caused* the split. One split is one event, and a network of friendships can describe who stood where, not who decided what.
+
+The plan has six steps, the same habits as in @sec-case-florentine:
+
+1. Look at the data and say what it can't show.
+2. Describe the network, and check Zachary's own prediction.
+3. Look at the two leaders with centrality.
+4. Find communities with several methods and compare them with the real sides.
+5. Fit a statistical model.
+6. Stress-test, then write down what we can and can't say.
+
+A note on numbering before we start. The files number the members 1 to 34, and so does the text: the instructor ("Mr. Hi") is member 1 and the administrator (the "officer") is member 34. Tools that count from zero, such as NetworkX's built-in copy of this network, call them nodes 0 and 33. So the "node 9" you will see in some forums is our member 10, and our member 9 is their node 8. We will see below that both numbers matter.
+
+## The data and its limits
+
+The data are 34 members and 78 ties. A tie means two members were seen together outside the club's activities. Each tie also carries a count, from 1 to 7, in a column called `contexts`: as @sec-signed-and-valued reads it, the number of kinds of situation in which Zachary saw the two members interact. Each member has one more attribute: the side they took at the split.
+
+Before any number, ask what the table is and isn't.
+
+- **One observer, one relation.** The ties are what one researcher saw, over about three years. They are not what each member would say about their friends, and there are no other relations (no money, no rank, no teaching).
+- **One outcome.** The sides record where each member stood after the split. The file doesn't say when each tie was recorded, so we can't see whether friendships came before the dispute or followed it.
+- **Contexts are a judgment.** A count of 5 says the observer saw the pair together in five kinds of situation. It doesn't say how warm the tie was.
+- **Small.** 34 members and 78 ties. A single member is almost 3% of the data.
+- **What isn't in the table.** No ages, no grades of belt, no stated reasons. Every one of those is a rival explanation for why someone sided as they did, and none can be checked with this file.
+
+The checks we always run first are the same as for the marriage network: count members and ties, look for pairs listed twice, find the connected pieces, and look at who has no tie at all. We also keep two versions of the network: the plain one, and one that carries the contexts. Zachary's own method uses the contexts. Most of the rest of this chapter doesn't, so that we can compare the methods on equal terms.
+
 
 ::: {.panel-tabset group="language"}
 
@@ -147,10 +179,12 @@ Mr. Hi 17 members, officer 17 members
 
 :::
 
+Thirty-four members, 78 ties, 78 distinct pairs, one connected piece and nobody left out. The two sides have 17 members each, which is an unusually tidy fact about a real split. Most ties are seen in 2 or 3 contexts (24 and 27 of the 78), and only one tie each reaches 6 or 7.
 
 ## Step 1: describe the network
 
-PROSE
+Where do the ties run? Every tie is inside Mr. Hi's side, inside the officer's side, or across the line between them.
+
 
 ::: {.panel-tabset group="language"}
 
@@ -235,10 +269,22 @@ across          11 ties   25 contexts  2.27 per tie
 
 :::
 
+Of the 78 ties, 35 are inside Mr. Hi's side, 32 inside the officer's side and only 11 cross. The crossing ties are also thinner: 2.27 contexts per tie, against about 3 inside each side. That is why the split looks recoverable at all. The line between the factions runs through the sparse seams of the network.
+
+Look at who owns the crossing ties. Member 9 owns three of the 11 (to 31, 33 and 34), and also has ties to members 1 and 3 on the other side (the edge list gives 2 and 5 contexts). Added up, member 9 has 7 contexts pointing to Mr. Hi's side and 10 pointing to the officer's, yet they ended up with Mr. Hi. Member 10 is the other near miss: their two ties go to member 3 (1 context) and to the officer (2 contexts). Keep these two in mind. They will come back.
 
 ## Step 2: Zachary's own prediction
 
-PROSE
+Zachary didn't use a community method. He asked a question from the study of pipes: if each tie were a pipe, with a width equal to its contexts, how much could flow from Mr. Hi to the officer? The most that can flow equals the capacity of the cheapest set of ties whose removal would cut the two apart. That is the *maximum flow, minimum cut* result of @ford1956maximal and @ford1962flows, and Zachary used it to predict each member's side [@zachary1977information].
+
+Here is a six-member club you can do by hand. Members A, B and C are on one side, D, E and F on the other. The ties, with their contexts, are A-B 3, A-C 2, B-C 2, D-E 3, D-F 2, E-F 2, and two ties across: C-D 1 and B-E 1. Take A as the source and F as the sink. Cutting off A alone costs $3 + 2 = 5$. Cutting off F alone costs $2 + 2 = 4$. Cutting the two crossing ties costs $1 + 1 = 2$, and no cheaper cut exists, so the minimum cut is 2 and its two sides are $\{A, B, C\}$ and $\{D, E, F\}$. Flow agrees: one unit can run A-B-E-F, another A-C-D-F, and both bridges are then full.
+
+In symbols, for a source $s$ and a sink $t$, a **cut** is a set $S$ of members that contains $s$ and not $t$. Its **capacity** adds up the weights $w_{ij}$ of the ties that leave the set,
+
+$$ c(S) = \sum_{i \in S,\; j \notin S} w_{ij}, $$
+
+and the minimum cut is the set with the smallest capacity. Members inside $S$ are predicted to join the source, everyone else the sink. Here the source is Mr. Hi (member 1), the sink is the officer (member 34), and $w_{ij}$ is the number of contexts. A minimum cut isn't always unique, so we report the smallest and the largest source side.
+
 
 ::: {.panel-tabset group="language"}
 
@@ -380,10 +426,21 @@ unweighted largest   value  10, 17 members on Mr. Hi's side, wrong: [9, 10]
 
 :::
 
+Using the contexts, the minimum cut has capacity 22 and puts 16 members on Mr. Hi's side. The smallest and largest minimum cuts are the same, so there is only one. It gets 33 of 34 members right. The one it gets wrong is member 9, which agrees with the single error that Zachary reported for his method [@zachary1977information].
+
+The real split is not the minimum cut. It cuts 11 ties worth 25 contexts, and the minimum cut is cheaper at 22. The difference is member 9. Put with Mr. Hi, member 9 costs the cut their ties to 31, 33 and 34 (10 contexts). Put with the officer, they cost only the ties to 1 and 3 (7 contexts). That saves 3, and $25 - 3 = 22$.
+
+Two things to say plainly about this "prediction".
+
+- **It is not a blind test.** The method is told who the two leaders are, since they are the source and the sink. That is two labels out of 34, and it is a classification given those labels, not a discovery of the factions.
+- **The contexts matter.** Without them (every tie weighs 1) the minimum cut is 10 ties, it isn't unique, and the two extreme cuts get members 3 and 9, or 9 and 10, wrong. The valued network is what makes the answer sharp.
+
+We can also say what we can't check. This file doesn't date the contexts, so we can reproduce Zachary's calculation but we can't tell from the file whether those counts were all recorded before the split.
 
 ## Step 3: the two leaders
 
-PROSE
+The split was a dispute between two people, so look at those two in the network. Member 1 is the instructor and member 34 the administrator. Here are the four measures of @sec-centrality plus strength (degree weighted by contexts), for the two leaders and the next three busiest members.
+
 
 ::: {.panel-tabset group="language"}
 
@@ -500,7 +557,12 @@ member 34 ranks: degree 1, strength 1, betweenness 2, closeness 3, eigenvector 1
 
 :::
 
-Which leader is each member closer to? A rule with no cleverness at all: count steps along ties to Mr. Hi (member 1) and to the officer (member 34), and join whoever is nearer. If the two are equally near, the rule abstains.
+The leaders sit at the top, and they split the honors. Member 34 has the most ties (17) and the most contexts (strength 48), and the top eigenvector score. Member 1 has 16 ties and strength 42, but the highest betweenness (231.1) and closeness (0.569). Betweenness of 231.1 means about 44% of the 528 shortest routes between other pairs of members pass through the instructor, against about 30% (160.6) for the administrator.
+
+How to read this, in a club? Zachary framed the club as a place where information flows along ties [@zachary1977information], and betweenness fits that frame: a high score means many routes between other members go through you. It doesn't tell you who people liked. Degree and strength say who had the most company, and eigenvector says whose company was well connected. For two people leading rival camps, you would expect them to top all four, and they do.
+
+Here is a rule with no cleverness at all. Count steps along ties from each member to Mr. Hi and to the officer, and have each member join whichever leader is nearer. If the two are equally near, the rule abstains.
+
 
 ::: {.panel-tabset group="language"}
 
@@ -585,10 +647,16 @@ abstains for [9, 14, 20, 25, 26, 32]
 
 :::
 
+For 28 of the 34 members one leader is strictly nearer, and all 28 are on the right side: no errors. The six members where the rule abstains (9, 14, 20, 25, 26 and 32) are equally near to both leaders. Member 9 is among them, which is the same story told by a different measure.
 
-## Step 4: communities
+Take a moment with that result, because it matters later. A rule that needs no algorithm, only the two leaders' names, sorts everyone it can decide. The factions are, to a large extent, the two leaders' circles.
 
-PROSE
+## Step 4: communities against the factions
+
+Now forget the leaders and ask what community methods find from the ties alone. The table below shows nine of them, next to the real split and Zachary's minimum cut. Louvain [@blondel2008fast] and fast greedy [@clauset2004finding] climb modularity (@sec-subgroups). Label propagation [@raghavan2007near] lets neighbors vote. The leading eigenvector method [@newman2006modularity] splits by the sign of the top eigenvector of the modularity matrix. Infomap [@rosvall2008maps] follows a random walker. Girvan and Newman [@girvan2002community] cut the busiest ties, here until two groups remain. The exact optimum maximizes modularity with no shortcuts [@brandes2008modularity]. Two spectral rows split by the sign of one eigenvector: the second-smallest of the graph Laplacian (the *Fiedler* vector [@fiedler1973algebraic]) and the top eigenvector of the modularity matrix.
+
+We score each partition in three ways. **Modularity** is how many more ties fall inside groups than a degree-matched random network would put there. The **adjusted Rand index** [@hubert1985comparing] is 1 for identical partitions and about 0 for chance agreement. And a member is **misclassified** when most of their community took the other side. That rule is generous to methods that find more than two groups. It lets a method off for splitting a side into two or three pieces, and it only blames members who sit with the wrong crowd.
+
 
 ::: {.panel-tabset group="language"}
 
@@ -808,10 +876,22 @@ Best modularity (exact)        4      0.420     0.465  9
 
 :::
 
+No method returns the real split. The best agreement, 0.882, comes from two methods that both miss only member 9: Zachary's minimum cut and the spectral split of the modularity matrix. The Louvain row is the one in @sec-subgroups: four groups and a modularity of 0.419, higher than the real split's 0.358. Three things stand out.
 
-## Stability
+- **Modularity prefers a different answer.** The real split scores 0.358, lower than every other partition in the table. The exact optimum is four groups with modularity 0.420. If modularity were the truth, the club would have split in four.
+- **Member 9 is wrong for every method.** Member 10 is wrong for three of the methods in this table, and member 3 for three (different ones).
+- **Methods that find more groups are not worse, only different.** Splitting each side in two is a legitimate description of friendship circles, and it is the reason the adjusted Rand index is low.
 
-PROSE
+@fig-karate-case-partitions shows four of these side by side.
+
+![The karate club drawn four times with the same layout. Shape shows the side each member took. In the three method panels, colour shows the group the method found and a heavy black outline marks a member the method puts on the wrong side (a member counts as wrong when most of their group took the other side). Member 9 is wrong in every panel.](../figures/karate-case-partitions.svg){#fig-karate-case-partitions fig-alt="Four network pictures of 34 members. Top left, the real split: circles for Mr. Hi's 17 supporters in blue and squares for the officer's 17 in orange, with 11 dashed ties crossing between them. Top right, Louvain finds four colour groups and heavy black outlines mark members 9 and 10. Bottom left, a Fiedler spectral cut finds two groups and heavy black outlines mark members 3 and 9. Bottom right, Zachary's minimum cut finds two groups and a heavy black outline marks only member 9."}
+
+The Python tab has fewer rows than the R and Rust tabs, because NetworkX has no Infomap, leading eigenvector or exact optimizer. Its label propagation also draws different random numbers, so that row can differ. The R and Rust tabs use the same engine and the same seeds.
+
+### How stable is each answer?
+
+A community method is not a single answer, it is an answer for a given seed and a given setting. Run Louvain and label propagation with 200 seeds each, and turn Louvain's resolution knob (the yardstick that makes groups coarser or finer, from @sec-subgroups).
+
 
 ::: {.panel-tabset group="language"}
 
@@ -975,10 +1055,20 @@ resolution groups  ari  wrong
 
 :::
 
+Louvain is nearly stable: 199 of 200 seeds find four groups (agreement from 0.370 to 0.509), and one finds three. Member 9 is wrong in every run. Member 10 is wrong in about half of the four-group runs. That is a coin flip that depends on the seed, so a report that says "Louvain misclassifies member 10" depends on which seed it ran.
 
-## Step 5: model
+Label propagation is much less stable. Across 200 seeds it returns anywhere from one group to four, with agreement from 0 (everyone in one group) to 0.882, and never 1. In the sweep of resolution, the closest to the real split is the two-group answer at 0.3 and 0.5, with agreement 0.772 and members 9 and 10 on the wrong side. Between those settings and the standard one, the number of groups climbs 2, 3, 4, and no setting here returns the real split.
 
-PROSE
+## Step 5: a statistical model
+
+A community method gives a partition. A model says more: it says how likely each tie is, and a partition is only one of its parameters. The simplest model of groups is the **stochastic block model** [@holland1983stochastic]. Each member belongs to one of two groups, and the chance that two members are tied depends only on their two groups: one rate inside the first group, one inside the second and one across. @sec-latent-space introduces it; here we fit the two-group version by hand and ask whether the fitted groups are the factions.
+
+For a partition, set each rate to the share of possible pairs that are tied, and compute the log-likelihood. With $m_{rs}$ ties and $n_{rs}$ possible pairs between (or inside) groups $r$ and $s$, the **profile log-likelihood** is
+
+$$ \ell = \sum_{r \le s} \Big[ m_{rs} \log \frac{m_{rs}}{n_{rs}} + (n_{rs} - m_{rs}) \log\Big(1 - \frac{m_{rs}}{n_{rs}}\Big) \Big]. $$
+
+We then look for the partition with the highest $\ell$ by starting from 200 random partitions and flipping the single best member at a time until no flip helps. The **degree-corrected** version [@karrer2011stochastic] lets a member's number of ties depend on the member, so a busy member doesn't need a group of their own. Its profile log-likelihood is $\ell = \sum_{r,s} m_{rs} \log \big(m_{rs} / (\kappa_r \kappa_s)\big)$, where $m_{rs}$ counts ties between groups $r$ and $s$ (ties inside a group count twice) and $\kappa_r$ adds up the degrees in group $r$.
+
 
 ::: {.panel-tabset group="language"}
 
@@ -1208,10 +1298,22 @@ degree-corrected model wrong: [9, 10]
 
 :::
 
+The two models give very different answers.
 
-## Step 6a: drop ties
+The plain two-block model prefers a partition of 5 and 29 members, with a log-likelihood of $-179.4$ against $-198.5$ for the real split, and an agreement of about 0, slightly negative. The five are members 1, 2, 3, 33 and 34, the busiest members of the club. The model has found a *core and a periphery*, which is a real feature of this network, but it isn't the factions. A model that ignores degree spends its two groups on the hubs.
 
-PROSE
+The degree-corrected model finds two groups of 17, with agreement 0.772. It is much closer, and it still moves members 9 and 10 to the other side. Its best log-likelihood is $-739.4$, and the real split scores $-743.2$. So by this model, the real split is not the best two-group story, and the model prefers the one that moves 9 and 10. That is a difference of 3.8 log-likelihood units. It isn't a test, but it shows the same two members in a third method.
+
+Note too how many random starts reach the best answer: 172 of 200 for the plain model, but only 32 of 200 for the degree-corrected one. A fit from a single start can land on a worse partition, so restart.
+
+## Step 6: stress tests
+
+An agreement score of 0.88 is a number. Whether it holds when the data wobble is a second question. Three checks follow, in the spirit of @sec-case-florentine: leave out ties, leave out the leaders, and compare with random networks.
+
+### Leave out a tenth of the ties
+
+Leave out 8 of the 78 ties at random, 200 times, and rerun two methods each time. A missing tie stands in for a friendship the observer didn't see.
+
 
 ::: {.panel-tabset group="language"}
 
@@ -1310,10 +1412,14 @@ Louvain                   0.440   0.296    0.865    0.500    0.075
 
 :::
 
+The overall picture is sturdy. The spectral split keeps a mean agreement of 0.854 and never goes below 0.668. Louvain's agreement stays near 0.44, because it keeps finding four groups.
 
-## Step 6b: leaders
+The per-member picture is not. Member 9 is on the wrong side in 81% of the spectral draws, and in about 87% of the Louvain draws, which means that in about one draw in five the spectral split gets member 9 *right*. Whether member 9 lands on the right side depends on which eight ties happened to go missing. Members 10 and 3 flip much less. The Rust draws differ from the R and Python draws, so these percentages move a little between tabs. A statement about a single member from a method like this is only as good as 8 missing ties allow.
 
-PROSE
+### Leave out both leaders
+
+The thought experiment from the newspaper version of this story: what's left when the instructor and the administrator are gone?
+
 
 ::: {.panel-tabset group="language"}
 
@@ -1412,10 +1518,14 @@ Spectral: modularity  groups 2, adjusted Rand 0.114, wrong [5, 6, 7, 9, 10, 11, 
 
 :::
 
+Without the leaders the club doesn't fall into two camps. It falls into a large piece of 26 members, a piece of five (5, 6, 7, 11 and 17) and one member alone (12). Those six are connected to the rest of the club only through member 1: remove the instructor and they are cut loose. Nothing similar happens when the administrator leaves.
 
-## Step 6c: nulls
+Louvain on the remaining 32 finds five groups, with agreement 0.339. The spectral split of the modularity matrix no longer follows the sides at all (agreement 0.114). It sets apart twelve members, nine from Mr. Hi's side and three from the officer's (10, 29 and 31), from everyone else. So the factions were not a pattern the ties would produce without the two leaders. The recovery in Step 4 leaned heavily on them.
 
-PROSE
+### Compare with random networks
+
+Is a modularity of 0.358 for the real split unusual? Two null models answer different questions. In the first we keep the ties and shuffle which member has which side (17 and 17 stay 17 and 17). In the second we keep every member's number of ties, rewire who is tied to whom by swapping pairs of ties, and score the real sides on the rewired network [@maslov2002specificity]. The second also lets us ask how much modularity an algorithm can find in networks with these degrees, which is the right yardstick for Louvain's 0.419. Plain pairing of stubs would be the textbook choice, but with a member of degree 17 and 16 others no pairing in 100,000 tries came out without loops or repeated ties (@sec-small-worlds), so we swap ties instead.
+
 
 ::: {.panel-tabset group="language"}
 
@@ -1564,10 +1674,18 @@ rewire ties, best Louvain      0.419     0.293    0.349         0.000
 
 :::
 
+The real split is far from either null. Shuffling the sides gives an average modularity near $-0.03$ and a highest value of 0.179 in 2,000 draws; none reaches 0.358. Rewiring the ties gives a similar picture, with a highest value of 0.127 in 200 draws. So the sides are strongly aligned with the ties, much more than degrees alone would produce.
 
-## Who
+The last row is a warning for anyone who reads a modularity value as a verdict. In random networks with these degrees, Louvain still finds a partition with an average modularity of 0.293 and up to 0.349 in 200 draws. Against that yardstick the club's 0.419 stands out, but a modularity of 0.3 on its own is not evidence of anything.
 
-PROSE
+@fig-karate-case-null shows the first two null models. The draws behind the picture are not the ones in the code, so the numbers differ slightly.
+
+![Modularity of the real two-way split (0.358) against 2,000 shuffles of the sides over the real ties and 500 rewirings of the ties that keep every member's degree.](../figures/karate-case-null.svg){#fig-karate-case-null fig-alt="Two overlapping histograms of modularity, both centred a little below zero and running from about -0.2 to 0.2. A black vertical line at 0.358 lies to the right of every bar. The largest shuffled value is 0.167 and the largest rewired value is 0.102."}
+
+## Who gets misclassified
+
+Now pool what we have. For every method in Step 4 plus the degree-corrected model, which members does it put on the wrong side?
+
 
 ::: {.panel-tabset group="language"}
 
@@ -1641,13 +1759,84 @@ member methods wrong   of 11
 
 :::
 
+Member 9 is wrong for all eleven methods in the Rust and R tables, member 10 for four, member 3 for three, and no other member is ever wrong. (The Python table has fewer methods, and the counts are lower, but the same members.) @fig-karate-case-wrong draws it.
+
+![Members that each of eleven methods puts on the wrong side. Member 9 is wrong for all eleven, member 10 for four and member 3 for three. Every other member is right for every method.](../figures/karate-case-wrong.svg){#fig-karate-case-wrong fig-alt="A grid of eleven methods by three members (3, 9 and 10). A dot means the method misclassifies that member. Member 9 has a dot in every row, 11 of 11. Member 10 has 4 dots and member 3 has 3."}
+
+Is that a failing of the methods, or of the sides? Look at the ties, not at the methods. Member 9 has more contexts with the officer's side (10) than with Mr. Hi's (7), and three of its five ties go that way. Every method here reads the same ties and arrives at the same place. The network points to the officer, and member 9 went the other way. The ties can't say why, because the file has no column that could explain it. Member 10 has just two ties, one to each side (1 context to member 3, 2 to the officer), and the methods differ in which way they send them. Member 3 has four ties across the line (to 10, 28, 29 and 33) and sits on the seam. These are not errors to tidy. They are the members whose position the ties leave open, and they are the most interesting people in the club.
+
+## What we can say and what we cannot
+
+::: {.callout-tip appearance="simple"}
+## What we can say
+- The club's ties follow the factions closely. Only 11 of 78 ties cross, and they carry fewer contexts (2.27 per tie) than ties inside a side (about 3).
+- With the contexts and the two leaders' names, a minimum cut puts 33 of 34 members on the right side. The one exception is member 9.
+- Without being told the leaders, community methods get close but not exact. The best agreement is 0.882, and no method here returns the real split.
+- The same three members, 9, 10 and 3, are the only ones any method misclassifies, and member 9 is misclassified by all of them.
+- The real split is far more modular than random networks with the same degrees: none of 2,000 shuffles or 200 rewirings reaches 0.358.
+:::
+
+::: {.callout-warning appearance="simple"}
+## What we cannot say
+- That the ties *caused* the split, or that the split was *predicted*. The file doesn't date the ties, so we can reproduce Zachary's calculation but not its timing.
+- Why any member chose a side. Member 9's ties lean one way and they went the other.
+- That a method which recovers the factions is a good community detector. The check is too small and too easy (next section).
+- That the factions are *the* communities of the club. Modularity prefers four groups, and the finer groups are real features of the ties.
+- A precise statement about any one member. Whether member 9 lands on the right side changes with eight missing ties.
+:::
+
+## Why "recovering the factions" is a weak test
+
+The karate club became a benchmark because it is small, real and has a known answer. Those same properties make it a poor judge of a method.
+
+- **It is tiny and nearly clean.** 34 members, 11 crossing ties out of 78. A method that finds the sparse seam gets nearly everything right, and many different methods find it.
+- **The leaders make it easy.** Nearest leader sorts every member it can decide with no errors, so almost any method that finds the leaders' circles will do well.
+- **One outcome.** The ground truth is a single event. A method that matches it has matched one decision by 34 people, for reasons we can't see.
+- **The test is reused.** Over decades, methods have been chosen, tuned and published partly because they score well here. In the sweep above, changing the resolution alone moves Louvain from 0.77 to 0.23 in agreement. With enough methods and settings, some will match the split by luck or by design, and a good score cannot tell you which.
+- **Different goals.** Community methods look for groups denser inside than outside. The fission was a choice between two people. Those aren't the same thing, and the table shows how they come apart: modularity prefers four groups, the plain block model prefers hubs against the rest.
+
+A better test uses many networks with planted groups at different sizes and mixing, as in @lancichinetti2008benchmark, and several real networks with independent ground truth [@fortunato2010community]. What a good score on the karate club does show is narrow but real: the sparse seam between the factions is visible in the ties, and the method can find it.
+
+## Write the result
+
+> In a network of 34 members of a university karate club (78 ties, each carrying a count of contexts, one observer, no dates), the two factions that formed at the split are separated by a sparse seam: 11 of 78 ties cross, with 2.27 contexts per tie against about 3 inside. A minimum cut between the two leaders using the contexts puts 33 of 34 members on the right side, and the exception is member 9, who has 10 contexts toward the officer's side and 7 toward Mr. Hi's. Without being told the leaders, nine community methods and a degree-corrected block model reach adjusted Rand agreement between 0.39 and 0.88 (the best, 0.88, is a spectral split of the modularity matrix that misses only member 9); the same members, 9, 10 and 3, are the only ones misclassified, and member 9 by every method. Modularity prefers four groups (0.420) to the two real ones (0.358). Leaving out 8 random ties keeps the overall agreement (mean 0.85 for the spectral split) but flips member 9 in about one draw in five, and removing the two leaders destroys the pattern. The real split is far more modular than 2,000 shuffles of the sides or 200 degree-preserving rewirings (none reaches 0.358). These data cannot show why members chose sides, and agreement on this one small network is weak evidence about a method.
+
+Read that paragraph against the checklist. Does it say what a tie means, what was compared with what, what was perturbed, and what the numbers don't show? A reader who disagrees with it should be able to find the sentence where they disagree.
 
 ## Exercises
 
-1. x
+1. **By hand.** In the six-member club of Step 2 (A-B 3, A-C 2, B-C 2, D-E 3, D-F 2, E-F 2, C-D 1, B-E 1), add a seventh member G with ties G-C 1, G-D 2 and G-E 2. Which side does the minimum cut between A and F put G on, and what is its capacity now?
+2. **By hand.** Using only the counts in the first table of Step 1 (35 ties inside Mr. Hi's side, 32 inside the officer's, 11 across), compute the modularity of the real split with $Q = \sum_c [L_c/m - (d_c/2m)^2]$. Check that you get 0.358.
+3. **By hand.** Member 9 has ties to members 1 (2 contexts), 3 (5), 31 (3), 33 (3) and 34 (4). Show that putting member 9 on the officer's side lowers the cut capacity by 3.
+4. **By hand.** How many pairs of other members are there when we compute betweenness for one member of the 34? What share of them do the 231.1 shortest routes through the instructor make?
+5. **Coding.** Rerun the Louvain row of Step 4 with the contexts as tie weights. How does the modularity of the real split change, and which members are misclassified now?
+6. **Coding.** Choose a different pair of terminals for the minimum cut (members 2 and 33, for example) and rerun Step 2 with the contexts. Does member 9 stay wrong?
+7. **Coding.** Rerun the stability check with 1,000 seeds. How often is member 10 misclassified by Louvain, and how much does that share move from one set of 200 seeds to the next?
+8. **Interpretation.** A colleague's NetworkX script says "node 9 is always misclassified". Which member do they mean, and does this chapter agree?
+9. **Interpretation.** A paper reports that a new community method "recovers the karate club factions with 100% accuracy" and concludes it is the best method. Write two reasons this is weak evidence and one check you would ask for.
+10. **Interpretation.** A manager reads Step 3 and says "remove the administrator and the faction dissolves". What do Steps 3 and 6 say about that?
+
+::: {.callout-note collapse="true"}
+## Worked answers
+
+1. Cutting the two crossing ties costs 2, and G adds ties of 1 toward $\{A, B, C\}$ and 4 toward $\{D, E, F\}$. If G joins the A side, the cut grows by 4 and costs 6; if G joins the F side, it grows by 1 and costs 3. So G goes with D, E and F, and the capacity is 3. A single weak tie to the other side is the cost of G's choice, which is what happened to member 9.
+2. $Q = 35/78 - (81/156)^2 + 32/78 - (75/156)^2$. The degree sum of Mr. Hi's side is $2 \cdot 35 + 11 = 81$ and of the officer's side $2 \cdot 32 + 11 = 75$. So $Q = 0.4487 - 0.2696 + 0.4103 - 0.2311 = 0.358$.
+3. Of member 9's ties, the ones to 1 and 3 weigh $2 + 5 = 7$ and the ones to 31, 33 and 34 weigh $3 + 3 + 4 = 10$. With 9 on Mr. Hi's side the cut pays the 10. On the officer's side it pays the 7. The difference is 3, and $25 - 3 = 22$.
+4. There are $\binom{33}{2} = 528$ pairs of other members, and $231.1/528 = 0.438$, so about 44%.
+5. With the contexts as weights the modularity of the real split is 0.391 (the 0.39 mentioned in @sec-subgroups). Louvain still finds more than two groups, but in a check with the Rust engine (seeds 1 to 5) the only misclassified member under the majority rule was 9. The contexts help.
+6. With the contexts, the minimum cut between members 2 and 33, or 1 and 33, or 2 and 34 has capacity 22 and gets only member 9 wrong (checked with NetworkX). So the answer does not hinge on the exact two leaders chosen as terminals, as long as one is on each side.
+7. In the Rust run with 200 seeds, member 10 was misclassified in 52% of the four-group runs. Your share from 1,000 seeds will be close to that, and two sets of 200 seeds will differ by several percentage points. That spread is the reason to report a share rather than a yes or no.
+8. NetworkX counts from zero, so its node 9 is member 10 here, and member 9 is its node 8. This chapter finds member 10 misclassified by four of eleven methods, so "always" is wrong for node 9, and "always" is right for member 9 (their node 8).
+9. Two reasons: the network has 34 members and 11 crossing ties, so many methods find the seam, and the test has been reused for decades so methods and settings drift toward it. A better check: planted-partition benchmarks with known groups at several sizes and mixing levels, run with many seeds, with spread reported.
+10. Step 3 shows member 34 has the most ties, but Step 6 shows that without both leaders the club does not fall into two camps. It falls into a piece of 26, a piece of five and one member alone, and those six hang on member 1, not on member 34. So the structure depends on the leaders, but the claim that removing one leader dissolves a faction isn't tested here: we removed both, and one snapshot of friendships can't say what members would do.
+:::
 
 ## Summary
 
 ::: {.callout-tip appearance="simple"}
-Draft.
+We took the most famous split in network analysis through six steps. The factions are separated by a sparse seam of ties, and Zachary's minimum cut with the contexts puts 33 of 34 members on the right side, missing member 9. Community methods, centrality and a block model get close but not exact, and the members they miss are always the same: 9, then 10 and 3. Modularity prefers four groups, the plain block model prefers hubs against the rest, and removing the two leaders destroys the pattern. Against random networks with the same degrees the split is clearly real, but recovering it is a weak test of a method, because the club is tiny, the leaders make it easy, and the answer is one event. Report what the ties show, and what they cannot.
 :::
+
+## Further reading
+
+The study is @zachary1977information, and its title says what it modeled: information flow, conflict and fission in a small group. For maximum flow and minimum cut, see @ford1956maximal and @ford1962flows. For the community methods, see @blondel2008fast, @newman2006modularity, @raghavan2007near, @rosvall2008maps and the survey @fortunato2010community, and @sec-subgroups. For block models, see @holland1983stochastic and @karrer2011stochastic, and @sec-latent-space. For why a benchmark should plant the answer at scale, see @lancichinetti2008benchmark. For the null model of tie swapping, see @maslov2002specificity and @sec-tests-and-null-models.
