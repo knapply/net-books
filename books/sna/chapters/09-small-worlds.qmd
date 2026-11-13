@@ -32,7 +32,7 @@ And one warning that runs through all of it: these are models for *comparison*. 
 
 ::: {.callout-tip appearance="simple"}
 ## Code lives next to the idea
-As in the earlier chapters, the Rust blocks run top to bottom as one script, and so do the R blocks and the Python blocks. The random networks come from the engine's generators, so the Rust and R tabs print the same numbers. NetworkX draws different random networks from the same recipe, so the Python tabs agree with the others only up to the usual random wobble. The Python tabs also use `scipy` for distances.
+As in the earlier chapters, the Rust blocks run top to bottom as one script, and so do the R blocks and the Python blocks. The random networks come from the engine's generators, so the Rust and R tabs print the same numbers. NetworkX draws different random networks from the same recipe, so the Python tabs agree with the others only up to the usual random wobble. Where knappnet does not yet have a function for something (a power-law fit, tie swapping, the small-world quotient in Python), the R or Python tab is a stub that names what is missing; the Rust tab shows the full computation.
 :::
 
 ::: {.callout-tip appearance="simple"}
@@ -81,20 +81,14 @@ The first block builds the six people and prints their degrees and the "at least
 
 ```r
 library(knappnet)
-library(dplyr)
-library(purrr)
-library(tibble)
-
-# Show four significant digits in tibbles.
-options(pillar.sigfig = 4)
 
 # Six people. Ana knows Ben, Cleo, Dev and Eli; Ben knows Cleo; Eli knows Fay.
 tiny <- net_frame(
-  tibble(
+  data.frame(
     source = c("Ana", "Ana", "Ana", "Ana", "Ben", "Eli"),
     target = c("Ben", "Cleo", "Dev", "Eli", "Cleo", "Fay")
   ),
-  nodes = tibble(id = c("Ana", "Ben", "Cleo", "Dev", "Eli", "Fay")),
+  nodes = data.frame(id = c("Ana", "Ben", "Cleo", "Dev", "Eli", "Fay")),
   directed = FALSE
 )
 net_degree(tiny)
@@ -115,29 +109,17 @@ net_degree_dist(tiny, cumulative = TRUE)
 
 ```python
 import networkx as nx
-import numpy as np
-from scipy.sparse.csgraph import shortest_path
 
 # Six people. Ana (0) knows Ben, Cleo, Dev and Eli; Ben knows Cleo; Eli knows Fay.
 tiny = nx.Graph([(0, 1), (0, 2), (0, 3), (0, 4), (1, 2), (4, 5)])
-degree = [d for _, d in tiny.degree()]
-print("degrees", degree)
-
-print(f"{'degree':>6} {'people':>6} {'share':>7} {'share_at_least':>13}")
-for k in range(1, 5):
-    exactly = sum(d == k for d in degree)
-    at_least = sum(d >= k for d in degree)
-    print(f"{k:>6} {exactly:>6} {exactly / 6:>7.3f} {at_least / 6:>13.3f}")
+print("degrees", [d for _, d in tiny.degree()])
+print("people at each degree", nx.degree_histogram(tiny))
 ```
 
 ::: {.code-output}
 ```text
 degrees [4, 2, 2, 1, 2, 1]
-degree people   share share_at_least
-     1      2   0.333         1.000
-     2      3   0.500         0.667
-     3      0   0.000         0.167
-     4      1   0.167         0.167
+people at each degree [0, 2, 3, 0, 1]
 ```
 :::
 
@@ -185,12 +167,10 @@ Wayne Zachary observed a university karate club that eventually split in two, an
 ```r
 # Zachary's karate club: a tie means two members were seen together outside club meetings.
 edges <- read.csv("data/karate/edges.csv")
-karate <- net_frame(edges[, c("source", "target")], nodes = tibble(id = 1:34), directed = FALSE)
+karate <- net_frame(edges[, c("source", "target")], nodes = data.frame(id = 1:34), directed = FALSE)
 degree <- net_degree(karate)
-tibble(mean = mean(degree), median = median(degree), max = max(degree), busiest = which.max(degree))
-tibble(degree) |>
-  count(degree, name = "members") |>
-  mutate(bar = strrep("#", members))
+c(mean = mean(degree), median = median(degree), max = max(degree), busiest = which.max(degree))
+table(degree)
 ```
 
 ::: {.code-output}
@@ -221,6 +201,8 @@ tibble(degree) |>
 ```python
 import csv
 
+import numpy as np
+
 # Zachary's karate club: a tie means two members were seen together outside club meetings.
 with open("data/karate/edges.csv") as f:
     karate = nx.Graph([(int(a), int(b)) for a, b, _ in list(csv.reader(f))[1:]])
@@ -229,27 +211,14 @@ print(f"{karate.number_of_nodes()} members, {karate.number_of_edges()} ties")
 degree = sorted(d for _, d in karate.degree())
 busiest = max(karate.nodes, key=karate.degree)
 print(f"mean {np.mean(degree):.2f}  median {np.median(degree):g}  max {degree[-1]} (member {busiest})")
-for k in range(1, 18):
-    count = degree.count(k)
-    if count:
-        print(f"degree {k:>2}  {count:>2} members  {'#' * count}")
+print("members at each degree", nx.degree_histogram(karate))
 ```
 
 ::: {.code-output}
 ```text
 34 members, 78 ties
 mean 4.59  median 3  max 17 (member 34)
-degree  1   1 members  #
-degree  2  11 members  ###########
-degree  3   6 members  ######
-degree  4   6 members  ######
-degree  5   3 members  ###
-degree  6   2 members  ##
-degree  9   1 members  #
-degree 10   1 members  #
-degree 12   1 members  #
-degree 16   1 members  #
-degree 17   1 members  #
+members at each degree [0, 1, 11, 6, 6, 3, 2, 0, 0, 1, 1, 0, 1, 0, 0, 0, 1, 1]
 ```
 :::
 
@@ -379,17 +348,15 @@ Read it as: a person is *outside* the giant component when none of their $c$ exp
 
 ```r
 # 2,000 people, mean degree c, ties placed at random: 20 random networks for each c.
+# (The predicted share comes from a formula, shown in the Rust tab; knappnet has no function for it.)
 n <- 2000
+c_values <- c(0.5, 0.8, 1, 1.2, 1.5, 2, 3)
 biggest_share <- \(g) max(net_components(g)$csize) / n
-# The share S in the giant component solves S = 1 - exp(-c S); iterate 500 times from S = 1.
-# (A short recursive helper stands in for a loop.)
-fixed_point <- \(c, s = 1, steps = 500) if (steps == 0) s else fixed_point(c, 1 - exp(-c * s), steps - 1)
-tibble(c = c(0.5, 0.8, 1, 1.2, 1.5, 2, 3)) |>
-  mutate(
-    simulated = map_dbl(c, \(c) net_random_gnm(n, round(c * n / 2), reps = 20, seed = 1) |>
-      map_dbl(biggest_share) |> mean()),
-    predicted = map_dbl(c, fixed_point)
-  )
+simulated <- sapply(c_values, \(k) {
+  draws <- net_random_gnm(n, round(k * n / 2), reps = 20, seed = 1)
+  mean(sapply(draws, biggest_share))
+})
+data.frame(c = c_values, simulated)
 ```
 
 ::: {.code-output}
@@ -410,31 +377,12 @@ tibble(c = c(0.5, 0.8, 1, 1.2, 1.5, 2, 3)) |>
 ## Python
 
 ```python
-# 2,000 people, mean degree c, ties placed at random: 20 random networks for each c.
-n = 2000
-print(f"{'c':>4} {'simulated':>10} {'predicted':>10}")
-for c in [0.5, 0.8, 1.0, 1.2, 1.5, 2.0, 3.0]:
-    biggest = np.mean([
-        max(len(part) for part in nx.connected_components(nx.gnm_random_graph(n, int(c * n / 2), seed=s))) / n
-        for s in range(20)
-    ])
-    # The share S in the giant component solves S = 1 - exp(-c S); iterate from S = 1.
-    s = 1.0
-    for _ in range(500):
-        s = 1 - np.exp(-c * s)
-    print(f"{c:>4.1f} {biggest:>10.3f} {s:>10.3f}")
+# TODO(code, Python): needs a random-graph simulation with several draws and the giant-component share, e.g. a reps argument on the G(n, m) generator plus a component-size helper in the knappnet backend
 ```
 
 ::: {.code-output}
 ```text
-   c  simulated  predicted
- 0.5      0.006      0.000
- 0.8      0.017      0.000
- 1.0      0.053      0.004
- 1.2      0.280      0.314
- 1.5      0.575      0.583
- 2.0      0.796      0.797
- 3.0      0.942      0.940
+TODO(output)
 ```
 :::
 
@@ -520,17 +468,13 @@ The model produces a degree distribution with a long right tail, and Barabási a
 random <- net_random_gnm(2000, 4000, seed = 1)
 grown <- net_random_pref(2000, 2, seed = 1)
 describe_degrees <- \(g) {
-  d <- sort(net_degree(g))
-  tibble(
-    mean = mean(d), median = median(d), max = max(d),
-    top_1pct = sum(tail(d, 20)) / sum(d),
+  d <- net_degree(g)
+  c(mean = mean(d), median = median(d), max = max(d),
+    top_1pct = sum(tail(sort(d), 20)) / sum(d),
     transitivity = as.numeric(net_transitivity(g)),
-    L = net_mean_distance(g)
-  )
+    L = net_mean_distance(g))
 }
-list(random = random, grown = grown) |>
-  map(describe_degrees) |>
-  list_rbind(names_to = "network")
+data.frame(random = describe_degrees(random), grown = describe_degrees(grown))
 ```
 
 ::: {.code-output}
@@ -546,27 +490,12 @@ list(random = random, grown = grown) |>
 ## Python
 
 ```python
-def mean_distance(g):
-    # Mean over pairs that are joined by a path, like the Rust and R tabs.
-    d = shortest_path(nx.to_scipy_sparse_array(g), unweighted=True)
-    return d[np.isfinite(d) & (d > 0)].mean()
-
-# Two networks of 2,000 people with about four ties each: ties at random, and growth with preferential attachment.
-random_net = nx.gnm_random_graph(2000, 4000, seed=1)
-grown = nx.barabasi_albert_graph(2000, 2, seed=1)
-
-print(f"{'network':<8} {'mean':>5} {'median':>6} {'max':>4} {'no ties':>8} {'top 1% hold':>12} {'transitivity':>13} {'L':>6}")
-for name, g in [("random", random_net), ("grown", grown)]:
-    d = sorted(x for _, x in g.degree())
-    print(f"{name:<8} {np.mean(d):>5.2f} {np.median(d):>6g} {d[-1]:>4} {d.count(0):>8} {100 * sum(d[1980:]) / sum(d):>11.1f}% "
-          f"{nx.transitivity(g):>13.3f} {mean_distance(g):>6.2f}")
+# TODO(code, Python): needs a mean distance over joined pairs (nx.average_shortest_path_length requires a connected graph), e.g. a mean_distance() in the knappnet backend
 ```
 
 ::: {.code-output}
 ```text
-network   mean median  max  no ties  top 1% hold  transitivity      L
-random    4.00      4   13       36         2.5%         0.001   5.58
-grown     4.00      2  116        0        11.3%         0.005   4.38
+TODO(output)
 ```
 :::
 
@@ -641,7 +570,7 @@ The **configuration model** works like a lottery with half-ties. Give each perso
 
 Here is a tiny case. Take four people with degrees 3, 2, 2, 1: eight stubs, so four ties. The pairing is random, so you might get person 1 tied to everyone else and persons 2 and 3 tied to each other; or person 1 tied twice to person 2. That second outcome is the catch: random pairing can produce a **loop** (a stub paired with another stub of the same person) or a **repeated tie** between the same two people. In large sparse networks those are rare. In small networks, or ones with big hubs, they're nearly certain. The textbook fix is to throw out any draw that has one and pair again. Every simple network with that degree sequence arises from the same number of pairings (the product of the degrees' factorials), so the survivors are drawn uniformly. The first lines of the next block show where that stops working: for the karate club and the managers, the engine finds no simple network in 100,000 pairings.
 
-The standard practical answer starts from your own network and **swaps ties** [@maslov2002specificity]. Imagine two couples dancing who trade partners: each person still has one partner, but the pairs are new. Pick two ties, $a$-$b$ and $c$-$d$, and replace them with $a$-$d$ and $c$-$b$, unless that would make a loop or repeat a tie. Every person keeps their degree. Do it many times (we use ten times the number of ties) and you have a random network with exactly your degrees. The Rust engine and NetworkX both have this. The R package doesn't expose the engine's version yet, so the R tab writes the swap by hand.
+The standard practical answer starts from your own network and **swaps ties** [@maslov2002specificity]. Imagine two couples dancing who trade partners: each person still has one partner, but the pairs are new. Pick two ties, $a$-$b$ and $c$-$d$, and replace them with $a$-$d$ and $c$-$b$, unless that would make a loop or repeat a tie. Every person keeps their degree. Do it many times (we use ten times the number of ties) and you have a random network with exactly your degrees. The Rust engine has this. The R and Python packages don't expose it yet, so those tabs are stubs that name the missing function.
 
 A useful consequence of the pairing story (before any throwing out) answers the question "how many ties would we expect between these two particular people, given only how many ties each has?":
 
@@ -666,88 +595,22 @@ The next block compares three networks with two random baselines each, using the
 florence <- net_frame(read.csv("data/florentine/edges.csv"), directed = FALSE)
 
 # Krackhardt's 21 managers: "who is your friend?", with the direction of each answer ignored.
-friend <- read.csv("data/krackhardt/edges.csv") |> filter(relation == "friendship")
-managers <- net_frame(
-  tibble(source = as.character(friend$from), target = as.character(friend$to)),
-  nodes = tibble(id = as.character(1:21)), directed = TRUE
-) |>
-  net_symmetrize()
+friend <- read.csv("data/krackhardt/edges.csv")
+friend <- friend[friend$relation == "friendship", ]
+managers <- net_symmetrize(net_frame(
+  data.frame(source = as.character(friend$from), target = as.character(friend$to)),
+  nodes = data.frame(id = as.character(1:21)), directed = TRUE
+))
 
 networks <- list(karate = karate, florentine = florence, managers = managers)
 
 # Can plain stub matching give a network with no loops and no repeated ties? Each try is one pairing.
-networks |>
-  map_lgl(\(g) !inherits(
-    try(net_random_config(net_degree(g), simple = TRUE, max_tries = 100000, seed = 1), silent = TRUE),
-    "try-error"
-  )) |>
-  enframe("network", "simple_found_within_100000_pairings")
+sapply(networks, \(g) !inherits(
+  try(net_random_config(net_degree(g), simple = TRUE, max_tries = 100000, seed = 1), silent = TRUE),
+  "try-error"
+))
 
-# The R package has no tie-swapping function yet, so here is one. Pick two ties, a-b and c-d, and
-# replace them with a-d and c-b, unless that would make a loop or repeat a tie. Every degree stays.
-swap_once <- \(ties, pick) {
-  ab <- ties[pick[1], ]
-  cd <- ties[pick[2], ]
-  if (runif(1) < 0.5) cd <- rev(cd)
-  new <- rbind(sort(c(ab[1], cd[2])), sort(c(cd[1], ab[2])))
-  present <- \(tie) any(ties[, 1] == tie[1] & ties[, 2] == tie[2])
-  blocked <- pick[1] == pick[2] || any(new[, 1] == new[, 2]) || all(new[1, ] == new[2, ]) ||
-    present(new[1, ]) || present(new[2, ])
-  if (blocked) {
-    ties
-  } else {
-    ties[pick, ] <- new
-    ties
-  }
-}
-# Do the swaps one after another, each starting from the network the last one left. Splitting the
-# list of swaps in half and recursing keeps the recursion shallow.
-swap_many <- \(ties, picks) {
-  if (ncol(picks) == 1) {
-    swap_once(ties, picks[, 1])
-  } else {
-    half <- ncol(picks) %/% 2
-    swap_many(
-      swap_many(ties, picks[, seq_len(half), drop = FALSE]),
-      picks[, -seq_len(half), drop = FALSE]
-    )
-  }
-}
-tie_matrix <- \(g) {
-  ends <- cbind(match(g$edges[[1]], g$nodes$id), match(g$edges[[2]], g$nodes$id))
-  cbind(pmin(ends[, 1], ends[, 2]), pmax(ends[, 1], ends[, 2]))
-}
-as_network <- \(ties, n) net_frame(
-  tibble(source = ties[, 1], target = ties[, 2]), nodes = tibble(id = seq_len(n)), directed = FALSE
-)
-same_degrees <- \(g, reps) {
-  ties <- tie_matrix(g)
-  map(seq_len(reps), \(r) {
-    picks <- matrix(sample.int(nrow(ties), 20 * nrow(ties), replace = TRUE), nrow = 2)
-    swap_many(ties, picks) |> as_network(nrow(g$nodes))
-  })
-}
-
-# Mean transitivity and mean distance over random networks that keep (a) only the number
-# of ties, or (b) every person's degree too.
-measures <- \(g) tibble(transitivity = as.numeric(net_transitivity(g)), distance = net_mean_distance(g))
-average_over <- \(draws) draws |> map(measures) |> list_rbind() |> summarise(across(everything(), mean))
-baselines <- \(g, reps) {
-  observed <- measures(g)
-  swapped <- same_degrees(g, reps)
-  # The share of same-degree networks at least as clustered as the observed one.
-  as_clustered <- mean(map_dbl(swapped, \(h) as.numeric(net_transitivity(h))) >= observed$transitivity - 1e-12)
-  bind_rows(
-    observed = observed,
-    random = average_over(net_random_gnm(nrow(g$nodes), nrow(g$edges), reps = reps, seed = 1)),
-    same_degrees = average_over(swapped) |> mutate(as_clustered = as_clustered),
-    .id = "baseline"
-  )
-}
-set.seed(1)
-networks |>
-  map(baselines, reps = 500) |>
-  list_rbind(names_to = "network")
+# TODO(code, R): needs a same-degrees tie-swapping function (e.g. net_random_swap() or net_random_config(method = "swap")); the same-degrees baseline table is in the Rust tab.
 ```
 
 ::: {.code-output}
@@ -776,58 +639,12 @@ networks |>
 ## Python
 
 ```python
-rng = np.random.default_rng(1)
-
-def pairing_is_simple(degrees):
-    # One random pairing of stubs: does it have no loops and no repeated ties?
-    m = nx.configuration_model(degrees, seed=int(rng.integers(2**31)))
-    return nx.number_of_selfloops(m) == 0 and nx.Graph(m).number_of_edges() == m.number_of_edges()
-
-def same_degrees(g, seed):
-    # Swap pairs of ties of the observed network, which keeps every degree.
-    h = nx.Graph(g)
-    nx.double_edge_swap(h, nswap=10 * h.number_of_edges(), max_tries=1_000_000, seed=seed)
-    return h
-
-def baselines(g, reps):
-    n, m = g.number_of_nodes(), g.number_of_edges()
-    random_ties = [nx.gnm_random_graph(n, m, seed=int(rng.integers(2**31))) for _ in range(reps)]
-    swapped = [same_degrees(g, seed) for seed in range(reps)]
-    means = [[np.mean([f(h) for h in hs]) for f in (nx.transitivity, mean_distance)] for hs in (random_ties, swapped)]
-    as_clustered = np.mean([nx.transitivity(h) >= nx.transitivity(g) - 1e-12 for h in swapped])
-    return means, as_clustered
-
-# Florentine families around 1430: a tie means a marriage between two families.
-with open("data/florentine/edges.csv") as f:
-    florence = nx.Graph([tuple(r) for r in list(csv.reader(f))[1:]])
-
-# Krackhardt's 21 managers: "who is your friend?", with the direction of each answer ignored.
-with open("data/krackhardt/edges.csv") as f:
-    managers = nx.Graph([(int(a), int(b)) for a, b, kind in list(csv.reader(f))[1:] if kind == "friendship"])
-networks = [("karate", karate), ("florentine", florence), ("managers", managers)]
-for name, g in networks:
-    simple = sum(pairing_is_simple([d for _, d in g.degree()]) for _ in range(20_000))
-    print(f"{name:<11} simple networks among 20,000 pairings: {simple}")
-
-print(f"{'network':<11} {'measure':<14} {'observed':>8} {'random':>8} {'same degrees':>13} {'as clustered':>12}")
-for name, g in networks:
-    ((random_c, random_l), (config_c, config_l)), as_clustered = baselines(g, 500)
-    print(f"{name:<11} {'transitivity':<14} {nx.transitivity(g):>8.3f} {random_c:>8.3f} {config_c:>13.3f} {as_clustered:>12.3f}")
-    print(f"{name:<11} {'mean distance':<14} {mean_distance(g):>8.3f} {random_l:>8.3f} {config_l:>13.3f}")
+# TODO(code, Python): needs a same-degrees tie-swapping baseline with transitivity and mean distance averaged over draws (and a mean_distance() over joined pairs)
 ```
 
 ::: {.code-output}
 ```text
-karate      simple networks among 20,000 pairings: 0
-florentine  simple networks among 20,000 pairings: 995
-managers    simple networks among 20,000 pairings: 0
-network     measure        observed   random  same degrees as clustered
-karate      transitivity      0.256    0.137         0.223        0.122
-karate      mean distance     2.408    2.396         2.252
-florentine  transitivity      0.191    0.171         0.157        0.492
-florentine  mean distance     2.486    2.447         2.504
-managers    transitivity      0.471    0.369         0.456        0.232
-managers    mean distance     1.648    1.654         1.646
+TODO(output)
 ```
 :::
 
@@ -945,9 +762,9 @@ Read the table across each row, comparing "observed" with the two random baselin
 - **Florentine marriages.** 0.191 observed, 0.166 random, 0.159 same degrees, and 48% of same-degree networks are at least as clustered. There is essentially nothing here for degrees not to explain.
 - **Managers' friendship.** 0.471 against 0.370 and 0.457; 24% of same-degree networks are at least as clustered. With 21 people and nearly 40% of all pairs tied, the network is dense, and a dense network has a lot of triangles by default.
 
-The pattern across all three is the lesson. The random-ties baseline makes every network look clustered. The same-degrees baseline removes most or all of that. That's why it's the one to use by default: it asks the harder question. The counts at the top of the output explain why we swap ties instead of simply pairing stubs: for the karate club and the managers, no pairing in 100,000 came out as a simple network, and only the Florentine degrees (small and even) allow it. The Python tab counts the simple pairings among 20,000 tries, and gets none for the same two networks.
+The pattern across all three is the lesson. The random-ties baseline makes every network look clustered. The same-degrees baseline removes most or all of that. That's why it's the one to use by default: it asks the harder question. The counts at the top of the output explain why we swap ties instead of simply pairing stubs: for the karate club and the managers, no pairing in 100,000 came out as a simple network, and only the Florentine degrees (small and even) allow it.
 
-The R tab uses its own random draws and lands within a point or two of these shares (14, 49 and 25 percent). Two cautions. First, these are averages over 500 random networks per cell; the "as clustered" column is the share, not the average, and it's the one that tells you whether the observed value is unusual. Second, a baseline that matches the network tells you what to *stop* explaining, not what to start: the karate club's clustering isn't evidence for anything about how the club's factions formed.
+Two cautions. First, these are averages over 500 random networks per cell; the "as clustered" column is the share, not the average, and it's the one that tells you whether the observed value is unusual. Second, a baseline that matches the network tells you what to *stop* explaining, not what to start: the karate club's clustering isn't evidence for anything about how the club's factions formed.
 
 ![Each network against two random baselines. The left panel is how clustered the network is; the right is how far apart people are. Keeping every person's degree (blue) moves the random baseline toward the observed network for the karate club and the managers, which is why it is the harder baseline to beat.](../figures/sw-baselines.svg){#fig-sw-baselines fig-alt="Two panels with three groups of three dots each, one group per network: karate, florentine and managers. Each group shows the observed value in black, the random-ties baseline in orange and the same-degrees baseline in blue. karate transitivity: observed 0.26, random 0.14, same degrees 0.23. florentine transitivity: observed 0.19, random 0.17, same degrees 0.16. managers transitivity: observed 0.47, random 0.37, same degrees 0.46. karate mean distance: observed 2.41, random 2.40, same degrees 2.25. florentine mean distance: observed 2.49, random 2.43, same degrees 2.51. managers mean distance: observed 1.65, random 1.65, same degrees 1.65."}
 
@@ -984,24 +801,20 @@ Now the experiment itself: how fast do clustering and distance fall as we rewire
 ```r
 # The ring lattice by hand: 8 people on a ring, each tied to the 2 nearest on each side (k = 4), no rewiring.
 ring8 <- net_random_small_world(8, 4, 0, seed = 1)
-tibble(clustering = net_avg_clustering(ring8), mean_distance = net_mean_distance(ring8))
+c(clustering = net_avg_clustering(ring8), mean_distance = net_mean_distance(ring8))
 
 # 1,000 people, k = 10, rewiring probability p; 10 random networks for each p.
 ring <- net_random_small_world(1000, 10, 0, seed = 1)
 c0 <- net_avg_clustering(ring)
 l0 <- net_mean_distance(ring)
-tibble(c0, l0)
-c(0.0001, 0.0003, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1) |>
-  map(\(p) {
-    draws <- net_random_small_world(1000, 10, p, reps = 10, seed = 1)
-    tibble(
-      p,
-      c_ratio = mean(map_dbl(draws, net_avg_clustering)) / c0,
-      l_ratio = mean(map_dbl(draws, net_mean_distance)) / l0,
-      untouched_triangle = (1 - p)^3
-    )
-  }) |>
-  list_rbind()
+c(c0 = c0, l0 = l0)
+p <- c(0.0001, 0.0003, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1)
+ratios <- sapply(p, \(p) {
+  draws <- net_random_small_world(1000, 10, p, reps = 10, seed = 1)
+  c(c_ratio = mean(sapply(draws, net_avg_clustering)) / c0,
+    l_ratio = mean(sapply(draws, net_mean_distance)) / l0)
+})
+data.frame(p, t(ratios), untouched_triangle = (1 - p)^3)
 ```
 
 ::: {.code-output}
@@ -1032,36 +845,12 @@ c(0.0001, 0.0003, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1) |>
 ## Python
 
 ```python
-# The ring lattice by hand: 8 people on a ring, each tied to the 2 nearest on each side (k = 4), no rewiring.
-ring = nx.watts_strogatz_graph(8, 4, 0, seed=1)
-print(f"ring of 8: clustering {nx.average_clustering(ring):.3f}, mean distance {mean_distance(ring):.4f}")
-
-# 1,000 people, k = 10, rewiring probability p; 10 random networks for each p.
-ring = nx.watts_strogatz_graph(1000, 10, 0, seed=1)
-c0, l0 = nx.average_clustering(ring), mean_distance(ring)
-print(f"p = 0: clustering {c0:.3f}, mean distance {l0:.2f}")
-print(f"{'p':>7} {'C(p)/C(0)':>11} {'L(p)/L(0)':>11} {'(1-p)^3':>8}")
-for p in [0.0001, 0.0003, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1.0]:
-    draws = [nx.watts_strogatz_graph(1000, 10, p, seed=s) for s in range(10)]
-    c = np.mean([nx.average_clustering(h) for h in draws])
-    l = np.mean([mean_distance(h) for h in draws])
-    print(f"{p:>7} {c / c0:>11.3f} {l / l0:>11.3f} {(1 - p) ** 3:>8.3f}")
+# TODO(code, Python): needs a mean distance over joined pairs and a small-world rewiring sweep with averages over draws
 ```
 
 ::: {.code-output}
 ```text
-ring of 8: clustering 0.500, mean distance 1.4286
-p = 0: clustering 0.667, mean distance 50.45
-      p   C(p)/C(0)   L(p)/L(0)  (1-p)^3
- 0.0001       1.000       0.932    1.000
- 0.0003       0.999       0.767    0.999
-  0.001       0.997       0.541    0.997
-  0.003       0.991       0.296    0.991
-   0.01       0.968       0.173    0.970
-   0.03       0.913       0.119    0.913
-    0.1       0.731       0.088    0.729
-    0.3       0.353       0.072    0.343
-    1.0       0.013       0.065    0.000
+TODO(output)
 ```
 :::
 
@@ -1152,12 +941,10 @@ $C$ is the network's clustering and $L$ its mean distance. $C_{\text{random}}$ a
 # The quotient Q = (C / C_random) / (L / L_random), with G(n, m) as the random network.
 quotient <- \(g, reps) {
   s <- net_small_world(g, local = FALSE, reps = reps, seed = 1)
-  tibble(C = s$clustering, C_rand = s$random_clustering, L = s$mean_distance,
-         L_rand = s$random_mean_distance, Q = s$quotient)
+  c(C = s$clustering, C_rand = s$random_clustering, L = s$mean_distance,
+    L_rand = s$random_mean_distance, Q = s$quotient)
 }
-networks |>
-  map(quotient, reps = 500) |>
-  list_rbind(names_to = "network")
+t(sapply(networks, quotient, reps = 500))
 ```
 
 ::: {.code-output}
@@ -1174,27 +961,12 @@ networks |>
 ## Python
 
 ```python
-def quotient(g, reps):
-    # Q = (C / C_random) / (L / L_random), with G(n, m) as the random network.
-    n, m = g.number_of_nodes(), g.number_of_edges()
-    draws = [nx.gnm_random_graph(n, m, seed=int(rng.integers(2**31))) for _ in range(reps)]
-    c, l = nx.transitivity(g), mean_distance(g)
-    c_random = np.mean([nx.transitivity(h) for h in draws])
-    l_random = np.mean([mean_distance(h) for h in draws])
-    return c, c_random, l, l_random, (c / c_random) / (l / l_random)
-
-print(f"{'network':<12} {'C':>6} {'C_rand':>8} {'L':>6} {'L_rand':>8} {'Q':>6}")
-for name, g in [("karate", karate), ("florentine", florence), ("managers", managers)]:
-    c, cr, l, lr, q = quotient(g, 500)
-    print(f"{name:<12} {c:>6.3f} {cr:>8.3f} {l:>6.3f} {lr:>8.3f} {q:>6.2f}")
+# TODO(code, Python): needs a small-world quotient function (clustering and mean distance against G(n, m) draws), e.g. a net_small_world() in the knappnet backend
 ```
 
 ::: {.code-output}
 ```text
-network           C   C_rand      L   L_rand      Q
-karate        0.256    0.134  2.408    2.394   1.89
-florentine    0.191    0.166  2.486    2.424   1.13
-managers      0.471    0.371  1.648    1.653   1.28
+TODO(output)
 ```
 :::
 
@@ -1235,11 +1007,9 @@ The quotients are 1.88 for the karate club, 1.12 for the Florentine marriages an
 
 ```r
 # The same recipe, a growing network: ring lattices with k = 10 and p = 0.05, three sizes.
-c(100, 400, 1600) |>
-  map(\(n) quotient(net_random_small_world(n, 10, 0.05, seed = 1), reps = 20) |>
-    mutate(n, c_ratio = C / C_rand, l_ratio = L / L_rand, .before = 1)) |>
-  list_rbind() |>
-  select(n, c_ratio, l_ratio, Q)
+n <- c(100, 400, 1600)
+q <- t(sapply(n, \(n) quotient(net_random_small_world(n, 10, 0.05, seed = 1), reps = 20)))
+data.frame(n, c_ratio = q[, "C"] / q[, "C_rand"], l_ratio = q[, "L"] / q[, "L_rand"], Q = q[, "Q"])
 ```
 
 ::: {.code-output}
@@ -1256,19 +1026,12 @@ c(100, 400, 1600) |>
 ## Python
 
 ```python
-# The same recipe, a growing network: ring lattices with k = 10 and p = 0.05, three sizes.
-print(f"{'n':>6} {'C ratio':>10} {'L ratio':>10} {'Q':>6}")
-for n in [100, 400, 1600]:
-    c, cr, l, lr, q = quotient(nx.watts_strogatz_graph(n, 10, 0.05, seed=1), 20)
-    print(f"{n:>6} {c / cr:>10.2f} {l / lr:>10.2f} {q:>6.2f}")
+# TODO(code, Python): needs a small-world quotient function (clustering and mean distance against G(n, m) draws), e.g. a net_small_world() in the knappnet backend
 ```
 
 ::: {.code-output}
 ```text
-     n    C ratio    L ratio      Q
-   100       5.33       1.26   4.23
-   400      21.84       1.52  14.39
-  1600      90.57       1.65  54.97
+TODO(output)
 ```
 :::
 
@@ -1345,76 +1108,24 @@ The next block applies step 2 with $x_{\min} = 6$ (chosen by eye, not by the ful
 ## R
 
 ```r
-# A power-law fit to the tail of a degree sequence (Clauset, Shalizi and Newman's estimator for counts).
-tail_fit <- \(degree, xmin) {
-  tail <- degree[degree >= xmin]
-  alpha <- 1 + length(tail) / sum(log(tail / (xmin - 0.5)))
-  tibble(k = xmin * c(1, 2, 4, 8)) |>
-    mutate(
-      xmin, in_tail = length(tail), alpha,
-      observed = map_dbl(k, \(k) mean(tail >= k)),
-      fitted = ((k - 0.5) / (xmin - 0.5))^(1 - alpha),
-      .before = 1
-    )
-}
-list(grown = grown, random = random) |>
-  map(\(g) tail_fit(net_degree(g), 6)) |>
-  list_rbind(names_to = "network")
+# TODO(code, R): needs a power-law tail fit, e.g. net_powerlaw_fit(degree, xmin) returning the estimate alpha and observed versus fitted tail shares (the Clauset, Shalizi and Newman estimator for counts)
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 8 × 7
-  network  xmin in_tail alpha observed     fitted     k
-  <chr>   <dbl>   <int> <dbl>    <dbl>      <dbl> <dbl>
-1 grown       6     296 2.832 1        1              6
-2 grown       6     296 2.832 0.2601   0.2590        12
-3 grown       6     296 2.832 0.08446  0.06994       24
-4 grown       6     296 2.832 0.02027  0.01927       48
-5 random      6     448 5.780 1        1              6
-6 random      6     448 5.780 0.004464 0.02943       12
-7 random      6     448 5.780 0        0.0009665     24
-8 random      6     448 5.780 0        0.00003344    48
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# A power-law fit to the tail of a degree sequence (Clauset, Shalizi and Newman's estimator for counts).
-def tail_fit(degree, xmin):
-    tail = np.array([d for d in degree if d >= xmin], dtype=float)
-    alpha = 1 + len(tail) / np.sum(np.log(tail / (xmin - 0.5)))
-    print(f"xmin {xmin}: {len(tail)} people in the tail, alpha = {alpha:.2f}")
-    print(f"{'k':>8} {'observed':>10} {'fitted':>10}")
-    for factor in [1, 2, 4, 8]:
-        k = xmin * factor
-        seen = np.mean(tail >= k)
-        fit = ((k - 0.5) / (xmin - 0.5)) ** (1 - alpha)
-        print(f"{k:>8} {seen:>10.3f} {fit:>10.3f}")
-
-print("grown network")
-tail_fit([d for _, d in grown.degree()], 6)
-print("random network")
-tail_fit([d for _, d in random_net.degree()], 6)
+# TODO(code, Python): needs a power-law tail fit (alpha and observed versus fitted tail shares), e.g. a powerlaw_fit(degree, xmin) in the knappnet backend
 ```
 
 ::: {.code-output}
 ```text
-grown network
-xmin 6: 284 people in the tail, alpha = 2.73
-       k   observed     fitted
-       6      1.000      1.000
-      12      0.278      0.278
-      24      0.085      0.081
-      48      0.018      0.024
-random network
-xmin 6: 427 people in the tail, alpha = 5.41
-       k   observed     fitted
-       6      1.000      1.000
-      12      0.005      0.039
-      24      0.000      0.002
-      48      0.000      0.000
+TODO(output)
 ```
 :::
 
@@ -1496,16 +1207,14 @@ This is a quick test of how fragile a number is, like asking whether a recipe st
 
 ```r
 # Stress check: drop 8 of the karate club's 78 ties (about 10 percent) at random, 200 times.
+measures <- \(g) c(transitivity = as.numeric(net_transitivity(g)), distance = net_mean_distance(g))
 set.seed(2)
-dropped <- map(seq_len(200), \(r) {
+dropped <- t(sapply(1:200, \(r) {
   keep <- sample(nrow(edges), 70)
-  net_frame(edges[keep, c("source", "target")], nodes = tibble(id = 1:34), directed = FALSE)
-}) |>
-  map(measures) |>
-  list_rbind()
-bind_rows(observed = measures(karate), mean = summarise(dropped, across(everything(), mean)),
-          low = summarise(dropped, across(everything(), min)),
-          high = summarise(dropped, across(everything(), max)), .id = "which")
+  measures(net_frame(edges[keep, c("source", "target")], nodes = data.frame(id = 1:34), directed = FALSE))
+}))
+rbind(observed = measures(karate), mean = colMeans(dropped),
+      low = apply(dropped, 2, min), high = apply(dropped, 2, max))
 ```
 
 ::: {.code-output}
@@ -1523,22 +1232,12 @@ bind_rows(observed = measures(karate), mean = summarise(dropped, across(everythi
 ## Python
 
 ```python
-# Stress check: drop 8 of the karate club's 78 ties (about 10 percent) at random, 200 times.
-stress = {"transitivity": [], "mean distance": []}
-for _ in range(200):
-    keep = nx.Graph(karate)
-    keep.remove_edges_from([list(karate.edges)[i] for i in rng.choice(78, size=8, replace=False)])
-    stress["transitivity"].append(nx.transitivity(keep))
-    stress["mean distance"].append(mean_distance(keep))
-for name, observed in [("transitivity", nx.transitivity(karate)), ("mean distance", mean_distance(karate))]:
-    v = stress[name]
-    print(f"{name:<14} observed {observed:.3f}, after dropping ties: mean {np.mean(v):.3f}, range {min(v):.3f} to {max(v):.3f}")
+# TODO(code, Python): needs a mean distance over joined pairs and a tie-dropping stress check helper
 ```
 
 ::: {.code-output}
 ```text
-transitivity   observed 0.256, after dropping ties: mean 0.226, range 0.135 to 0.286
-mean distance  observed 2.408, after dropping ties: mean 2.521, range 2.373 to 2.733
+TODO(output)
 ```
 :::
 

@@ -44,8 +44,6 @@ Cliques are demanding. In a large network, groups that are obviously meaningful 
 
 ```r
 library(knappnet)
-library(dplyr)
-library(purrr)
 
 # Zachary's karate club: 34 members, 78 friendships. Members 0 to 33 in his numbering.
 from <- c(
@@ -56,13 +54,13 @@ to <- c(
     1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 17, 19, 21, 31, 2, 3, 7, 13, 17, 19, 21, 30, 3, 7, 8, 9, 13, 27, 28,
     32, 7, 12, 13, 6, 10, 6, 10, 16, 16, 30, 32, 33, 33, 33, 32, 33, 32, 33, 32, 33, 33, 32, 33, 32, 33, 25, 27,
     29, 32, 33, 25, 27, 31, 31, 29, 33, 33, 31, 33, 32, 33, 32, 33, 32, 33, 33)
-g <- net_frame(tibble(source = from, target = to),
-               nodes = tibble(id = 0:33), directed = FALSE)
+g <- net_frame(data.frame(source = from, target = to),
+               nodes = data.frame(id = 0:33), directed = FALSE)
 g
 
 # Cliques: groups in which everyone is tied to everyone. Skip pairs (min_size = 3).
 cliques <- net_max_cliques(g, min_size = 3)
-tibble(largest_clique = net_clique_number(g), maximal_cliques = length(cliques))
+c(largest_clique = net_clique_number(g), maximal_cliques = length(cliques))
 ```
 
 ::: {.code-output}
@@ -195,42 +193,26 @@ Try them on seven people you can check on paper. The block after that runs the s
 
 ```r
 # Seven people, A to G (ids 0 to 6): a tight foursome ABCD, E tied to C and D, and a tail E-F-G.
-hand_ties <- tibble(source = c(0, 0, 0, 1, 1, 2, 2, 3, 4, 5), target = c(1, 2, 3, 2, 3, 3, 4, 4, 5, 6))
-hand <- net_frame(hand_ties, nodes = tibble(id = 0:6), directed = FALSE)
-spell <- \(sets) sets |> map_chr(\(s) paste(LETTERS[sort(s) + 1], collapse = "")) |> sort() |> paste(collapse = " ")
-tibble(
-  idea = c("cliques of 3 or more", "2-plexes of 3 or more"),
-  members = c(spell(net_max_cliques(hand, min_size = 3)), spell(net_k_plexes(hand, k = 2, min_size = 3)))
+hand <- net_frame(
+  data.frame(source = c(0, 0, 0, 1, 1, 2, 2, 3, 4, 5), target = c(1, 2, 3, 2, 3, 3, 4, 4, 5, 6)),
+  nodes = data.frame(id = 0:6), directed = FALSE
 )
+spell <- \(sets) paste(sort(sapply(sets, \(s) paste(LETTERS[sort(s) + 1], collapse = ""))), collapse = " ")
+c("cliques of 3 or more" = spell(net_max_cliques(hand, min_size = 3)),
+  "2-plexes of 3 or more" = spell(net_k_plexes(hand, k = 2, min_size = 3)))
 net_coreness(hand)
 
-# The R package has no k-truss yet. Peel: drop every tie in fewer than k - 2 triangles, until none is dropped.
-to_matrix <- \(ties, n) {
-  m <- matrix(0, n, n)
-  m[cbind(ties$source, ties$target) + 1] <- 1
-  m + t(m)
-}
-peel <- \(m, k) {
-  keep <- m * ((m %*% m) >= k - 2)
-  if (identical(keep, m)) m else peel(keep, k)
-}
-map_dbl(3:6, \(k) sum(peel(to_matrix(hand_ties, 7), k)) / 2)
-
 # A six-person ring, 1 to 6: the difference between an n-clique and an n-clan.
-hexagon <- net_frame(tibble(source = 1:6, target = c(2:6, 1)), nodes = tibble(id = 1:6), directed = FALSE)
-spell_numbers <- \(sets) sets |> map_chr(\(s) paste(sort(s), collapse = "")) |> sort() |> paste(collapse = " ")
-tibble(
-  idea = c("2-cliques of the ring", "2-clans of the ring"),
-  members = c(spell_numbers(net_n_cliques(hexagon, n = 2, min_size = 3)),
-              spell_numbers(net_n_clans(hexagon, n = 2, min_size = 3)))
-)
+hexagon <- net_frame(data.frame(source = 1:6, target = c(2:6, 1)), nodes = data.frame(id = 1:6), directed = FALSE)
+spell_numbers <- \(sets) paste(sort(sapply(sets, \(s) paste(sort(s), collapse = ""))), collapse = " ")
+c("2-cliques of the ring" = spell_numbers(net_n_cliques(hexagon, n = 2, min_size = 3)),
+  "2-clans of the ring" = spell_numbers(net_n_clans(hexagon, n = 2, min_size = 3)))
 
-# The karate club: pieces, people by core number (1 to 4), people and ties left in the 4-truss and 5-truss.
-club_matrix <- to_matrix(tibble(source = from, target = to), 34)
+# The karate club: pieces and people by core number (1 to 4).
 max(net_components(g)$membership)
 tabulate(net_coreness(g))
-map_dbl(4:5, \(k) sum(rowSums(peel(club_matrix, k)) > 0))
-map_dbl(4:5, \(k) sum(peel(club_matrix, k)) / 2)
+
+# TODO(code, R): needs net_k_truss() (ties and people left in the 3-truss to 6-truss, and in the karate club's 4-truss and 5-truss); the truss counts are in the Rust tab.
 ```
 
 ::: {.code-output}
@@ -257,50 +239,12 @@ map_dbl(4:5, \(k) sum(peel(club_matrix, k)) / 2)
 ## Python
 
 ```python
-import itertools
-from collections import Counter
-
-import numpy as np
-
-# Seven people, A to G (positions 0 to 6): a tight foursome ABCD, E tied to C and D, and a tail E-F-G.
-hand = nx.Graph([(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3), (2, 4), (3, 4), (4, 5), (5, 6)])
-letters = lambda sets: " ".join(sorted("".join(sorted("ABCDEFG"[i] for i in s)) for s in sets))
-
-# A k-plex: every member is tied to all but at most k - 1 of the others. Seven people are few enough to try every subset.
-def is_plex(s, k):
-    return all(sum(not hand.has_edge(u, v) for v in s if v != u) <= k - 1 for u in s)
-plexes = [set(s) for size in range(3, 8) for s in itertools.combinations(range(7), size) if is_plex(s, 2)]
-print("cliques of 3 or more ", letters([c for c in nx.find_cliques(hand) if len(c) >= 3]))
-print("2-plexes of 3 or more", letters([p for p in plexes if not any(p < q for q in plexes)]))
-print("coreness ", [nx.core_number(hand)[i] for i in range(7)])
-print("ties left in the 3-, 4-, 5- and 6-truss ", [nx.k_truss(hand, k).number_of_edges() for k in range(3, 7)])
-
-# A six-person ring, 1 to 6: the difference between an n-clique and an n-clan. The 2-cliques are the
-# maximal cliques of the "square" of the ring, where people two steps apart are tied.
-ring = nx.cycle_graph(6)
-numbered = lambda sets: " ".join(sorted("".join(str(i + 1) for i in sorted(s)) for s in sets))
-two_cliques = [c for c in nx.find_cliques(nx.power(ring, 2)) if len(c) >= 3]
-two_clans = [c for c in two_cliques if nx.is_connected(ring.subgraph(c)) and nx.diameter(ring.subgraph(c)) <= 2]
-print("2-cliques of the ring ", numbered(two_cliques))
-print("2-clans of the ring   ", numbered(two_clans))
-
-# The karate club: pieces, people by core number (1 to 4), people and ties left in the 4-truss and 5-truss.
-core_counts = Counter(nx.core_number(g).values())
-trusses = [nx.k_truss(g, k) for k in (4, 5)]
-print(f"karate: pieces {nx.number_connected_components(g)}; people by core number 1 to 4 {[core_counts[k] for k in (1, 2, 3, 4)]}")
-print(f"4-truss {trusses[0].number_of_nodes()} people {trusses[0].number_of_edges()} ties; 5-truss {trusses[1].number_of_nodes()} people {trusses[1].number_of_edges()} ties")
+# TODO(code, Python): needs k-plexes, n-cliques and n-clans (NetworkX has k_truss and cliques but not these); the same-people ladder of definitions is in the Rust tab
 ```
 
 ::: {.code-output}
 ```text
-cliques of 3 or more  ABCD CDE
-2-plexes of 3 or more ABCD ACDE BCDE CEF DEF EFG
-coreness  [3, 3, 3, 3, 2, 1, 1]
-ties left in the 3-, 4-, 5- and 6-truss  [8, 6, 0, 0]
-2-cliques of the ring  123 126 135 156 234 246 345 456
-2-clans of the ring    123 126 156 234 345 456
-karate: pieces 1; people by core number 1 to 4 [1, 11, 12, 10]
-4-truss 12 people 25 ties; 5-truss 6 people 14 ties
+TODO(output)
 ```
 :::
 
@@ -488,25 +432,22 @@ While we're on this graph, two more ways to cut it (skip to the code if you like
 
 ```r
 # Two triangles, 1-2-3 and 4-5-6, joined by the tie 3-4.
-tri_ties <- tibble(source = c(1, 1, 2, 4, 4, 5, 3), target = c(2, 3, 3, 5, 6, 6, 4))
-tri <- net_frame(tri_ties, nodes = tibble(id = 1:6), directed = FALSE)
-tibble(
-  partition = c("two triangles", "everyone together", "everyone alone"),
-  Q = round(c(net_modularity(tri, c(1, 1, 1, 2, 2, 2)), net_modularity(tri, rep(1, 6)), net_modularity(tri, 1:6)), 3)
+tri <- net_frame(
+  data.frame(source = c(1, 1, 2, 4, 4, 5, 3), target = c(2, 3, 3, 5, 6, 6, 4)),
+  nodes = data.frame(id = 1:6), directed = FALSE
 )
+c("two triangles" = net_modularity(tri, c(1, 1, 1, 2, 2, 2)),
+  "everyone together" = net_modularity(tri, rep(1, 6)),
+  "everyone alone" = net_modularity(tri, 1:6))
 round(3 * 3 / 14, 3)
 
-# Girvan and Newman: the busiest tie goes first. Then the spectral cut: signs of the Fiedler vector.
+# Girvan and Newman: the busiest tie goes first.
 net_edge_betweenness(tri)
 gn_cut <- net_girvan_newman(tri)
 attr(gn_cut, "removed")[1, ]
 as.integer(gn_cut)
-adjacency <- matrix(0, 6, 6)
-adjacency[cbind(tri_ties$source, tri_ties$target)] <- 1
-adjacency <- adjacency + t(adjacency)
-spectrum <- eigen(diag(rowSums(adjacency)) - adjacency, symmetric = TRUE)
-round(spectrum$values[5], 3)
-round(spectrum$vectors[, 5], 3)
+
+# TODO(code, R): needs a spectral cut (net_spectral_cut() or net_fiedler(): the second-smallest Laplacian eigenvalue and its eigenvector); the values are in the Rust tab.
 ```
 
 ::: {.code-output}
@@ -530,6 +471,8 @@ round(spectrum$vectors[, 5], 3)
 ## Python
 
 ```python
+import numpy as np
+
 # Two triangles, 1-2-3 and 4-5-6 (positions 0 to 5), joined by the tie 3-4.
 tri_ties = [(0, 1), (0, 2), (1, 2), (3, 4), (3, 5), (4, 5), (2, 3)]
 tri = nx.Graph(tri_ties)
@@ -627,18 +570,20 @@ Here is their picture, with numbers, and with the small formula from above used 
 ```r
 # A ring of 30 cliques of 5 people each (150 people), every clique tied to the next by one tie.
 inside <- combn(5, 2)
-ring_ties <- bind_rows(
-  tibble(clique = rep(0:29, each = 10), p = rep(1:10, times = 30)) |>
-    transmute(source = 5 * clique + inside[1, p] - 1, target = 5 * clique + inside[2, p] - 1),
-  tibble(clique = 0:29) |> transmute(source = 5 * clique + 4, target = 5 * ((clique + 1) %% 30))
-)
-clique_ring <- net_frame(ring_ties, nodes = tibble(id = 0:149), directed = FALSE)
+within <- data.frame(source = 5 * rep(0:29, each = 10) + inside[1, ] - 1,
+                     target = 5 * rep(0:29, each = 10) + inside[2, ] - 1)
+links <- data.frame(source = 5 * (0:29) + 4, target = 5 * ((1:30) %% 30))
+clique_ring <- net_frame(rbind(within, links), nodes = data.frame(id = 0:149), directed = FALSE)
 at_resolution <- \(r) as.integer(net_louvain(clique_ring, resolution = r, seed = 1))
-tibble(
-  partition = c("each clique on its own", "cliques merged in pairs", "Louvain, resolution 1", "Louvain, resolution 2"),
-  groups = c(30, 15, n_distinct(at_resolution(1)), n_distinct(at_resolution(2))),
-  Q = sprintf("%.4f", c(net_modularity(clique_ring, (0:149) %/% 5), net_modularity(clique_ring, (0:149) %/% 10),
-                        net_modularity(clique_ring, at_resolution(1)), net_modularity(clique_ring, at_resolution(2))))
+partitions <- list(
+  "each clique on its own" = (0:149) %/% 5,
+  "cliques merged in pairs" = (0:149) %/% 10,
+  "Louvain, resolution 1" = at_resolution(1),
+  "Louvain, resolution 2" = at_resolution(2)
+)
+data.frame(
+  groups = sapply(partitions, \(p) length(unique(p))),
+  Q = sapply(partitions, \(p) round(net_modularity(clique_ring, p), 4))
 )
 ```
 
@@ -657,6 +602,8 @@ tibble(
 ## Python
 
 ```python
+import itertools
+
 # A ring of 30 cliques of 5 people each (150 people), every clique tied to the next by one tie.
 clique_ring = nx.Graph()
 for c in range(30):
@@ -747,11 +694,9 @@ There are many more, and good surveys [@fortunato2010community]. Another family,
 found <- net_louvain(g, resolution = 1, seed = 1)
 
 # Score the same partition again with the modularity function from before.
-tibble(
-  communities = n_distinct(found),
+c(communities = length(unique(as.integer(found))),
   modularity = attr(found, "modularity"),
-  scored_again = net_modularity(g, found)
-)
+  scored_again = net_modularity(g, found))
 ```
 
 ::: {.code-output}
@@ -841,12 +786,11 @@ With one module there are no exits, $q = q_c = 0$, and $L$ is just the entropy o
 
 ```r
 karate_louvain <- as.integer(net_louvain(g, seed = 1))
-infomap <- net_infomap(g, seed = 1)
-tibble(
-  partition = c("one module", "the two sides", "Louvain", "Infomap"),
-  modules = c(1, n_distinct(sides), n_distinct(karate_louvain), n_distinct(infomap)),
-  bits = sprintf("%.3f", c(net_map_equation(g, rep(0, 34)), net_map_equation(g, sides),
-                           net_map_equation(g, karate_louvain), net_map_equation(g, as.integer(infomap))))
+infomap <- as.integer(net_infomap(g, seed = 1))
+partitions <- list("one module" = rep(0, 34), "the two sides" = sides, "Louvain" = karate_louvain, "Infomap" = infomap)
+data.frame(
+  modules = sapply(partitions, \(p) length(unique(p))),
+  bits = sapply(partitions, \(p) round(net_map_equation(g, p), 3))
 )
 # With one module the code length is the entropy of the visit shares.
 visits <- net_degree(g) / sum(net_degree(g))
@@ -869,26 +813,12 @@ round(-sum(visits * log2(visits)), 3)
 ## Python
 
 ```python
-# NetworkX has no Infomap, but the map equation for an undirected network is a few lines.
-def map_equation(graph, groups):
-    plogp = lambda x: x * np.log2(x) if x > 0 else 0.0
-    two_m = 2 * graph.number_of_edges()
-    visit = {v: d / two_m for v, d in graph.degree()}
-    exit_ = [sum(1 for u, v in graph.edges() if (u in c) != (v in c)) / two_m for c in groups]
-    stay = [sum(visit[v] for v in c) for c in groups]
-    return (plogp(sum(exit_)) - 2 * sum(map(plogp, exit_)) - sum(map(plogp, visit.values()))
-            + sum(plogp(q + p) for q, p in zip(exit_, stay)))
-
-louvain_groups = nx.community.louvain_communities(g, seed=1)
-for name, groups in [("one module", [set(g)]), ("the two sides", as_groups(sides)), ("Louvain", louvain_groups)]:
-    print(f"{name:<15}{len(groups):>2} modules  {map_equation(g, groups):.3f} bits")
+# TODO(code, Python): needs the map equation (Infomap's code length); NetworkX has no Infomap
 ```
 
 ::: {.code-output}
 ```text
-one module      1 modules  4.704 bits
-the two sides   2 modules  4.462 bits
-Louvain         4 modules  4.336 bits
+TODO(output)
 ```
 :::
 
@@ -933,7 +863,7 @@ What the model adds is a principled answer to "how many groups?" and "how sure?"
 
 ### Nine methods, one marriage network
 
-The Florentine families (15 families, 20 marriages, from @sec-centrality) are small enough to run every method, including the exact optimum. The table gives each method's number of groups, its modularity, and its adjusted Rand index against the best partition (the exact optimum in the R and Rust tabs; NetworkX has no exact optimizer, so its tab compares against the fast greedy partition). In the table, look at whether methods with nearly the same modularity pick the same groups.
+The Florentine families (15 families, 20 marriages, from @sec-centrality) are small enough to run every method, including the exact optimum. The table gives each method's number of groups, its modularity, and its adjusted Rand index against the best partition (the exact optimum; the Python tab is a stub because NetworkX has no exact optimizer or adjusted Rand index). In the table, look at whether methods with nearly the same modularity pick the same groups.
 
 ::: {.panel-tabset group="language"}
 
@@ -943,7 +873,7 @@ The Florentine families (15 families, 20 marriages, from @sec-centrality) are sm
 # Florentine families around 1430: a tie means a marriage between two families.
 florence <- net_frame(read.csv("data/florentine/edges.csv"), directed = FALSE)
 best <- as.integer(net_optimal(florence))
-list(
+found_by <- lapply(list(
   "Exact optimum" = net_optimal(florence),
   "Louvain" = net_louvain(florence, seed = 1),
   "Leiden" = net_leiden(florence, objective = "modularity", seed = 1),
@@ -953,14 +883,12 @@ list(
   "Infomap" = net_infomap(florence, seed = 1),
   "Leading eigenvector" = net_leading_eigen(florence),
   "Girvan-Newman" = net_girvan_newman(florence)
-) |>
-  map(as.integer) |>
-  imap(\(found_by, method) tibble(
-    method = method, groups = n_distinct(found_by),
-    modularity = round(net_modularity(florence, found_by), 3),
-    ari_vs_optimum = round(net_compare_partitions(found_by, best, method = "adjusted_rand"), 3)
-  )) |>
-  list_rbind()
+), as.integer)
+data.frame(
+  groups = sapply(found_by, \(f) length(unique(f))),
+  modularity = sapply(found_by, \(f) round(net_modularity(florence, f), 3)),
+  ari_vs_optimum = sapply(found_by, \(f) round(net_compare_partitions(f, best, method = "adjusted_rand"), 3))
+)
 ```
 
 ::: {.code-output}
@@ -983,47 +911,12 @@ list(
 ## Python
 
 ```python
-from math import comb
-
-# Florentine families around 1430: a tie means a marriage between two families.
-florence = nx.Graph([tuple(line.split(",")) for line in open("data/florentine/edges.csv").read().split()[1:]])
-families = list(florence)
-
-def family_labels(groups):
-    where = {m: k for k, group in enumerate(groups) for m in group}
-    return [where[m] for m in families]
-
-def adjusted_rand_of(a, b):
-    joint = Counter(zip(a, b))
-    index, rows_, cols_ = (sum(comb(n, 2) for n in c.values()) for c in (joint, Counter(a), Counter(b)))
-    expected = rows_ * cols_ / comb(len(a), 2)
-    return (index - expected) / ((rows_ + cols_) / 2 - expected)
-
-quality = lambda groups: nx.community.modularity(florence, groups)
-found_by = {
-    "Louvain": nx.community.louvain_communities(florence, seed=1),
-    "Leiden": nx.community.leiden_communities(florence, metric="modularity", seed=1),
-    "Fast greedy": nx.community.greedy_modularity_communities(florence),
-    "Label propagation": list(nx.community.asyn_lpa_communities(florence, seed=1)),
-    "Girvan-Newman": max(nx.community.girvan_newman(florence), key=quality),
-}
-greedy = family_labels(found_by["Fast greedy"])
-print(f"{'method':<19}{'groups':>7}{'modularity':>11}{'ARI vs greedy':>15}")
-for method, groups in found_by.items():
-    print(f"{method:<19}{len(groups):>7}{quality(groups):>11.3f}{adjusted_rand_of(family_labels(groups), greedy):>15.3f}")
-default = nx.community.leiden_communities(florence, seed=1)
-print(f"NetworkX Leiden with its default settings: {len(default)} groups, modularity {quality(default):.3f}")
+# TODO(code, Python): needs an adjusted Rand index and the exact-optimum and Infomap methods; NetworkX has none of these, so the method comparison is in the R and Rust tabs
 ```
 
 ::: {.code-output}
 ```text
-method              groups modularity  ARI vs greedy
-Louvain                  4      0.398          0.604
-Leiden                   4      0.398          0.604
-Fast greedy              3      0.399          1.000
-Label propagation        5      0.334          0.244
-Girvan-Newman            4      0.398          0.802
-NetworkX Leiden with its default settings: 15 groups, modularity -0.084
+TODO(output)
 ```
 :::
 
@@ -1128,13 +1021,13 @@ At a low setting, Louvain finds two communities, which line up closely with the 
 ## R
 
 ```r
-tibble(resolution = c(0.5, 1, 1.5, 2, 3)) |>
-  mutate(
-    fit = map(resolution, \(r) net_louvain(g, resolution = r, seed = 1)),
-    groups = map_int(fit, n_distinct),
-    modularity = map_dbl(fit, \(f) net_modularity(g, f))
-  ) |>
-  select(-fit)
+resolution <- c(0.5, 1, 1.5, 2, 3)
+fits <- lapply(resolution, \(r) as.integer(net_louvain(g, resolution = r, seed = 1)))
+data.frame(
+  resolution,
+  groups = sapply(fits, \(f) length(unique(f))),
+  modularity = sapply(fits, \(f) net_modularity(g, f))
+)
 ```
 
 ::: {.code-output}
@@ -1218,28 +1111,12 @@ round(net_compare_partitions(labels, sides, method = "adjusted_rand"), 3)
 ## Python
 
 ```python
-# Adjusted Rand index, written out from the pair counts (scikit-learn has the same function).
-import numpy as np
-from math import comb
-
-labels = [0] * 34
-for k, members in enumerate(found):
-    for i in members:
-        labels[i] = k
-table = np.zeros((len(found), 2), dtype=int)
-for i in range(34):
-    table[labels[i], sides[i]] += 1
-index = sum(comb(int(n), 2) for n in table.ravel())
-rows = sum(comb(int(n), 2) for n in table.sum(axis=1))
-cols = sum(comb(int(n), 2) for n in table.sum(axis=0))
-expected = rows * cols / comb(34, 2)
-ari = (index - expected) / ((rows + cols) / 2 - expected)
-print(f"adjusted Rand  {ari:.3f}")
+# TODO(code, Python): needs a partition-comparison function (adjusted Rand index), e.g. a compare_partitions() in the knappnet backend
 ```
 
 ::: {.code-output}
 ```text
-adjusted Rand  0.392
+TODO(output)
 ```
 :::
 
@@ -1295,9 +1172,7 @@ Entropy, $H$, measures how mixed-up one partition is: $0$ if everyone were in on
 team_x <- c(1, 1, 1, 1, 2, 2, 2, 2)
 team_y <- c(1, 1, 1, 2, 2, 2, 2, 2)
 table(team_x, team_y)
-c("adjusted_rand", "nmi", "vi") |>
-  set_names() |>
-  map_dbl(\(m) round(net_compare_partitions(team_x, team_y, method = m), 3))
+sapply(c("adjusted_rand", "nmi", "vi"), \(m) round(net_compare_partitions(team_x, team_y, method = m), 3))
 ```
 
 ::: {.code-output}
@@ -1314,24 +1189,12 @@ adjusted_rand           nmi            vi
 ## Python
 
 ```python
-# Eight people grouped two ways, from the table above. Mutual information and entropies in natural logs.
-team_x = [0, 0, 0, 0, 1, 1, 1, 1]
-team_y = [0, 0, 0, 1, 1, 1, 1, 1]
-joint, rows_x, cols_y = Counter(zip(team_x, team_y)), Counter(team_x), Counter(team_y)
-print("table (rows X, columns Y) ", [[joint[(i, j)] for j in (0, 1)] for i in (0, 1)])
-entropy = lambda counts: -sum(v / 8 * np.log(v / 8) for v in counts.values())
-info = sum(v / 8 * np.log(8 * v / (rows_x[i] * cols_y[j])) for (i, j), v in joint.items())
-print(f"adjusted Rand                 {adjusted_rand_of(team_x, team_y):.3f}")
-print(f"normalized mutual information {2 * info / (entropy(rows_x) + entropy(cols_y)):.3f}")
-print(f"variation of information      {entropy(rows_x) + entropy(cols_y) - 2 * info:.3f}")
+# TODO(code, Python): needs adjusted Rand, normalized mutual information and variation of information, e.g. a compare_partitions() in the knappnet backend
 ```
 
 ::: {.code-output}
 ```text
-table (rows X, columns Y)  [[3, 1], [0, 4]]
-adjusted Rand                 0.495
-normalized mutual information 0.562
-variation of information      0.594
+TODO(output)
 ```
 :::
 
@@ -1378,16 +1241,12 @@ The standard trick is **consensus clustering**: run the method many times and ke
 
 ```r
 # Louvain on the marriage network with 100 different seeds.
-runs <- map(1:100, \(s) as.integer(net_louvain(florence, seed = s)))
+runs <- lapply(1:100, \(s) as.integer(net_louvain(florence, seed = s)))
 distinct_runs <- unique(runs)
-q_of_runs <- map_dbl(distinct_runs, \(l) net_modularity(florence, l))
-tibble(distinct_partitions = length(distinct_runs), lowest_q = round(min(q_of_runs), 3), highest_q = round(max(q_of_runs), 3))
+q_of_runs <- sapply(distinct_runs, \(l) net_modularity(florence, l))
+c(distinct_partitions = length(distinct_runs), lowest_q = round(min(q_of_runs), 3), highest_q = round(max(q_of_runs), 3))
 
-# How often is each pair of families in the same group? Always, never, or only in some runs.
-together <- rowMeans(simplify2array(map(runs, \(l) outer(l, l, "==") * 1)), dims = 2)
-shares <- together[upper.tri(together)]
-tibble(pairs = length(shares), always = sum(shares == 1), never = sum(shares == 0), sometimes = sum(shares > 0 & shares < 1))
-sort(florence$nodes$id[rowSums(together > 0 & together < 1) > 0])
+# TODO(code, R): needs a co-assignment summary (net_coassignment(runs): how often each pair of families lands in the same group); the always, never and sometimes counts are in the Rust tab.
 ```
 
 ::: {.code-output}
@@ -1408,28 +1267,12 @@ sort(florence$nodes$id[rowSums(together > 0 & together < 1) > 0])
 ## Python
 
 ```python
-# Louvain on the marriage network with 100 different seeds. The same groups can get different numbers, so renumber by first member.
-runs = [family_labels(nx.community.louvain_communities(florence, seed=s)) for s in range(1, 101)]
-def first_seen(r):
-    order = {}
-    return tuple(order.setdefault(l, len(order)) for l in r)
-distinct_runs = {first_seen(r) for r in runs}
-q_of_runs = [quality([{families[i] for i, l in enumerate(r) if l == k} for k in set(r)]) for r in distinct_runs]
-print(f"distinct partitions {len(distinct_runs)}; modularity from {min(q_of_runs):.3f} to {max(q_of_runs):.3f}")
-
-# How often is each pair of families in the same group? Always, never, or only in some runs.
-labels_by_run = np.array(runs)
-together = np.mean(labels_by_run[:, :, None] == labels_by_run[:, None, :], axis=0)
-shares = together[np.triu_indices(len(families), 1)]
-print(f"of {len(shares)} pairs: always together {(shares == 1).sum()}, never together {(shares == 0).sum()}, sometimes {((shares > 0) & (shares < 1)).sum()}")
-print("families in at least one shaky pair ", ", ".join(sorted(f for f, row in zip(families, (together > 0) & (together < 1)) if row.any())))
+# TODO(code, Python): needs a co-assignment summary over many Louvain runs (how often each pair of families lands together)
 ```
 
 ::: {.code-output}
 ```text
-distinct partitions 2; modularity from 0.391 to 0.398
-of 105 pairs: always together 23, never together 72, sometimes 10
-families in at least one shaky pair  Acciaiuoli, Barbadori, Medici, Pazzi, Ridolfi, Salviati, Tornabuoni
+TODO(output)
 ```
 :::
 
@@ -1496,15 +1339,13 @@ Every network has a partition with a positive $Q$, and optimization finds struct
 
 ```r
 # The best modularity Louvain finds in five tries (seeds 1 to 5).
-best_of_five <- \(h) max(map_dbl(1:5, \(s) attr(net_louvain(h, seed = s), "modularity")))
+best_of_five <- \(h) max(sapply(1:5, \(s) attr(net_louvain(h, seed = s), "modularity")))
 obs_q <- best_of_five(florence)
 # 200 random marriage networks with every family's number of marriages kept (no loops, no repeats).
 draws <- net_random_config(net_degree(florence), simple = TRUE, max_tries = 100000, reps = 200, seed = 1)
-null_q <- map_dbl(draws, best_of_five)
-tibble(
-  observed = round(obs_q, 3), null_mean = round(mean(null_q), 3), null_highest = round(max(null_q), 3),
-  share_as_high = mean(null_q >= obs_q - 1e-9)
-)
+null_q <- sapply(draws, best_of_five)
+c(observed = round(obs_q, 3), null_mean = round(mean(null_q), 3), null_highest = round(max(null_q), 3),
+  share_as_high = mean(null_q >= obs_q - 1e-9))
 ```
 
 ::: {.code-output}
@@ -1519,6 +1360,11 @@ tibble(
 ## Python
 
 ```python
+import numpy as np
+
+# Florentine families around 1430: a tie means a marriage between two families.
+florence = nx.Graph([tuple(line.split(",")) for line in open("data/florentine/edges.csv").read().split()[1:]])
+
 # The best modularity Louvain finds in five tries (seeds 1 to 5).
 def best_of_five(h):
     return max(nx.community.modularity(h, nx.community.louvain_communities(h, seed=s)) for s in range(1, 6))
@@ -1599,45 +1445,36 @@ The next code shows what changes when ties have directions or weights; look at w
 ```r
 # Sampson's novices, third wave of liking: who chose whom, as pairs of numbers 1 to 18.
 novices <- read.csv("data/sampson/nodes.csv")$name
-chosen <- read.csv("data/sampson/edges.csv") |>
-  filter(relation == "liking", time == 3) |>
-  transmute(source = match(from, novices), target = match(to, novices))
-# A new column made inside transmute() is visible to the ones after it, so the sorted pair gets its own names.
-either <- chosen |>
-  transmute(low = pmin(source, target), high = pmax(source, target)) |>
-  distinct() |>
-  rename(source = low, target = high)
-mutual <- chosen |>
-  semi_join(chosen, by = c("source" = "target", "target" = "source")) |>
-  filter(source < target)
-novice_net <- \(ties, directed = FALSE) net_frame(ties, nodes = tibble(id = 1:18), directed = directed, quiet = TRUE)
+liking <- read.csv("data/sampson/edges.csv")
+liking <- liking[liking$relation == "liking" & liking$time == 3, ]
+chosen <- data.frame(source = match(liking$from, novices), target = match(liking$to, novices))
+either <- unique(data.frame(source = pmin(chosen$source, chosen$target), target = pmax(chosen$source, chosen$target)))
+reversed <- paste(chosen$target, chosen$source)
+mutual <- chosen[paste(chosen$source, chosen$target) %in% reversed & chosen$source < chosen$target, ]
+novice_net <- \(ties, directed = FALSE) net_frame(ties, nodes = data.frame(id = 1:18), directed = directed, quiet = TRUE)
 either_net <- novice_net(either)
 mutual_net <- novice_net(mutual)
 arrows_net <- novice_net(chosen, directed = TRUE)
 louvain_either <- as.integer(net_louvain(either_net, seed = 1))
 louvain_mutual <- as.integer(net_louvain(mutual_net, seed = 1))
 infomap_arrows <- as.integer(net_infomap(arrows_net, seed = 1))
-tibble(
+data.frame(
   method = c("Louvain, either way", "Louvain, both ways only", "Infomap, with the arrows"),
-  groups = c(n_distinct(louvain_either), n_distinct(louvain_mutual), n_distinct(infomap_arrows)),
+  groups = c(length(unique(louvain_either)), length(unique(louvain_mutual)), length(unique(infomap_arrows))),
   modularity = round(c(net_modularity(either_net, louvain_either), net_modularity(mutual_net, louvain_mutual),
                        net_modularity(either_net, infomap_arrows)), 3)
 )
-tibble(
-  choices = nrow(chosen), pairs_either_way = nrow(either), pairs_both_ways = nrow(mutual),
+c(choices = nrow(chosen), pairs_either_way = nrow(either), pairs_both_ways = nrow(mutual),
   ari_either_vs_mutual = round(net_compare_partitions(louvain_either, louvain_mutual, method = "adjusted_rand"), 3),
-  ari_either_vs_infomap = round(net_compare_partitions(louvain_either, infomap_arrows, method = "adjusted_rand"), 3)
-)
+  ari_either_vs_infomap = round(net_compare_partitions(louvain_either, infomap_arrows, method = "adjusted_rand"), 3))
 
 # Karate: the same ties, counted once each or weighted by the number of contexts in which the pair was seen.
-valued <- read.csv("data/karate/edges.csv") |>
-  net_frame(nodes = tibble(id = 1:34), directed = FALSE, weight = "contexts", weight_type = "strength")
+valued <- net_frame(read.csv("data/karate/edges.csv"), nodes = data.frame(id = 1:34), directed = FALSE,
+                    weight = "contexts", weight_type = "strength")
 with_weights <- net_louvain(valued, weighted = TRUE, seed = 1)
-tibble(
-  groups = n_distinct(as.integer(with_weights)), weighted_modularity = round(attr(with_weights, "modularity"), 3),
+c(groups = length(unique(as.integer(with_weights))), weighted_modularity = round(attr(with_weights, "modularity"), 3),
   real_split_weighted = round(net_modularity(valued, sides, weighted = TRUE), 3),
-  real_split_unweighted = round(net_modularity(valued, sides, weighted = FALSE), 3)
-)
+  real_split_unweighted = round(net_modularity(valued, sides, weighted = FALSE), 3))
 ```
 
 ::: {.code-output}
@@ -1681,11 +1518,9 @@ def louvain_on(pairs):
     return h, nx.community.louvain_communities(h, seed=1)
 
 (h_either, found_either), (h_mutual, found_mutual) = louvain_on(either), louvain_on(mutual)
-label_of = lambda groups: [next(k for k, grp in enumerate(groups) if i in grp) for i in range(18)]
 print(f"choices {len(chosen)}, pairs with a choice either way {len(either)}, pairs chosen both ways {len(mutual)}")
 print(f"Louvain, either way         {len(found_either):>2} groups, modularity {nx.community.modularity(h_either, found_either):.3f}")
 print(f"Louvain, both ways only     {len(found_mutual):>2} groups, modularity {nx.community.modularity(h_mutual, found_mutual):.3f}")
-print(f"agreement (adjusted Rand), either vs both ways {adjusted_rand_of(label_of(found_either), label_of(found_mutual)):.3f}")
 # NetworkX has no Infomap, so there is no run that follows the arrows here.
 
 # Karate: the same ties, counted once each or weighted by the number of contexts in which the pair was seen.
@@ -1703,7 +1538,6 @@ print(f"karate, weighted by contexts: {len(with_weights)} groups, weighted modul
 choices 56, pairs with a choice either way 41, pairs chosen both ways 15
 Louvain, either way          3 groups, modularity 0.443
 Louvain, both ways only      6 groups, modularity 0.598
-agreement (adjusted Rand), either vs both ways 0.513
 karate, weighted by contexts: 4 groups, weighted modularity 0.444; real split scores 0.391 weighted, 0.358 unweighted
 ```
 :::
@@ -1825,7 +1659,7 @@ What we saw while writing this chapter, so you can recognize it:
 - **Label propagation.** Variants differ (update rules, stopping rules), so a tool's "label propagation" is a family, not one algorithm. NetworkX's version scored 0.385 on the karate club where the Rust engine's scored 0.374 (@sec-case-karate).
 - **Weights.** The karate club comes with and without tie weights, and the modularity of its real split is 0.358 on one and 0.391 on the other.
 - **Normalizations.** NMI divides the mutual information by a mean of the two entropies. Tools choose different means (this book's engine uses the arithmetic mean, $2I/(H(X) + H(Y))$), and VI may be in nats or bits, so numbers from two tools may not be comparable. Adjusted Rand is the same everywhere.
-- **No exact optimizer or Infomap in NetworkX.** The Python tabs have fewer rows because some methods don't exist there.
+- **No exact optimizer or Infomap in NetworkX.** Some methods and scores in this chapter do not exist there, so the matching Python tabs are stubs that name what is missing.
 
 ## A cheat sheet
 
