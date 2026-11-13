@@ -1,76 +1,1650 @@
 # Collecting network data {#sec-collecting-data}
 
-::: {.callout-note appearance="simple"}
-## Prerequisites
-Networks as data.
-:::
-
-## Introduction
-
-Boundaries, sampling, survey design, missing data, and ethics.
-
-TODO(prose, see docs/VOICE.md): motivating question, the idea in plain words, what the reader can
-do after this chapter.
-
 ## Where the boundary is
 
-TODO(prose): concept, definition, a small worked example by hand.
-
-Every code example uses this three-tab block. The tab text is placeholder until
-the library interface is final; the comment names the measure it will call.
+PROSE
 
 ::: {.panel-tabset group="language"}
 
 ## R
 
 ```r
-# TODO(code, R): summarize missing ties
+library(knappnet)
+library(dplyr)
+library(purrr)
+library(tibble)
+
+# A 0/1 table from the first two columns of a file. Files number people from 1.
+table_of <- \(rows, n) {
+  m <- matrix(0, n, n)
+  m[cbind(rows[[1]], rows[[2]])] <- 1
+  m
+}
+spearman <- \(x, y) cor(x, y, method = "spearman")
+# Park and Miller's little generator, so every language draws the same "random" numbers.
+uniform <- \(count, seed) {
+  states <- accumulate(seq_len(count), \(state, i) (state * 48271) %% 2147483647, .init = seed)
+  states[-1] / 2147483647
+}
+graph_of <- \(m) as_net_frame(m, directed = FALSE, quiet = TRUE)
+between <- \(m) unname(net_betweenness(graph_of(m)))
+
+club <- read.csv("data/karate/edges.csv") |> table_of(34)
+club <- pmax(club, t(club))
+faction <- read.csv("data/karate/nodes.csv")$faction
+
+# The boundary: only Mr. Hi's side is "in the study".
+inside <- faction == "Mr. Hi"
+kept <- club[inside, inside]
+whole <- graph_of(club)
+part <- graph_of(kept)
+tibble(
+  measure = c("members", "ties", "mean degree", "density", "clustering"),
+  whole_club = c(nrow(club), sum(club) / 2, mean(rowSums(club)), net_density(whole), net_transitivity(whole)),
+  mr_hi_side = c(nrow(kept), sum(kept) / 2, mean(rowSums(kept)), net_density(part), net_transitivity(part))
+) |>
+  mutate(across(where(is.numeric), \(x) round(x, 3)))
+
+lost <- rowSums(club)[inside] - rowSums(kept)
+tibble(
+  ties_cut = sum(club[inside, !inside]), of_ties = sum(club) / 2,
+  lose_a_third = sum(3 * lost >= rowSums(club)[inside]), of_members = sum(inside),
+  degree_rho = spearman(rowSums(club)[inside], rowSums(kept)),
+  betweenness_rho = spearman(between(club)[inside], between(kept))
+) |>
+  mutate(across(where(is.numeric), \(x) round(x, 3)))
 ```
 
 ::: {.code-output}
 ```text
-TODO(output): the printed result of the code above, once it runs.
+PENDING
 ```
 :::
 
 ## Python
 
 ```python
-# TODO(code, Python): summarize missing ties
+import csv
+from collections import Counter
+from itertools import combinations
+
+import networkx as nx
+import numpy as np
+
+def read(path):
+    with open(path) as f:
+        return list(csv.DictReader(f))
+
+def table(rows, n, a, b, keep=lambda r: True):
+    """Row i, column j is 1 when a row of the file says i -> j. Files number people from 1."""
+    m = np.zeros((n, n), dtype=int)
+    for r in rows:
+        if keep(r):
+            m[int(r[a]) - 1, int(r[b]) - 1] = 1
+    return m
+
+def ranks(x):
+    # 1 for the smallest; tied values share the average of their ranks
+    x = np.asarray(x)
+    return np.array([(x < v).sum() + ((x == v).sum() + 1) / 2 for v in x])
+
+def spearman(x, y):
+    return np.corrcoef(ranks(x), ranks(y))[0, 1]
+
+def uniform(count, seed):
+    """Park and Miller's little generator, so every language draws the same "random" numbers."""
+    state, out = seed, []
+    for _ in range(count):
+        state = state * 48271 % 2147483647
+        out.append(state / 2147483647)
+    return np.array(out)
+
+graph_of = nx.from_numpy_array   # a symmetric 0/1 table to an undirected network
+between = lambda m: np.array(list(nx.betweenness_centrality(graph_of(m), normalized=False).values()))
+
+club = table(read("data/karate/edges.csv"), 34, "source", "target")
+club = np.maximum(club, club.T)
+faction = np.array([r["faction"] for r in read("data/karate/nodes.csv")])
+
+# The boundary: only Mr. Hi's side is "in the study".
+inside = faction == "Mr. Hi"
+kept = club[np.ix_(inside, inside)]
+whole, part = graph_of(club), graph_of(kept)
+print(f"{'':<13}{'whole club':>11}{'Mr. Hi side':>13}")
+for label, a, b, digits in [
+    ("members", 34, len(kept), 0), ("ties", whole.number_of_edges(), part.number_of_edges(), 0),
+    ("mean degree", club.sum() / 34, kept.sum() / len(kept), 3), ("density", nx.density(whole), nx.density(part), 3),
+    ("clustering", nx.transitivity(whole), nx.transitivity(part), 3),
+]:
+    print(f"{label:<13}{a:>11.{digits}f}{b:>13.{digits}f}")
+
+before, after = club.sum(1)[inside], kept.sum(1)
+print(f"ties cut by the boundary: {club[np.ix_(inside, ~inside)].sum()} of {whole.number_of_edges()}")
+print(f"members who lose at least a third of their ties: {(3 * (before - after) >= before).sum()} of {inside.sum()}")
+print(f"rank correlation with the whole-club value, Mr. Hi's side only: degree {spearman(before, after):.3f}, "
+      f"betweenness {spearman(between(club)[inside], between(kept)):.3f}")
 ```
 
 ::: {.code-output}
 ```text
-TODO(output): the printed result of the code above, once it runs.
+              whole club  Mr. Hi side
+members               34           17
+ties                  78           35
+mean degree        4.588        4.118
+density            0.139        0.257
+clustering         0.256        0.392
+ties cut by the boundary: 11 of 78
+members who lose at least a third of their ties: 3 of 17
+rank correlation with the whole-club value, Mr. Hi's side only: degree 0.885, betweenness 0.587
 ```
 :::
 
 ## Rust
 
 ```rust
-// TODO(code, Rust): summarize missing ties
+use knappnet::metrics::descriptive::{compute_distances, compute_mean_distance, compute_transitivity, ClusteringOptions, PathOptions};
+use knappnet::metrics::topography::{compute_density, find_components, ComponentKind};
+use knappnet::{compute_betweenness, BetweennessOptions, Graph};
+
+// The rows of a comma-separated file, without the header line.
+let read = |path: &str| -> Vec<Vec<String>> {
+    std::fs::read_to_string(path).unwrap().lines().skip(1)
+        .map(|line| line.split(',').map(String::from).collect()).collect()
+};
+// Row i, column j is 1 when a row of the file says i -> j. Files number people from 1.
+let table = |rows: &[Vec<String>], n: usize, keep: &dyn Fn(&Vec<String>) -> bool| -> Vec<Vec<f64>> {
+    let mut m = vec![vec![0.0; n]; n];
+    for r in rows.iter().filter(|r| keep(r)) {
+        m[r[0].parse::<usize>().unwrap() - 1][r[1].parse::<usize>().unwrap() - 1] = 1.0;
+    }
+    m
+};
+let mean = |x: &[f64]| x.iter().sum::<f64>() / x.len() as f64;
+let degrees = |m: &Vec<Vec<f64>>| -> Vec<f64> { m.iter().map(|row| row.iter().sum()).collect() };
+// The rows and columns of a table that belong to some of the people.
+let sub_table = |m: &Vec<Vec<f64>>, keep: &[usize]| -> Vec<Vec<f64>> {
+    keep.iter().map(|&a| keep.iter().map(|&b| m[a][b]).collect()).collect()
+};
+// Positions that sort the values from smallest to largest, ties by position.
+let order = |x: &[f64]| -> Vec<usize> {
+    let mut o: Vec<usize> = (0..x.len()).collect();
+    o.sort_by(|&a, &b| x[a].partial_cmp(&x[b]).unwrap().then(a.cmp(&b)));
+    o
+};
+// Average ranks (tied values share the mean of their ranks) and the rank correlation.
+let ranks = |x: &[f64]| -> Vec<f64> {
+    x.iter().map(|&v| x.iter().filter(|&&u| u < v).count() as f64
+        + (x.iter().filter(|&&u| u == v).count() as f64 + 1.0) / 2.0).collect()
+};
+let spearman = |x: &[f64], y: &[f64]| -> f64 {
+    let (rx, ry) = (ranks(x), ranks(y));
+    let (mx, my) = (mean(&rx), mean(&ry));
+    let cov: f64 = rx.iter().zip(&ry).map(|(a, b)| (a - mx) * (b - my)).sum();
+    cov / (rx.iter().map(|a| (a - mx).powi(2)).sum::<f64>() * ry.iter().map(|b| (b - my).powi(2)).sum::<f64>()).sqrt()
+};
+// Park and Miller's little generator, so every language draws the same "random" numbers.
+let uniform = |count: usize, seed: u64| -> Vec<f64> {
+    let mut state = seed;
+    (0..count).map(|_| { state = state * 48271 % 2147483647; state as f64 / 2147483647.0 }).collect()
+};
+// A table in which i and j are tied if either one says so.
+let symmetric = |m: &Vec<Vec<f64>>| -> Vec<Vec<f64>> {
+    (0..m.len()).map(|i| (0..m.len()).map(|j| f64::max(m[i][j], m[j][i])).collect()).collect()
+};
+// A symmetric 0/1 table to an undirected network, and the betweenness of everyone in it.
+let graph_of = |m: &Vec<Vec<f64>>| -> Result<Graph, knappnet::Error> {
+    let n = m.len();
+    let (from, to): (Vec<i64>, Vec<i64>) = (0..n).flat_map(|i| (0..n).map(move |j| (i, j)))
+        .filter(|&(i, j)| i < j && m[i][j] > 0.0).map(|(i, j)| (i as i64, j as i64)).unzip();
+    Graph::from_edges(n, &from, &to, None, false)
+};
+let between = |m: &Vec<Vec<f64>>| -> Result<Vec<f64>, knappnet::Error> {
+    compute_betweenness(&graph_of(m)?, BetweennessOptions::default())
+};
+
+let club = symmetric(&table(&read("data/karate/edges.csv"), 34, &|_| true));
+let faction: Vec<String> = read("data/karate/nodes.csv").iter().map(|r| r[1].clone()).collect();
+
+// The boundary: only Mr. Hi's side is "in the study".
+let inside: Vec<usize> = (0..34).filter(|&i| faction[i] == "Mr. Hi").collect();
+let outside: Vec<usize> = (0..34).filter(|&i| faction[i] != "Mr. Hi").collect();
+let kept = sub_table(&club, &inside);
+let (whole, part) = (graph_of(&club)?, graph_of(&kept)?);
+println!("{:<13}{:>11}{:>13}", "", "whole club", "Mr. Hi side");
+let clustering = |g: &Graph| compute_transitivity(g, ClusteringOptions::default());
+println!("{:<13}{:>11}{:>13}", "members", 34, kept.len());
+println!("{:<13}{:>11}{:>13}", "ties", whole.edge_count(), part.edge_count());
+println!("{:<13}{:>11.3}{:>13.3}", "mean degree", mean(&degrees(&club)), mean(&degrees(&kept)));
+println!("{:<13}{:>11.3}{:>13.3}", "density", compute_density(&whole, false), compute_density(&part, false));
+println!("{:<13}{:>11.3}{:>13.3}", "clustering", clustering(&whole), clustering(&part));
+
+let club_degree = degrees(&club);
+let before: Vec<f64> = inside.iter().map(|&i| club_degree[i]).collect();
+let after = degrees(&kept);
+let cut: f64 = inside.iter().map(|&i| outside.iter().map(|&j| club[i][j]).sum::<f64>()).sum();
+let club_between = between(&club)?;
+let between_inside: Vec<f64> = inside.iter().map(|&i| club_between[i]).collect();
+println!("ties cut by the boundary: {} of {}", cut, whole.edge_count());
+println!("members who lose at least a third of their ties: {} of {}",
+         (0..inside.len()).filter(|&i| 3.0 * (before[i] - after[i]) >= before[i]).count(), inside.len());
+println!("rank correlation with the whole-club value, Mr. Hi's side only: degree {:.3}, betweenness {:.3}",
+         spearman(&before, &after), spearman(&between_inside, &between(&kept)?));
 ```
 
 ::: {.code-output}
 ```text
-TODO(output): the printed result of the code above, once it runs.
+              whole club  Mr. Hi side
+members               34           17
+ties                  78           35
+mean degree        4.588        4.118
+density            0.139        0.257
+clustering         0.256        0.392
+ties cut by the boundary: 11 of 78
+members who lose at least a third of their ties: 3 of 17
+rank correlation with the whole-club value, Mr. Hi's side only: degree 0.885, betweenness 0.587
 ```
 :::
 
 :::
 
-## Exercises
 
-1. TODO(exercise): a by-hand exercise on a tiny network.
-2. TODO(exercise): a coding exercise on a dataset from the appendix.
-3. TODO(exercise): an interpretation exercise.
+PROSE
 
-## Summary
+## Name generators
 
-::: {.callout-tip appearance="simple"}
-TODO(summary): three to five sentences, then the one-line takeaway.
+PROSE
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# Krackhardt's three relations among the same 21 managers, one table each.
+kr <- read.csv("data/krackhardt/edges.csv")
+relation <- \(name) kr |> filter(relation == name) |> select(from, to) |> table_of(21)
+advice <- relation("advice")
+friend <- relation("friendship")
+reports <- relation("reports_to")
+
+busiest <- \(m, k = 3) order(-colSums(m), seq_len(ncol(m)))[seq_len(k)]
+reciprocated <- \(m) sum(m * t(m)) / sum(m)
+tibble(
+  relation = c("advice", "friendship"),
+  arcs = c(sum(advice), sum(friend)),
+  reciprocated = c(reciprocated(advice), reciprocated(friend)),
+  busiest_three = c(toString(busiest(advice)), toString(busiest(friend)))
+) |>
+  mutate(reciprocated = round(reciprocated, 3))
+
+both <- advice * friend
+tibble(
+  advice_also_friendship = sum(both) / sum(advice), friendship_also_advice = sum(both) / sum(friend),
+  in_degree_rho = spearman(colSums(advice), colSums(friend)),
+  out_degree_rho = spearman(rowSums(advice), rowSums(friend)),
+  reports_named_in_advice = sum(reports * advice), reports_named_in_friendship = sum(reports * friend),
+  reports = sum(reports)
+) |>
+  mutate(across(where(is.numeric), \(x) round(x, 3)))
+
+# Sampson's novices named at most three people in each of three waves; Krackhardt's managers named anyone.
+liking <- read.csv("data/sampson/edges.csv") |> filter(relation == "liking")
+liking |>
+  count(time, from) |>
+  group_by(time) |>
+  summarise(choices = sum(n), fewest = min(n), most = max(n))
+tibble(fewest = min(rowSums(friend)), most = max(rowSums(friend)))
+
+# A tie that must show up in one wave, in two, or in all three.
+liking |> count(from, to, name = "waves") |> count(waves, name = "choices")
+
+# Cap the number of names at k, keeping a random k of each manager's arcs (200 draws).
+capped <- \(m, k, seed = 99, draws = 200) {
+  arcs <- which(m > 0, arr.ind = TRUE) |> as_tibble() |> arrange(row, col)
+  keys <- matrix(uniform(draws * nrow(arcs), seed), nrow = draws, byrow = TRUE)
+  map(seq_len(draws), \(r) {
+    kept <- arcs |> mutate(key = keys[r, ]) |> group_by(row) |> slice_min(key, n = k) |> ungroup()
+    smaller <- table_of(kept, nrow(m))
+    c(arcs = nrow(kept), reciprocated = reciprocated(smaller), in_degree_rho = spearman(colSums(m), colSums(smaller)))
+  }) |>
+    map(\(v) as_tibble_row(v)) |>
+    list_rbind() |>
+    colMeans() |>
+    as_tibble_row()
+}
+grid <- tibble(relation = rep(c("friendship", "advice"), each = 3), cap = rep(c(2, 3, 5), 2))
+bind_cols(grid, map2(grid$relation, grid$cap, \(r, k) capped(if (r == "advice") advice else friend, k)) |> list_rbind()) |>
+  mutate(across(c(arcs, reciprocated, in_degree_rho), \(x) round(x, 3)))
+```
+
+::: {.code-output}
+```text
+PENDING
+```
 :::
 
-## Further reading
+## Python
 
-TODO(refs): cite with `@key` from `shared/bib/references.bib`.
+```python
+# Krackhardt's three relations among the same 21 managers, one table each.
+kr_rows = read("data/krackhardt/edges.csv")
+advice, friend, reports = (table(kr_rows, 21, "from", "to", lambda r, k=k: r["relation"] == k)
+                           for k in ("advice", "friendship", "reports_to"))
+
+busiest = lambda m, k=3: [int(i) + 1 for i in np.argsort(-m.sum(0), kind="stable")[:k]]
+reciprocated = lambda m: (m * m.T).sum() / m.sum()
+print(f"{'':<11}{'arcs':>5}{'reciprocated':>14}   busiest three")
+for name, m in [("advice", advice), ("friendship", friend)]:
+    print(f"{name:<11}{m.sum():>5}{reciprocated(m):>14.3f}   {busiest(m)}")
+
+both = advice * friend
+print(f"advice arcs that are also friendship arcs: {both.sum()} of {advice.sum()} ({both.sum() / advice.sum():.3f})")
+print(f"friendship arcs that are also advice arcs: {both.sum()} of {friend.sum()} ({both.sum() / friend.sum():.3f})")
+print(f"rank correlation of in-degree, advice with friendship: {spearman(advice.sum(0), friend.sum(0)):.3f}; "
+      f"of out-degree: {spearman(advice.sum(1), friend.sum(1)):.3f}")
+print(f"reporting-line arcs also named as advice: {(reports * advice).sum()} of {reports.sum()}; "
+      f"as friendship: {(reports * friend).sum()} of {reports.sum()}")
+
+# Sampson's novices named at most three people in each of three waves; Krackhardt's managers named anyone.
+liking = [r for r in read("data/sampson/edges.csv") if r["relation"] == "liking"]
+for wave in ("1", "2", "3"):
+    named = Counter(r["from"] for r in liking if r["time"] == wave)
+    print(f"Sampson, liking, wave {wave}: {sum(named.values())} choices, each novice names {min(named.values())} to {max(named.values())}")
+print(f"Krackhardt, friendship: each manager names {friend.sum(1).min()} to {friend.sum(1).max()}")
+
+# A tie that must show up in one wave, in two, or in all three.
+waves_seen = Counter(Counter((r["from"], r["to"]) for r in liking).values())
+print(f"liking choices seen in 1, 2 and 3 waves: {waves_seen[1]}, {waves_seen[2]}, {waves_seen[3]}")
+
+# Cap the number of names at k, keeping a random k of each manager's arcs (200 draws).
+def capped(m, k, seed=99, draws=200):
+    arcs = np.argwhere(m)                          # in order of (from, to)
+    keys = uniform(draws * len(arcs), seed).reshape(draws, -1)
+    out = []
+    for key in keys:
+        smaller = np.zeros_like(m)
+        for i in range(len(m)):
+            mine = np.flatnonzero(arcs[:, 0] == i)
+            for a in mine[np.argsort(key[mine], kind="stable")[:k]]:
+                smaller[tuple(arcs[a])] = 1
+        out.append([smaller.sum(), reciprocated(smaller), spearman(m.sum(0), smaller.sum(0))])
+    return np.mean(out, axis=0)
+
+print(f"\n{'':<11}{'cap':>4}{'arcs kept':>10}{'reciprocated':>13}{'in-degree rho':>14}")
+for name, m in [("friendship", friend), ("advice", advice)]:
+    for k in (2, 3, 5):
+        arcs_kept, recip, rho = capped(m, k)
+        print(f"{name:<11}{k:>4}{arcs_kept:>10.1f}{recip:>13.3f}{rho:>14.3f}")
+```
+
+::: {.code-output}
+```text
+            arcs  reciprocated   busiest three
+advice       190         0.474   [2, 18, 21]
+friendship   102         0.451   [2, 1, 12]
+advice arcs that are also friendship arcs: 60 of 190 (0.316)
+friendship arcs that are also advice arcs: 60 of 102 (0.588)
+rank correlation of in-degree, advice with friendship: 0.139; of out-degree: -0.094
+reporting-line arcs also named as advice: 19 of 20; as friendship: 12 of 20
+Sampson, liking, wave 1: 55 choices, each novice names 3 to 4
+Sampson, liking, wave 2: 57 choices, each novice names 3 to 4
+Sampson, liking, wave 3: 56 choices, each novice names 3 to 4
+Krackhardt, friendship: each manager names 0 to 18
+liking choices seen in 1, 2 and 3 waves: 38, 20, 30
+
+            cap arcs kept reciprocated in-degree rho
+friendship    2      36.0        0.220         0.623
+friendship    3      48.0        0.304         0.698
+friendship    5      68.0        0.381         0.819
+advice        2      41.0        0.137         0.702
+advice        3      60.0        0.190         0.778
+advice        5      92.0        0.278         0.849
+```
+:::
+
+## Rust
+
+```rust
+// Krackhardt's three relations among the same 21 managers, one table each.
+let kr_rows = read("data/krackhardt/edges.csv");
+let relation = |name: &str| table(&kr_rows, 21, &|r| r[2] == name);
+let (advice, friend, reports) = (relation("advice"), relation("friendship"), relation("reports_to"));
+let column_sums = |m: &Vec<Vec<f64>>| -> Vec<f64> { (0..m.len()).map(|j| m.iter().map(|row| row[j]).sum()).collect() };
+let total = |m: &Vec<Vec<f64>>| -> f64 { m.iter().map(|row| row.iter().sum::<f64>()).sum() };
+let overlap = |a: &Vec<Vec<f64>>, b: &Vec<Vec<f64>>| -> f64 {
+    (0..a.len()).map(|i| (0..a.len()).map(|j| a[i][j] * b[i][j]).sum::<f64>()).sum()
+};
+let transposed = |m: &Vec<Vec<f64>>| -> Vec<Vec<f64>> { (0..m.len()).map(|i| (0..m.len()).map(|j| m[j][i]).collect()).collect() };
+let reciprocated = |m: &Vec<Vec<f64>>| overlap(m, &transposed(m)) / total(m);
+let busiest = |m: &Vec<Vec<f64>>| -> Vec<usize> {
+    order(&column_sums(m).iter().map(|c| -c).collect::<Vec<f64>>())[..3].iter().map(|i| i + 1).collect()
+};
+println!("{:<11}{:>5}{:>14}   busiest three", "", "arcs", "reciprocated");
+for (name, m) in [("advice", &advice), ("friendship", &friend)] {
+    println!("{:<11}{:>5}{:>14.3}   {:?}", name, total(m), reciprocated(m), busiest(m));
+}
+
+let both = overlap(&advice, &friend);
+println!("advice arcs that are also friendship arcs: {} of {} ({:.3})", both, total(&advice), both / total(&advice));
+println!("friendship arcs that are also advice arcs: {} of {} ({:.3})", both, total(&friend), both / total(&friend));
+println!("rank correlation of in-degree, advice with friendship: {:.3}; of out-degree: {:.3}",
+         spearman(&column_sums(&advice), &column_sums(&friend)), spearman(&degrees(&advice), &degrees(&friend)));
+println!("reporting-line arcs also named as advice: {} of {}; as friendship: {} of {}",
+         overlap(&reports, &advice), total(&reports), overlap(&reports, &friend), total(&reports));
+
+// Sampson's novices named at most three people in each of three waves; Krackhardt's managers named anyone.
+let liking: Vec<Vec<String>> = read("data/sampson/edges.csv").into_iter().filter(|r| r[2] == "liking").collect();
+for wave in ["1", "2", "3"] {
+    let mut named = std::collections::BTreeMap::new();
+    for r in liking.iter().filter(|r| r[4] == wave) {
+        *named.entry(r[0].clone()).or_insert(0) += 1;
+    }
+    println!("Sampson, liking, wave {wave}: {} choices, each novice names {} to {}", named.values().sum::<i32>(),
+             named.values().min().unwrap(), named.values().max().unwrap());
+}
+let friend_out = degrees(&friend);
+println!("Krackhardt, friendship: each manager names {} to {}", friend_out.iter().cloned().fold(f64::MAX, f64::min),
+         friend_out.iter().cloned().fold(0.0, f64::max));
+
+// A tie that must show up in one wave, in two, or in all three.
+let mut per_pair = std::collections::BTreeMap::new();
+for r in &liking {
+    *per_pair.entry((r[0].clone(), r[1].clone())).or_insert(0) += 1;
+}
+let seen_in = |k: i32| per_pair.values().filter(|&&v| v == k).count();
+println!("liking choices seen in 1, 2 and 3 waves: {}, {}, {}", seen_in(1), seen_in(2), seen_in(3));
+
+// Cap the number of names at k, keeping a random k of each manager's arcs (200 draws).
+let capped = |m: &Vec<Vec<f64>>, k: usize| -> [f64; 3] {
+    let arcs: Vec<(usize, usize)> = (0..21).flat_map(|i| (0..21).map(move |j| (i, j))).filter(|&(i, j)| m[i][j] > 0.0).collect();
+    let keys = uniform(200 * arcs.len(), 99);
+    let mut sums = [0.0; 3];
+    for key in keys.chunks(arcs.len()) {
+        let mut smaller = vec![vec![0.0; 21]; 21];
+        for i in 0..21 {
+            let mine: Vec<usize> = (0..arcs.len()).filter(|&a| arcs[a].0 == i).collect();
+            let by_key = order(&mine.iter().map(|&a| key[a]).collect::<Vec<f64>>());
+            for &p in by_key.iter().take(k) {
+                smaller[arcs[mine[p]].0][arcs[mine[p]].1] = 1.0;
+            }
+        }
+        sums[0] += total(&smaller);
+        sums[1] += reciprocated(&smaller);
+        sums[2] += spearman(&column_sums(m), &column_sums(&smaller));
+    }
+    [sums[0] / 200.0, sums[1] / 200.0, sums[2] / 200.0]
+};
+println!("\n{:<11}{:>4}{:>10}{:>13}{:>14}", "", "cap", "arcs kept", "reciprocated", "in-degree rho");
+for (name, m) in [("friendship", &friend), ("advice", &advice)] {
+    for k in [2, 3, 5] {
+        let [arcs_kept, recip, rho] = capped(m, k);
+        println!("{:<11}{:>4}{:>10.1}{:>13.3}{:>14.3}", name, k, arcs_kept, recip, rho);
+    }
+}
+```
+
+::: {.code-output}
+```text
+            arcs  reciprocated   busiest three
+advice       190         0.474   [2, 18, 21]
+friendship   102         0.451   [2, 1, 12]
+advice arcs that are also friendship arcs: 60 of 190 (0.316)
+friendship arcs that are also advice arcs: 60 of 102 (0.588)
+rank correlation of in-degree, advice with friendship: 0.139; of out-degree: -0.094
+reporting-line arcs also named as advice: 19 of 20; as friendship: 12 of 20
+Sampson, liking, wave 1: 55 choices, each novice names 3 to 4
+Sampson, liking, wave 2: 57 choices, each novice names 3 to 4
+Sampson, liking, wave 3: 56 choices, each novice names 3 to 4
+Krackhardt, friendship: each manager names 0 to 18
+liking choices seen in 1, 2 and 3 waves: 38, 20, 30
+
+            cap arcs kept reciprocated in-degree rho
+friendship    2      36.0        0.220         0.623
+friendship    3      48.0        0.304         0.698
+friendship    5      68.0        0.381         0.819
+advice        2      41.0        0.137         0.702
+advice        3      60.0        0.190         0.778
+advice        5      92.0        0.278         0.849
+```
+:::
+
+:::
+
+
+PROSE
+
+## Snowball
+
+PROSE
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# Krackhardt's friendships as a mutual-or-not tie: a tie if either manager names the other.
+either <- pmax(friend, t(friend))
+
+# Start a snowball from every possible seed, one at a time. Everyone within `waves` steps of the seed
+# is named; everyone within `waves - 1` steps is interviewed, so a tie is seen when at least one of
+# its ends was interviewed.
+snowball <- \(m, waves) {
+  dist <- unname(net_distances(graph_of(m)))
+  degree <- rowSums(m)
+  full <- between(m)
+  top3 <- order(-degree, seq_along(degree))[1:3]
+  map(seq_len(nrow(m)), \(seed) {
+    named <- dist[seed, ] <= waves
+    asked <- dist[seed, ] <= waves - 1
+    seen <- (m * outer(asked, asked, "|"))[named, named, drop = FALSE]
+    tibble(people = sum(named), true_degree = mean(degree[named]), seen_degree = mean(rowSums(seen)),
+           undercounted = mean(rowSums(seen) < degree[named]), busiest3 = mean(top3 %in% which(named)),
+           between_rho = suppressWarnings(spearman(full[named], between(seen))))
+  }) |>
+    list_rbind()
+}
+
+cases <- list(`karate club` = club, `Krackhardt friendship` = either)
+imap(cases, \(m, name) {
+  map(1:3, \(w) snowball(m, w) |>
+        summarise(across(everything(), \(x) mean(x, na.rm = TRUE))) |>
+        mutate(waves = w, reached = people / nrow(m), .before = 1)) |>
+    list_rbind() |>
+    mutate(network = name, mean_degree = mean(rowSums(m)), .before = 1) |>
+    select(-people)
+}) |>
+  list_rbind() |>
+  mutate(across(where(is.numeric), \(x) round(x, 3))) |>
+  print(width = Inf)
+
+# The seed matters: how many people two waves reach from each possible start.
+reach <- snowball(club, 2)$people
+tibble(fewest = min(reach), seed_fewest = which.min(reach), most = max(reach), seed_most = which.max(reach))
+```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
+
+## Python
+
+```python
+# Krackhardt's friendships as a mutual-or-not tie: a tie if either manager names the other.
+either = np.maximum(friend, friend.T)
+
+def snowball(m, waves):
+    """Start a snowball from every possible seed, one at a time. Everyone within `waves` steps of the seed
+    is named; everyone within `waves - 1` steps is interviewed, so a tie is seen when at least one of
+    its ends was interviewed."""
+    n = len(m)
+    dist = dict(nx.all_pairs_shortest_path_length(graph_of(m)))
+    degree, full = m.sum(1), between(m)
+    top3 = np.argsort(-degree, kind="stable")[:3]
+    rows = []
+    for seed in range(n):
+        reach = np.array([dist[seed][v] for v in range(n)])
+        named, asked = reach <= waves, reach <= waves - 1
+        seen = (m * (asked[:, None] | asked[None, :]))[np.ix_(named, named)]
+        rows.append([named.sum(), degree[named].mean(), seen.sum(1).mean(), (seen.sum(1) < degree[named]).mean(),
+                     np.isin(top3, np.flatnonzero(named)).mean(), spearman(full[named], between(seen))])
+    return np.array(rows)
+
+head = f"{'waves':>5}{'reached':>9}{'true degree':>13}{'seen degree':>13}{'undercounted':>14}{'busiest 3':>11}{'betweenness rho':>17}"
+for name, m in [("karate club", club), ("Krackhardt friendship", either)]:
+    print(f"{name}: {len(m)} people, mean degree {m.sum() / len(m):.3f}")
+    print(head)
+    for waves in (1, 2, 3):
+        r = np.nanmean(snowball(m, waves), axis=0)
+        print(f"{waves:>5}{r[0] / len(m):>9.3f}{r[1]:>13.3f}{r[2]:>13.3f}{r[3]:>14.3f}{r[4]:>11.3f}{r[5]:>17.3f}")
+
+# The seed matters: how many people two waves reach from each possible start.
+reach = snowball(club, 2)[:, 0]
+print(f"karate club, two waves: from {reach.min():.0f} people (seed {reach.argmin() + 1}) "
+      f"to {reach.max():.0f} (seed {reach.argmax() + 1})")
+```
+
+::: {.code-output}
+```text
+karate club: 34 people, mean degree 4.588
+waves  reached  true degree  seen degree  undercounted  busiest 3  betweenness rho
+    1    0.164        7.852        1.527         0.762      0.471           -0.422
+    2    0.623        5.149        2.907         0.618      0.735            0.503
+    3    0.860        4.932        4.167         0.219      0.980            0.881
+Krackhardt friendship: 21 people, mean degree 7.524
+waves  reached  true degree  seen degree  undercounted  busiest 3  betweenness rho
+    1    0.406        9.096        1.722         0.861      0.714           -0.220
+    2    0.977        7.616        5.294         0.568      1.000            0.630
+    3    1.000        7.524        7.515         0.009      1.000            0.997
+karate club, two waves: from 6 people (seed 17) to 33 (seed 32)
+```
+:::
+
+## Rust
+
+```rust
+// Krackhardt's friendships as a mutual-or-not tie: a tie if either manager names the other.
+let either = symmetric(&friend);
+
+// Start a snowball from every possible seed, one at a time. Everyone within `waves` steps of the seed
+// is named; everyone within `waves - 1` steps is interviewed, so a tie is seen when at least one of
+// its ends was interviewed. One row per seed.
+let snowball = |m: &Vec<Vec<f64>>, waves: f64| -> Result<Vec<Vec<f64>>, knappnet::Error> {
+    let n = m.len();
+    let dist = compute_distances(&graph_of(m)?, None, PathOptions::default())?;
+    let degree = degrees(m);
+    let full = between(m)?;
+    let top3 = order(&degree.iter().map(|d| -d).collect::<Vec<f64>>())[..3].to_vec();
+    let mut rows = Vec::new();
+    for seed in 0..n {
+        let named: Vec<usize> = (0..n).filter(|&v| dist.get(seed, v) <= waves).collect();
+        let asked = |v: usize| dist.get(seed, v) <= waves - 1.0;
+        let seen: Vec<Vec<f64>> = named.iter()
+            .map(|&i| named.iter().map(|&j| if asked(i) || asked(j) { m[i][j] } else { 0.0 }).collect()).collect();
+        let seen_degree = degrees(&seen);
+        let true_degree: Vec<f64> = named.iter().map(|&v| degree[v]).collect();
+        rows.push(vec![
+            named.len() as f64,
+            mean(&true_degree),
+            mean(&seen_degree),
+            seen_degree.iter().zip(&true_degree).filter(|(s, t)| s < t).count() as f64 / named.len() as f64,
+            top3.iter().filter(|t| named.contains(t)).count() as f64 / 3.0,
+            spearman(&named.iter().map(|&v| full[v]).collect::<Vec<f64>>(), &between(&seen)?),
+        ]);
+    }
+    Ok(rows)
+};
+// The average of a column over the seeds where it is defined.
+let column_mean = |rows: &[Vec<f64>], c: usize| -> f64 {
+    mean(&rows.iter().map(|r| r[c]).filter(|x| !x.is_nan()).collect::<Vec<f64>>())
+};
+
+for (name, m) in [("karate club", &club), ("Krackhardt friendship", &either)] {
+    println!("{name}: {} people, mean degree {:.3}", m.len(), mean(&degrees(m)));
+    println!("{:>5}{:>9}{:>13}{:>13}{:>14}{:>11}{:>17}", "waves", "reached", "true degree", "seen degree", "undercounted", "busiest 3", "betweenness rho");
+    for waves in [1.0, 2.0, 3.0] {
+        let rows = snowball(m, waves)?;
+        println!("{:>5}{:>9.3}{:>13.3}{:>13.3}{:>14.3}{:>11.3}{:>17.3}", waves, column_mean(&rows, 0) / m.len() as f64,
+                 column_mean(&rows, 1), column_mean(&rows, 2), column_mean(&rows, 3), column_mean(&rows, 4), column_mean(&rows, 5));
+    }
+}
+
+// The seed matters: how many people two waves reach from each possible start.
+let reach: Vec<f64> = snowball(&club, 2.0)?.iter().map(|r| r[0]).collect();
+let (fewest, most) = (order(&reach)[0], order(&reach.iter().map(|x| -x).collect::<Vec<f64>>())[0]);
+println!("karate club, two waves: from {:.0} people (seed {}) to {:.0} (seed {})", reach[fewest], fewest + 1, reach[most], most + 1);
+```
+
+::: {.code-output}
+```text
+karate club: 34 people, mean degree 4.588
+waves  reached  true degree  seen degree  undercounted  busiest 3  betweenness rho
+    1    0.164        7.852        1.527         0.762      0.471           -0.422
+    2    0.623        5.149        2.907         0.618      0.735            0.503
+    3    0.860        4.932        4.167         0.219      0.980            0.881
+Krackhardt friendship: 21 people, mean degree 7.524
+waves  reached  true degree  seen degree  undercounted  busiest 3  betweenness rho
+    1    0.406        9.096        1.722         0.861      0.714           -0.220
+    2    0.977        7.616        5.294         0.568      1.000            0.630
+    3    1.000        7.524        7.515         0.009      1.000            0.997
+karate club, two waves: from 6 people (seed 17) to 33 (seed 32)
+```
+:::
+
+:::
+
+
+PROSE
+
+## RDS and ego
+
+PROSE
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+level <- read.csv("data/krackhardt/nodes.csv")$level
+cases <- list(
+  `karate club` = list(m = club, y = as.numeric(faction == "Officer")),
+  Krackhardt = list(m = either, y = as.numeric(level == 3))
+)
+
+# What a long chain of respondents, each naming a random contact, settles into: person i is reached
+# with probability proportional to their degree. Weighting each respondent by 1 / (reported degree)
+# undoes that.
+chain <- \(m, y, cap = Inf) {
+  d <- rowSums(m)
+  p <- d / sum(d)
+  reported <- pmin(d, cap)
+  c(truth = mean(y), unweighted = sum(p * y), weighted = sum(p * y / reported) / sum(p / reported))
+}
+pick <- \(case, kind, i, cap) {
+  m <- cases[[case]]$m
+  chain(m, if (kind == "degree") rowSums(m) else cases[[case]]$y, cap)[[i]]
+}
+tibble(
+  what = c("mean degree", "", "", "share Officers / level 3", "", "", ""),
+  version = c("everyone", "a chain, unweighted", "a chain, weighted", "everyone", "a chain, unweighted",
+              "a chain, weighted", "weighted, degree reported at most 6"),
+  kind = rep(c("degree", "share"), c(3, 4)), i = c(1, 2, 3, 1, 2, 3, 3), cap = c(rep(Inf, 6), 6)
+) |>
+  mutate(karate = pmap_dbl(list(kind, i, cap), \(k, i, cap) pick("karate club", k, i, cap)),
+         krackhardt = pmap_dbl(list(kind, i, cap), \(k, i, cap) pick("Krackhardt", k, i, cap))) |>
+  select(-kind, -i, -cap) |>
+  mutate(across(where(is.numeric), \(x) round(x, 3)))
+
+# Sampling people at random (ego sampling): the standard error of the mean degree for k people.
+tibble(
+  people_sampled = c(5, 10, 15),
+  karate = map_dbl(people_sampled, \(k) sd(rowSums(club)) * sqrt((1 - k / 34) / k)),
+  krackhardt = map_dbl(people_sampled, \(k) sd(rowSums(either)) * sqrt((1 - k / 21) / k))
+) |>
+  mutate(across(where(is.numeric), \(x) round(x, 3)))
+```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
+
+## Python
+
+```python
+level = np.array([int(r["level"]) for r in read("data/krackhardt/nodes.csv")])
+cases = {"karate club": (club, (faction == "Officer").astype(float)),
+         "Krackhardt": (either, (level == 3).astype(float))}
+
+def chain(m, y, cap=np.inf):
+    """What a long chain of respondents, each naming a random contact, settles into: person i is reached
+    with probability proportional to their degree. Weighting each respondent by 1 / (reported degree)
+    undoes that."""
+    d = m.sum(1)
+    p = d / d.sum()
+    reported = np.minimum(d, cap)
+    return y.mean(), p @ y, (p * y / reported).sum() / (p / reported).sum()
+
+rows = [("mean degree", "everyone", 0, "degree"), ("", "a chain, unweighted", 1, "degree"), ("", "a chain, weighted", 2, "degree"),
+        ("share Officers / level 3", "everyone", 0, "share"), ("", "a chain, unweighted", 1, "share"),
+        ("", "a chain, weighted", 2, "share"), ("", "weighted, degree reported at most 6", 2, "capped")]
+print(f"{'':<26}{'':<36}{'karate':>8}{'Krackhardt':>12}")
+for what, version, i, kind in rows:
+    values = []
+    for m, y in cases.values():
+        values.append(chain(m, m.sum(1) if kind == "degree" else y, 6 if kind == "capped" else np.inf)[i])
+    print(f"{what:<26}{version:<36}{values[0]:>8.3f}{values[1]:>12.3f}")
+
+# Sampling people at random (ego sampling): the standard error of the mean degree for k people.
+print(f"\n{'people sampled':<16}{'karate':>8}{'Krackhardt':>12}")
+for k in (5, 10, 15):
+    se = [m.sum(1).std(ddof=1) * np.sqrt((1 - k / len(m)) / k) for m, _ in cases.values()]
+    print(f"{k:<16}{se[0]:>8.3f}{se[1]:>12.3f}")
+```
+
+::: {.code-output}
+```text
+                                                                karate  Krackhardt
+mean degree               everyone                               4.588       7.524
+                          a chain, unweighted                    7.769       9.215
+                          a chain, weighted                      4.588       7.524
+share Officers / level 3  everyone                               0.500       0.762
+                          a chain, unweighted                    0.481       0.816
+                          a chain, weighted                      0.500       0.762
+                          weighted, degree reported at most 6    0.500       0.800
+
+people sampled    karate  Krackhardt
+5                  1.602       1.427
+10                 1.030       0.837
+15                 0.748       0.504
+```
+:::
+
+## Rust
+
+```rust
+let level: Vec<f64> = read("data/krackhardt/nodes.csv").iter().map(|r| r[3].parse().unwrap()).collect();
+let officer: Vec<f64> = faction.iter().map(|f| if f == "Officer" { 1.0 } else { 0.0 }).collect();
+let senior: Vec<f64> = level.iter().map(|&l| if l == 3.0 { 1.0 } else { 0.0 }).collect();
+
+// What a long chain of respondents, each naming a random contact, settles into: person i is reached
+// with probability proportional to their degree. Weighting each respondent by 1 / (reported degree)
+// undoes that. Returns the truth, the unweighted average and the weighted one.
+let chain = |m: &Vec<Vec<f64>>, y: &[f64], cap: f64| -> [f64; 3] {
+    let d = degrees(m);
+    let p: Vec<f64> = d.iter().map(|x| x / d.iter().sum::<f64>()).collect();
+    let reported: Vec<f64> = d.iter().map(|&x| x.min(cap)).collect();
+    let top: f64 = (0..d.len()).map(|i| p[i] * y[i] / reported[i]).sum();
+    let bottom: f64 = (0..d.len()).map(|i| p[i] / reported[i]).sum();
+    [mean(y), (0..d.len()).map(|i| p[i] * y[i]).sum(), top / bottom]
+};
+let rows = [("mean degree", "everyone", 0, "degree"), ("", "a chain, unweighted", 1, "degree"), ("", "a chain, weighted", 2, "degree"),
+            ("share Officers / level 3", "everyone", 0, "share"), ("", "a chain, unweighted", 1, "share"),
+            ("", "a chain, weighted", 2, "share"), ("", "weighted, degree reported at most 6", 2, "capped")];
+println!("{:<26}{:<36}{:>8}{:>12}", "", "", "karate", "Krackhardt");
+for (what, version, i, kind) in rows {
+    let cap = if kind == "capped" { 6.0 } else { f64::INFINITY };
+    let pick = |m: &Vec<Vec<f64>>, y: &[f64]| {
+        let target = if kind == "degree" { degrees(m) } else { y.to_vec() };
+        chain(m, &target, cap)[i]
+    };
+    println!("{:<26}{:<36}{:>8.3}{:>12.3}", what, version, pick(&club, &officer), pick(&either, &senior));
+}
+
+// Sampling people at random (ego sampling): the standard error of the mean degree for k people.
+println!("\n{:<16}{:>8}{:>12}", "people sampled", "karate", "Krackhardt");
+let standard_error = |m: &Vec<Vec<f64>>, k: f64| -> f64 {
+    let d = degrees(m);
+    let n = d.len() as f64;
+    let sd = (d.iter().map(|x| (x - mean(&d)).powi(2)).sum::<f64>() / (n - 1.0)).sqrt();
+    sd * ((1.0 - k / n) / k).sqrt()
+};
+for k in [5.0, 10.0, 15.0] {
+    println!("{:<16}{:>8.3}{:>12.3}", k, standard_error(&club, k), standard_error(&either, k));
+}
+```
+
+::: {.code-output}
+```text
+                                                                karate  Krackhardt
+mean degree               everyone                               4.588       7.524
+                          a chain, unweighted                    7.769       9.215
+                          a chain, weighted                      4.588       7.524
+share Officers / level 3  everyone                               0.500       0.762
+                          a chain, unweighted                    0.481       0.816
+                          a chain, weighted                      0.500       0.762
+                          weighted, degree reported at most 6    0.500       0.800
+
+people sampled    karate  Krackhardt
+5                  1.602       1.427
+10                 1.030       0.837
+15                 0.748       0.504
+```
+:::
+
+:::
+
+
+PROSE
+
+## Nonresponse
+
+PROSE
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# The friendship table when some managers never answered: their own choices are gone,
+# but what others said about them remains.
+when_silent <- \(silent) {
+  seen <- friend * !(seq_len(21) %in% silent)
+  pairs <- pmax(seen, t(seen))
+  c(arcs = sum(seen) / sum(friend), pairs = sum(pairs) / sum(either), reciprocated = reciprocated(seen),
+    in_degree_rho = spearman(colSums(friend), colSums(seen)), between_rho = spearman(between(either), between(pairs)))
+}
+
+named_by <- rowSums(friend)
+cases <- list(
+  `1 silent, every way` = combn(21, 1, simplify = FALSE),
+  `2 silent, every way` = combn(21, 2, simplify = FALSE),
+  `3 silent, every way` = combn(21, 3, simplify = FALSE),
+  `the 3 who name most` = list(order(-named_by, seq_along(named_by))[1:3]),
+  `the 3 who name fewest` = list(order(named_by, seq_along(named_by))[1:3])
+)
+imap(cases, \(groups, label) {
+  r <- map(groups, \(g) as_tibble_row(when_silent(g))) |> list_rbind()
+  tibble(case = label, ways = nrow(r), arcs = mean(r$arcs), pairs = mean(r$pairs), reciprocated = mean(r$reciprocated),
+         in_degree_rho = mean(r$in_degree_rho), between_rho = mean(r$between_rho), worst_between_rho = min(r$between_rho))
+}) |>
+  list_rbind() |>
+  mutate(across(where(is.numeric), \(x) round(x, 3))) |>
+  print(width = Inf)
+```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
+
+## Python
+
+```python
+def when_silent(silent):
+    """The friendship table when some managers never answered: their own choices are gone,
+    but what others said about them remains."""
+    seen = friend * np.isin(np.arange(21), silent, invert=True)[:, None]
+    pairs = np.maximum(seen, seen.T)
+    return [seen.sum() / friend.sum(), pairs.sum() / either.sum(), reciprocated(seen),
+            spearman(friend.sum(0), seen.sum(0)), spearman(between(either), between(pairs))]
+
+named_by = friend.sum(1)
+cases = {f"{k} silent, every way": list(combinations(range(21), k)) for k in (1, 2, 3)}
+cases["the 3 who name most"] = [np.argsort(-named_by, kind="stable")[:3]]
+cases["the 3 who name fewest"] = [np.argsort(named_by, kind="stable")[:3]]
+print(f"{'':<24}{'ways':>6}{'arcs':>7}{'pairs':>7}{'reciprocated':>14}{'in-degree rho':>15}{'betweenness rho':>17}{'worst':>7}")
+for label, groups in cases.items():
+    r = np.array([when_silent(g) for g in groups])
+    print(f"{label:<24}{len(groups):>6}{r[:, 0].mean():>7.3f}{r[:, 1].mean():>7.3f}{r[:, 2].mean():>14.3f}"
+          f"{r[:, 3].mean():>15.3f}{r[:, 4].mean():>17.3f}{r[:, 4].min():>7.3f}")
+```
+
+::: {.code-output}
+```text
+                          ways   arcs  pairs  reciprocated  in-degree rho  betweenness rho  worst
+1 silent, every way         21  0.952  0.966         0.428          0.977            0.953  0.829
+2 silent, every way        210  0.905  0.931         0.405          0.956            0.905  0.641
+3 silent, every way       1330  0.857  0.895         0.382          0.935            0.859  0.558
+the 3 who name most          1  0.608  0.658         0.323          0.912            0.683  0.683
+the 3 who name fewest        1  0.990  1.000         0.436          0.988            1.000  1.000
+```
+:::
+
+## Rust
+
+```rust
+// The friendship table when some managers never answered: their own choices are gone,
+// but what others said about them remains.
+let when_silent = |silent: &[usize]| -> Result<[f64; 5], knappnet::Error> {
+    let seen: Vec<Vec<f64>> = (0..21).map(|i| if silent.contains(&i) { vec![0.0; 21] } else { friend[i].clone() }).collect();
+    let pairs = symmetric(&seen);
+    Ok([
+        total(&seen) / total(&friend),
+        total(&pairs) / total(&either),
+        reciprocated(&seen),
+        spearman(&column_sums(&friend), &column_sums(&seen)),
+        spearman(&between(&either)?, &between(&pairs)?),
+    ])
+};
+// Every way to choose k of the 21 managers.
+let choose = |k: u32| -> Vec<Vec<usize>> {
+    (0u32..(1 << 21)).filter(|mask| mask.count_ones() == k).map(|mask| (0..21).filter(|&i| mask >> i & 1 == 1).collect()).collect()
+};
+
+let named_by = degrees(&friend);
+let most = order(&named_by.iter().map(|x| -x).collect::<Vec<f64>>())[..3].to_vec();
+let fewest = order(&named_by)[..3].to_vec();
+let cases = vec![("1 silent, every way", choose(1)), ("2 silent, every way", choose(2)), ("3 silent, every way", choose(3)),
+                 ("the 3 who name most", vec![most]), ("the 3 who name fewest", vec![fewest])];
+println!("{:<24}{:>6}{:>7}{:>7}{:>14}{:>15}{:>17}{:>7}", "", "ways", "arcs", "pairs", "reciprocated", "in-degree rho", "betweenness rho", "worst");
+for (label, groups) in &cases {
+    let r: Vec<[f64; 5]> = groups.iter().map(|g| when_silent(g)).collect::<Result<_, _>>()?;
+    let column = |c: usize| -> Vec<f64> { r.iter().map(|row| row[c]).collect() };
+    println!("{:<24}{:>6}{:>7.3}{:>7.3}{:>14.3}{:>15.3}{:>17.3}{:>7.3}", label, groups.len(), mean(&column(0)), mean(&column(1)),
+             mean(&column(2)), mean(&column(3)), mean(&column(4)), column(4).iter().cloned().fold(f64::MAX, f64::min));
+}
+```
+
+::: {.code-output}
+```text
+                          ways   arcs  pairs  reciprocated  in-degree rho  betweenness rho  worst
+1 silent, every way         21  0.952  0.966         0.428          0.977            0.953  0.829
+2 silent, every way        210  0.905  0.931         0.405          0.956            0.905  0.641
+3 silent, every way       1330  0.857  0.895         0.382          0.935            0.859  0.558
+the 3 who name most          1  0.608  0.658         0.323          0.912            0.683  0.683
+the 3 who name fewest        1  0.990  1.000         0.436          0.988            1.000  1.000
+```
+:::
+
+:::
+
+
+PROSE
+
+## Random loss
+
+PROSE
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+club_degree <- rowSums(club)
+club_between <- between(club)
+
+# How the people in `keep` look in the table m, set against the whole club: rank correlations of their
+# degree and betweenness, and ratios of mean degree, density, clustering and mean distance.
+compare <- \(m, keep) {
+  sub <- m[keep, keep, drop = FALSE]
+  g <- graph_of(sub)
+  c(degree_rho = spearman(club_degree[keep], rowSums(sub)), between_rho = spearman(club_between[keep], between(sub)),
+    mean_degree = mean(rowSums(sub)) / mean(club_degree), density = net_density(g) / net_density(whole),
+    clustering = net_transitivity(g) / net_transitivity(whole),
+    distance = net_mean_distance(g) / net_mean_distance(whole), pieces = net_components(g)$no)
+}
+
+ties <- which(club > 0 & upper.tri(club), arr.ind = TRUE) |> as_tibble() |> arrange(row, col)  # the 78 ties
+lose_people <- \(k, draws = 200, seed = 12345) {
+  keys <- matrix(uniform(draws * 34, seed), nrow = draws, byrow = TRUE)
+  map(seq_len(draws), \(r) as_tibble_row(compare(club, sort(order(keys[r, ])[-seq_len(k)])))) |>
+    list_rbind() |> colMeans()
+}
+lose_ties <- \(k, draws = 200, seed = 777) {
+  keys <- matrix(uniform(draws * nrow(ties), seed), nrow = draws, byrow = TRUE)
+  map(seq_len(draws), \(r) {
+    m <- club
+    gone <- ties[order(keys[r, ])[seq_len(k)], ]
+    m[cbind(gone$row, gone$col)] <- 0
+    m[cbind(gone$col, gone$row)] <- 0
+    as_tibble_row(compare(m, 1:34))
+  }) |>
+    list_rbind() |> colMeans()
+}
+
+bind_rows(
+  tibble(case = paste(c(3, 7, 10), "people missing"), map(c(3, 7, 10), \(k) as_tibble_row(lose_people(k))) |> list_rbind()),
+  tibble(case = paste(c(8, 16, 23), "ties missing"), map(c(8, 16, 23), \(k) as_tibble_row(lose_ties(k))) |> list_rbind()),
+  tibble(case = c("the 3 best connected missing", "the 6 least connected missing"),
+         map(list(setdiff(1:34, order(-club_degree, 1:34)[1:3]), setdiff(1:34, order(club_degree, 1:34)[1:6])),
+             \(keep) as_tibble_row(compare(club, keep))) |> list_rbind())
+) |>
+  mutate(across(where(is.numeric), \(x) round(x, 3))) |>
+  print(width = Inf)
+```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
+
+## Python
+
+```python
+def mean_distance(g):
+    # the average over the pairs that have a route
+    return np.mean([d for _, to in nx.all_pairs_shortest_path_length(g) for d in to.values() if d > 0])
+
+club_degree, club_between = club.sum(1), between(club)
+club_density, club_clustering, club_distance = nx.density(whole), nx.transitivity(whole), mean_distance(whole)
+
+def compare(m, keep):
+    """How the people in `keep` look in the table m, set against the whole club: rank correlations of their
+    degree and betweenness, and ratios of mean degree, density, clustering and mean distance."""
+    sub = m[np.ix_(keep, keep)]
+    g, d = graph_of(sub), sub.sum(1)
+    return [spearman(club_degree[keep], d), spearman(club_between[keep], between(sub)), d.mean() / club_degree.mean(),
+            nx.density(g) / club_density, nx.transitivity(g) / club_clustering, mean_distance(g) / club_distance,
+            nx.number_connected_components(g)]
+
+ties = np.argwhere(np.triu(club))                   # the 78 ties, in order of (row, column)
+
+def lose_people(k, draws=200, seed=12345):
+    keys = uniform(draws * 34, seed).reshape(draws, -1)
+    return np.mean([compare(club, np.sort(np.argsort(key, kind="stable")[k:])) for key in keys], axis=0)
+
+def lose_ties(k, draws=200, seed=777):
+    keys = uniform(draws * len(ties), seed).reshape(draws, -1)
+    out = []
+    for key in keys:
+        m = club.copy()
+        for a, b in ties[np.argsort(key, kind="stable")[:k]]:
+            m[a, b] = m[b, a] = 0
+        out.append(compare(m, np.arange(34)))
+    return np.mean(out, axis=0)
+
+widths = [11, 12, 10, 9, 11, 10, 8]
+heads = ["degree rho", "between rho", "mean deg", "density", "clustering", "distance", "pieces"]
+def show(label, r):
+    print(f"{label:<31}" + "".join(f"{x:>{w}.3f}" for x, w in zip(r, widths)))
+
+print(f"{'':<31}" + "".join(f"{h:>{w}}" for h, w in zip(heads, widths)))
+for k in (3, 7, 10):
+    show(f"{k} people missing", lose_people(k))
+for k in (8, 16, 23):
+    show(f"{k} ties missing", lose_ties(k))
+show("the 3 best connected missing", compare(club, np.setdiff1d(np.arange(34), np.argsort(-club_degree, kind="stable")[:3])))
+show("the 6 least connected missing", compare(club, np.setdiff1d(np.arange(34), np.argsort(club_degree, kind="stable")[:6])))
+```
+
+::: {.code-output}
+```text
+                                degree rho between rho  mean deg  density clustering  distance  pieces
+3 people missing                     0.960       0.955     0.902    0.992      0.988     1.008   1.265
+7 people missing                     0.903       0.895     0.786    0.998      0.977     1.006   1.790
+10 people missing                    0.872       0.848     0.699    1.002      0.954     1.011   2.155
+8 ties missing                       0.947       0.925     0.897    0.897      0.909     1.048   1.200
+16 ties missing                      0.893       0.860     0.795    0.795      0.800     1.104   1.765
+23 ties missing                      0.845       0.802     0.705    0.705      0.712     1.164   2.470
+the 3 best connected missing         0.877       0.722     0.478    0.526      1.056     1.136   8.000
+the 6 least connected missing        0.981       0.938     1.043    1.275      1.179     0.936   1.000
+```
+:::
+
+## Rust
+
+```rust
+let club_degree = degrees(&club);
+let club_between = between(&club)?;
+let (club_density, club_clustering) = (compute_density(&whole, false), clustering(&whole));
+let club_distance = compute_mean_distance(&whole, PathOptions::default(), true)?;
+
+// How the people in `keep` look in the table m, set against the whole club: rank correlations of their
+// degree and betweenness, and ratios of mean degree, density, clustering and mean distance.
+let compare = |m: &Vec<Vec<f64>>, keep: &[usize]| -> Result<[f64; 7], knappnet::Error> {
+    let sub = sub_table(m, keep);
+    let g = graph_of(&sub)?;
+    let d = degrees(&sub);
+    let pick = |x: &[f64]| -> Vec<f64> { keep.iter().map(|&i| x[i]).collect() };
+    Ok([
+        spearman(&pick(&club_degree), &d),
+        spearman(&pick(&club_between), &between(&sub)?),
+        mean(&d) / mean(&club_degree),
+        compute_density(&g, false) / club_density,
+        clustering(&g) / club_clustering,
+        compute_mean_distance(&g, PathOptions::default(), true)? / club_distance,
+        find_components(&g, ComponentKind::Weak).count() as f64,
+    ])
+};
+let average = |rows: &[[f64; 7]]| -> [f64; 7] {
+    let mut out = [0.0; 7];
+    for c in 0..7 {
+        out[c] = mean(&rows.iter().map(|r| r[c]).collect::<Vec<f64>>());
+    }
+    out
+};
+
+// The 78 ties, in order of (row, column).
+let ties: Vec<(usize, usize)> = (0..34).flat_map(|i| (0..34).map(move |j| (i, j))).filter(|&(i, j)| i < j && club[i][j] > 0.0).collect();
+let lose_people = |k: usize| -> Result<[f64; 7], knappnet::Error> {
+    let keys = uniform(200 * 34, 12345);
+    let rows: Vec<[f64; 7]> = keys.chunks(34).map(|key| {
+        let mut keep = order(key)[k..].to_vec();
+        keep.sort();
+        compare(&club, &keep)
+    }).collect::<Result<_, _>>()?;
+    Ok(average(&rows))
+};
+let lose_ties = |k: usize| -> Result<[f64; 7], knappnet::Error> {
+    let keys = uniform(200 * ties.len(), 777);
+    let all: Vec<usize> = (0..34).collect();
+    let rows: Vec<[f64; 7]> = keys.chunks(ties.len()).map(|key| {
+        let mut m = club.clone();
+        for &t in order(key).iter().take(k) {
+            m[ties[t].0][ties[t].1] = 0.0;
+            m[ties[t].1][ties[t].0] = 0.0;
+        }
+        compare(&m, &all)
+    }).collect::<Result<_, _>>()?;
+    Ok(average(&rows))
+};
+
+let widths = [11, 12, 10, 9, 11, 10, 8];
+let heads = ["degree rho", "between rho", "mean deg", "density", "clustering", "distance", "pieces"];
+let show = |label: &str, r: [f64; 7]| {
+    println!("{:<31}{}", label, r.iter().zip(widths).map(|(x, w)| format!("{:>w$.3}", x, w = w)).collect::<String>());
+};
+println!("{:<31}{}", "", heads.iter().zip(widths).map(|(h, w)| format!("{:>w$}", h, w = w)).collect::<String>());
+for k in [3, 7, 10] {
+    show(&format!("{k} people missing"), lose_people(k)?);
+}
+for k in [8, 16, 23] {
+    show(&format!("{k} ties missing"), lose_ties(k)?);
+}
+let without = |gone: &[usize]| -> Vec<usize> { (0..34).filter(|i| !gone.contains(i)).collect() };
+let best = order(&club_degree.iter().map(|d| -d).collect::<Vec<f64>>())[..3].to_vec();
+let least = order(&club_degree)[..6].to_vec();
+show("the 3 best connected missing", compare(&club, &without(&best))?);
+show("the 6 least connected missing", compare(&club, &without(&least))?);
+```
+
+::: {.code-output}
+```text
+                                degree rho between rho  mean deg  density clustering  distance  pieces
+3 people missing                     0.960       0.955     0.902    0.992      0.988     1.008   1.265
+7 people missing                     0.903       0.895     0.786    0.998      0.977     1.006   1.790
+10 people missing                    0.872       0.848     0.699    1.002      0.954     1.011   2.155
+8 ties missing                       0.947       0.925     0.897    0.897      0.909     1.048   1.200
+16 ties missing                      0.893       0.860     0.795    0.795      0.800     1.104   1.765
+23 ties missing                      0.845       0.802     0.705    0.705      0.712     1.164   2.470
+the 3 best connected missing         0.877       0.722     0.478    0.526      1.056     1.136   8.000
+the 6 least connected missing        0.981       0.938     1.043    1.275      1.179     0.936   1.000
+```
+:::
+
+:::
+
+
+PROSE
+
+## Errors
+
+PROSE
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# The 483 pairs with no tie, in order of (row, column).
+non_ties <- which(club == 0 & upper.tri(club), arr.ind = TRUE) |> as_tibble() |> arrange(row, col)
+
+# Miss `missed` real ties and invent `invented` false ones, in 200 draws.
+with_errors <- \(missed, invented, draws = 200, seed = 11) {
+  real_keys <- matrix(uniform(draws * nrow(ties), seed), nrow = draws, byrow = TRUE)
+  false_keys <- matrix(uniform(draws * nrow(non_ties), seed + 1), nrow = draws, byrow = TRUE)
+  map(seq_len(draws), \(r) {
+    gone <- ties[order(real_keys[r, ])[seq_len(missed)], ]
+    added <- non_ties[order(false_keys[r, ])[seq_len(invented)], ]
+    m <- club
+    m[cbind(gone$row, gone$col)] <- 0
+    m[cbind(gone$col, gone$row)] <- 0
+    m[cbind(added$row, added$col)] <- 1
+    m[cbind(added$col, added$row)] <- 1
+    as_tibble_row(compare(m, 1:34))
+  }) |>
+    list_rbind() |> colMeans()
+}
+
+tibble(missed = c(8, 0, 4, 16, 0, 8), invented = c(0, 8, 4, 0, 16, 8)) |>
+  bind_cols(map2(c(8, 0, 4, 16, 0, 8), c(0, 8, 4, 0, 16, 8), \(a, b) as_tibble_row(with_errors(a, b))) |> list_rbind()) |>
+  mutate(across(where(is.numeric), \(x) round(x, 3))) |>
+  print(width = Inf)
+```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
+
+## Python
+
+```python
+non_ties = np.argwhere(np.triu(1 - club, 1))        # the 483 pairs with no tie, in order of (row, column)
+
+def with_errors(missed, invented, draws=200, seed=11):
+    """Miss `missed` real ties and invent `invented` false ones, in 200 draws."""
+    real_keys = uniform(draws * len(ties), seed).reshape(draws, -1)
+    false_keys = uniform(draws * len(non_ties), seed + 1).reshape(draws, -1)
+    out = []
+    for real, false in zip(real_keys, false_keys):
+        m = club.copy()
+        for a, b in ties[np.argsort(real, kind="stable")[:missed]]:
+            m[a, b] = m[b, a] = 0
+        for a, b in non_ties[np.argsort(false, kind="stable")[:invented]]:
+            m[a, b] = m[b, a] = 1
+        out.append(compare(m, np.arange(34)))
+    return np.mean(out, axis=0)
+
+print(f"{'missed':>6}{'invented':>9}" + "".join(f"{h:>{w}}" for h, w in zip(heads, widths)))
+for missed, invented in [(8, 0), (0, 8), (4, 4), (16, 0), (0, 16), (8, 8)]:
+    r = with_errors(missed, invented)
+    print(f"{missed:>6}{invented:>9}" + "".join(f"{x:>{w}.3f}" for x, w in zip(r, widths)))
+```
+
+::: {.code-output}
+```text
+missed invented degree rho between rho  mean deg  density clustering  distance  pieces
+     8        0      0.948       0.930     0.897    0.897      0.907     1.050   1.225
+     0        8      0.929       0.842     1.103    1.103      1.019     0.934   1.000
+     4        4      0.937       0.882     1.000    1.000      0.966     0.985   1.045
+    16        0      0.897       0.868     0.795    0.795      0.805     1.105   1.800
+     0       16      0.876       0.754     1.205    1.205      1.044     0.892   1.000
+     8        8      0.879       0.798     1.000    1.000      0.922     0.977   1.130
+```
+:::
+
+## Rust
+
+```rust
+// The 483 pairs with no tie, in order of (row, column).
+let non_ties: Vec<(usize, usize)> = (0..34).flat_map(|i| (0..34).map(move |j| (i, j))).filter(|&(i, j)| i < j && club[i][j] == 0.0).collect();
+
+// Miss `missed` real ties and invent `invented` false ones, in 200 draws.
+let with_errors = |missed: usize, invented: usize| -> Result<[f64; 7], knappnet::Error> {
+    let real_keys = uniform(200 * ties.len(), 11);
+    let false_keys = uniform(200 * non_ties.len(), 12);
+    let all: Vec<usize> = (0..34).collect();
+    let rows: Vec<[f64; 7]> = real_keys.chunks(ties.len()).zip(false_keys.chunks(non_ties.len())).map(|(real, false_)| {
+        let mut m = club.clone();
+        for &t in order(real).iter().take(missed) {
+            m[ties[t].0][ties[t].1] = 0.0;
+            m[ties[t].1][ties[t].0] = 0.0;
+        }
+        for &t in order(false_).iter().take(invented) {
+            m[non_ties[t].0][non_ties[t].1] = 1.0;
+            m[non_ties[t].1][non_ties[t].0] = 1.0;
+        }
+        compare(&m, &all)
+    }).collect::<Result<_, _>>()?;
+    Ok(average(&rows))
+};
+println!("{:>6}{:>9}{}", "missed", "invented", heads.iter().zip(widths).map(|(h, w)| format!("{:>w$}", h, w = w)).collect::<String>());
+for (missed, invented) in [(8, 0), (0, 8), (4, 4), (16, 0), (0, 16), (8, 8)] {
+    let r = with_errors(missed, invented)?;
+    println!("{:>6}{:>9}{}", missed, invented, r.iter().zip(widths).map(|(x, w)| format!("{:>w$.3}", x, w = w)).collect::<String>());
+}
+```
+
+::: {.code-output}
+```text
+missed invented degree rho between rho  mean deg  density clustering  distance  pieces
+     8        0      0.948       0.930     0.897    0.897      0.907     1.050   1.225
+     0        8      0.929       0.842     1.103    1.103      1.019     0.934   1.000
+     4        4      0.937       0.882     1.000    1.000      0.966     0.985   1.045
+    16        0      0.897       0.868     0.795    0.795      0.805     1.105   1.800
+     0       16      0.876       0.754     1.205    1.205      1.044     0.892   1.000
+     8        8      0.879       0.798     1.000    1.000      0.922     0.977   1.130
+```
+:::
+
+:::
+
+
+PROSE
+
+## Ethics
+
+PROSE
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# If every name is removed, can someone who knows a person's degree, or also their contacts' degrees,
+# still pick that person out?
+lookalikes <- \(m) {
+  d <- rowSums(m)
+  by_degree <- as.character(d)
+  by_circle <- map_chr(seq_len(nrow(m)), \(i) paste0(d[i], "|", paste(sort(d[m[i, ] > 0]), collapse = ".")))
+  tibble(people = nrow(m), alone_by_degree = sum(table(by_degree)[by_degree] == 1),
+         alone_by_circle = sum(table(by_circle)[by_circle] == 1), biggest_same_degree_group = max(table(by_degree)))
+}
+bind_rows(`karate club` = lookalikes(club), `Krackhardt friendship` = lookalikes(either), .id = "network")
+```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
+
+## Python
+
+```python
+def lookalikes(m):
+    """If every name is removed, can someone who knows a person's degree, or also their contacts' degrees,
+    still pick that person out?"""
+    d = m.sum(1)
+    by_degree = [str(x) for x in d]
+    by_circle = [f"{d[i]}|" + ".".join(str(x) for x in sorted(d[m[i] > 0])) for i in range(len(m))]
+    alone = lambda keys: sum(keys.count(k) == 1 for k in keys)
+    return len(m), alone(by_degree), alone(by_circle), max(Counter(by_degree).values())
+
+print(f"{'':<24}{'people':>7}{'alone by degree':>17}{'alone by circle':>17}{'biggest same-degree group':>27}")
+for name, m in [("karate club", club), ("Krackhardt friendship", either)]:
+    people, by_degree, by_circle, group = lookalikes(m)
+    print(f"{name:<24}{people:>7}{by_degree:>17}{by_circle:>17}{group:>27}")
+```
+
+::: {.code-output}
+```text
+                         people  alone by degree  alone by circle  biggest same-degree group
+karate club                  34                6               23                         11
+Krackhardt friendship        21                5               21                          4
+```
+:::
+
+## Rust
+
+```rust
+// If every name is removed, can someone who knows a person's degree, or also their contacts' degrees,
+// still pick that person out?
+let lookalikes = |m: &Vec<Vec<f64>>| -> [usize; 4] {
+    let d = degrees(m);
+    let by_degree: Vec<String> = d.iter().map(|x| x.to_string()).collect();
+    let by_circle: Vec<String> = (0..m.len()).map(|i| {
+        let mut around: Vec<f64> = (0..m.len()).filter(|&j| m[i][j] > 0.0).map(|j| d[j]).collect();
+        around.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        format!("{}|{}", d[i], around.iter().map(|x| x.to_string()).collect::<Vec<String>>().join("."))
+    }).collect();
+    let count = |keys: &Vec<String>, k: &String| keys.iter().filter(|x| *x == k).count();
+    [m.len(),
+     by_degree.iter().filter(|k| count(&by_degree, k) == 1).count(),
+     by_circle.iter().filter(|k| count(&by_circle, k) == 1).count(),
+     by_degree.iter().map(|k| count(&by_degree, k)).max().unwrap()]
+};
+println!("{:<24}{:>7}{:>17}{:>17}{:>27}", "", "people", "alone by degree", "alone by circle", "biggest same-degree group");
+for (name, m) in [("karate club", &club), ("Krackhardt friendship", &either)] {
+    let r = lookalikes(m);
+    println!("{:<24}{:>7}{:>17}{:>17}{:>27}", name, r[0], r[1], r[2], r[3]);
+}
+```
+
+::: {.code-output}
+```text
+                         people  alone by degree  alone by circle  biggest same-degree group
+karate club                  34                6               23                         11
+Krackhardt friendship        21                5               21                          4
+```
+:::
+
+:::
+
+
+PROSE
+
+## Raw tables
+
+PROSE
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# A small, messy message log, as it might arrive: odd capitals and spaces, a missing recipient, a message to
+# oneself, two names that are not on the roster (a typo and a stranger), and repeats.
+messages <- tibble(
+  day = c("2024-03-01", "2024-03-01", "2024-03-02", "2024-03-02", "2024-03-03", "2024-03-03",
+          "2024-03-04", "2024-03-05", "2024-03-05", "2024-03-06", "2024-03-07", "2024-03-08"),
+  from = c("Ana", "ana ", "Ben", "Chloe", "Ana", "Ana", "Dev", "Eli", "Ben", "Cloe", "Dev", "Frank"),
+  to = c("Ben", "Ben", "Chloe", "Chloe", "Dev", "Dev", "Eli", "", "Chloe", "Dev", "Ana", "Ana")
+)
+roster <- c("Ana", "Ben", "Chloe", "Dev", "Eli")
+tidy <- \(x) paste0(toupper(substring(trimws(x), 1, 1)), tolower(substring(trimws(x), 2)))
+
+# Each cleaning step is a rule, kept in order, so the report can say what each one removed.
+steps <- list(
+  `names trimmed, case fixed` = \(d) mutate(d, across(c(from, to), tidy)),
+  `no recipient` = \(d) filter(d, to != ""),
+  `sent to self` = \(d) filter(d, from != to),
+  `not on the roster` = \(d) filter(d, from %in% roster, to %in% roster),
+  `same message repeated on a day` = distinct
+)
+cleaned <- accumulate(steps, \(d, f) f(d), .init = messages)
+tibble(step = c("as received", names(steps)), rows_left = unname(map_int(cleaned, nrow))) |>
+  mutate(dropped = lag(rows_left, default = first(rows_left)) - rows_left)
+
+# What is left is the network: one tie per pair, weighted by the number of days with a message.
+ties_log <- tail(cleaned, 1)[[1]] |> count(from, to, name = "days") |> arrange(from, to)
+net <- ties_log |>
+  rename(source = from, target = to) |>
+  net_frame(nodes = tibble(id = roster), directed = TRUE, weight = "days", weight_type = "strength")
+ties_log
+tibble(person = roster, sent = net_degree(net, mode = "out"), received = net_degree(net, mode = "in"))
+
+# An affiliation table (who attended what) becomes a network of people by counting shared events.
+attend <- read.csv("data/southern_women/edges.csv")
+b <- unclass(table(attend$woman, attend$event))
+shared <- b %*% t(b)
+diag(shared) <- 0
+sizes <- colSums(b)
+tibble(women = nrow(b), events = ncol(b), attendances = sum(b),
+       pairs_tied = sum(shared[upper.tri(shared)] > 0), pairs = choose(nrow(b), 2),
+       most_events_shared = max(shared), largest_event_size = max(sizes), pairs_from_largest_event = choose(max(sizes), 2))
+```
+
+::: {.code-output}
+```text
+PENDING
+```
+:::
+
+## Python
+
+```python
+# A small, messy message log, as it might arrive: odd capitals and spaces, a missing recipient, a message to
+# oneself, two names that are not on the roster (a typo and a stranger), and repeats.
+messages = [("2024-03-01", "Ana", "Ben"), ("2024-03-01", "ana ", "Ben"), ("2024-03-02", "Ben", "Chloe"),
+       ("2024-03-02", "Chloe", "Chloe"), ("2024-03-03", "Ana", "Dev"), ("2024-03-03", "Ana", "Dev"),
+       ("2024-03-04", "Dev", "Eli"), ("2024-03-05", "Eli", ""), ("2024-03-05", "Ben", "Chloe"),
+       ("2024-03-06", "Cloe", "Dev"), ("2024-03-07", "Dev", "Ana"), ("2024-03-08", "Frank", "Ana")]
+roster = ["Ana", "Ben", "Chloe", "Dev", "Eli"]
+tidy = lambda x: x.strip().capitalize()
+
+# Each cleaning step is a rule, kept in order, so the report can say what each one removed.
+steps = [
+    ("names trimmed, case fixed", lambda d: [(day, tidy(a), tidy(b)) for day, a, b in d]),
+    ("no recipient", lambda d: [r for r in d if r[2] != ""]),
+    ("sent to self", lambda d: [r for r in d if r[1] != r[2]]),
+    ("not on the roster", lambda d: [r for r in d if r[1] in roster and r[2] in roster]),
+    ("same message repeated on a day", lambda d: list(dict.fromkeys(d))),
+]
+rows, left = messages, [("as received", len(messages))]
+for why, rule in steps:
+    rows = rule(rows)
+    left.append((why, len(rows)))
+print(f"{'step':<33}{'rows left':>10}{'dropped':>9}")
+for k, (why, n) in enumerate(left):
+    print(f"{why:<33}{n:>10}{(left[k - 1][1] - n if k else 0):>9}")
+
+# What is left is the network: one tie per pair, weighted by the number of days with a message.
+days = Counter((a, b) for _, a, b in rows)
+net = nx.DiGraph()
+net.add_nodes_from(roster)
+net.add_weighted_edges_from((a, b, n) for (a, b), n in sorted(days.items()))
+print(f"{net.number_of_nodes()} people, {net.number_of_edges()} ties; " + ", ".join(f"{a}>{b} {n}" for a, b, n in net.edges(data="weight")))
+
+# An affiliation table (who attended what) becomes a network of people by counting shared events.
+attend = read("data/southern_women/edges.csv")
+women = sorted({r["woman"] for r in attend})
+events = sorted({r["event"] for r in attend})
+b = np.zeros((len(women), len(events)), dtype=int)
+for r in attend:
+    b[women.index(r["woman"]), events.index(r["event"])] = 1
+shared = b @ b.T
+np.fill_diagonal(shared, 0)
+sizes = b.sum(0)
+print(f"{len(women)} women, {len(events)} events, {b.sum()} attendances")
+print(f"pairs of women who share at least one event: {np.triu(shared > 0, 1).sum()} of {len(women) * (len(women) - 1) // 2}; "
+      f"the most events shared by one pair: {shared.max()}")
+print(f"the largest event ({events[sizes.argmax()]}) had {sizes.max()} women, so it alone ties {sizes.max() * (sizes.max() - 1) // 2} pairs")
+```
+
+::: {.code-output}
+```text
+step                              rows left  dropped
+as received                              12        0
+names trimmed, case fixed                12        0
+no recipient                             11        1
+sent to self                             10        1
+not on the roster                         8        2
+same message repeated on a day            6        2
+5 people, 5 ties; Ana>Ben 1, Ana>Dev 1, Ben>Chloe 2, Dev>Ana 1, Dev>Eli 1
+18 women, 14 events, 89 attendances
+pairs of women who share at least one event: 139 of 153; the most events shared by one pair: 7
+the largest event (E8) had 14 women, so it alone ties 91 pairs
+```
+:::
+
+## Rust
+
+```rust
+// A small, messy message log, as it might arrive: odd capitals and spaces, a missing recipient, a message to
+// oneself, two names that are not on the roster (a typo and a stranger), and repeats.
+let messages: Vec<(&str, &str, &str)> = vec![
+    ("2024-03-01", "Ana", "Ben"), ("2024-03-01", "ana ", "Ben"), ("2024-03-02", "Ben", "Chloe"),
+    ("2024-03-02", "Chloe", "Chloe"), ("2024-03-03", "Ana", "Dev"), ("2024-03-03", "Ana", "Dev"),
+    ("2024-03-04", "Dev", "Eli"), ("2024-03-05", "Eli", ""), ("2024-03-05", "Ben", "Chloe"),
+    ("2024-03-06", "Cloe", "Dev"), ("2024-03-07", "Dev", "Ana"), ("2024-03-08", "Frank", "Ana"),
+];
+let roster = ["Ana", "Ben", "Chloe", "Dev", "Eli"];
+let tidy = |x: &str| -> String {
+    let x = x.trim().to_lowercase();
+    x[..1].to_uppercase() + &x[1..]
+};
+
+// Each cleaning step is a rule, applied in order, so the report can say what each one removed.
+let mut rows: Vec<(String, String, String)> = messages.iter().map(|r| (r.0.to_string(), r.1.to_string(), r.2.to_string())).collect();
+let mut left = vec![("as received", rows.len())];
+for step in 1..=5 {
+    rows = match step {
+        1 => rows.iter().map(|(d, a, b)| (d.clone(), tidy(a), if b.is_empty() { String::new() } else { tidy(b) })).collect(),
+        2 => rows.into_iter().filter(|r| !r.2.is_empty()).collect(),
+        3 => rows.into_iter().filter(|r| r.1 != r.2).collect(),
+        4 => rows.into_iter().filter(|r| roster.contains(&r.1.as_str()) && roster.contains(&r.2.as_str())).collect(),
+        _ => {
+            let mut seen = std::collections::HashSet::new();
+            rows.into_iter().filter(|r| seen.insert(r.clone())).collect()
+        }
+    };
+    left.push((["", "names trimmed, case fixed", "no recipient", "sent to self", "not on the roster", "same message repeated on a day"][step], rows.len()));
+}
+println!("{:<33}{:>10}{:>9}", "step", "rows left", "dropped");
+for k in 0..left.len() {
+    println!("{:<33}{:>10}{:>9}", left[k].0, left[k].1, if k == 0 { 0 } else { left[k - 1].1 - left[k].1 });
+}
+
+// What is left is the network: one tie per pair, weighted by the number of days with a message.
+let mut days = std::collections::BTreeMap::new();
+for (_, a, b) in &rows {
+    *days.entry((a.clone(), b.clone())).or_insert(0) += 1;
+}
+println!("{} people, {} ties; {}", roster.len(), days.len(),
+         days.iter().map(|((a, b), n)| format!("{a}>{b} {n}")).collect::<Vec<String>>().join(", "));
+
+// An affiliation table (who attended what) becomes a network of people by counting shared events.
+let attend = read("data/southern_women/edges.csv");
+let mut women: Vec<String> = attend.iter().map(|r| r[0].clone()).collect();
+women.sort();
+women.dedup();
+let mut events: Vec<String> = attend.iter().map(|r| r[1].clone()).collect();
+events.sort();
+events.dedup();
+let mut b = vec![vec![0.0; events.len()]; women.len()];
+for r in &attend {
+    b[women.iter().position(|w| *w == r[0]).unwrap()][events.iter().position(|e| *e == r[1]).unwrap()] = 1.0;
+}
+let shared = |i: usize, j: usize| -> f64 { (0..events.len()).map(|e| b[i][e] * b[j][e]).sum() };
+let pairs: Vec<(usize, usize)> = (0..women.len()).flat_map(|i| ((i + 1)..women.len()).map(move |j| (i, j))).collect();
+let sizes: Vec<f64> = (0..events.len()).map(|e| (0..women.len()).map(|i| b[i][e]).sum()).collect();
+let largest = sizes.iter().cloned().fold(0.0, f64::max);
+println!("{} women, {} events, {} attendances", women.len(), events.len(), total(&b));
+println!("pairs of women who share at least one event: {} of {}; the most events shared by one pair: {}",
+         pairs.iter().filter(|&&(i, j)| shared(i, j) > 0.0).count(), pairs.len(),
+         pairs.iter().map(|&(i, j)| shared(i, j)).fold(0.0, f64::max));
+println!("the largest event ({}) had {} women, so it alone ties {} pairs",
+         events[sizes.iter().position(|&s| s == largest).unwrap()], largest, largest * (largest - 1.0) / 2.0);
+```
+
+::: {.code-output}
+```text
+step                              rows left  dropped
+as received                              12        0
+names trimmed, case fixed                12        0
+no recipient                             11        1
+sent to self                             10        1
+not on the roster                         8        2
+same message repeated on a day            6        2
+5 people, 5 ties; Ana>Ben 1, Ana>Dev 1, Ben>Chloe 2, Dev>Ana 1, Dev>Eli 1
+18 women, 14 events, 89 attendances
+pairs of women who share at least one event: 139 of 153; the most events shared by one pair: 7
+the largest event (E8) had 14 women, so it alone ties 91 pairs
+```
+:::
+
+:::
+
+
+PROSE
+
+## Exercises
+
+1. x
