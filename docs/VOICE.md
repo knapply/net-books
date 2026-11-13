@@ -49,3 +49,27 @@ In this order, stopping as soon as the reader has it:
 - Is there at least one example they can verify by hand?
 - Does each hard idea get a moment of reassurance and a payoff?
 - Does it sound like the other chapters?
+
+## Friendly for everyone (standing rule, 13 November 2026)
+
+The book keeps its formulas and formal definitions, and every one of them must
+come wrapped in friendly explanation, so a reader with no math or coding
+background can follow the whole text.
+
+- Every displayed formula or formal definition gets, right after it, a callout
+  or paragraph starting "In plain words", that says what it computes, reads the
+  symbols out loud one by one, and gives a number from a tiny example.
+- Before a formula, say what question it answers in one ordinary sentence.
+- No symbol without a name the first time: "the sum over all ties" before the
+  sigma, "the number of people, which we call n".
+- Every chapter opens with "The short version" (3 to 5 sentences, no symbols,
+  no code) and a plain-language "Why you might care", so a reader can stop there.
+- Jargon gets a one-sentence definition at first use; tool names and package
+  names are never needed to understand an idea.
+- Every code tabset is introduced by one sentence saying what it does and what to
+  look for in the output, and followed by one sentence reading the result.
+- Prefer a real, named example and an everyday analogy before the abstraction.
+- Reassure: say when a part is the hard one, that it can be skimmed on a first
+  read, and what the reader will still have if they skip it.
+- Math stays correct and complete. Friendly means more explanation, not less
+  rigor; never delete a formula to make a page easier.
