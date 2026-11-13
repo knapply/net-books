@@ -9,7 +9,7 @@
 
 ::: {.callout-tip appearance="simple"}
 ## Code lives next to the idea
-Each idea comes with its code right where it is explained. The Rust blocks in this chapter run top to bottom as one script, so later blocks reuse names defined earlier. The people and messages are invented for this chapter, so that we can show every number and, in one case, check an estimate against the truth.
+Each idea comes with its code right where it is explained. The Rust blocks in this chapter run top to bottom as one script, so later blocks reuse names defined earlier. The office people and the messages are invented for this chapter, so that we can show every number and, in one case, check an estimate against the truth. Sampson's novices are real data.
 :::
 
 In @sec-time we looked at networks in time without asking why they change. We held time four ways, counted who could reach whom along time-respecting paths, and measured burstiness. Those are descriptions: they say what the recorded data look like. This chapter is about *models*: stories about how ties form and fade, with coefficients you can estimate and test.
@@ -416,6 +416,14 @@ tibble(rate = c(0.5, 1, 3, 9, 27)) |>
 
 ::: {.code-output}
 ```text
+# A tibble: 5 × 4
+   rate chances_in_all  ties changed
+  <dbl>          <dbl> <dbl>   <dbl>
+1   0.5              5 10.9     3.97
+2   1               10  9.41    7.22
+3   3               30  7.29   14.0 
+4   9               90  6.57   17.5 
+5  27              270  6.42   17.5 
 ```
 :::
 
@@ -521,6 +529,24 @@ pairs |>
 
 ::: {.code-output}
 ```text
+# A tibble: 3 × 5
+   wave  ties mutual_pairs fewest_named most_named
+  <int> <dbl>        <dbl>        <dbl>      <dbl>
+1     1    55           14            3          4
+2     2    57           15            3          4
+3     3    56           15            3          4
+# A tibble: 2 × 4
+  from_wave  kept dropped   new
+      <int> <dbl>   <dbl> <dbl>
+1         1    35      20    22
+2         2    40      17    16
+# A tibble: 4 × 5
+    tie returned pairs tie_later share
+  <dbl>    <dbl> <int>     <dbl> <dbl>
+1     1        1    58        43 0.741
+2     1        0    54        32 0.593
+3     0        1    54        15 0.278
+4     0        0   446        23 0.052
 ```
 :::
 
@@ -669,6 +695,18 @@ calibration |> slice_head(n = 5) |> mutate(across(where(is.numeric), \(x) round(
 
 ::: {.code-output}
 ```text
+# A tibble: 1 × 4
+   ties mutual changed outdegree_sd
+  <dbl>  <dbl>   <dbl>        <dbl>
+1    57     15      42         0.37
+# A tibble: 5 × 8
+   rate outdegree reciprocity  ties mutual changed outdegree_sd distance
+  <dbl>     <dbl>       <dbl> <dbl>  <dbl>   <dbl>        <dbl>    <dbl>
+1   3.5     -1            1    58.2   13.7    40.8         1.28     3.56
+2   3.5     -1.25         1.5  54.5   15.4    40.4         1.27     4.44
+3   4       -1.25         1.5  54.3   15.2    43.9         1.3      4.82
+4   4       -1            1    58.2   13.7    45.9         1.33     6.34
+5   3       -1            1    57.6   13.8    37.0         1.26     6.76
 ```
 :::
 
@@ -777,7 +815,7 @@ rate 3.0, outdegree -1.00, reciprocity 1.0: ties 57.4, mutual 13.5, changed 36.7
 
 :::
 
-The model has to explain the steady totals and the heavy churn together. The five best settings in the Rust run are listed above; the best is a rate of 3.5, an outdegree coefficient of $-1$ and a reciprocity coefficient of $1$. Two things to notice. The runners-up are close behind and sit along a ridge: a more costly outdegree ($-1.25$) paired with a bigger reciprocity bonus ($1.5$) gives nearly the same wave. Three summary counts cannot pin the coefficients down one by one, which is why real estimation reports standard errors. And R and Python draw different random numbers, so their top-five lists may order the neighbors differently; look for the same neighborhood, a rate of 3 to 4, an outdegree coefficient from $-1.25$ to $-1$ and a reciprocity coefficient from 1 to 1.5.
+The model has to explain the steady totals and the heavy churn together. The five best settings in the Rust run are listed above; the best is a rate of 3.5, an outdegree coefficient of $-1$ and a reciprocity coefficient of $1$. Two things to notice. The runners-up are close behind and sit along a ridge, a line of settings that fit about equally well: a more costly outdegree ($-1.25$) paired with a bigger reciprocity bonus ($1.5$) gives nearly the same wave. Three summary counts cannot pin the coefficients down one by one, which is why real estimation reports standard errors. And R and Python draw different random numbers, so their top-five lists may order the neighbors differently; look for the same neighborhood, a rate of 3 to 4, an outdegree coefficient from $-1.25$ to $-1$ and a reciprocity coefficient from 1 to 1.5.
 
 One more thing: the simulated out-degree spread is about 1.3 in every setting, while the observed spread is 0.37. We come back to that below.
 
@@ -805,6 +843,17 @@ tribble(~model, ~outdegree, ~reciprocity, "with reciprocity", -1, 1, "without re
 
 ::: {.code-output}
 ```text
+# A tibble: 8 × 6
+  model               statistic    observed simulated   low  high
+  <chr>               <chr>           <dbl>     <dbl> <dbl> <dbl>
+1 with reciprocity    ties            56        59.5  48    71   
+2 with reciprocity    mutual          15        14.5   9    20   
+3 with reciprocity    changed         33        41.4  30    52.5 
+4 with reciprocity    outdegree_sd     0.31      1.31  0.9   1.76
+5 without reciprocity ties            56        59.6  48    71   
+6 without reciprocity mutual          15         8.81  4    14   
+7 without reciprocity changed         33        43.7  32    55.5 
+8 without reciprocity outdegree_sd     0.31      1.31  0.87  1.8 
 ```
 :::
 
@@ -868,7 +917,7 @@ without reciprocity  out-degree sd  observed   0.31, simulated   1.32 (  0.9 to 
 
 :::
 
-Read the table this way. Where the model is asked for something it was built to produce, it does well: with the reciprocity bonus, the simulated number of mutual pairs is about 14.5 (central range 9 to 20) and the observed 15 is inside it. The rival without reciprocity, tuned to the same number of ties, averages about 9 mutual pairs and its central range tops out at 13, so the observed 15 is just outside it. With 500 runs that is a good reason to prefer the first model, not a test that rejects the second.
+Read the table this way. Where the model is asked for something it was built to produce, it does well: with the reciprocity bonus, the simulated number of mutual pairs is about 14.5 (central range 9 to 20) and the observed 15 is inside it. The rival without reciprocity, tuned to the same number of ties, averages about 9 mutual pairs and its central range tops out at 13 or 14, so the observed 15 is at or just outside its edge. With 500 runs that is a good reason to prefer the first model, not a test that rejects the second.
 
 Two other rows are warnings. The model expects about 41 ties to change in this step and the observed number is 33. The setting was tuned on the first step, where 42 changed, and the second step was calmer. A single rate for every period is an assumption, and the data say it is not quite right. RSiena estimates a separate rate for each period for this reason. And the last row: the model lets out-degrees spread out (about 1.3), while Sampson's questionnaire made every novice name three or four, so the observed spread is 0.31. That is a mismatch between the model and the *design* of the survey, not a feature of the monastery. A fix would limit how uneven out-degrees can get, for instance with a strong negative effect of squared out-degree, the out-activity effect in this engine's effect list. We did not fit that here.
 
@@ -998,6 +1047,17 @@ fit_rem(tiny, "reply") |>
 
 ::: {.code-output}
 ```text
+# A tibble: 4 × 3
+  event pair       probability
+  <int> <chr>            <dbl>
+1     1 Ada to Ben      0.167 
+2     2 Ben to Ada      0.375 
+3     3 Ada to Ben      0.3   
+4     4 Cy to Ada       0.0625
+# A tibble: 1 × 6
+  effect coefficient    se loglik null_loglik at_ln3
+  <chr>        <dbl> <dbl>  <dbl>       <dbl>  <dbl>
+1 reply        0.864 0.894  -6.72       -7.17  -6.75
 ```
 :::
 
@@ -1272,6 +1332,17 @@ c(statistic = gain, p_value = exp(-gain / 2)) |> round(3)
 
 ::: {.code-output}
 ```text
+# A tibble: 6 × 4
+  model        effect      coefficient    se
+  <chr>        <chr>             <dbl> <dbl>
+1 two effects  inertia          -0.754 0.205
+2 two effects  reply             0.758 0.16 
+3 four effects inertia          -0.675 0.234
+4 four effects reply             0.73  0.164
+5 four effects sender_out       -0.077 0.082
+6 four effects receiver_in      -0.021 0.07 
+statistic   p_value 
+    0.939     0.625 
 ```
 :::
 
@@ -1373,6 +1444,25 @@ bind_rows(`repeat and reply only` = fit_rem(chatty, c("inertia", "reply")),
 
 ::: {.code-output}
 ```text
+# A tibble: 8 × 2
+  coworker messages_sent
+     <int>         <int>
+1        1            39
+2        2            44
+3        3             4
+4        4             5
+5        5             7
+6        6             9
+7        7             6
+8        8             6
+# A tibble: 5 × 4
+  model                 effect     coefficient    se
+  <chr>                 <chr>            <dbl> <dbl>
+1 repeat and reply only inertia          0.257 0.039
+2 repeat and reply only reply           -0.004 0.062
+3 plus sender activity  inertia          0.014 0.061
+4 plus sender activity  reply            0.018 0.068
+5 plus sender activity  sender_out       0.071 0.013
 ```
 :::
 
@@ -1497,6 +1587,22 @@ shuffled |>
 
 ::: {.code-output}
 ```text
+# A tibble: 4 × 4
+  half   effect  coefficient    se
+  <chr>  <chr>         <dbl> <dbl>
+1 first  inertia      -0.705 0.38 
+2 first  reply         0.729 0.296
+3 second inertia      -0.678 0.365
+4 second reply         0.628 0.282
+# A tibble: 1 × 3
+  distinct_pairs busiest_pair top_three_share
+           <int>        <int>           <dbl>
+1             45            4           0.138
+# A tibble: 2 × 6
+  effect  observed shuffled_mean    low   high share_as_extreme
+  <chr>      <dbl>         <dbl>  <dbl>  <dbl>            <dbl>
+1 inertia   -0.754        -0.627 -0.87  -0.449            0.105
+2 reply      0.758         0.672  0.506  0.924            0.21 
 ```
 :::
 
@@ -1588,7 +1694,7 @@ reply    observed +0.758, shuffled mean +0.665 (+0.497 to +0.866), 0.175 of shuf
 
 **No dominating pairs.** The 80 messages use 45 of the 56 possible pairs, the busiest pair has 4 messages, and the top three pairs hold 13.8 percent of all messages. No pair drives the result.
 
-**The stricter null.** In all three tabs, the shuffled order gives mean coefficients near $-0.62$ for inertia and $+0.66$ for reply, with central 95 percent ranges of roughly $-0.85$ to $-0.43$ and $+0.47$ to $+0.87$. The observed $-0.75$ and $+0.76$ sit inside them: between about 10 and 18 percent of the shuffles are at least as extreme, depending on the tab's random draws. This is humbling, and it is the right result to take seriously. The z-values of 3.7 and 4.7 compare the data with a world where every pair is equally likely at every moment. The shuffle compares them with a world where the same pairs are active but the timing is random. Against that stricter world, there is no clear evidence that the *order* matters beyond *which pairs* talk. Most of what the coefficients measure is already in the set of active pairs, which includes pairs that write in both directions. More events, or a model with pair-level terms, would be needed to say more.
+**The stricter null.** In all three tabs, the shuffled order gives mean coefficients near $-0.62$ for inertia and $+0.66$ for reply, with central 95 percent ranges of roughly $-0.85$ to $-0.43$ and $+0.47$ to $+0.87$. The observed $-0.75$ and $+0.76$ sit inside them: between about 10 and 21 percent of the shuffles are at least as extreme, depending on the tab's random draws. This is humbling, and it is the right result to take seriously. The z-values of 3.7 and 4.7 compare the data with a world where every pair is equally likely at every moment. The shuffle compares them with a world where the same pairs are active but the timing is random. Against that stricter world, there is no clear evidence that the *order* matters beyond *which pairs* talk. Most of what the coefficients measure is already in the set of active pairs, which includes pairs that write in both directions. More events, or a model with pair-level terms, would be needed to say more.
 
 ![The two event-model coefficients for the eighty invented messages, refitted on each half of the log and with two more effects in the model. Dots are estimates, bars reach two standard errors either side. The halves agree in sign and size, but each half alone is only about two standard errors from zero.](../figures/rem-stability.svg){#fig-rem-stability fig-alt="Two panels with four rows each, estimates as dots with bars of two standard errors either side and a dashed line at zero. all 80 messages: inertia -0.75, reply +0.76; first 40: inertia -0.70, reply +0.73; last 40: inertia -0.68, reply +0.63; all 80, plus activity and popularity: inertia -0.68, reply +0.73. In every row the inertia estimate is below zero and the reply estimate is above zero; in the two half-log rows the inertia bars extend slightly past zero and the reply bars begin just above it."}
 
