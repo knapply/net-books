@@ -17,7 +17,7 @@ An ERGM lets you ask which of several tendencies (preferring your own side, frie
 
 ::: {.callout-tip appearance="simple"}
 ## Code lives next to the idea
-Each step of the modeling workflow comes with its code right where it is explained. The Rust blocks in this chapter run top to bottom as one script: the first builds the karate club, and later ones reuse it. The R and Python blocks share their variables the same way, so a later block may use a function an earlier one defined.
+Each step of the modeling workflow comes with its code right where it is explained. The Rust blocks in this chapter run top to bottom as one script: the first builds the karate club, and later ones reuse it. The R and Python blocks are blank stubs for now: each names the function knappnet would need to expose, because its R and Python packages do not fit ERGMs yet.
 :::
 
 So far we've *described* networks: counted ties, scored people, found groups. This chapter is about *modeling* them. A model is a claim about how the network could have come about, written down precisely enough to be wrong.
@@ -77,150 +77,24 @@ Look for the eight networks with their weights, the total $\kappa$, and the two 
 ## R
 
 ```r
-library(dplyr)
-library(tidyr)
-
-b_edges <- -1
-b_triangle <- 0.5
-
-# Three people have three pairs, so 2^3 = 8 possible networks. d01, d02 and d12 say whether each pair is tied.
-networks3 <- expand_grid(d12 = 0:1, d02 = 0:1, d01 = 0:1) |>
-  mutate(
-    mask = paste0(d12, d02, d01),
-    ties = d01 + d02 + d12,
-    triangles = d01 * d02 * d12,
-    weight = exp(b_edges * ties + b_triangle * triangles), # each network's weight
-    probability = weight / sum(weight)
-  )
-networks3 |>
-  select(mask, ties, triangles, weight, probability) |>
-  mutate(across(c(weight, probability), \(x) round(x, 4)))
-
-# The normalising constant is the sum of the eight weights.
-tibble(normalising_constant = sum(networks3$weight), probabilities_add_to = sum(networks3$probability)) |>
-  mutate(across(everything(), \(x) round(x, 4)))
-
-# The chance that pair 0-1 is tied, given the other two pairs, two ways: from the table of weights,
-# and from the change statistics with no normalising constant at all.
-networks3 |>
-  group_by(d12, d02) |>
-  summarise(
-    d_ties = 1, # adding a tie always adds one tie
-    from_table = weight[d01 == 1] / sum(weight),
-    d_triangles = d02[1] * d12[1], # the new tie closes a triangle only if both other pairs are tied
-    logistic = plogis(b_edges + b_triangle * d_triangles),
-    .groups = "drop"
-  ) |>
-  mutate(other_two_pairs = c("none tied", "0-2 tied", "1-2 tied", "both tied"), .before = 1) |>
-  select(other_two_pairs, d_ties, d_triangles, from_table, logistic) |>
-  mutate(across(c(from_table, logistic), \(x) round(x, 4)))
-
-# How many networks are there for more people? Every pair is tied or not, so 2^(number of pairs).
-tibble(people = c(3, 5, 10, 34)) |>
-  mutate(
-    n_pairs = people * (people - 1) / 2,
-    log10_networks = n_pairs * log10(2),
-    log10_years_to_list = log10_networks - 9 - log10(365.25 * 24 * 3600) # one billion networks per second
-  ) |>
-  mutate(across(starts_with("log10"), \(x) round(x, 1)))
+# TODO(code, R): needs net_ergm_exact(): every network on a few people with its weight and probability under an ERGM, and the normalising constant.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 8 × 5
-  mask   ties triangles weight probability
-  <chr> <int>     <int>  <dbl>       <dbl>
-1 000       0         0 1           0.386 
-2 001       1         0 0.368       0.142 
-3 010       1         0 0.368       0.142 
-4 011       2         0 0.135       0.0522
-5 100       1         0 0.368       0.142 
-6 101       2         0 0.135       0.0522
-7 110       2         0 0.135       0.0522
-8 111       3         1 0.0821      0.0317
-# A tibble: 1 × 2
-  normalising_constant probabilities_add_to
-                 <dbl>                <dbl>
-1                 2.59                    1
-# A tibble: 4 × 5
-  other_two_pairs d_ties d_triangles from_table logistic
-  <chr>            <dbl>       <int>      <dbl>    <dbl>
-1 none tied            1           0      0.269    0.269
-2 0-2 tied             1           0      0.269    0.269
-3 1-2 tied             1           0      0.269    0.269
-4 both tied            1           1      0.378    0.378
-# A tibble: 4 × 4
-  people n_pairs log10_networks log10_years_to_list
-   <dbl>   <dbl>          <dbl>               <dbl>
-1      3       3            0.9               -15.6
-2      5      10            3                 -13.5
-3     10      45           13.5                -3  
-4     34     561          169.                152. 
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-import math
-
-# Three people have three pairs, so 2^3 = 8 possible networks. Bit b of `mask` says whether pair b is tied
-# (pair 0 is 0-1, pair 1 is 0-2, pair 2 is 1-2).
-theta_edges, theta_triangle = -1.0, 0.5
-rows = []
-for mask in range(8):
-    d01, d02, d12 = mask & 1, (mask >> 1) & 1, (mask >> 2) & 1
-    ties, triangles = d01 + d02 + d12, d01 * d02 * d12
-    # Each network's weight is exp(theta . statistics).
-    rows.append((mask, ties, triangles, math.exp(theta_edges * ties + theta_triangle * triangles)))
-kappa = sum(r[3] for r in rows)  # the normalising constant: the sum of the eight weights
-print(f"{'mask':<5} {'ties':>5} {'triangles':>9} {'weight':>8} {'probability':>11}")
-for mask, ties, triangles, weight in rows:
-    print(f"{mask:03b}   {ties:>5} {triangles:>9} {weight:>8.4f} {weight / kappa:>11.4f}")
-print(f"normalising constant {kappa:.4f}; the probabilities add to {sum(r[3] / kappa for r in rows):.4f}")
-
-# The chance that pair 0-1 is tied, given the other two pairs, computed two ways:
-# from the table of weights, and from the change statistics with no normalising constant at all.
-weight_of = {r[0]: r[3] for r in rows}
-print(f"{'other two pairs':<15} {'d ties':>7} {'d triangles':>11} {'from table':>11} {'logistic':>9}")
-for rest, label in enumerate(["none tied", "0-2 tied", "1-2 tied", "both tied"]):
-    without, with_tie = rest << 1, (rest << 1) | 1
-    d_triangles = (rest & 1) * (rest >> 1)  # the new tie closes a triangle only if both other pairs are tied
-    log_odds = theta_edges * 1 + theta_triangle * d_triangles
-    print(f"{label:<15} {1:>7} {d_triangles:>11} {weight_of[with_tie] / (weight_of[with_tie] + weight_of[without]):>11.4f} {1 / (1 + math.exp(-log_odds)):>9.4f}")
-
-# How many networks are there for more people? Every pair is tied or not, so 2^(number of pairs).
-print(f"{'people':>6} {'pairs':>6} {'log10(networks)':>16} {'log10(years to list them)':>27}")
-for people in [3, 5, 10, 34]:
-    n_pairs = people * (people - 1) // 2
-    log_networks = n_pairs * math.log10(2)
-    # Listing one billion networks per second.
-    log_years = log_networks - 9 - math.log10(365.25 * 24 * 3600)
-    print(f"{people:>6} {n_pairs:>6} {log_networks:>16.1f} {log_years:>27.1f}")
+# TODO(code, Python): needs net_ergm_exact(): every network on a few people with its weight and probability under an ERGM, and the normalising constant; the Python package does not wrap the ERGM code yet.
 ```
 
 ::: {.code-output}
 ```text
-mask   ties triangles   weight probability
-000       0         0   1.0000      0.3858
-001       1         0   0.3679      0.1419
-010       1         0   0.3679      0.1419
-011       2         0   0.1353      0.0522
-100       1         0   0.3679      0.1419
-101       2         0   0.1353      0.0522
-110       2         0   0.1353      0.0522
-111       3         1   0.0821      0.0317
-normalising constant 2.5917; the probabilities add to 1.0000
-other two pairs  d ties d triangles  from table  logistic
-none tied             1           0      0.2689    0.2689
-0-2 tied              1           0      0.2689    0.2689
-1-2 tied              1           0      0.2689    0.2689
-both tied             1           1      0.3775    0.3775
-people  pairs  log10(networks)   log10(years to list them)
-     3      3              0.9                       -15.6
-     5     10              3.0                       -13.5
-    10     45             13.5                        -3.0
-    34    561            168.9                       152.4
+TODO(output)
 ```
 :::
 
@@ -370,88 +244,24 @@ First we load the karate club: 34 members, 78 friendships, and which side each m
 ## R
 
 ```r
-library(network)
-library(dplyr)
-
-# Zachary's karate club: 34 members, 78 friendships. R counts from 1, so we add 1
-# to the positions 0 to 33 that the Rust tab uses.
-ties <- tibble(
-  from = c(
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3,
-    4, 4, 5, 5, 5, 6, 8, 8, 8, 9, 13, 14, 14, 15, 15, 18, 18, 19, 20, 20, 22, 22, 23, 23, 23, 23, 23, 24, 24,
-    24, 25, 26, 26, 27, 28, 28, 29, 29, 30, 30, 31, 31, 32
-  ) + 1,
-  to = c(
-    1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 17, 19, 21, 31, 2, 3, 7, 13, 17, 19, 21, 30, 3, 7, 8, 9, 13, 27, 28,
-    32, 7, 12, 13, 6, 10, 6, 10, 16, 16, 30, 32, 33, 33, 33, 32, 33, 32, 33, 32, 33, 33, 32, 33, 32, 33, 25, 27,
-    29, 32, 33, 25, 27, 31, 31, 29, 33, 33, 31, 33, 32, 33, 32, 33, 32, 33, 33
-  ) + 1
-)
-# The side each member took (0 = Mr. Hi, 1 = the officer).
-side <- c(0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)
-club <- network(cbind(ties$from, ties$to), directed = FALSE, matrix.type = "edgelist")
-club %v% "side" <- side
-club
-
-tibble(side = if_else(side == 0, "Mr. Hi", "the officer")) |>
-  count(side)
+# TODO(code, R): needs net_frame() with a node attribute for the karate club, as the input to net_ergm().
 ```
 
 ::: {.code-output}
 ```text
- Network attributes:
-  vertices = 34 
-  directed = FALSE 
-  hyper = FALSE 
-  loops = FALSE 
-  multiple = FALSE 
-  bipartite = FALSE 
-  total edges= 78 
-    missing edges= 0 
-    non-missing edges= 78 
-
- Vertex attribute names: 
-    side vertex.names 
-
-No edge attributes
-# A tibble: 2 × 2
-  side            n
-  <chr>       <int>
-1 Mr. Hi         17
-2 the officer    17
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-import numpy as np
-
-# Zachary's karate club: 34 members, 78 friendships. Positions 0 to 33 are the members.
-src = [
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3,
-    4, 4, 5, 5, 5, 6, 8, 8, 8, 9, 13, 14, 14, 15, 15, 18, 18, 19, 20, 20, 22, 22, 23, 23, 23, 23, 23, 24, 24,
-    24, 25, 26, 26, 27, 28, 28, 29, 29, 30, 30, 31, 31, 32
-]
-dst = [
-    1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 17, 19, 21, 31, 2, 3, 7, 13, 17, 19, 21, 30, 3, 7, 8, 9, 13, 27, 28,
-    32, 7, 12, 13, 6, 10, 6, 10, 16, 16, 30, 32, 33, 33, 33, 32, 33, 32, 33, 32, 33, 33, 32, 33, 32, 33, 25, 27,
-    29, 32, 33, 25, 27, 31, 31, 29, 33, 33, 31, 33, 32, 33, 32, 33, 32, 33, 33
-]
-# The side each member took (0 = Mr. Hi, 1 = the officer).
-side = np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
-n = 34
-adj = np.zeros((n, n))
-adj[src, dst] = 1
-adj[dst, src] = 1
-print(f"{n} people, {int(adj.sum() / 2)} ties, {n * (n - 1) // 2} possible pairs")
-print(f"{(side == 0).sum()} on Mr. Hi's side, {(side == 1).sum()} on the officer's")
+# TODO(code, Python): needs net_frame() with a node attribute for the karate club, as the input to net_ergm(); the Python package does not wrap the ERGM code yet.
 ```
 
 ::: {.code-output}
 ```text
-34 people, 78 ties, 561 possible pairs
-17 on Mr. Hi's side, 17 on the officer's
+TODO(output)
 ```
 :::
 
@@ -522,67 +332,24 @@ Look for the two coefficients in the output matching the hand-made table: $-3.23
 ## R
 
 ```r
-library(ergm) # the standard R package for ERGMs (statnet)
-
-fit_plain <- ergm(club ~ edges + nodematch("side"), estimate = "MPLE")
-est <- summary(fit_plain)$coefficients
-tibble(
-  term = c("edges", "same side"),
-  estimate = est[, "Estimate"],
-  std_error = est[, "Std. Error"]
-) |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
-
-# The logistic function turns log-odds back into a probability.
-tibble(
-  pair = c("opposite sides", "same side"),
-  chance_of_tie = round(plogis(c(est[1, "Estimate"], est[1, "Estimate"] + est[2, "Estimate"])), 3)
-)
+# TODO(code, R): needs net_ergm(club ~ edges + nodematch("side"), estimate = "mple"): a pseudo-likelihood ERGM fit with standard errors.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 2 × 3
-  term      estimate std_error
-  <chr>        <dbl>     <dbl>
-1 edges        -3.23     0.307
-2 same side     2.11     0.338
-# A tibble: 2 × 2
-  pair           chance_of_tie
-  <chr>                  <dbl>
-1 opposite sides         0.038
-2 same side              0.246
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# No mainstream Python package fits ERGMs, but this model is a logistic regression on the pairs.
-upper = np.triu_indices(n, 1)
-y = adj[upper]
-same = (side[upper[0]] == side[upper[1]]).astype(float)
-X = np.column_stack([np.ones(len(y)), same])
-coef = np.zeros(2)
-for _ in range(50):  # Newton's method
-    p = 1 / (1 + np.exp(-X @ coef))
-    info = X.T @ (X * (p * (1 - p))[:, None])
-    coef = coef + np.linalg.solve(info, X.T @ (y - p))
-p = 1 / (1 + np.exp(-X @ coef))
-std_err = np.sqrt(np.diag(np.linalg.inv(X.T @ (X * (p * (1 - p))[:, None]))))
-for label, c, se in zip(["edges", "same side"], coef, std_err):
-    print(f"{label:<10} {c:>7.3f}  (standard error {se:.3f})")
-chance = lambda log_odds: 1 / (1 + np.exp(-log_odds))
-print(f"chance of a tie, opposite sides  {chance(coef[0]):.3f}")
-print(f"chance of a tie, same side       {chance(coef[0] + coef[1]):.3f}")
+# TODO(code, Python): needs net_ergm(club ~ edges + nodematch("side"), estimate = "mple"): a pseudo-likelihood ERGM fit with standard errors; the Python package does not wrap the ERGM code yet.
 ```
 
 ::: {.code-output}
 ```text
-edges       -3.230  (standard error 0.307)
-same side    2.111  (standard error 0.338)
-chance of a tie, opposite sides  0.038
-chance of a tie, same side       0.246
+TODO(output)
 ```
 :::
 
@@ -632,43 +399,19 @@ This sounds like the hard part and it's conceptually simple: guess, simulate, co
 ## R
 
 ```r
-summary(club ~ edges + nodematch("side") + gwesp(0.5, fixed = TRUE)) |> # 0.5 is the decay
-  round(2)
-
-# ergm runs its own Monte Carlo chains, so the estimates differ from Rust's in the last digits.
-fit <- ergm(club ~ edges + nodematch("side") + gwesp(0.5, fixed = TRUE),
-            control = control.ergm(seed = 1))
-est <- summary(fit)$coefficients
-tibble(
-  term = c("edges", "same side", "shared partners"),
-  estimate = est[, "Estimate"],
-  std_error = est[, "Std. Error"]
-) |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
-tibble(converged = !isTRUE(fit$failure), rounds = fit$iterations)
+# TODO(code, R): needs net_ergm_stats() and net_ergm(): observed statistics and a Monte Carlo maximum likelihood fit with a shared-partner (gwesp) term.
 ```
 
 ::: {.code-output}
 ```text
-          edges  nodematch.side gwesp.fixed.0.5 
-          78.00           67.00           82.93 
-# A tibble: 3 × 3
-  term            estimate std_error
-  <chr>              <dbl>     <dbl>
-1 edges             -3.90      0.307
-2 same side          1.50      0.278
-3 shared partners    0.697     0.175
-# A tibble: 1 × 2
-  converged rounds
-  <lgl>      <int>
-1 TRUE           2
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# TODO(code, Python): no Python package fits ERGMs with a shared-partner term (Monte Carlo maximum likelihood needs a tie-toggling sampler with GWESP change statistics, well over 40 lines). Use the R or Rust tab; the knappnet Python backend does not wrap the ERGM fitter.
+# TODO(code, Python): no Python package fits ERGMs with a shared-partner term (Monte Carlo maximum likelihood needs a tie-toggling sampler with GWESP change statistics, well over 40 lines). Use the Rust tab; the knappnet Python backend does not wrap the ERGM fitter.
 ```
 
 ::: {.code-output}
@@ -731,40 +474,19 @@ Look at how many triangles, two-stars and three-stars each model produces on ave
 ## R
 
 ```r
-# Count triangles and stars in 4,000 networks from each model (the first draws are discarded).
-monitor <- ~ triangle + kstar(2) + kstar(3)
-averages <- \(model) {
-  draws <- simulate(model, nsim = 4000, monitor = monitor, output = "stats",
-                    control = control.simulate.ergm(MCMC.burnin = 16384, MCMC.interval = 1024),
-                    seed = 1)
-  as.numeric(colMeans(draws)[c("edges", "triangle", "kstar2", "kstar3")])
-}
-# The simulations are random draws that differ from Rust's, so the averages differ a little.
-tibble(
-  statistic = c("ties", "triangles", "two-stars", "three-stars"),
-  real = as.numeric(summary(club ~ edges + triangle + kstar(2) + kstar(3))),
-  `edges + side` = averages(fit_plain),
-  `+ shared partners` = averages(fit)
-) |>
-  mutate(across(where(is.numeric), \(x) round(x, 1)))
+# TODO(code, R): needs net_ergm_simulate(): networks drawn from a fitted ERGM, with monitored triangle and star counts.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 4 × 4
-  statistic    real `edges + side` `+ shared partners`
-  <chr>       <dbl>          <dbl>               <dbl>
-1 ties           78           78.2                77  
-2 triangles      45           22.1                40.9
-3 two-stars     528          342.                380. 
-4 three-stars  1764          475.                649. 
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# TODO(code, Python): needs an ERGM simulator (a Metropolis tie-toggling sampler from the fitted models, with GWESP change statistics), well over 40 lines, and no Python package provides one. Use the R or Rust tab.
+# TODO(code, Python): needs an ERGM simulator (a Metropolis tie-toggling sampler from the fitted models, with GWESP change statistics), well over 40 lines, and no Python package provides one. Use the Rust tab.
 ```
 
 ::: {.code-output}
@@ -818,7 +540,7 @@ three-stars   1764.0          472.6          668.8
 
 :::
 
-The simple model, with edges and sides only, produces fewer than half the real triangles (about 22 against 45). Adding shared partners nearly fixes triangles (about 42), as it should, since that is what the term is for. Now look at the stars. Both models fall short, and the three-stars are far off even in the better model: about 669 against 1,764. The karate club has two hubs, Mr. Hi and the officer, with 16 and 17 friends each, and a model with no term for how unevenly ties are spread can't make hubs. The natural next move is to add a degree term, refit and check again. Modeling is a loop, and each check suggests the next model. The R tab simulates with the ergm package, so its averages differ slightly from these.
+The simple model, with edges and sides only, produces fewer than half the real triangles (about 22 against 45). Adding shared partners nearly fixes triangles (about 42), as it should, since that is what the term is for. Now look at the stars. Both models fall short, and the three-stars are far off even in the better model: about 669 against 1,764. The karate club has two hubs, Mr. Hi and the officer, with 16 and 17 friends each, and a model with no term for how unevenly ties are spread can't make hubs. The natural next move is to add a degree term, refit and check again. Modeling is a loop, and each check suggests the next model.
 
 Put simply: the model gets triangles about right and gets hubs badly wrong.
 
@@ -847,80 +569,24 @@ Look for each pair's log-odds and the chance it turns into.
 ## R
 
 ```r
-library(purrr)
-
-# The same two pairs, using the shared-partner fit from Step 3. R counts from 1, so we add 1
-# to the member positions the other tabs use.
-stats_of <- \(net) as.numeric(summary(net ~ edges + nodematch("side") + gwesp(0.5, fixed = TRUE)))
-one_tie <- \(from, to) {
-  with_tie <- club
-  with_tie[from + 1, to + 1] <- 1
-  stats_of(with_tie) - stats_of(club)
-}
-theta <- coef(fit)
-
-tibble(
-  pair = c("same side (2 and 12)", "opposite sides (8 and 14)"),
-  from = c(2, 8),
-  to = c(12, 14)
-) |>
-  mutate(
-    change = map2(from, to, one_tie),
-    partners = map2_dbl(from, to, \(i, j) sum(as.matrix(club)[i + 1, ] * as.matrix(club)[j + 1, ])),
-    edges_change = map_dbl(change, 1),
-    side_change = map_dbl(change, 2),
-    partner_change = map_dbl(change, 3),
-    log_odds = map_dbl(change, \(x) sum(theta * x)),
-    chance = plogis(log_odds)
-  ) |>
-  select(pair, partners, edges_change, side_change, partner_change, log_odds, chance) |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
+# TODO(code, R): needs net_ergm_change_stats(): how each statistic changes when one tie is added, and the implied log-odds and chance of that tie.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 2 × 7
-  pair          partners edges_change side_change partner_change log_odds chance
-  <chr>            <dbl>        <dbl>       <dbl>          <dbl>    <dbl>  <dbl>
-1 same side (2…        2            1           1           2.21   -0.858  0.298
-2 opposite sid…        2            1           0           2.40   -2.23   0.097
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# The coefficients printed in Step 3 (edges, same side, shared partners), typed in by hand.
-theta = np.array([-3.924, 1.535, 0.697])
-decay = 0.5
-
-def gwesp(a):
-    # Each tie counts e^decay * (1 - (1 - e^-decay)^k), where k is its number of shared partners.
-    shared = a @ a
-    tied = np.triu(a, 1) > 0
-    return (np.exp(decay) * (1 - (1 - np.exp(-decay)) ** shared[tied])).sum()
-
-def change(i, j):
-    with_tie = adj.copy()
-    with_tie[i, j] = with_tie[j, i] = 1
-    return np.array([1.0, float(side[i] == side[j]), gwesp(with_tie) - gwesp(adj)])
-
-for label, i, j in [("same side (2 and 12)", 2, 12), ("opposite sides (8 and 14)", 8, 14)]:
-    delta = change(i, j)
-    log_odds = theta @ delta
-    print(f"{label}: {int(adj[i] @ adj[j])} shared partners, change {np.round(delta, 3)}")
-    print(f"  log-odds {theta[0]:.3f}*{delta[0]:.0f} + {theta[1]:.3f}*{delta[1]:.0f} + {theta[2]:.3f}*{delta[2]:.3f} = {log_odds:.3f}")
-    print(f"  chance of the tie {1 / (1 + np.exp(-log_odds)):.3f}")
+# TODO(code, Python): needs net_ergm_change_stats(): how each statistic changes when one tie is added, and the implied log-odds and chance of that tie; the Python package does not wrap the ERGM code yet.
 ```
 
 ::: {.code-output}
 ```text
-same side (2 and 12): 2 shared partners, change [1.    1.    2.214]
-  log-odds -3.924*1 + 1.535*1 + 0.697*2.214 = -0.846
-  chance of the tie 0.300
-opposite sides (8 and 14): 2 shared partners, change [1.    0.    2.396]
-  log-odds -3.924*1 + 1.535*0 + 0.697*2.396 = -2.254
-  chance of the tie 0.095
+TODO(output)
 ```
 :::
 
@@ -1029,101 +695,24 @@ Look for the 5.3935 from the hand count, and for the weights table that shows ea
 ## R
 
 ```r
-library(tidyr)
-
-# A tiny network: four people, a square 0-1-3-2 with the diagonal 1-2. R counts from 1, so we add 1.
-tiny <- network(cbind(c(1, 1, 2, 2, 3), c(2, 3, 3, 4, 4)), directed = FALSE, matrix.type = "edgelist")
-tiny_matrix <- as.matrix(tiny)
-decay <- 0.5
-# A tie whose two ends share k partners counts e^decay * (1 - (1 - e^-decay)^k).
-tie_weight <- \(k, d = decay) exp(d) * (1 - (1 - exp(-d))^k)
-
-tie_table <- tibble(a = c(0, 0, 1, 1, 2), b = c(1, 2, 2, 3, 3)) |>
-  mutate(
-    shared = map2_dbl(a, b, \(i, j) sum(tiny_matrix[i + 1, ] * tiny_matrix[j + 1, ])),
-    weight = tie_weight(shared)
-  )
-tie_table |>
-  mutate(weight = round(weight, 4))
-tibble(gwesp_by_hand = round(sum(tie_table$weight), 4))
-summary(tiny ~ edges + kstar(2) + triangle + gwesp(0.5, fixed = TRUE)) |>
-  round(4)
-
-# What a tie is worth as its shared partners pile up, for several decay settings.
-expand_grid(decay_setting = c(0.25, 0.5, 1, 2), k = c(1, 2, 3, 5, 10)) |>
-  mutate(weight = tie_weight(k, decay_setting), limit = exp(decay_setting)) |>
-  pivot_wider(names_from = k, names_prefix = "k=", values_from = weight) |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
+# TODO(code, R): needs net_ergm_stats(): edge, 2-star, triangle and gwesp counts for a tiny network, to check the gwesp weights by hand.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 5 × 4
-      a     b shared weight
-  <dbl> <dbl>  <dbl>  <dbl>
-1     0     1      1   1   
-2     0     2      1   1   
-3     1     2      2   1.39
-4     1     3      1   1   
-5     2     3      1   1   
-# A tibble: 1 × 1
-  gwesp_by_hand
-          <dbl>
-1          5.39
-          edges          kstar2        triangle gwesp.fixed.0.5 
-         5.0000          8.0000          2.0000          5.3935 
-# A tibble: 4 × 7
-  decay_setting limit `k=1` `k=2` `k=3` `k=5` `k=10`
-          <dbl> <dbl> <dbl> <dbl> <dbl> <dbl>  <dbl>
-1          0.25  1.28     1  1.22  1.27  1.28   1.28
-2          0.5   1.65     1  1.39  1.55  1.63   1.65
-3          1     2.72     1  1.63  2.03  2.44   2.69
-4          2     7.39     1  1.86  2.61  3.82   5.66
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-import itertools
-
-# A tiny network: four people, a square 0-1-3-2 with the diagonal 1-2.
-tiny_ties = [(0, 1), (0, 2), (1, 2), (1, 3), (2, 3)]
-tiny = np.zeros((4, 4))
-for a, b in tiny_ties:
-    tiny[a, b] = tiny[b, a] = 1
-decay = 0.5
-# A tie whose two ends share k partners counts e^decay * (1 - (1 - e^-decay)^k).
-tie_weight = lambda k, d=decay: math.exp(d) * (1 - (1 - math.exp(-d)) ** k)
-gwesp_by_hand = 0.0
-for a, b in tiny_ties:
-    k = int(tiny[a] @ tiny[b])
-    print(f"tie {a}-{b}: {k} shared partners, weight {tie_weight(k):.4f}")
-    gwesp_by_hand += tie_weight(k)
-degrees = tiny.sum(axis=1)
-print(f"GWESP by hand {gwesp_by_hand:.4f}")
-print(f"ties {int(degrees.sum() / 2)}, 2-stars {int((degrees * (degrees - 1) / 2).sum())}, triangles {int(np.trace(tiny @ tiny @ tiny) / 6)}")
-
-# What a tie is worth as its shared partners pile up, for several decay settings.
-print(f"{'decay':<6} {'k=1':>6} {'k=2':>6} {'k=3':>6} {'k=5':>6} {'k=10':>6} {'limit':>7}")
-for d in [0.25, 0.5, 1.0, 2.0]:
-    print(f"{d:<6} " + " ".join(f"{tie_weight(k, d):>6.3f}" for k in [1, 2, 3, 5, 10]) + f" {math.exp(d):>7.3f}")
+# TODO(code, Python): needs net_ergm_stats(): edge, 2-star, triangle and gwesp counts for a tiny network, to check the gwesp weights by hand; the Python package does not wrap the ERGM code yet.
 ```
 
 ::: {.code-output}
 ```text
-tie 0-1: 1 shared partners, weight 1.0000
-tie 0-2: 1 shared partners, weight 1.0000
-tie 1-2: 2 shared partners, weight 1.3935
-tie 1-3: 1 shared partners, weight 1.0000
-tie 2-3: 1 shared partners, weight 1.0000
-GWESP by hand 5.3935
-ties 5, 2-stars 8, triangles 2
-decay     k=1    k=2    k=3    k=5   k=10   limit
-0.25    1.000  1.221  1.270  1.283  1.284   1.284
-0.5     1.000  1.393  1.548  1.633  1.649   1.649
-1.0     1.000  1.632  2.032  2.444  2.691   2.718
-2.0     1.000  1.865  2.612  3.818  5.663   7.389
+TODO(output)
 ```
 :::
 
@@ -1204,47 +793,24 @@ Check your hand counts against the output: one mutual pair, two out-2-stars, two
 ## R
 
 ```r
-# Four people, six directed ties: 0->1 and 1->0 (a mutual pair), 1->2, 0->2, 2->3, 3->1. R counts from 1.
-digraph <- network(cbind(c(1, 2, 2, 1, 3, 4), c(2, 1, 3, 3, 4, 2)), directed = TRUE, matrix.type = "edgelist")
-summary(digraph ~ edges + mutual + ostar(2) + istar(2) + ttriple + ctriple)
+# TODO(code, R): needs net_ergm_stats() with the directed terms (edges, mutual, ostar, istar, ttriple, ctriple).
 ```
 
 ::: {.code-output}
 ```text
-  edges  mutual  ostar2  istar2 ttriple ctriple 
-      6       1       2       2       2       1 
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# Four people, six directed ties: 0->1 and 1->0 (a mutual pair), 1->2, 0->2, 2->3, 3->1.
-digraph = np.zeros((4, 4), dtype=int)
-for a, b in [(0, 1), (1, 0), (1, 2), (0, 2), (2, 3), (3, 1)]:
-    digraph[a, b] = 1
-out_deg, in_deg = digraph.sum(axis=1), digraph.sum(axis=0)
-triples = list(itertools.permutations(range(4), 3))  # ordered triples of different people (i, j, k)
-counted = {
-    "ties": digraph.sum(),
-    "mutual pairs": (digraph * digraph.T).sum() // 2,
-    "out-2-stars": (out_deg * (out_deg - 1) // 2).sum(),
-    "in-2-stars": (in_deg * (in_deg - 1) // 2).sum(),
-    "transitive triples": sum(digraph[i, j] * digraph[j, k] * digraph[i, k] for i, j, k in triples),
-    "cyclic triples": sum(digraph[i, j] * digraph[j, k] * digraph[k, i] for i, j, k in triples) // 3,
-}
-for label, value in counted.items():
-    print(f"{label:<20} {value}")
+# TODO(code, Python): needs net_ergm_stats() with the directed terms (edges, mutual, ostar, istar, ttriple, ctriple); the Python package does not wrap the ERGM code yet.
 ```
 
 ::: {.code-output}
 ```text
-ties                 6
-mutual pairs         1
-out-2-stars          2
-in-2-stars           2
-transitive triples   2
-cyclic triples       1
+TODO(output)
 ```
 :::
 
@@ -1312,87 +878,24 @@ Look at the two sets of coefficients and standard errors side by side. Then comp
 ## R
 
 ```r
-# The Step 3 model fitted by pseudo-likelihood, next to the Monte Carlo fit from Step 3.
-fit_mple <- ergm(club ~ edges + nodematch("side") + gwesp(0.5, fixed = TRUE), estimate = "MPLE")
-mple_est <- summary(fit_mple)$coefficients
-mcmle_est <- summary(fit)$coefficients
-tibble(
-  term = c("edges", "same side", "shared partners"),
-  MPLE = mple_est[, "Estimate"],
-  MPLE_se = mple_est[, "Std. Error"],
-  MCMLE = mcmle_est[, "Estimate"],
-  MCMLE_se = mcmle_est[, "Std. Error"]
-) |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
-
-# Which estimate reproduces the club? Simulate from each and average the three statistics.
-draw_means <- \(model_fit) {
-  simulate(model_fit, nsim = 2000, output = "stats", seed = 1,
-           control = control.simulate.ergm(MCMC.burnin = 16384, MCMC.interval = 1024)) |>
-    colMeans() |>
-    as.numeric()
-}
-tibble(
-  statistic = c("edges", "same side", "shared partners"),
-  observed = as.numeric(summary(club ~ edges + nodematch("side") + gwesp(0.5, fixed = TRUE))),
-  simulated_at_MPLE = draw_means(fit_mple),
-  simulated_at_MCMLE = draw_means(fit)
-) |>
-  mutate(across(where(is.numeric), \(x) round(x, 1)))
+# TODO(code, R): needs net_ergm() with estimate = "mple" next to the Monte Carlo fit, with net_ergm_simulate() from each.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 3 × 5
-  term              MPLE MPLE_se  MCMLE MCMLE_se
-  <chr>            <dbl>   <dbl>  <dbl>    <dbl>
-1 edges           -3.62    0.348 -3.90     0.307
-2 same side        1.78    0.348  1.50     0.278
-3 shared partners  0.335   0.102  0.697    0.175
-# A tibble: 3 × 4
-  statistic       observed simulated_at_MPLE simulated_at_MCMLE
-  <chr>              <dbl>             <dbl>              <dbl>
-1 edges               78                67.6               76.8
-2 same side           67                58.3               65.4
-3 shared partners     82.9              52.2               80.6
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-def logit_fit(Z, tie):
-    """Logistic regression by Newton's method: coefficients, standard errors, log-likelihood."""
-    coef = np.zeros(Z.shape[1])
-    for _ in range(50):
-        p = 1 / (1 + np.exp(-Z @ coef))
-        coef = coef + np.linalg.solve(Z.T @ (Z * (p * (1 - p))[:, None]), Z.T @ (tie - p))
-    p = 1 / (1 + np.exp(-Z @ coef))
-    info = Z.T @ (Z * (p * (1 - p))[:, None])
-    return coef, np.sqrt(np.diag(np.linalg.inv(info))), float((tie * np.log(p) + (1 - tie) * np.log(1 - p)).sum())
-
-# Pseudo-likelihood for the Step 3 model: regress each pair's tie on its change statistics.
-# For a pair that is tied, the change statistic compares the network with and without that tie.
-def change_statistics(i, j):
-    on, off = adj.copy(), adj.copy()
-    on[i, j] = on[j, i] = 1
-    off[i, j] = off[j, i] = 0
-    return [1.0, float(side[i] == side[j]), gwesp(on) - gwesp(off)]
-
-Z = np.array([change_statistics(i, j) for i, j in zip(*upper)])
-coef_mple, se_mple, _ = logit_fit(Z, adj[upper])
-print(f"{'':<16} {'MPLE':>8} {'(se)':>8}")
-for label, c, se in zip(["edges", "same side", "shared partners"], coef_mple, se_mple):
-    print(f"{label:<16} {c:>8.3f} {se:>8.3f}")
-# The Monte Carlo fit from Step 3 (Rust tab), for comparison: -3.924, 1.535 and 0.697.
+# TODO(code, Python): needs net_ergm() with estimate = "mple" next to the Monte Carlo fit, with net_ergm_simulate() from each; the Python package does not wrap the ERGM code yet.
 ```
 
 ::: {.code-output}
 ```text
-                     MPLE     (se)
-edges              -3.625    0.348
-same side           1.781    0.348
-shared partners     0.335    0.102
+TODO(output)
 ```
 :::
 
@@ -1480,42 +983,19 @@ Look at how the standard deviation across seeds shrinks from 64 to 512 to 4,096 
 ## R
 
 ```r
-library(tidyr)
-
-# Refit the Step 3 model with four different seeds, using more and more simulated networks per round.
-refits <- expand_grid(draws_per_round = c(64, 512, 4096), seed_used = 1:4) |>
-  mutate(
-    coefs = map2(draws_per_round, seed_used, \(n_draws, s) {
-      tryCatch(
-        coef(ergm(club ~ edges + nodematch("side") + gwesp(0.5, fixed = TRUE),
-                  control = control.ergm(MCMC.samplesize = n_draws, seed = s))),
-        error = \(e) rep(NA_real_, 3)
-      )
-    }),
-    edges_coef = map_dbl(coefs, 1),
-    side_coef = map_dbl(coefs, 2),
-    partners_coef = map_dbl(coefs, 3)
-  )
-refits |>
-  group_by(draws_per_round) |>
-  summarise(across(ends_with("_coef"), \(x) sprintf("%.3f (%.3f)", mean(x), sd(x))))
+# TODO(code, R): needs net_ergm() refits over several seeds and numbers of simulated networks per round.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 3 × 4
-  draws_per_round edges_coef     side_coef     partners_coef
-            <dbl> <chr>          <chr>         <chr>        
-1              64 -3.928 (0.007) 1.547 (0.020) 0.697 (0.005)
-2             512 -3.916 (0.010) 1.521 (0.021) 0.700 (0.009)
-3            4096 -3.924 (0.008) 1.535 (0.012) 0.697 (0.002)
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# TODO(code, Python): refitting by Monte Carlo maximum likelihood with several seeds needs a tie-toggling sampler with GWESP change statistics inside a fitting loop, well over 40 lines, and no Python package provides one. Use the R or Rust tab.
+# TODO(code, Python): refitting by Monte Carlo maximum likelihood with several seeds needs a tie-toggling sampler with GWESP change statistics inside a fitting loop, well over 40 lines, and no Python package provides one. Use the Rust tab.
 ```
 
 ::: {.code-output}
@@ -1595,47 +1075,19 @@ Look at how the effective size and the lag-1 correlation change as the interval 
 ## R
 
 ```r
-# How many independent draws is an autocorrelated chain worth? Add up the correlations at lags 1, 2, ...
-# until the first one that is not positive.
-effective_size <- \(x) {
-  rho <- acf(x, lag.max = 400, plot = FALSE)$acf[-1, 1, 1]
-  n_lags <- which(c(rho <= 0, TRUE))[1] - 1
-  length(x) / (1 + 2 * sum(rho[seq_len(n_lags)]))
-}
-
-# One long chain of the shared-partner statistic at the fitted coefficients, recording a draw every `interval` steps.
-tibble(interval = c(1, 16, 128, 1024)) |>
-  mutate(
-    chain = map(interval, \(k) {
-      draws <- simulate(fit, nsim = 2000, output = "stats", seed = 1,
-                        control = control.simulate.ergm(MCMC.burnin = 16384, MCMC.interval = k))
-      as.numeric(as.matrix(draws)[, 3])
-    }),
-    average = map_dbl(chain, mean),
-    spread = map_dbl(chain, sd),
-    lag1_cor = map_dbl(chain, \(x) cor(x[-1], x[-length(x)])),
-    effective = map_dbl(chain, effective_size)
-  ) |>
-  select(!chain) |>
-  mutate(across(where(is.numeric), \(x) round(x, 2)))
+# TODO(code, R): needs net_ergm_simulate() chains at several thinning intervals, with lag-1 correlation and effective sample size.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 4 × 5
-  interval average spread lag1_cor effective
-     <dbl>   <dbl>  <dbl>    <dbl>     <dbl>
-1        1    90.0   16.9     1         4.77
-2       16    77.6   22.0     0.97     25.9 
-3      128    80.8   22.3     0.79    176.  
-4     1024    80.6   22.0     0.22   1258.  
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# TODO(code, Python): needs a sampler for the shared-partner model (a Metropolis tie-toggling sampler with GWESP change statistics) to produce the chain, well over 40 lines. Use the R or Rust tab.
+# TODO(code, Python): needs a sampler for the shared-partner model (a Metropolis tie-toggling sampler with GWESP change statistics) to produce the chain, well over 40 lines. Use the Rust tab.
 ```
 
 ::: {.code-output}
@@ -1711,107 +1163,24 @@ Look for how many ties the simulated networks have (the real club has 78), and f
 ## R
 
 ```r
-# The classic "Markov" model: ties, same-side ties, 2-stars and triangles. Fit it by pseudo-likelihood.
-markov_mple <- ergm(club ~ edges + nodematch("side") + kstar(2) + triangle, estimate = "MPLE")
-round(coef(markov_mple), 3)
-
-# The number of ties (the first statistic) in each of `nsim` networks simulated from a model, starting at the real club.
-ties_in <- \(model_fit, theta, nsim) {
-  draws <- simulate(model_fit, coef = theta, nsim = nsim, output = "stats", seed = 1,
-                    control = control.simulate.ergm(MCMC.burnin = 16384, MCMC.interval = 1024))
-  as.numeric(as.matrix(draws)[, 1])
-}
-markov_ties <- ties_in(markov_mple, coef(markov_mple), 300)
-tibble(smallest = min(markov_ties), average = mean(markov_ties), largest = max(markov_ties)) |>
-  mutate(across(everything(), \(x) round(x, 1)))
-
-# Monte Carlo maximum likelihood on the same model, with a cap on the rounds: it may stop with an error.
-markov_mcmle <- tryCatch(
-  ergm(club ~ edges + nodematch("side") + kstar(2) + triangle, control = control.ergm(MCMLE.maxit = 4, seed = 1)),
-  error = \(e) conditionMessage(e)
-)
-if (is.character(markov_mcmle)) strtrim(markov_mcmle, 120) else round(coef(markov_mcmle), 3)
-
-# The same trouble in its purest form: ties and triangles only, edges coefficient fixed at -3.5.
-tri_fit <- ergm(club ~ edges + triangle, estimate = "MPLE")
-tibble(triangle_coef = c(1, 1.1, 1.2, 1.3)) |>
-  mutate(
-    tie_counts = map(triangle_coef, \(b) ties_in(tri_fit, c(-3.5, b), 200)),
-    draws_below_100 = map_int(tie_counts, \(x) sum(x < 100)),
-    draws_above_400 = map_int(tie_counts, \(x) sum(x > 400)),
-    average_ties = map_dbl(tie_counts, mean)
-  ) |>
-  select(!tie_counts) |>
-  mutate(average_ties = round(average_ties, 1))
+# TODO(code, R): needs net_ergm() on the Markov model (edges, nodematch, kstar, triangle): pseudo-likelihood estimates, simulation from them and a capped Monte Carlo fit that fails.
 ```
 
 ::: {.code-output}
 ```text
-         edges nodematch.side         kstar2       triangle 
-        -6.409          3.026          0.246         -0.072 
-# A tibble: 1 × 3
-  smallest average largest
-     <dbl>   <dbl>   <dbl>
-1        5    14.7      31
-[1] "Unconstrained MCMC sampling did not mix at all. Optimization cannot continue."
-# A tibble: 4 × 4
-  triangle_coef draws_below_100 draws_above_400 average_ties
-          <dbl>           <int>           <int>        <dbl>
-1           1               200               0         16.9
-2           1.1             200               0         17.4
-3           1.2             200               0         17.8
-4           1.3               0             200        561  
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-rng = np.random.default_rng(1)
-
-def delta(a, i, j):
-    """Change statistics for the tie i-j: ties, same side, 2-stars, triangles."""
-    di, dj = a[i].sum() - a[i, j], a[j].sum() - a[j, i]
-    return np.array([1.0, float(side[i] == side[j]), di + dj, a[i] @ a[j]])
-
-# The classic "Markov" model, fitted by pseudo-likelihood.
-Z = np.array([delta(adj, i, j) for i, j in zip(*upper)])
-markov_coef, _, _ = logit_fit(Z, adj[upper])
-print("pseudo-likelihood estimates", np.round(markov_coef, 3))
-
-def simulate_ties(theta, columns, draws, burnin=16384, interval=1024):
-    """A tie-toggling Metropolis sampler, started at the club; returns the number of ties after each draw."""
-    a, ties, out = adj.copy(), adj.sum() / 2, []
-    for step in range(burnin + draws * interval):
-        i, j = rng.integers(0, n, 2)
-        if i != j:
-            sign = 1 - 2 * a[i, j]  # +1 if the toggle adds a tie, -1 if it removes one
-            if np.log(rng.random()) < sign * (theta @ delta(a, i, j)[columns]):
-                a[i, j] = a[j, i] = 1 - a[i, j]
-                ties += sign
-        if step >= burnin and (step - burnin + 1) % interval == 0:
-            out.append(ties)
-    return np.array(out)
-
-ties = simulate_ties(markov_coef, [0, 1, 2, 3], 300)
-print(f"ties in 300 simulated networks: smallest {ties.min():.0f}, average {ties.mean():.1f}, largest {ties.max():.0f} (the club has 78; the most possible is 561)")
-
-# The same trouble in its purest form: ties and triangles only, edges coefficient fixed at -3.5.
-print(f"{'triangle coef':>14} {'draws < 100':>12} {'draws > 400':>12} {'average ties':>13}")
-for triangle_coef in [1.0, 1.1, 1.2, 1.3]:
-    ties = simulate_ties(np.array([-3.5, triangle_coef]), [0, 3], 200)
-    print(f"{triangle_coef:>14} {(ties < 100).sum():>12} {(ties > 400).sum():>12} {ties.mean():>13.1f}")
+# TODO(code, Python): needs net_ergm() on the Markov model (edges, nodematch, kstar, triangle): pseudo-likelihood estimates, simulation from them and a capped Monte Carlo fit that fails; the Python package does not wrap the ERGM code yet.
 ```
 
 ::: {.code-output}
 ```text
-pseudo-likelihood estimates [-6.409  3.026  0.246 -0.072]
-ties in 300 simulated networks: smallest 559, average 560.8, largest 561 (the club has 78; the most possible is 561)
- triangle coef  draws < 100  draws > 400  average ties
-           1.0          200            0          17.5
-           1.1          200            0          18.3
-           1.2          200            0          18.1
-           1.3            0          200         561.0
+TODO(output)
 ```
 :::
 
@@ -1868,7 +1237,7 @@ Monte Carlo maximum likelihood fails: the simulated statistics are collinear or 
 :::
 
 
-The Markov model's pseudo-likelihood estimates, simulated, give networks with 558 to 561 ties. There are only 561 pairs, so these are nearly complete graphs, from a model fitted to a club with 78 ties. (The R tab simulates from the same estimates with its own sampler and lands at the other extreme, 5 to 31 ties, nearly empty. Which end a degenerate model falls to depends on the sampler and the starting point, which is part of what makes it unreliable.) Monte Carlo maximum likelihood cannot even start (the Rust tab prints the engine's error message), because it cannot find any variation in the draws it needs.
+The Markov model's pseudo-likelihood estimates, simulated, give networks with 558 to 561 ties. There are only 561 pairs, so these are nearly complete graphs, from a model fitted to a club with 78 ties. (Which end a degenerate model falls to depends on the sampler and the starting point, which is part of what makes it unreliable.) Monte Carlo maximum likelihood cannot even start (the Rust tab prints the engine's error message), because it cannot find any variation in the draws it needs.
 
 The sweep at the end shows the mechanism. With the triangle coefficient at 1.0 or 1.1, every one of the 200 draws has fewer than 100 ties, with an average near 17. At 1.2 and 1.3, every draw has more than 400 ties, and the average is 561, the complete graph. There are no in-between networks at all. A small change in a coefficient flips the whole model from a nearly empty world to a complete one. The exact tipping point depends on the sampler; the Python tab, which uses a different toggling rule, puts it between 1.2 and 1.3.
 
@@ -1911,68 +1280,19 @@ Look for statistics where the real value falls outside the simulated 95 percent 
 ## R
 
 ```r
-# 400 networks from the Step 3 fit, counting people with each degree 0 to 10 and ties with each number of shared partners 0 to 8.
-gof_draws <- simulate(fit, nsim = 400, output = "stats", seed = 1,
-                      monitor = ~ degree(0:10) + esp(0:8),
-                      control = control.simulate.ergm(MCMC.burnin = 16384, MCMC.interval = 1024)) |>
-  as.matrix()
-profile_cols <- grep("^(degree|esp)", colnames(gof_draws))
-real_counts <- as.numeric(summary(club ~ degree(0:10) + esp(0:8)))
-
-gof_table <- tibble(
-  statistic = c(paste("degree", 0:10), paste("shared partners", 0:8)),
-  real = real_counts,
-  col_index = profile_cols
-) |>
-  mutate(
-    sims = map(col_index, \(j) gof_draws[, j]),
-    mean_sim = map_dbl(sims, mean),
-    lo = map_dbl(sims, \(x) quantile(x, 0.025, type = 1)),
-    hi = map_dbl(sims, \(x) quantile(x, 0.975, type = 1)),
-    p = map2_dbl(sims, real, \(x, r) min(1, 2 * min(mean(x <= r), mean(x >= r))))
-  ) |>
-  select(statistic, real, mean_sim, lo, hi, p)
-gof_table |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
-tibble(flagged = sum(gof_table$p < 0.05), of = nrow(gof_table))
+# TODO(code, R): needs net_ergm_gof(): goodness of fit for the degree and shared-partner distributions.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 20 × 6
-   statistic          real mean_sim    lo    hi     p
-   <chr>             <dbl>    <dbl> <dbl> <dbl> <dbl>
- 1 degree 0              0     1.42     0     4 0.535
- 2 degree 1              1     2.55     0     7 0.59 
- 3 degree 2             11     3.76     0     8 0.01 
- 4 degree 3              6     4.72     1     9 0.66 
- 5 degree 4              6     5.14     1     9 0.86 
- 6 degree 5              3     4.96     1    10 0.495
- 7 degree 6              2     4.20     1     8 0.405
- 8 degree 7              0     3.00     0     7 0.135
- 9 degree 8              0     2.05     0     5 0.31 
-10 degree 9              1     1.18     0     4 1    
-11 degree 10             1     0.56     0     2 0.8  
-12 shared partners 0    11    13.3      5    22 0.68 
-13 shared partners 1    35    27.0     16    38 0.2  
-14 shared partners 2    14    21.5      9    35 0.29 
-15 shared partners 3    11    10.2      1    23 0.85 
-16 shared partners 4     3     3.61     0    12 1    
-17 shared partners 5     2     1.01     0     6 0.48 
-18 shared partners 6     0     0.22     0     2 1    
-19 shared partners 7     1     0.04     0     0 0.05 
-20 shared partners 8     0     0.01     0     0 1    
-# A tibble: 1 × 2
-  flagged    of
-    <int> <int>
-1       1    20
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# TODO(code, Python): needs an ERGM simulator for the fitted shared-partner model (a Metropolis tie-toggling sampler with GWESP change statistics), well over 40 lines, and no Python package provides one. Use the R or Rust tab.
+# TODO(code, Python): needs an ERGM simulator for the fitted shared-partner model (a Metropolis tie-toggling sampler with GWESP change statistics), well over 40 lines, and no Python package provides one. Use the Rust tab.
 ```
 
 ::: {.code-output}
@@ -2104,115 +1424,24 @@ Look at the descriptive table first (ties, density, reciprocity and department).
 ## R
 
 ```r
-kr_nodes <- read.csv("data/krackhardt/nodes.csv") |> as_tibble()
-kr_edges <- read.csv("data/krackhardt/edges.csv") |> as_tibble()
-
-# One directed network per relation, with the managers' department and level as attributes.
-managers <- \(arcs) {
-  m <- matrix(0, 21, 21)
-  m[cbind(arcs$from, arcs$to)] <- 1
-  net <- network(m, directed = TRUE)
-  net %v% "department" <- kr_nodes$department
-  net %v% "level" <- kr_nodes$level
-  net
-}
-arcs_of <- \(relation_name) filter(kr_edges, relation == relation_name)
-friendship <- managers(arcs_of("friendship"))
-advice <- managers(arcs_of("advice"))
-
-# Density, how often a tie is returned, and how often it stays inside a department.
-describe <- \(net) {
-  s <- summary(net ~ edges + mutual + nodematch("department"))
-  tibble(ties = s[[1]], density = s[[1]] / 420, ties_returned = 2 * s[[2]] / s[[1]], same_department = s[[3]] / s[[1]])
-}
-bind_rows(friendship = describe(friendship), advice = describe(advice), .id = "relation") |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
-same_pairs <- outer(kr_nodes$department, kr_nodes$department, "==")
-tibble(share_of_pairs_in_one_department = round((sum(same_pairs) - 21) / 420, 3))
-
-# One model for both relations: ties, reciprocity, same department, and closure (directed GWESP, decay 0.5).
-kr_fit <- \(net, estimate) {
-  ergm(net ~ edges + mutual + nodematch("department") + gwesp(0.5, fixed = TRUE),
-       estimate = estimate, control = control.ergm(seed = 1))
-}
-coef_table <- \(model_fit) {
-  est <- summary(model_fit)$coefficients
-  tibble(term = c("edges", "mutual", "same department", "shared partners"),
-         estimate = est[, "Estimate"], se = est[, "Std. Error"])
-}
-relations <- list(friendship = friendship, advice = advice)
-expand_grid(relation = c("friendship", "advice"), method = c("MPLE", "MLE")) |>
-  mutate(coefs = map2(relation, method, \(r, m) coef_table(kr_fit(relations[[r]], m)))) |>
-  unnest(coefs) |>
-  pivot_wider(names_from = method, values_from = c(estimate, se)) |>
-  select(relation, term, estimate_MPLE, se_MPLE, estimate_MLE, se_MLE) |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
+# TODO(code, R): needs net_ergm() on the directed Krackhardt networks (edges, mutual, nodematch, gwesp), by pseudo-likelihood and Monte Carlo maximum likelihood.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 2 × 5
-  relation    ties density ties_returned same_department
-  <chr>      <dbl>   <dbl>         <dbl>           <dbl>
-1 friendship   102   0.243         0.451           0.373
-2 advice       190   0.452         0.474           0.242
-# A tibble: 1 × 1
-  share_of_pairs_in_one_department
-                             <dbl>
-1                            0.224
-# A tibble: 8 × 6
-  relation   term            estimate_MPLE se_MPLE estimate_MLE se_MLE
-  <chr>      <chr>                   <dbl>   <dbl>        <dbl>  <dbl>
-1 friendship edges                  -2.39    0.247       -2.96   0.272
-2 friendship mutual                  0.971   0.265        0.831  0.396
-3 friendship same department         0.621   0.274        0.687  0.206
-4 friendship shared partners         0.453   0.112        0.731  0.169
-5 advice     edges                  -1.78    0.374       -1.34   0.955
-6 advice     mutual                 -0.114   0.21         0.165  0.287
-7 advice     same department         0.109   0.241        0.173  0.239
-8 advice     shared partners         0.82    0.189        0.47   0.44 
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-import csv
-
-with open("data/krackhardt/nodes.csv") as f:
-    nodes = list(csv.DictReader(f))
-with open("data/krackhardt/edges.csv") as f:
-    edge_rows = list(csv.DictReader(f))
-department = np.array([float(r["department"]) for r in nodes])
-level = np.array([float(r["level"]) for r in nodes])
-
-def relation(name):
-    m = np.zeros((21, 21))
-    for r in edge_rows:
-        if r["relation"] == name:
-            m[int(r["from"]) - 1, int(r["to"]) - 1] = 1
-    return m
-
-friendship, advice = relation("friendship"), relation("advice")
-same_department = (department[:, None] == department[None, :]).astype(float)
-apart = 1 - np.eye(21)  # ordered pairs of different managers: 420 of them
-# Density, how often a tie is returned, and how often it stays inside a department.
-print(f"{'relation':<11} {'ties':>5} {'density':>8} {'ties returned':>13} {'same department':>15}")
-for name, m in [("friendship", friendship), ("advice", advice)]:
-    ties = m.sum()
-    print(f"{name:<11} {ties:>5.0f} {ties / 420:>8.3f} {(m * m.T).sum() / ties:>13.3f} {(m * same_department).sum() / ties:>15.3f}")
-print(f"share of all ordered pairs in the same department: {(same_department * apart).sum() / 420:.3f}")
-
-# The model fits need Monte Carlo maximum likelihood for a directed model with a GWESP term (a tie-toggling sampler
-# with change statistics inside a fitting loop, well over 40 lines). Use the R or Rust tab for them.
+# TODO(code, Python): needs net_ergm() on the directed Krackhardt networks (edges, mutual, nodematch, gwesp), by pseudo-likelihood and Monte Carlo maximum likelihood; the Python package does not wrap the ERGM code yet.
 ```
 
 ::: {.code-output}
 ```text
-relation     ties  density ties returned same department
-friendship    102    0.243         0.451           0.373
-advice        190    0.452         0.474           0.242
-share of all ordered pairs in the same department: 0.224
+TODO(output)
 ```
 :::
 
@@ -2323,67 +1552,24 @@ Both criteria are fit scores with a fine for complexity. Read $\log L$ as the lo
 ## R
 
 ```r
-# Three dyad-independent models of friendship: each is a logistic regression on the 420 ordered pairs,
-# so the log-likelihood is exact and AIC and BIC are well defined.
-friend_matrix <- as.matrix(friendship)
-pair_data <- expand_grid(i = 1:21, j = 1:21) |>
-  filter(i != j) |>
-  mutate(
-    tie = friend_matrix[cbind(i, j)],
-    same_dept = as.numeric(kr_nodes$department[i] == kr_nodes$department[j]),
-    same_level = as.numeric(kr_nodes$level[i] == kr_nodes$level[j])
-  )
-candidates <- list(
-  `edges only` = tie ~ 1,
-  `+ same department` = tie ~ same_dept,
-  `+ same level` = tie ~ same_dept + same_level
-)
-tibble(model = names(candidates), glm_fit = map(candidates, \(f) glm(f, family = binomial, data = pair_data))) |>
-  mutate(
-    terms = map_dbl(glm_fit, \(g) length(coef(g))),
-    log_lik = map_dbl(glm_fit, \(g) as.numeric(logLik(g))),
-    AIC = map_dbl(glm_fit, AIC),
-    BIC = map_dbl(glm_fit, BIC)
-  ) |>
-  select(!glm_fit) |>
-  mutate(across(where(is.numeric), \(x) round(x, 2)))
+# TODO(code, R): needs net_ergm() with dyad-independent terms and its log-likelihood, AIC and BIC (net_ergm_ic()).
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 3 × 5
-  model             terms log_lik   AIC   BIC
-  <chr>             <dbl>   <dbl> <dbl> <dbl>
-1 edges only            1   -233.  468.  472.
-2 + same department     2   -225.  454.  462.
-3 + same level          3   -219.  445.  457.
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# Three dyad-independent models of friendship: here the log pseudo-likelihood is the exact log-likelihood.
-off_diagonal = np.where(apart > 0)
-tie = friendship[off_diagonal]
-same_dept = same_department[off_diagonal]
-same_level = (level[:, None] == level[None, :]).astype(float)[off_diagonal]
-ones = np.ones_like(tie)
-candidates = [("edges only", [ones]), ("+ same department", [ones, same_dept]), ("+ same level", [ones, same_dept, same_level])]
-print(f"{'model':<19} {'terms':>6} {'log-lik':>9} {'AIC':>8} {'BIC':>8}")
-for label, columns in candidates:
-    _, _, loglik = logit_fit(np.column_stack(columns), tie)
-    k = len(columns)
-    # 420 ordered pairs of managers are the observations.
-    print(f"{label:<19} {k:>6} {loglik:>9.2f} {-2 * loglik + 2 * k:>8.2f} {-2 * loglik + k * math.log(420):>8.2f}")
+# TODO(code, Python): needs net_ergm() with dyad-independent terms and its log-likelihood, AIC and BIC (net_ergm_ic()); the Python package does not wrap the ERGM code yet.
 ```
 
 ::: {.code-output}
 ```text
-model                terms   log-lik      AIC      BIC
-edges only               1   -232.83   467.65   471.70
-+ same department        2   -224.88   453.75   461.83
-+ same level             3   -219.39   444.78   456.90
+TODO(output)
 ```
 :::
 
@@ -2437,46 +1623,19 @@ Look at the range of each coefficient across the ten refits, compared with its v
 ## R
 
 ```r
-# Drop a random 10 of the 102 friendship ties (as if they had been missed), refit, and repeat ten times.
-# The random numbers come from the Park-Miller recipe so that every language draws the same ones.
-stream <- \(seed, k) accumulate(seq_len(k), \(s, i) (16807 * s) %% 2147483647, .init = seed)[-1]
-friend_arcs <- arcs_of("friendship")
-keys <- matrix(stream(2024, 10 * nrow(friend_arcs)), nrow = 10, byrow = TRUE)
-
-refit <- \(r) {
-  keep <- order(keys[r, ])[-(1:10)] # drop the 10 ties with the smallest keys
-  thinner <- managers(friend_arcs[keep, ])
-  coef(ergm(thinner ~ edges + mutual + nodematch("department") + gwesp(0.5, fixed = TRUE),
-            control = control.ergm(MCMC.samplesize = 1024, seed = 1)))
-}
-refits <- map(1:10, refit)
-full_fit <- coef(kr_fit(friendship, "MLE"))
-tibble(
-  term = c("edges", "mutual", "same department", "shared partners"),
-  all_ties = full_fit,
-  average_of_10 = map_dbl(1:4, \(k) mean(map_dbl(refits, k))),
-  lowest = map_dbl(1:4, \(k) min(map_dbl(refits, k))),
-  highest = map_dbl(1:4, \(k) max(map_dbl(refits, k)))
-) |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
+# TODO(code, R): needs net_ergm() refits after dropping random ties from the friendship network.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 4 × 5
-  term            all_ties average_of_10 lowest highest
-  <chr>              <dbl>         <dbl>  <dbl>   <dbl>
-1 edges             -2.96         -2.88  -3.12   -2.77 
-2 mutual             0.831         0.735  0.488   0.919
-3 same department    0.687         0.705  0.621   0.791
-4 shared partners    0.731         0.687  0.608   0.831
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# TODO(code, Python): needs Monte Carlo maximum likelihood for a directed model with a directed GWESP term, repeated ten times, well over 40 lines. Use the R or Rust tab.
+# TODO(code, Python): needs Monte Carlo maximum likelihood for a directed model with a directed GWESP term, repeated ten times, well over 40 lines. Use the Rust tab.
 ```
 
 ::: {.code-output}
@@ -2493,7 +1652,7 @@ shared partners       0.724          0.682    0.601    0.808
 
 ```rust
 // Drop a random 10 of the 102 friendship ties (as if they had been missed), refit, and repeat ten times.
-// The random numbers come from the Park-Miller recipe so that every language draws the same ones.
+// The random numbers come from the Park-Miller recipe so that every run draws the same ones.
 let mut state: u64 = 2024;
 let mut next_key = || {
     state = 16807 * state % 2147483647;
@@ -2658,7 +1817,7 @@ ERGM output is easy to over-read, because it looks like a regression table. Five
 5. **Interpretation.** A paper reports "the same-gender coefficient is 1.2 (p < 0.01), so teenagers prefer friends of the same gender." Write a short, kind reply about what the model does and does not show.
 6. **By hand.** In the three-person model of this chapter ($\theta_{\text{edges}} = -1$, $\theta_{\text{triangle}} = 0.5$), what is the probability that the network is the full triangle? Then set $\theta_{\text{triangle}} = 0$ and recompute. Why do the two answers differ?
 7. **By hand.** With decay 0.5, what does a tie with three shared partners add to the GWESP statistic? How much more does the third partner add than the second?
-8. **Interpretation.** A chain of 2,000 draws has a lag-1 autocorrelation of 0.97 and an effective sample size of about 25. Which two sampler settings would you change, and in which direction? What would you look at to see whether it worked?
+8. **Interpretation.** A chain of 2,000 draws has a lag-1 autocorrelation of 0.98 and an effective sample size of about 19. Which two sampler settings would you change, and in which direction? What would you look at to see whether it worked?
 9. **Coding.** Take the Step 3 coefficients, set the same-side coefficient to 0, keep the other two, and simulate. What happens to the number of ties and why? What does that say about reading one coefficient "holding the others fixed"?
 10. **Coding and interpretation.** Fit the Krackhardt friendship network with edges, mutual, same department and the raw `TransitiveTriple` count. Compare the pseudo-likelihood and Monte Carlo fits. What goes wrong, and what would you change?
 

@@ -65,118 +65,31 @@ Don't worry about the t statistic or the degrees of freedom: treat the ordinary 
 ## R
 
 ```r
-library(knappnet)
-library(dplyr)
-library(purrr)
-
-# Park-Miller pseudo-random numbers, identical in every language.
-stream <- \(seed, k) accumulate(seq_len(k), \(s, i) (16807 * s) %% 2147483647, .init = seed)[-1] / 2147483647
-
-people_n <- 20
-worlds <- 500
-shuffles <- 99
-pair_ends <- combn(people_n, 2) # the 190 pairs, in the order (1,2), (1,3), ..., (19,20)
-pair_i <- pair_ends[1, ]
-pair_j <- pair_ends[2, ]
-pairs_n <- ncol(pair_ends)
-per_world <- 2 * people_n + pairs_n + shuffles * people_n
-u <- matrix(stream(2024, worlds * per_world), nrow = worlds, byrow = TRUE)
-
-# Share of worlds in which each test calls "ties go to people of similar age" significant.
-error_rates <- \(scale) {
-  asplit(u, 1) |> # asplit() hands over 1-d arrays, so as.vector() below
-    map(\(w) {
-      w <- as.vector(w)
-      z <- w[1:people_n]
-      sociability <- scale * log(z / (1 - z))
-      age <- w[(people_n + 1):(2 * people_n)]
-      p_tie <- plogis(-1 + sociability[pair_i] + sociability[pair_j])
-      tie <- as.numeric(w[(2 * people_n + 1):(2 * people_n + pairs_n)] < p_tie)
-      r <- cor(tie, abs(age[pair_i] - age[pair_j]))
-      t_stat <- r * sqrt((pairs_n - 2) / (1 - r^2))
-      keys <- matrix(w[(2 * people_n + pairs_n + 1):per_world], nrow = shuffles, byrow = TRUE)
-      shuffled <- map_dbl(seq_len(shuffles), \(b) {
-        moved <- age[order(keys[b, ])] # relabel: person i takes the age of person order(keys)[i]
-        cor(tie, abs(moved[pair_i] - moved[pair_j]))
-      })
-      tibble(
-        ordinary = abs(t_stat) > 1.9729,
-        relabeling = (1 + sum(abs(shuffled) >= abs(r) - 1e-12)) / (shuffles + 1) <= 0.05
-      )
-    }) |>
-    list_rbind() |>
-    summarise(ordinary = mean(ordinary), relabeling = mean(relabeling))
-}
-c(0, 1.2) |>
-  map(\(s) bind_cols(tibble(scale = s), error_rates(s))) |>
-  list_rbind() |>
-  mutate(across(c(ordinary, relabeling), \(x) round(x, 3)))
+# TODO(code, R): needs a simulation harness: draw many networks, run the ordinary test and the relabeling test on each, and count how often each rejects (knappnet has no function for simulation studies yet).
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 2 × 3
-  scale ordinary relabeling
-  <dbl>    <dbl>      <dbl>
-1   0      0.044      0.044
-2   1.2    0.126      0.046
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-import numpy as np
-
-def stream(seed, k):
-    """k pseudo-random numbers in (0, 1): Park-Miller, identical in every language."""
-    out, s = np.empty(k), seed
-    for i in range(k):
-        s = 16807 * s % 2147483647
-        out[i] = s / 2147483647
-    return out
-
-people_n, worlds, shuffles = 20, 500, 99
-pairs_n = people_n * (people_n - 1) // 2
-per_world = 2 * people_n + pairs_n + shuffles * people_n
-u = stream(2024, worlds * per_world).reshape(worlds, per_world)
-pair_i, pair_j = np.triu_indices(people_n, 1)  # the 190 pairs, in the order (0,1), (0,2), ..., (18,19)
-
-def error_rates(scale):
-    """Share of worlds in which each test calls 'ties go to people of similar age' significant."""
-    ordinary = relabeling = 0
-    for w in u:
-        z = w[:people_n]
-        sociability = scale * np.log(z / (1 - z))
-        age = w[people_n:2 * people_n]
-        p_tie = 1 / (1 + np.exp(-(-1 + sociability[pair_i] + sociability[pair_j])))
-        tie = (w[2 * people_n:2 * people_n + pairs_n] < p_tie).astype(float)
-        r = np.corrcoef(tie, np.abs(age[pair_i] - age[pair_j]))[0, 1]
-        t_stat = r * np.sqrt((pairs_n - 2) / (1 - r * r))
-        keys = w[2 * people_n + pairs_n:].reshape(shuffles, people_n)
-        shuffled = [np.corrcoef(tie, np.abs(age[q][pair_i] - age[q][pair_j]))[0, 1] for q in np.argsort(keys, axis=1)]
-        ordinary += abs(t_stat) > 1.9729
-        relabeling += (1 + np.sum(np.abs(shuffled) >= abs(r) - 1e-12)) / (shuffles + 1) <= 0.05
-    return ordinary / worlds, relabeling / worlds
-
-print(f"{'scale':>5} {'ordinary':>9} {'relabeling':>11}")
-for scale in (0, 1.2):
-    ordinary, relabeling = error_rates(scale)
-    print(f"{scale:>5} {ordinary:>9.3f} {relabeling:>11.3f}")
+# TODO(code, Python): needs a simulation harness: draw many networks, run the ordinary test and the relabeling test on each, and count how often each rejects (knappnet has no function for simulation studies yet).
 ```
 
 ::: {.code-output}
 ```text
-scale  ordinary  relabeling
-    0     0.044       0.044
-  1.2     0.126       0.046
+TODO(output)
 ```
 :::
 
 ## Rust
 
 ```rust
-// The same Park-Miller stream as the other tabs, so all three print the same numbers.
+// A Park-Miller pseudo-random stream, so every run draws the same numbers.
 let pm_stream = |seed: u64, k: usize| -> Vec<f64> {
     let mut s = seed;
     (0..k).map(|_| { s = 16807 * s % 2147483647; s as f64 / 2147483647.0 }).collect()
@@ -298,53 +211,24 @@ The code lists all 20 splits and counts the ties that stay inside a floor for ea
 ## R
 
 ```r
-# Two triangles (people 1-2-3 and 4-5-6) joined by one tie, 3-4: seven ties.
-ties6 <- tibble(from = c(1, 1, 2, 4, 4, 5, 3), to = c(2, 3, 3, 5, 6, 6, 4))
-
-# Every way to pick the three people who get label A (the other three get B): 20 ways.
-# For each, count the ties whose two ends carry the same label.
-inside <- combn(6, 3, simplify = FALSE) |>
-  map_int(\(a_people) sum((ties6$from %in% a_people) == (ties6$to %in% a_people)))
-tibble(ties_inside = inside) |>
-  count(ties_inside, name = "ways") |>
-  mutate(share_at_least = rev(cumsum(rev(ways))) / sum(ways))
+# TODO(code, R): needs exact enumeration of every way to give six people two labels, counting the ties inside a label (knappnet's net_qap_cor(exact = TRUE) enumerates relabelings of a matrix, not label counts).
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 3 × 3
-  ties_inside  ways share_at_least
-        <int> <int>          <dbl>
-1           2    10            1  
-2           3     8            0.5
-3           6     2            0.1
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-from collections import Counter
-from itertools import combinations
-
-# Two triangles (people 0-1-2 and 3-4-5) joined by one tie, 2-3: seven ties.
-ties6 = [(0, 1), (0, 2), (1, 2), (3, 4), (3, 5), (4, 5), (2, 3)]
-
-# Every way to pick the three people who get label A (the other three get B): 20 ways.
-# For each, count the ties whose two ends carry the same label.
-inside = [sum((a in group) == (b in group) for a, b in ties6) for group in combinations(range(6), 3)]
-ways = sorted(Counter(inside).items())
-print("ties inside a floor   ways (of 20)   share at least this many")
-for k, count in ways:
-    print(f"{k:>19} {count:>14} {sum(c for j, c in ways if j >= k) / len(inside):>26.2f}")
+# TODO(code, Python): needs a simulation harness: draw many networks, run the ordinary test and the relabeling test on each, and count how often each rejects (knappnet has no function for simulation studies yet).
 ```
 
 ::: {.code-output}
 ```text
-ties inside a floor   ways (of 20)   share at least this many
-                  2             10                       1.00
-                  3              8                       0.50
-                  6              2                       0.10
+TODO(output)
 ```
 :::
 
@@ -401,12 +285,10 @@ This first block only builds the two matrices and counts their pairs. Check that
 
 ```r
 library(knappnet)
-library(dplyr)
-library(purrr)
 
 # The ten-person friendship network, as pairs of positions (R counts from 1).
 people <- c("Ana", "Ben", "Cleo", "Dev", "Eli", "Fay", "Gus", "Hana", "Ivo", "Jo")
-ties <- tibble(
+ties <- data.frame(
   from = c(0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 4, 5, 5, 6, 7, 8) + 1,
   to = c(1, 2, 3, 5, 3, 4, 6, 3, 5, 4, 5, 6, 6, 6, 7, 7, 8, 9) + 1
 )
@@ -420,7 +302,7 @@ friends <- pmax(friends, t(friends)) # friendship goes both ways
 same_floor <- outer(floor_id, floor_id, "==") * 1
 diag(same_floor) <- 0
 
-tibble(pairs = choose(n, 2), friend_pairs = sum(friends) / 2, same_floor_pairs = sum(same_floor) / 2)
+data.frame(pairs = choose(n, 2), friend_pairs = sum(friends) / 2, same_floor_pairs = sum(same_floor) / 2)
 ```
 
 ::: {.code-output}
@@ -435,29 +317,12 @@ tibble(pairs = choose(n, 2), friend_pairs = sum(friends) / 2, same_floor_pairs =
 ## Python
 
 ```python
-import numpy as np
-
-# The ten-person friendship network, as pairs of positions.
-names = ["Ana", "Ben", "Cleo", "Dev", "Eli", "Fay", "Gus", "Hana", "Ivo", "Jo"]
-src = [0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 4, 5, 5, 6, 7, 8]
-dst = [1, 2, 3, 5, 3, 4, 6, 3, 5, 4, 5, 6, 6, 6, 7, 7, 8, 9]
-# Floor of each person: the first five on floor 0, the rest on floor 1.
-floor = np.array([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
-
-n = len(names)
-friends = np.zeros((n, n))
-friends[src, dst] = 1
-friends[dst, src] = 1  # friendship goes both ways
-same_floor = (floor[:, None] == floor[None, :]).astype(float)
-np.fill_diagonal(same_floor, 0)
-print(f"{n * (n - 1) // 2} pairs of people")
-print(f"{friends.sum() / 2:g} friend pairs, {same_floor.sum() / 2:g} same-floor pairs")
+# TODO(code, Python): needs the QAP functions net_qap_cor() and net_mrqap(), which the Python package does not expose yet (this block only builds the two 10 x 10 matrices they take).
 ```
 
 ::: {.code-output}
 ```text
-45 pairs of people
-18 friend pairs, 20 same-floor pairs
+TODO(output)
 ```
 :::
 
@@ -521,7 +386,7 @@ Look for two things in the output: the observed correlation, and the share of re
 ```r
 # graph mode: undirected, so each pair is used once. Same Philox draws as Rust.
 test <- net_qap_cor(friends, same_floor, reps = 10000, seed = 1, mode = "graph")
-tibble(
+data.frame(
   pairs_used = test$dyads,
   observed_correlation = round(as.numeric(test$statistic), 3),
   share_at_least = round(test$p.value[["Pr(>=r)"]], 4)
@@ -540,29 +405,12 @@ tibble(
 ## Python
 
 ```python
-# QAP by hand: relabel the people in one matrix, recompute the correlation.
-low = np.tril_indices(n, -1)  # each pair once (graph mode)
-
-def pair_cor(a, b):
-    return np.corrcoef(a[low], b[low])[0, 1]
-
-rng = np.random.default_rng(1)
-observed = pair_cor(friends, same_floor)
-draws = np.empty(10_000)
-for r in range(len(draws)):
-    p = rng.permutation(n)  # rows and columns move together
-    draws[r] = pair_cor(friends, same_floor[np.ix_(p, p)])
-print(f"pairs used            {len(low[0])}")
-print(f"observed correlation  {observed:.3f}")
-# Python draws different random relabelings than Rust, so the share differs a little.
-print(f"share of relabelings at least that high  {np.mean(draws >= observed - 1e-10):.4f}")
+# TODO(code, Python): needs net_qap_cor(): the QAP correlation test with its relabeling distribution.
 ```
 
 ::: {.code-output}
 ```text
-pairs used            45
-observed correlation  0.365
-share of relabelings at least that high  0.0233
+TODO(output)
 ```
 :::
 
@@ -593,7 +441,7 @@ share of relabelings at least that high  0.0218
 
 :::
 
-The observed correlation is 0.365, positive but modest. About 2% of the 10,000 relabelings (0.0218) are as high or higher, so by the usual conventions this is worth taking seriously, though it isn't overwhelming with only 45 pairs. The Python tab draws its own random numbers, so the share in its last line can differ slightly from these.
+The observed correlation is 0.365, positive but modest. About 2% of the 10,000 relabelings (0.0218) are as high or higher, so by the usual conventions this is worth taking seriously, though it isn't overwhelming with only 45 pairs.
 Read the last line as the p-value. If the floors had nothing to do with friendship, a relabeling would produce a correlation this high only about that share of the time. With 10,000 draws and no correction, the share is simply the fraction of draws at least as large as what we saw. A small share means friendship and floor line up more than the bundled structure alone explains. Notice that it is a *probability under a stated kind of chance*. It says nothing yet about why friends share floors: working near each other, choosing each other, or being hired through each other would all give the same picture. We'll come back to that.
 
 ### Seeing the reference distribution
@@ -608,11 +456,10 @@ Look at how wide the relabeled correlations spread compared with that textbook w
 
 ```r
 draws <- test$dist
-tibble(
+data.frame(
   quantity = c("average relabeled correlation", "spread (sd) with QAP", "spread an ordinary test assumes"),
-  value = c(mean(draws), sd(draws), 1 / sqrt(test$dyads - 1))
-) |>
-  mutate(value = round(value, 3))
+  value = round(c(mean(draws), sd(draws), 1 / sqrt(test$dyads - 1)), 3)
+)
 ```
 
 ::: {.code-output}
@@ -629,18 +476,12 @@ tibble(
 ## Python
 
 ```python
-naive = 1 / np.sqrt(len(low[0]) - 1)
-# The relabelings differ from Rust's, so these digits can differ in the last place.
-print(f"average relabeled correlation  {draws.mean():+.3f}")
-print(f"spread (sd) with QAP           {draws.std(ddof=1):.3f}")
-print(f"spread an ordinary test assumes {naive:.3f}")
+# TODO(code, Python): needs net_qap_cor(): the relabeling distribution (mean and spread) behind the test.
 ```
 
 ::: {.code-output}
 ```text
-average relabeled correlation  -0.001
-spread (sd) with QAP           0.148
-spread an ordinary test assumes 0.151
+TODO(output)
 ```
 :::
 
@@ -695,13 +536,13 @@ same_club <- outer(seq_len(n) %% 2, seq_len(n) %% 2, "==") * 1
 diag(same_club) <- 0
 fit <- net_mrqap(friends, list(floor = same_floor, club = same_club),
                  reps = 5000, seed = 1, mode = "graph")
-tibble(
+data.frame(
   term = c("intercept", "same floor", "same club"),
   coefficient = round(as.numeric(fit$coefficients), 3),
   t = round(as.numeric(fit$t), 2),
   p_two_sided = round(as.numeric(fit$p.value[, "Pr(>=|b|)"]), 4)
 )
-tibble(r_squared = round(fit$r.squared, 3), pairs = fit$dyads)
+data.frame(r_squared = round(fit$r.squared, 3), pairs = fit$dyads)
 ```
 
 ::: {.code-output}
@@ -722,53 +563,12 @@ tibble(r_squared = round(fit$r.squared, 3), pairs = fit$dyads)
 ## Python
 
 ```python
-# Same book club: both in even positions or both in odd positions.
-same_club = (np.arange(n)[:, None] % 2 == np.arange(n)[None, :] % 2).astype(float)
-np.fill_diagonal(same_club, 0)
-
-def ols(y, X):
-    beta = np.linalg.lstsq(X, y, rcond=None)[0]
-    resid = y - X @ beta
-    se = np.sqrt(np.diag(np.linalg.inv(X.T @ X)) * (resid @ resid) / (len(y) - X.shape[1]))
-    return beta, beta / se, resid
-
-def relabel(v, p):  # dyad list -> symmetric matrix -> relabel people -> dyad list
-    m = np.zeros((n, n))
-    m[low] = v
-    m = m + m.T
-    return m[np.ix_(p, p)][low]
-
-y = friends[low]
-X = np.column_stack([np.ones(len(y)), same_floor[low], same_club[low]])
-beta, t_obs, resid = ols(y, X)
-r2 = 1 - (resid @ resid) / ((y - y.mean()) @ (y - y.mean()))
-
-# Double semi-partialling: relabel what is left of each column after the others are removed.
-reps = 5000
-p_abs = np.zeros(X.shape[1])
-for k in range(X.shape[1]):
-    others = np.delete(X, k, axis=1)
-    rest = X[:, k] - others @ np.linalg.lstsq(others, X[:, k], rcond=None)[0]
-    hits = 0
-    for _ in range(reps):
-        Xp = X.copy()
-        Xp[:, k] = relabel(rest, rng.permutation(n))
-        hits += abs(ols(y, Xp)[1][k]) >= abs(t_obs[k]) - 1e-10
-    p_abs[k] = hits / reps
-# Different random relabelings than Rust, so the p-values differ in the last digits.
-print(f"{'':<12} {'coefficient':>11} {'t':>7} {'p (two-sided)':>8}")
-for k, label in enumerate(["intercept", "same floor", "same club"]):
-    print(f"{label:<12} {beta[k]:>11.3f} {t_obs[k]:>7.2f} {p_abs[k]:>8.4f}")
-print(f"R-squared {r2:.3f} on {len(y)} pairs")
+# TODO(code, Python): needs net_mrqap(): multiple-regression QAP with two predictors.
 ```
 
 ::: {.code-output}
 ```text
-             coefficient       t p (two-sided)
-intercept          0.357    3.17   0.0178
-same floor         0.341    2.49   0.0066
-same club         -0.243   -1.77   0.0762
-R-squared 0.194 on 45 pairs
+TODO(output)
 ```
 :::
 
@@ -840,18 +640,19 @@ The code counts every one of the 3,628,800 relabelings to get the true share, th
 p_exact <- net_qap_cor(friends, same_floor, exact = TRUE, mode = "graph")$p.value[["Pr(>=r)"]]
 
 # The same test with 100 different seeds, at three different numbers of relabelings.
-c(100, 1000, 10000) |>
-  map(\(b) {
-    p_hat <- map_dbl(1:100, \(s) {
-      net_qap_cor(friends, same_floor, reps = b, seed = s, mode = "graph")$p.value[["Pr(>=r)"]]
-    })
-    tibble(
-      relabelings = b, average = mean(p_hat), sd_over_seeds = sd(p_hat),
-      formula = sqrt(p_exact * (1 - p_exact) / b), lowest = min(p_hat), highest = max(p_hat)
-    )
-  }) |>
-  list_rbind() |>
-  mutate(across(-relabelings, \(x) round(x, 4)), exact_share = round(p_exact, 4))
+relabelings <- c(100, 1000, 10000)
+p_hat <- lapply(relabelings, \(b) sapply(1:100, \(s) {
+  net_qap_cor(friends, same_floor, reps = b, seed = s, mode = "graph")$p.value[["Pr(>=r)"]]
+}))
+round(data.frame(
+  relabelings,
+  average = sapply(p_hat, mean),
+  sd_over_seeds = sapply(p_hat, sd),
+  formula = sqrt(p_exact * (1 - p_exact) / relabelings),
+  lowest = sapply(p_hat, min),
+  highest = sapply(p_hat, max),
+  exact_share = p_exact
+), 4)
 ```
 
 ::: {.code-output}
@@ -868,45 +669,12 @@ c(100, 1000, 10000) |>
 ## Python
 
 ```python
-from itertools import chain, islice, permutations
-
-pair_a, pair_b = low  # the 45 pairs, as in the QAP block
-tied = friends[low]
-seen = tied @ same_floor[low]  # friend pairs that are also same-floor pairs
-
-def shared(P):
-    """For each relabeling (a row of P): how many friend pairs land on same-floor pairs."""
-    return same_floor[P[:, pair_a], P[:, pair_b]] @ tied
-
-# The exact share: every one of the 10! relabelings of ten people, a chunk at a time.
-every, at_least, total = permutations(range(n)), 0, 0
-while True:
-    flat = np.fromiter(chain.from_iterable(islice(every, 200_000)), dtype=np.int8)
-    if flat.size == 0:
-        break
-    at_least += np.sum(shared(flat.reshape(-1, n)) >= seen - 1e-9)
-    total += len(flat) // n
-p_exact = at_least / total
-print(f"exact share over all {total} relabelings: {p_exact:.4f}")
-
-def p_hat(draws, seed):
-    P = np.argsort(np.random.default_rng(seed).random((draws, n)), axis=1)
-    return np.mean(shared(P) >= seen - 1e-9)
-
-# Python draws its own relabelings, so its middle columns differ a little from the other tabs.
-print(f"{'relabelings':>11} {'average':>8} {'sd over seeds':>14} {'formula':>8} {'lowest':>7} {'highest':>8}")
-for draws in (100, 1000, 10000):
-    p = np.array([p_hat(draws, s) for s in range(1, 101)])
-    print(f"{draws:>11} {p.mean():>8.4f} {p.std(ddof=1):>14.4f} {np.sqrt(p_exact * (1 - p_exact) / draws):>8.4f} {p.min():>7.4f} {p.max():>8.4f}")
+# TODO(code, Python): needs net_qap_cor(exact = TRUE) and a seed sweep of the Monte Carlo p-value.
 ```
 
 ::: {.code-output}
 ```text
-exact share over all 3628800 relabelings: 0.0238
-relabelings  average  sd over seeds  formula  lowest  highest
-        100   0.0228         0.0167   0.0152  0.0000   0.0700
-       1000   0.0238         0.0051   0.0048  0.0120   0.0410
-      10000   0.0238         0.0015   0.0015  0.0204   0.0270
+TODO(output)
 ```
 :::
 
@@ -973,16 +741,15 @@ The code draws 2,000 random networks with the same number of people and ties, an
 ## R
 
 ```r
-g <- tibble(source = people[ties$from], target = people[ties$to]) |>
-  net_frame(nodes = tibble(id = people), directed = FALSE)
+g <- net_frame(data.frame(source = people[ties$from], target = people[ties$to]),
+               nodes = data.frame(id = people), directed = FALSE)
 transitivity_of <- \(d) as.numeric(net_transitivity(d))
 observed <- transitivity_of(g)
 
 # 2,000 random networks: 10 people, 18 ties, undirected, no loops.
-scores <- net_random_gnm(n, 18, reps = 2000, seed = 1) |>
-  map_dbl(transitivity_of) |>
-  discard(is.na)
-tibble(
+scores <- sapply(net_random_gnm(n, 18, reps = 2000, seed = 1), transitivity_of)
+scores <- scores[!is.na(scores)]
+data.frame(
   observed = round(observed, 3),
   random_average = round(mean(scores), 3),
   share_as_clustered = round(mean(scores >= observed - 1e-12), 4)
@@ -1003,6 +770,10 @@ tibble(
 ```python
 import networkx as nx
 
+# The ten-person friendship network, as pairs of positions.
+src = [0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 4, 5, 5, 6, 7, 8]
+dst = [1, 2, 3, 5, 3, 4, 6, 3, 5, 4, 5, 6, 6, 6, 7, 7, 8, 9]
+n = 10
 g = nx.Graph()
 g.add_nodes_from(range(n))
 g.add_edges_from(zip(src, dst))
@@ -1012,8 +783,8 @@ print(f"observed transitivity        {observed:.3f}")
 # 2,000 random networks: 10 people, 18 ties, undirected, no loops.
 # NetworkX draws different networks than Rust, so the digits below differ a little.
 scores = [nx.transitivity(nx.gnm_random_graph(n, 18, seed=s)) for s in range(2000)]
-print(f"random networks, average     {np.mean(scores):.3f}")
-print(f"random networks at least as clustered  {np.mean(np.array(scores) >= observed - 1e-12):.4f}")
+print(f"random networks, average     {sum(scores) / len(scores):.3f}")
+print(f"random networks at least as clustered  {sum(s >= observed - 1e-12 for s in scores) / len(scores):.4f}")
 ```
 
 ::: {.code-output}
@@ -1080,11 +851,10 @@ Here is the picture behind the configuration model. Give each person one "stub" 
 
 ```r
 # simple = TRUE keeps only simple networks; 100,000 is how many tries each draw gets.
-scores <- net_degree(g) |>
-  net_random_config(simple = TRUE, max_tries = 100000, reps = 2000, seed = 1) |>
-  map_dbl(transitivity_of) |>
-  discard(is.na)
-tibble(
+draws <- net_random_config(net_degree(g), simple = TRUE, max_tries = 100000, reps = 2000, seed = 1)
+scores <- sapply(draws, transitivity_of)
+scores <- scores[!is.na(scores)]
+data.frame(
   random_average = round(mean(scores), 3),
   share_as_clustered = round(mean(scores >= observed - 1e-12), 4)
 )
@@ -1102,26 +872,12 @@ tibble(
 ## Python
 
 ```python
-degrees = [d for _, d in g.degree()]
-
-def simple_configuration(degrees, rng):
-    # Match the stubs at random and start over until there are no loops or repeated ties.
-    while True:
-        m = nx.configuration_model(degrees, seed=int(rng.integers(2**31)))
-        h = nx.Graph(m)
-        if nx.number_of_selfloops(h) == 0 and h.number_of_edges() == m.number_of_edges():
-            return h
-
-# Again different random draws than Rust, so the digits differ a little.
-scores = [nx.transitivity(simple_configuration(degrees, rng)) for _ in range(2000)]
-print(f"random networks with the same degrees, average  {np.mean(scores):.3f}")
-print(f"at least as clustered as observed               {np.mean(np.array(scores) >= observed - 1e-12):.4f}")
+# TODO(code, Python): needs net_random_config(simple = TRUE): degree-preserving random networks (the NetworkX configuration model needs a hand-written retry loop to be simple).
 ```
 
 ::: {.code-output}
 ```text
-random networks with the same degrees, average  0.395
-at least as clustered as observed               0.0085
+TODO(output)
 ```
 :::
 
@@ -1183,117 +939,24 @@ Look at how the share of original ties still present falls as the swaps pile up,
 ## R
 
 ```r
-# Florentine families around 1430 (the small-worlds chapter): 15 families, 20 marriages.
-fl <- read.csv("data/florentine/edges.csv")
-fl_ids <- unique(c(fl$source, fl$target))
-fl_a <- match(fl$source, fl_ids)
-fl_b <- match(fl$target, fl_ids)
-fl_ties <- cbind(pmin(fl_a, fl_b), pmax(fl_a, fl_b)) # one row per marriage, smaller position first
-fl_g <- net_frame(tibble(source = fl_ties[, 1], target = fl_ties[, 2]),
-                  nodes = tibble(id = seq_along(fl_ids)), directed = FALSE)
-tie_keys <- \(a, b) paste(pmin(a, b), pmax(a, b))
-fl_keys <- tie_keys(fl_ties[, 1], fl_ties[, 2])
-share_original <- \(a, b) mean(tie_keys(a, b) %in% fl_keys)
-
-# The R package cannot swap ties yet, so here is one accepted swap: pick two ties a-b and c-d, replace
-# them with a-d and c-b, and pick again if that would make a loop or repeat a tie. Every degree stays.
-swap_once <- \(ties) {
-  pick <- sample.int(nrow(ties), 2)
-  ab <- ties[pick[1], ]
-  cd <- if (runif(1) < 0.5) rev(ties[pick[2], ]) else ties[pick[2], ]
-  fresh <- rbind(sort(c(ab[1], cd[2])), sort(c(cd[1], ab[2])))
-  present <- \(tie) any(ties[, 1] == tie[1] & ties[, 2] == tie[2])
-  blocked <- any(fresh[, 1] == fresh[, 2]) || all(fresh[1, ] == fresh[2, ]) ||
-    present(fresh[1, ]) || present(fresh[2, ])
-  if (blocked) {
-    swap_once(ties)
-  } else {
-    ties[pick, ] <- fresh
-    ties
-  }
-}
-# k accepted swaps, one after another. Splitting k in half keeps the recursion shallow,
-# and force() makes each half finish before the next starts.
-swap_many <- \(ties, k) {
-  force(ties)
-  if (k == 1) swap_once(ties) else swap_many(swap_many(ties, k %/% 2), k - k %/% 2)
-}
-
-set.seed(1)
-# Independent random networks with the same degrees (stub matching): the level the chain should settle at.
-independent <- net_random_config(net_degree(fl_g), simple = TRUE, max_tries = 100000, reps = 500, seed = 1) |>
-  map_dbl(\(h) share_original(h$edges$source, h$edges$target)) |>
-  mean()
-# Average over 100 chains, each starting from the real network.
-c(10, 20, 40, 100, 200, 1000) |>
-  map(\(k) tibble(
-    swaps = k,
-    swaps_per_tie = k / nrow(fl_ties),
-    share_of_original_ties = mean(map_dbl(1:100, \(r) {
-      end <- swap_many(fl_ties, k)
-      share_original(end[, 1], end[, 2])
-    })),
-    independent_draws = independent
-  )) |>
-  list_rbind() |>
-  mutate(across(c(share_of_original_ties, independent_draws), \(x) round(x, 3)))
+# TODO(code, R): needs net_swap_edges(): degree-preserving tie swaps, run as a chain with the share of original ties kept after k accepted swaps (knappnet's engine swaps ties, but the R and Python packages do not expose it).
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 6 × 4
-  swaps swaps_per_tie share_of_original_ties independent_draws
-  <dbl>         <dbl>                  <dbl>             <dbl>
-1    10           0.5                  0.471             0.294
-2    20           1                    0.332             0.294
-3    40           2                    0.29              0.294
-4   100           5                    0.286             0.294
-5   200          10                    0.294             0.294
-6  1000          50                    0.304             0.294
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-import csv
-
-# Florentine families around 1430: 15 families, 20 marriages.
-with open("data/florentine/edges.csv") as f:
-    fl = nx.Graph([tuple(r) for r in list(csv.reader(f))[1:]])
-fl_names = list(fl.nodes)
-fl_original = {frozenset(e) for e in fl.edges}
-
-def share_original(pairs):
-    return np.mean([frozenset(e) in fl_original for e in pairs])
-
-def after_swaps(k, seed):
-    h = fl.copy()
-    nx.double_edge_swap(h, nswap=k, max_tries=10_000_000, seed=seed)
-    return share_original(h.edges)
-
-# Independent random networks with the same degrees (stub matching): the level the chain should settle at.
-fl_degrees = [fl.degree(v) for v in fl_names]
-independent = np.mean([
-    share_original((fl_names[a], fl_names[b]) for a, b in simple_configuration(fl_degrees, rng).edges)
-    for _ in range(500)
-])
-# Python swaps differently from Rust, so its digits differ a little. Average over 100 chains.
-print(f"{'swaps':>6} {'per tie':>9} {'share of original ties':>22} {'independent draws':>18}")
-for k in (10, 20, 40, 100, 200, 1000):
-    share = np.mean([after_swaps(k, seed) for seed in range(100)])
-    print(f"{k:>6} {k / fl.number_of_edges():>9.1f} {share:>22.3f} {independent:>18.3f}")
+# TODO(code, Python): needs net_swap_edges(): degree-preserving tie swaps, run as a chain with the share of original ties kept after k accepted swaps (knappnet's engine swaps ties, but the R and Python packages do not expose it).
 ```
 
 ::: {.code-output}
 ```text
- swaps   per tie share of original ties  independent draws
-    10       0.5                  0.448              0.301
-    20       1.0                  0.323              0.301
-    40       2.0                  0.313              0.301
-   100       5.0                  0.308              0.301
-   200      10.0                  0.293              0.301
-  1000      50.0                  0.311              0.301
+TODO(output)
 ```
 :::
 
@@ -1374,180 +1037,24 @@ The code runs both nulls on both relations. Look first at the table of within-de
 ## R
 
 ```r
-# Krackhardt's 21 managers: who goes to whom for advice, who names whom a friend, and department.
-kr_nodes <- read.csv("data/krackhardt/nodes.csv")
-kr_edges <- read.csv("data/krackhardt/edges.csv")
-kr_n <- nrow(kr_nodes)
-kr_relation <- \(rel) kr_edges[kr_edges$relation == rel, ]
-kr_matrix <- \(ties) {
-  m <- matrix(0, kr_n, kr_n)
-  m[cbind(ties$from, ties$to)] <- 1
-  m
-}
-kr_same <- outer(kr_nodes$department, kr_nodes$department, "==") * 1
-diag(kr_same) <- 0
-kr_off <- row(kr_same) != col(kr_same)
-
-# The statistic: the share of ties that stay inside a department.
-within_share <- \(a) sum(a * kr_same) / sum(a)
-
-# Null A: relabel departments. 5,000 random relabelings from the same Park-Miller stream as before.
-kr_perms <- matrix(stream(7, 5000 * kr_n), nrow = 5000, byrow = TRUE) |>
-  asplit(1) |>
-  map(\(k) order(as.vector(k)))
-relabeled_share <- \(a) map_dbl(kr_perms, \(p) sum(a * kr_same[p, p]) / sum(a))
-# Null B: random ties, the same number of ties, departments stay where they are.
-random_share <- \(h) mean(kr_nodes$department[h$edges$source] == kr_nodes$department[h$edges$target])
-
-results <- c("advice", "friendship") |>
-  map(\(rel) {
-    a <- kr_matrix(kr_relation(rel))
-    seen <- within_share(a)
-    r <- cor(a[kr_off], kr_same[kr_off])
-    nulls <- list(
-      `relabel departments` = relabeled_share(a),
-      `random ties, same count` = net_random_gnm(kr_n, sum(a), directed = TRUE, reps = 2000, seed = 1) |>
-        map_dbl(random_share)
-    )
-    list(
-      effect = tibble(
-        relation = rel, ties = sum(a), within_share = seen,
-        expected_share = sum(kr_same) / (kr_n * (kr_n - 1)),
-        correlation = r, t_stat = r * sqrt((sum(kr_off) - 2) / (1 - r^2))
-      ),
-      tests = imap(nulls, \(v, label) tibble(
-        relation = rel, null = label, null_mean = mean(v), null_sd = sd(v),
-        p_high = (1 + sum(v >= seen - 1e-12)) / (length(v) + 1),
-        p_low = (1 + sum(v <= seen + 1e-12)) / (length(v) + 1),
-        p_two_sided = (1 + sum(abs(v - mean(v)) >= abs(seen - mean(v)) - 1e-12)) / (length(v) + 1)
-      )) |> list_rbind()
-    )
-  })
-results |> map("effect") |> list_rbind() |> mutate(across(where(is.numeric), \(x) round(x, 3)))
-results |> map("tests") |> list_rbind() |> mutate(across(where(is.numeric), \(x) round(x, 4)))
-
-# Stress check: leave out 10 of the 102 friendships at random, 200 times, and test again
-# (with the first 500 relabelings).
-fr_ties <- kr_relation("friendship")
-stress <- matrix(stream(11, 200 * nrow(fr_ties)), nrow = 200, byrow = TRUE) |>
-  asplit(1) |>
-  map(\(k) {
-    thinned <- kr_matrix(fr_ties[order(as.vector(k))[-(1:10)], ])
-    seen <- within_share(thinned)
-    shuffled <- map_dbl(kr_perms[1:500], \(p) sum(thinned * kr_same[p, p]) / sum(thinned))
-    tibble(share = seen, p = (1 + sum(shuffled >= seen - 1e-12)) / 501)
-  }) |>
-  list_rbind()
-tibble(
-  drops = nrow(stress), lowest_share = min(stress$share), highest_share = max(stress$share),
-  drops_with_p_at_most_005 = sum(stress$p <= 0.05)
-) |>
-  mutate(across(ends_with("share"), \(x) round(x, 3)))
+# TODO(code, R): needs a permutation test on a statistic of your own: relabel the node attribute (net_relabel_null()) or draw random ties (net_random_gnm()) and recompute the share of ties inside a group.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 2 × 6
-  relation    ties within_share expected_share correlation t_stat
-  <chr>      <dbl>        <dbl>          <dbl>       <dbl>  <dbl>
-1 advice       190        0.242          0.224       0.04   0.816
-2 friendship   102        0.373          0.224       0.202  4.22 
-# A tibble: 4 × 7
-  relation   null                    null_mean null_sd p_high p_low p_two_sided
-  <chr>      <chr>                       <dbl>   <dbl>  <dbl> <dbl>       <dbl>
-1 advice     relabel departments         0.224  0.0241 0.260  0.808      0.453 
-2 advice     random ties, same count     0.224  0.0221 0.255  0.825      0.489 
-3 friendship relabel departments         0.223  0.043  0.001  1.000      0.001 
-4 friendship random ties, same count     0.224  0.0359 0.0005 1          0.0005
-# A tibble: 1 × 4
-  drops lowest_share highest_share drops_with_p_at_most_005
-  <int>        <dbl>         <dbl>                    <int>
-1   200        0.326         0.413                      200
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-kr_nodes = list(csv.DictReader(open("data/krackhardt/nodes.csv")))
-kr_edges = list(csv.DictReader(open("data/krackhardt/edges.csv")))
-kr_dept = np.array([int(r["department"]) for r in kr_nodes])
-kr_n = len(kr_dept)
-
-def kr_relation(rel):
-    return [(int(r["from"]) - 1, int(r["to"]) - 1) for r in kr_edges if r["relation"] == rel]
-
-def kr_matrix(ties):
-    m = np.zeros((kr_n, kr_n))
-    for i, j in ties:
-        m[i, j] = 1
-    return m
-
-kr_same = (kr_dept[:, None] == kr_dept[None, :]).astype(float)
-np.fill_diagonal(kr_same, 0)
-kr_off = ~np.eye(kr_n, dtype=bool)
-
-def within_share(a):
-    """The statistic: the share of ties that stay inside a department."""
-    return (a * kr_same).sum() / a.sum()
-
-# Null A: relabel departments. 5,000 random relabelings from the same Park-Miller stream as before.
-kr_perms = np.argsort(stream(7, 5000 * kr_n).reshape(5000, kr_n), axis=1)
-def relabeled_share(a):
-    return np.array([(a * kr_same[np.ix_(q, q)]).sum() / a.sum() for q in kr_perms])
-
-def p_values(v, seen):
-    two = np.abs(v - v.mean()) >= abs(seen - v.mean()) - 1e-12
-    return ((1 + np.sum(v >= seen - 1e-12)) / (len(v) + 1), (1 + np.sum(v <= seen + 1e-12)) / (len(v) + 1),
-            (1 + np.sum(two)) / (len(v) + 1))
-
-print(f"{'relation':<11} {'ties':>5} {'within':>7} {'expected':>9} {'correlation':>12} {'t':>6}")
-tests = []
-for rel in ("advice", "friendship"):
-    a = kr_matrix(kr_relation(rel))
-    seen = within_share(a)
-    r = np.corrcoef(a[kr_off], kr_same[kr_off])[0, 1]
-    t_stat = r * np.sqrt((kr_off.sum() - 2) / (1 - r * r))
-    print(f"{rel:<11} {a.sum():>5.0f} {seen:>7.3f} {kr_same.sum() / (kr_n * (kr_n - 1)):>9.3f} {r:>12.3f} {t_stat:>6.2f}")
-    # Null B: random ties, the same number of ties; NetworkX draws its own networks, so its digits differ a little.
-    random_draws = np.array([
-        np.mean(kr_dept[np.array(g.edges)[:, 0]] == kr_dept[np.array(g.edges)[:, 1]])
-        for g in (nx.gnm_random_graph(kr_n, int(a.sum()), directed=True, seed=s) for s in range(2000))
-    ])
-    tests.append((rel, "relabel departments", relabeled_share(a), seen))
-    tests.append((rel, "random ties, same count", random_draws, seen))
-print(f"\n{'relation':<11} {'null':<24} {'mean':>6} {'sd':>7} {'p high':>7} {'p low':>7} {'p two-sided':>12}")
-for rel, label, v, seen in tests:
-    high, low_p, two = p_values(v, seen)
-    print(f"{rel:<11} {label:<24} {v.mean():>6.3f} {v.std(ddof=1):>7.4f} {high:>7.4f} {low_p:>7.4f} {two:>12.4f}")
-
-# Stress check: leave out 10 of the 102 friendships at random, 200 times, and test again
-# (with the first 500 relabelings).
-fr_ties = kr_relation("friendship")
-shares, ps = [], []
-for k in stream(11, 200 * len(fr_ties)).reshape(200, len(fr_ties)):
-    thinned = kr_matrix([fr_ties[i] for i in np.argsort(k)[10:]])
-    seen = within_share(thinned)
-    shuffled = np.array([(thinned * kr_same[np.ix_(q, q)]).sum() / thinned.sum() for q in kr_perms[:500]])
-    shares.append(seen)
-    ps.append((1 + np.sum(shuffled >= seen - 1e-12)) / 501)
-print(f"\nleaving out 10 of 102 friendships, 200 times: within-department share from {min(shares):.3f} to "
-      f"{max(shares):.3f}; relabeling p at most 0.05 in {sum(p <= 0.05 for p in ps)} of 200 drops")
+# TODO(code, Python): needs a permutation test on a statistic of your own: relabel the node attribute (net_relabel_null()) or draw random ties (net_random_gnm()) and recompute the share of ties inside a group.
 ```
 
 ::: {.code-output}
 ```text
-relation     ties  within  expected  correlation      t
-advice        190   0.242     0.224        0.040   0.82
-friendship    102   0.373     0.224        0.202   4.22
-
-relation    null                       mean      sd  p high   p low  p two-sided
-advice      relabel departments       0.223  0.0241  0.2597  0.8084       0.4533
-advice      random ties, same count   0.224  0.0226  0.2349  0.8296       0.4108
-friendship  relabel departments       0.223  0.0430  0.0010  0.9996       0.0010
-friendship  random ties, same count   0.224  0.0354  0.0005  1.0000       0.0005
-
-leaving out 10 of 102 friendships, 200 times: within-department share from 0.326 to 0.413; relabeling p at most 0.05 in 200 of 200 drops
+TODO(output)
 ```
 :::
 
@@ -1701,6 +1208,19 @@ The block runs all eight tests and prints the raw and adjusted p-values side by 
 ## R
 
 ```r
+# Krackhardt's 21 managers: who goes to whom for advice, who names whom a friend, and department.
+kr_nodes <- read.csv("data/krackhardt/nodes.csv")
+kr_edges <- read.csv("data/krackhardt/edges.csv")
+kr_n <- nrow(kr_nodes)
+kr_matrix <- \(relation) {
+  arcs <- kr_edges[kr_edges$relation == relation, ]
+  m <- matrix(0, kr_n, kr_n)
+  m[cbind(arcs$from, arcs$to)] <- 1
+  m
+}
+kr_same <- outer(kr_nodes$department, kr_nodes$department, "==") * 1
+diag(kr_same) <- 0
+
 # Four similarity patterns among the managers; a bigger number means more alike.
 kr_similarity <- list(
   `same department` = kr_same,
@@ -1710,20 +1230,20 @@ kr_similarity <- list(
 )
 # Eight QAP tests: two relations by four patterns, 5,000 relabelings each.
 family <- expand.grid(relation = c("advice", "friendship"), similarity = names(kr_similarity),
-                      stringsAsFactors = FALSE) |>
-  as_tibble() |>
-  mutate(
-    test = map2(relation, similarity, \(rel, sim) {
-      net_qap_cor(kr_matrix(kr_relation(rel)), kr_similarity[[sim]], reps = 5000, seed = 1, mode = "digraph")
-    }),
-    correlation = map_dbl(test, \(res) as.numeric(res$statistic)),
-    p_raw = map_dbl(test, \(res) (1 + sum(abs(res$dist) >= abs(res$statistic) - 1e-12)) / (length(res$dist) + 1)),
-    p_holm = p.adjust(p_raw, "holm"),
-    p_bh = p.adjust(p_raw, "BH")
-  ) |>
-  select(-test)
-family |> arrange(p_raw) |> mutate(across(where(is.numeric), \(x) round(x, 4)))
-family |> summarise(across(starts_with("p_"), \(x) sum(x < 0.05)))
+                      stringsAsFactors = FALSE)
+tests <- Map(\(rel, sim) {
+  net_qap_cor(kr_matrix(rel), kr_similarity[[sim]], reps = 5000, seed = 1, mode = "digraph")
+}, family$relation, family$similarity) |> unname()
+family$correlation <- sapply(tests, \(res) as.numeric(res$statistic))
+family$p_raw <- sapply(tests, \(res) (1 + sum(abs(res$dist) >= abs(res$statistic) - 1e-12)) / (length(res$dist) + 1))
+family$p_holm <- p.adjust(family$p_raw, "holm")
+family$p_bh <- p.adjust(family$p_raw, "BH")
+
+family <- family[order(family$p_raw), ]
+rownames(family) <- NULL
+family[3:6] <- round(family[3:6], 4)
+family
+colSums(family[c("p_raw", "p_holm", "p_bh")] < 0.05)
 ```
 
 ::: {.code-output}
@@ -1749,62 +1269,12 @@ family |> summarise(across(starts_with("p_"), \(x) sum(x < 0.05)))
 ## Python
 
 ```python
-kr_level = np.array([int(r["level"]) for r in kr_nodes])
-kr_age = np.array([int(r["age"]) for r in kr_nodes], dtype=float)
-kr_tenure = np.array([float(r["tenure"]) for r in kr_nodes])
-# Four similarity patterns among the managers; a bigger number means more alike.
-kr_similarity = {
-    "same department": kr_same,
-    "same level": (kr_level[:, None] == kr_level[None, :]).astype(float),
-    "age closeness": -np.abs(kr_age[:, None] - kr_age[None, :]),
-    "tenure closeness": -np.abs(kr_tenure[:, None] - kr_tenure[None, :]),
-}
-
-def holm(p):
-    p = np.asarray(p)
-    order = np.argsort(p)
-    adjusted = np.minimum(np.maximum.accumulate((len(p) - np.arange(len(p))) * p[order]), 1)
-    out = np.empty_like(p)
-    out[order] = adjusted
-    return out
-
-def benjamini_hochberg(p):
-    p = np.asarray(p)
-    order = np.argsort(p)
-    adjusted = np.minimum.accumulate((len(p) / (np.arange(len(p)) + 1) * p[order])[::-1])[::-1]
-    out = np.empty_like(p)
-    out[order] = np.minimum(adjusted, 1)
-    return out
-
-# Eight QAP tests: two relations by four patterns, 5,000 relabelings each (Python draws its own).
-family = []
-qap_perms = np.argsort(np.random.default_rng(1).random((5000, kr_n)), axis=1)
-for rel in ("advice", "friendship"):
-    y = kr_matrix(kr_relation(rel))[kr_off]
-    for label, sim in kr_similarity.items():
-        r = np.corrcoef(y, sim[kr_off])[0, 1]
-        null = np.array([np.corrcoef(y, sim[np.ix_(q, q)][kr_off])[0, 1] for q in qap_perms])
-        family.append((rel, label, r, (1 + np.sum(np.abs(null) >= abs(r) - 1e-12)) / (len(null) + 1)))
-raw = np.array([f[3] for f in family])
-adjusted = list(zip(holm(raw), benjamini_hochberg(raw)))
-print(f"{'relation':<11} {'pattern':<17} {'r':>6} {'p raw':>7} {'p Holm':>7} {'p BH':>7}")
-for (rel, label, r, p), (h, b) in sorted(zip(family, adjusted), key=lambda item: item[0][3]):
-    print(f"{rel:<11} {label:<17} {r:>6.3f} {p:>7.4f} {h:>7.4f} {b:>7.4f}")
-print(f"below 0.05: raw {np.sum(raw < 0.05)}, Holm {sum(h < 0.05 for h, _ in adjusted)}, BH {sum(b < 0.05 for _, b in adjusted)}")
+# TODO(code, Python): needs net_qap_cor() for eight tie-by-similarity tests with Holm and Benjamini-Hochberg adjustment.
 ```
 
 ::: {.code-output}
 ```text
-relation    pattern                r   p raw  p Holm    p BH
-friendship  same department    0.202  0.0006  0.0048  0.0048
-advice      tenure closeness   0.155  0.0368  0.2575  0.0896
-advice      age closeness      0.148  0.0414  0.2575  0.0896
-friendship  same level         0.168  0.0448  0.2575  0.0896
-friendship  age closeness      0.139  0.0834  0.3335  0.1334
-advice      same level        -0.098  0.2414  0.7241  0.3218
-advice      same department    0.040  0.5047  1.0000  0.5768
-friendship  tenure closeness   0.016  0.8598  1.0000  0.8598
-below 0.05: raw 4, Holm 1, BH 1
+TODO(output)
 ```
 :::
 
@@ -1903,10 +1373,20 @@ These are two ways to say how unusual a value is. A z-score is a ruler: how many
 ## R
 
 ```r
-# The Florentine marriages again (fl_g from the swap block), against two nulls with 2,000 draws each.
+# Florentine families around 1430 (the small-worlds chapter): 15 families, 20 marriages.
+fl <- read.csv("data/florentine/edges.csv")
+fl_ids <- unique(c(fl$source, fl$target))
+fl_a <- match(fl$source, fl_ids)
+fl_b <- match(fl$target, fl_ids)
+fl_g <- net_frame(data.frame(source = pmin(fl_a, fl_b), target = pmax(fl_a, fl_b)),
+                  nodes = data.frame(id = seq_along(fl_ids)), directed = FALSE)
+
+# Two nulls with 2,000 draws each: random ties, and random ties with every family's degree kept.
 fl_degrees <- net_degree(fl_g)
-fl_gnm <- net_random_gnm(15, 20, reps = 2000, seed = 1)
-fl_cfg <- net_random_config(fl_degrees, simple = TRUE, max_tries = 100000, reps = 2000, seed = 1)
+fl_nulls <- list(
+  `random ties` = net_random_gnm(15, 20, reps = 2000, seed = 1),
+  `same degrees` = net_random_config(fl_degrees, simple = TRUE, max_tries = 100000, reps = 2000, seed = 1)
+)
 fl_stats <- list(
   transitivity = \(h) as.numeric(net_transitivity(h)),
   `degree assortativity` = \(h) as.numeric(net_assort_degree(h)),
@@ -1915,32 +1395,27 @@ fl_stats <- list(
 )
 
 # Observed value, the null's average and spread, z-score, percentile, skewness and a two-sided p-value.
-compare_to_null <- \(draws, stat, seen) {
-  v <- map_dbl(draws, stat)
-  tibble(
-    observed = seen, null_mean = mean(v), null_sd = sd(v),
+compare_to_null <- \(statistic, null) {
+  stat <- fl_stats[[statistic]]
+  v <- sapply(fl_nulls[[null]], stat)
+  seen <- stat(fl_g)
+  data.frame(
+    statistic, null, observed = seen, null_mean = mean(v), null_sd = sd(v),
     z = (seen - mean(v)) / sd(v),
     percentile = mean(v <= seen + 1e-12),
     skew = mean(((v - mean(v)) / sd(v))^3),
     p_two_sided = (1 + sum(abs(v - mean(v)) >= abs(seen - mean(v)) - 1e-12)) / (length(v) + 1)
   )
 }
-fl_stats |>
-  imap(\(stat, label) {
-    list(`random ties` = fl_gnm, `same degrees` = fl_cfg) |>
-      imap(\(draws, null_label) {
-        compare_to_null(draws, stat, stat(fl_g)) |> mutate(statistic = label, null = null_label, .before = 1)
-      }) |>
-      list_rbind()
-  }) |>
-  list_rbind() |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
+rows <- expand.grid(null = names(fl_nulls), statistic = names(fl_stats), stringsAsFactors = FALSE)
+comparison <- do.call(rbind, Map(compare_to_null, rows$statistic, rows$null))
+rownames(comparison) <- NULL
+comparison[-(1:2)] <- round(comparison[-(1:2)], 3)
+comparison
 
 # Suppose the largest component had been 12 families. The z-score and the draws tell different stories.
-lc <- map_dbl(fl_cfg, fl_stats[["largest component"]])
-z12 <- (12 - mean(lc)) / sd(lc)
-tibble(z = z12, share_of_draws_at_most_12 = (1 + sum(lc <= 12)) / (length(lc) + 1)) |>
-  mutate(across(everything(), \(x) round(x, 4)))
+lc <- sapply(fl_nulls[["same degrees"]], fl_stats[["largest component"]])
+round(c(z = (12 - mean(lc)) / sd(lc), share_of_draws_at_most_12 = (1 + sum(lc <= 12)) / (length(lc) + 1)), 4)
 ```
 
 ::: {.code-output}
@@ -1967,48 +1442,12 @@ tibble(z = z12, share_of_draws_at_most_12 = (1 + sum(lc <= 12)) / (length(lc) + 
 ## Python
 
 ```python
-fl_degrees = [fl.degree(v) for v in fl_names]
-# NetworkX and our own helpers draw different networks than Rust, so the digits below differ a little.
-fl_gnm = [nx.gnm_random_graph(15, 20, seed=s) for s in range(2000)]
-fl_cfg = [simple_configuration(fl_degrees, rng) for _ in range(2000)]
-
-def mean_distance(h):
-    return np.mean([d for _, lengths in nx.all_pairs_shortest_path_length(h) for d in lengths.values() if d > 0])
-
-fl_stats = {
-    "transitivity": nx.transitivity,
-    "degree assortativity": nx.degree_assortativity_coefficient,
-    "mean distance": mean_distance,
-    "largest component": lambda h: max(len(c) for c in nx.connected_components(h)),
-}
-print(f"{'statistic':<21} {'null':<13} {'observed':>8} {'null mean':>9} {'null sd':>7} {'z':>6} {'percentile':>10} {'skew':>6} {'p two-sided':>11}")
-for label, stat in fl_stats.items():
-    seen = stat(fl)
-    for null_label, draws in (("random ties", fl_gnm), ("same degrees", fl_cfg)):
-        v = np.array([stat(h) for h in draws])
-        m, s = v.mean(), v.std(ddof=1)
-        two = (1 + np.sum(np.abs(v - m) >= abs(seen - m) - 1e-12)) / (len(v) + 1)
-        print(f"{label:<21} {null_label:<13} {seen:>8.3f} {m:>9.3f} {s:>7.3f} {(seen - m) / s:>6.2f} "
-              f"{np.mean(v <= seen + 1e-12):>10.3f} {np.mean(((v - m) / s) ** 3):>6.2f} {two:>11.3f}")
-
-# Suppose the largest component had been 12 families. The z-score and the draws tell different stories.
-lc = np.array([fl_stats["largest component"](h) for h in fl_cfg])
-z12 = (12 - lc.mean()) / lc.std(ddof=1)
-print(f"z {z12:.4f}, share of draws at most 12 {(1 + np.sum(lc <= 12)) / (len(lc) + 1):.4f}")
+# TODO(code, Python): needs net_random_gnm() and net_random_config() draws with a null-comparison table (observed value, null mean and spread, z, percentile, skew, p-value).
 ```
 
 ::: {.code-output}
 ```text
-statistic             null          observed null mean null sd      z percentile   skew p two-sided
-transitivity          random ties      0.191     0.169   0.086   0.27      0.619   0.23       0.853
-transitivity          same degrees     0.191     0.159   0.077   0.42      0.806   0.21       0.692
-degree assortativity  random ties     -0.375    -0.164   0.188  -1.12      0.134   0.17       0.272
-degree assortativity  same degrees    -0.375    -0.184   0.162  -1.18      0.140  -0.11       0.269
-mean distance         random ties      2.486     2.423   0.217   0.29      0.626   0.14       0.767
-mean distance         same degrees     2.486     2.505   0.184  -0.11      0.449  -0.14       0.895
-largest component     random ties     15.000    14.270   0.855   0.85      1.000  -1.26       0.640
-largest component     same degrees    15.000    14.710   0.761   0.38      1.000  -2.57       1.000
-z -3.5596, share of draws at most 12 0.0150
+TODO(output)
 ```
 :::
 
@@ -2099,17 +1538,13 @@ This is like setting a thermometer to 20 degrees and then using it to prove the 
 
 ```r
 # Statistic: the largest number of marriages any one family has (Medici: 6). Reuse the draws from above.
-top_degree <- \(draws) map_dbl(draws, \(h) max(net_degree(h)))
-list(`random ties` = fl_gnm, `same degrees` = fl_cfg) |>
-  imap(\(draws, null_label) {
-    top <- top_degree(draws)
-    tibble(
-      null = null_label, observed = max(fl_degrees), null_mean = mean(top), null_sd = sd(top),
-      p_high = (1 + sum(top >= max(fl_degrees))) / (length(top) + 1)
-    )
-  }) |>
-  list_rbind() |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
+top <- sapply(fl_nulls, \(draws) sapply(draws, \(h) max(net_degree(h))))
+data.frame(
+  null = names(fl_nulls), observed = max(fl_degrees),
+  null_mean = round(colMeans(top), 3), null_sd = round(apply(top, 2, sd), 3),
+  p_high = round((1 + colSums(top >= max(fl_degrees))) / (nrow(top) + 1), 3),
+  row.names = NULL
+)
 ```
 
 ::: {.code-output}
@@ -2125,19 +1560,12 @@ list(`random ties` = fl_gnm, `same degrees` = fl_cfg) |>
 ## Python
 
 ```python
-# Statistic: the largest number of marriages any one family has (Medici: 6). Reuse the draws from above.
-print(f"{'null':<13} {'observed':>8} {'null mean':>9} {'null sd':>7} {'p high':>7}")
-for null_label, draws in (("random ties", fl_gnm), ("same degrees", fl_cfg)):
-    top = np.array([max(d for _, d in h.degree()) for h in draws])
-    p_high = (1 + np.sum(top >= max(fl_degrees))) / (len(top) + 1)
-    print(f"{null_label:<13} {max(fl_degrees):>8} {top.mean():>9.3f} {top.std(ddof=1):>7.3f} {p_high:>7.3f}")
+# TODO(code, Python): needs net_random_config() draws with the largest-degree statistic.
 ```
 
 ::: {.code-output}
 ```text
-null          observed null mean null sd  p high
-random ties          6     5.272   0.814   0.331
-same degrees         6     6.000   0.000   1.000
+TODO(output)
 ```
 :::
 
@@ -2185,105 +1613,24 @@ The code builds 100 networks whose true density we know, and checks how often ea
 ## R
 
 ```r
-# 100 random networks of 24 people in which every pair is tied with probability 0.2, so the true density
-# is 0.2. For each network, 100 bootstrap resamples of each of two kinds.
-nb <- 24
-nets <- 100
-boots <- 100
-cap <- 100 # room for up to 100 tie draws per resample
-pairs_b <- choose(nb, 2)
-pair_ends <- combn(nb, 2)
-per_net <- pairs_b + boots * nb + boots * cap
-ub <- matrix(stream(99, nets * per_net), nrow = nets, byrow = TRUE)
-summarise_boot <- \(values, label, seen) tibble(
-  method = label, observed = seen, boot_mean = mean(values), boot_sd = sd(values),
-  lo = as.numeric(quantile(values, 0.025)), hi = as.numeric(quantile(values, 0.975))
-)
-one_network <- \(w) {
-  w <- as.vector(w)
-  tie <- w[1:pairs_b] < 0.2
-  a <- matrix(0, nb, nb)
-  a[cbind(pair_ends[1, tie], pair_ends[2, tie])] <- 1
-  a <- a + t(a)
-  m <- sum(tie)
-  # Resample people: draw 24 people with replacement, keep the ties among them (copies of one person are not tied).
-  nodes <- matrix(floor(w[(pairs_b + 1):(pairs_b + boots * nb)] * nb) + 1, nrow = boots, byrow = TRUE)
-  # Resample ties: draw m of the m ties with replacement; a tie drawn twice is still one tie.
-  tie_draws <- matrix(w[(pairs_b + boots * nb + 1):per_net], nrow = boots, byrow = TRUE)[, seq_len(m), drop = FALSE]
-  bind_rows(
-    summarise_boot(map_dbl(seq_len(boots), \(b) sum(a[nodes[b, ], nodes[b, ]]) / (nb * (nb - 1))),
-                   "people resampled", m / pairs_b),
-    summarise_boot(map_dbl(seq_len(boots), \(b) length(unique(floor(tie_draws[b, ] * m) + 1)) / pairs_b),
-                   "ties resampled", m / pairs_b)
-  )
-}
-asplit(ub, 1) |>
-  map(one_network) |>
-  list_rbind() |>
-  group_by(method) |>
-  summarise(
-    covers_truth = mean(lo <= 0.2 & 0.2 <= hi),
-    average_observed = mean(observed),
-    spread_of_observed = sd(observed),
-    average_bootstrap_centre = mean(boot_mean),
-    average_bootstrap_sd = mean(boot_sd)
-  ) |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
+# TODO(code, R): needs net_bootstrap(): resample people or ties and report bootstrap intervals for a network statistic.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 2 × 6
-  method covers_truth average_observed spread_of_observed average_bootstrap_ce…¹
-  <chr>         <dbl>            <dbl>              <dbl>                  <dbl>
-1 peopl…         1               0.203              0.022                  0.195
-2 ties …         0.01            0.203              0.022                  0.129
-# ℹ abbreviated name: ¹​average_bootstrap_centre
-# ℹ 1 more variable: average_bootstrap_sd <dbl>
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# 100 random networks of 24 people in which every pair is tied with probability 0.2, so the true density
-# is 0.2. For each network, 100 bootstrap resamples of each of two kinds.
-nb, nets, boots, cap = 24, 100, 100, 100  # cap: room for up to 100 tie draws per resample
-pairs_b = nb * (nb - 1) // 2
-per_net = pairs_b + boots * nb + boots * cap
-ub = stream(99, nets * per_net).reshape(nets, per_net)
-pair_i, pair_j = np.triu_indices(nb, 1)
-
-rows = {"people resampled": [], "ties resampled": []}
-for w in ub:
-    tie = w[:pairs_b] < 0.2
-    a = np.zeros((nb, nb))
-    a[pair_i[tie], pair_j[tie]] = 1
-    a = a + a.T
-    m = int(tie.sum())
-    # Resample people: draw 24 people with replacement, keep the ties among them (copies of one person are not tied).
-    nodes = np.floor(w[pairs_b:pairs_b + boots * nb].reshape(boots, nb) * nb).astype(int)
-    # Resample ties: draw m of the m ties with replacement; a tie drawn twice is still one tie.
-    tie_draws = w[pairs_b + boots * nb:].reshape(boots, cap)[:, :m]
-    for label, values in (
-        ("people resampled", [a[np.ix_(i, i)].sum() / (nb * (nb - 1)) for i in nodes]),
-        ("ties resampled", [len(set(np.floor(d * m).astype(int))) / pairs_b for d in tie_draws]),
-    ):
-        lo, hi = np.quantile(values, [0.025, 0.975])
-        rows[label].append((m / pairs_b, np.mean(values), np.std(values, ddof=1), lo, hi))
-
-print(f"{'method':<17} {'covers truth':>12} {'avg observed':>12} {'spread of obs.':>14} {'avg boot centre':>15} {'avg boot sd':>11}")
-for label, found in rows.items():
-    seen, centre, spread, lo, hi = np.array(found).T
-    print(f"{label:<17} {np.mean((lo <= 0.2) & (0.2 <= hi)):>12.3f} {seen.mean():>12.3f} {seen.std(ddof=1):>14.3f} "
-          f"{centre.mean():>15.3f} {spread.mean():>11.3f}")
+# TODO(code, Python): needs net_bootstrap(): resample people or ties and report bootstrap intervals for a network statistic.
 ```
 
 ::: {.code-output}
 ```text
-method            covers truth avg observed spread of obs. avg boot centre avg boot sd
-people resampled         1.000        0.203          0.022           0.195       0.039
-ties resampled           0.010        0.203          0.022           0.129       0.008
+TODO(output)
 ```
 :::
 

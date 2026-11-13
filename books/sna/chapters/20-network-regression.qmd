@@ -48,7 +48,7 @@ Notice that `level_gap` keeps its sign, because "asking up" and "asking down" ar
 
 ::: {.callout-tip appearance="simple"}
 ## Code lives next to the idea
-Each block runs on its own tab, and the tabs of a chapter run top to bottom as one script, so later blocks reuse what earlier ones built. knappnet has `net_mrqap` for the permutation regression; for the logistic and the network effects models it has nothing yet, so those are written by hand in all three languages, and I say so where it happens.
+Each block runs on its own tab, and the tabs of a chapter run top to bottom as one script, so later blocks reuse what earlier ones built. knappnet has `net_mrqap` for the permutation regression; for the logistic and the network effects models it has nothing yet. Those R and Python tabs are blank stubs that name the missing function, and the Rust tabs write the models by hand, which I say where it happens.
 :::
 
 The code builds the three relations and the four similarity matrices from the data files, then counts how many pairs of pairs share a person. Look for the numbers 16,170 and 77 in the output.
@@ -59,17 +59,14 @@ The code builds the three relations and the four similarity matrices from the da
 
 ```r
 library(knappnet)
-library(dplyr)
-library(purrr)
-library(tibble)
 
-nodes <- read.csv("data/krackhardt/nodes.csv") |> as_tibble()
-edges <- read.csv("data/krackhardt/edges.csv") |> as_tibble()
+nodes <- read.csv("data/krackhardt/nodes.csv")
+edges <- read.csv("data/krackhardt/edges.csv")
 n <- nrow(nodes)
 
 # One 21 x 21 matrix per relation: a 1 in row i, column j means "manager i names manager j".
 as_matrix <- \(relation_name) {
-  e <- filter(edges, relation == relation_name)
+  e <- edges[edges$relation == relation_name, ]
   m <- matrix(0, n, n)
   m[cbind(e$from, e$to)] <- 1
   m
@@ -87,17 +84,18 @@ predictors <- list(friendship = friendship, reports_to = reports_to, same_dept =
                    level_gap = level_gap, age_gap = age_gap, tenure_gap = tenure_gap)
 
 # Which pairs of ordered pairs share a person?
-dyads <- tibble(i = as.vector(row(advice)), j = as.vector(col(advice))) |> filter(i != j)
+dyads <- data.frame(i = as.vector(row(advice)), j = as.vector(col(advice)))
+dyads <- dyads[dyads$i != dyads$j, ]
 share <- outer(dyads$i, dyads$i, "==") | outer(dyads$i, dyads$j, "==") |
   outer(dyads$j, dyads$i, "==") | outer(dyads$j, dyads$j, "==")
 n_dyads <- nrow(dyads)
-tibble(
+data.frame(
   managers = n, dyads = n_dyads, advice_ties = sum(advice),
   density = round(sum(advice) / n_dyads, 3),
   pairs_of_dyads = choose(n_dyads, 2), pairs_sharing_a_person = (sum(share) - n_dyads) / 2,
   each_dyad_shares_with = mean(rowSums(share)) - 1
 )
-tibble(reporting_pairs = sum(reports_to), with_an_advice_tie = sum(advice * reports_to))
+data.frame(reporting_pairs = sum(reports_to), with_an_advice_tie = sum(advice * reports_to))
 ```
 
 ::: {.code-output}
@@ -117,51 +115,12 @@ tibble(reporting_pairs = sum(reports_to), with_an_advice_tie = sum(advice * repo
 ## Python
 
 ```python
-import csv
-import math
-
-import numpy as np
-
-with open("data/krackhardt/nodes.csv") as f:
-    nodes = list(csv.DictReader(f))
-with open("data/krackhardt/edges.csv") as f:
-    edges = list(csv.DictReader(f))
-n = len(nodes)
-col = lambda name: np.array([float(r[name]) for r in nodes])
-age, tenure, level, dept = col("age"), col("tenure"), col("level"), col("department")
-
-# One 21 x 21 matrix per relation: a 1 in row i, column j means "manager i names manager j".
-relation = {name: np.zeros((n, n)) for name in ["advice", "friendship", "reports_to"]}
-for r in edges:
-    relation[r["relation"]][int(r["from"]) - 1, int(r["to"]) - 1] = 1
-advice, friendship, reports_to = relation["advice"], relation["friendship"], relation["reports_to"]
-
-# Similarity matrices: one number for each ordered pair (row i, column j).
-same_dept = (dept[:, None] == dept[None, :]).astype(float)
-level_gap = level[:, None] - level[None, :]  # row's level minus column's level
-age_gap = np.abs(age[:, None] - age[None, :])
-tenure_gap = np.abs(tenure[:, None] - tenure[None, :])
-predictors = {"friendship": friendship, "reports_to": reports_to, "same_dept": same_dept,
-              "level_gap": level_gap, "age_gap": age_gap, "tenure_gap": tenure_gap}
-
-# Which pairs of ordered pairs share a person?
-off = ~np.eye(n, dtype=bool)  # the 420 ordered pairs
-i_idx, j_idx = np.nonzero(off)
-share = ((i_idx[:, None] == i_idx[None, :]) | (i_idx[:, None] == j_idx[None, :])
-         | (j_idx[:, None] == i_idx[None, :]) | (j_idx[:, None] == j_idx[None, :]))
-d = len(i_idx)
-print(f"{n} managers, {d} ordered pairs (dyads), {advice.sum():g} advice ties, density {advice.sum() / d:.3f}")
-print(f"pairs of dyads that share a person: {(share.sum() - d) // 2} of {d * (d - 1) // 2}")
-print(f"each dyad shares a person with {share.sum(axis=1).mean() - 1:g} of the other {d - 1}")
-print(f"reporting pairs with an advice tie: {advice[reports_to == 1].sum():g} of {reports_to.sum():g}")
+# TODO(code, Python): needs the Krackhardt matrices (advice, friendship, reports-to and four similarity patterns), which feed net_qap_cor() and net_mrqap(); the Python package exposes neither yet.
 ```
 
 ::: {.code-output}
 ```text
-21 managers, 420 ordered pairs (dyads), 190 advice ties, density 0.452
-pairs of dyads that share a person: 16170 of 87990
-each dyad shares a person with 77 of the other 419
-reporting pairs with an advice tie: 19 of 20
+TODO(output)
 ```
 :::
 
@@ -247,7 +206,7 @@ Picture polling a household of five about what's for dinner. If you counted the 
 
 How badly? Here's an experiment you can run yourself. Make two matrices that are unrelated by construction: in each, a pair's value is its sender's own "sociability" (drawn once per person) plus fresh noise for the pair. There is no connection between the two matrices, so a test at the 5 percent level should call the correlation significant in about 5 percent of runs. Do it 200 times, and test each correlation two ways: with the ordinary test, and with QAP using 99 relabelings.
 
-The random numbers come from a small generator written into the code (Park-Miller), so that all three languages draw exactly the same data and agree to the last digit.
+The random numbers come from a small generator written into the Rust code (Park-Miller), so every run draws exactly the same data.
 
 The code makes 200 pairs of unrelated matrices and tests each pair two ways. Look for each test's false-alarm rate: an honest test says "significant" in about 5 percent of runs.
 
@@ -257,75 +216,24 @@ The code makes 200 pairs of unrelated matrices and tests each pair two ways. Loo
 ## R
 
 ```r
-# A pseudo-random stream that is identical in every language (Park-Miller), so all three tabs agree.
-stream <- \(seed, k) accumulate(seq_len(k), \(s, i) (16807 * s) %% 2147483647, .init = seed)[-1] / 2147483647
-
-sims <- 200
-perms <- 99
-per_dataset <- 2 * n + 2 * n^2 + perms * n
-u <- matrix(stream(2024, sims * per_dataset), nrow = sims, byrow = TRUE)
-off <- row(advice) != col(advice)
-
-# Two unrelated matrices: each ties' value is its sender's own level of "sociability" plus noise.
-one_pair <- \(draws) {
-  row <- as.vector(draws) # asplit() hands over 1-d arrays, which do not add to matrices
-  y <- row[1:n] + matrix(row[(2 * n + 1):(2 * n + n^2)], n, n, byrow = TRUE)
-  x <- row[(n + 1):(2 * n)] + matrix(row[(2 * n + n^2 + 1):(2 * n + 2 * n^2)], n, n, byrow = TRUE)
-  keys <- matrix(row[(2 * n + 2 * n^2 + 1):length(row)], nrow = perms, byrow = TRUE)
-  r <- cor(y[off], x[off])
-  t <- r * sqrt((sum(off) - 2) / (1 - r^2))
-  relabeled <- map_dbl(seq_len(perms), \(b) cor(y[off], x[order(keys[b, ]), order(keys[b, ])][off]))
-  tibble(naive = abs(t) > 1.966, qap = (1 + sum(abs(relabeled) >= abs(r) - 1e-12)) / (perms + 1) <= 0.05)
-}
-asplit(u, 1) |> map(one_pair) |> list_rbind() |>
-  summarise(unrelated_pairs = n(), ordinary_test_rejects = sum(naive), qap_rejects = sum(qap))
+# TODO(code, R): needs a simulation harness: draw many pairs of unrelated matrices, run the ordinary test and the QAP test on each, and count how often each rejects (knappnet has no function for simulation studies yet).
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 1 × 3
-  unrelated_pairs ordinary_test_rejects qap_rejects
-            <int>                 <int>       <int>
-1             200                    73           7
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-def stream(seed, k):
-    """k pseudo-random numbers in (0, 1): Park-Miller, identical in every language."""
-    out, s = np.empty(k), seed
-    for i in range(k):
-        s = 16807 * s % 2147483647
-        out[i] = s / 2147483647
-    return out
-
-sims, perms = 200, 99
-per_dataset = 2 * n + 2 * n * n + perms * n
-u = stream(2024, sims * per_dataset).reshape(sims, per_dataset)
-
-naive = qap = 0
-for row in u:
-    # Two unrelated matrices: each tie's value is its sender's own level of "sociability" plus noise.
-    y = row[:n, None] + row[2 * n:2 * n + n * n].reshape(n, n)
-    x = row[n:2 * n, None] + row[2 * n + n * n:2 * n + 2 * n * n].reshape(n, n)
-    keys = row[2 * n + 2 * n * n:].reshape(perms, n)
-    r = np.corrcoef(y[off], x[off])[0, 1]
-    t = r * np.sqrt((d - 2) / (1 - r * r))
-    relabeled = [np.corrcoef(y[off], x[np.ix_(p, p)][off])[0, 1] for p in np.argsort(keys, axis=1)]
-    naive += abs(t) > 1.966
-    qap += (1 + np.sum(np.abs(relabeled) >= abs(r) - 1e-12)) / (perms + 1) <= 0.05
-print(f"unrelated pairs of matrices: {sims}")
-print(f"the ordinary test calls the correlation significant in {naive} of {sims}")
-print(f"QAP calls it significant in {qap} of {sims}")
+# TODO(code, Python): needs a simulation harness: draw many pairs of unrelated matrices, run the ordinary test and the QAP test on each, and count how often each rejects (knappnet has no function for simulation studies yet).
 ```
 
 ::: {.code-output}
 ```text
-unrelated pairs of matrices: 200
-the ordinary test calls the correlation significant in 73 of 200
-QAP calls it significant in 7 of 200
+TODO(output)
 ```
 :::
 
@@ -421,7 +329,7 @@ Now relabel the people, which is what QAP does. There are $4! = 24$ ways to do i
 
 Two lessons. First, the exact p-value here is one third, and *it can never be smaller with four people*, however strong the pattern looks. A permutation test cannot see more evidence than the number of distinct relabelings allows. Second, nothing in this calculation used a formula for how the correlation is "supposed" to be distributed. It just counted.
 
-The code does it all three ways. knappnet can enumerate every relabeling exactly (up to ten people), and the by-hand version loops over all 24.
+knappnet can enumerate every relabeling exactly (up to ten people), and the code below asks it to.
 
 Look for the slope 0.75, the correlation 0.707, and the three counts of relabelings (8 each) in the output.
 
@@ -443,11 +351,11 @@ slope <- mean(toy_ties[low][toy_group[low] == 1]) - mean(toy_ties[low][toy_group
 
 # Every one of the 4! = 24 relabelings, checked exactly.
 toy <- net_qap_cor(toy_ties, toy_group, exact = TRUE, mode = "graph")
-tibble(
-  slope = slope, correlation = round(toy$statistic, 3), relabelings = toy$draws,
+data.frame(
+  slope, correlation = round(as.numeric(toy$statistic), 3), relabelings = toy$draws,
   share_at_least = toy$p.value[["Pr(>=r)"]]
 )
-tibble(r = round(toy$dist, 3)) |> count(r, name = "relabelings") |> arrange(desc(r))
+rev(table(r = round(toy$dist, 3)))
 ```
 
 ::: {.code-output}
@@ -468,36 +376,12 @@ tibble(r = round(toy$dist, 3)) |> count(r, name = "relabelings") |> arrange(desc
 ## Python
 
 ```python
-from collections import Counter
-from itertools import permutations
-
-# Four people; ties Ana-Ben, Ana-Cleo, Cleo-Dev; groups {Ana, Ben} and {Cleo, Dev}.
-toy_ties = np.zeros((4, 4))
-for a, b in [(0, 1), (0, 2), (2, 3)]:
-    toy_ties[a, b] = toy_ties[b, a] = 1
-group = np.array([0, 0, 1, 1])
-toy_group = (group[:, None] == group[None, :]).astype(float)
-low4 = np.tril_indices(4, -1)
-y4, x4 = toy_ties[low4], toy_group[low4]
-
-# For a 0/1 predictor the slope is the difference between the two group averages.
-slope = y4[x4 == 1].mean() - y4[x4 == 0].mean()
-r_obs = np.corrcoef(y4, x4)[0, 1]
-# Every one of the 4! = 24 relabelings, checked exactly.
-draws = [np.corrcoef(y4, toy_group[np.ix_(p, p)][low4])[0, 1] for p in permutations(range(4))]
-print(f"slope {slope:.2f}, correlation {r_obs:.3f}")
-print(f"{len(draws)} relabelings, share at least as high {np.mean(np.array(draws) >= r_obs - 1e-10):.3f}")
-for r, count in sorted(Counter(round(v, 3) + 0.0 for v in draws).items(), reverse=True):
-    print(f"  r = {r:+.3f}: {count} relabelings")
+# TODO(code, Python): needs net_qap_cor(exact = TRUE): all 24 relabelings of a four-person toy network.
 ```
 
 ::: {.code-output}
 ```text
-slope 0.75, correlation 0.707
-24 relabelings, share at least as high 0.333
-  r = +0.707: 8 relabelings
-  r = +0.000: 8 relabelings
-  r = -0.707: 8 relabelings
+TODO(output)
 ```
 :::
 
@@ -553,7 +437,7 @@ slope 0.75, correlation 0.707
 
 :::
 
-The three tabs agree: slope 0.75, correlation 0.707, 8 of 24 relabelings at least that high, and the counts come in 8, 8 and 8 for 0.707, 0 and $-0.707$, as we worked out.
+The R and Rust tabs agree: slope 0.75, correlation 0.707, 8 of 24 relabelings at least that high, and the counts come in 8, 8 and 8 for 0.707, 0 and $-0.707$, as we worked out.
 
 ## QAP correlation: a recap
 
@@ -578,8 +462,8 @@ Look for the correlation and the share of relabelings that land at least as far 
 
 ```r
 cor_test <- net_qap_cor(advice, friendship, reps = 5000, seed = 1)
-tibble(
-  correlation = round(cor_test$statistic, 3),
+data.frame(
+  correlation = round(as.numeric(cor_test$statistic), 3),
   share_at_least_as_extreme = cor_test$p.value[["Pr(>=|r|)"]]
 )
 ```
@@ -596,26 +480,12 @@ tibble(
 ## Python
 
 ```python
-def relabel(v, p, cells, sym):
-    """Put a list of dyad values back in a matrix, relabel the people, and read the dyads off again."""
-    m = np.zeros((n, n))
-    m[cells] = v
-    if sym:
-        m = m + m.T
-    return m[np.ix_(p, p)][cells]
-
-rng = np.random.default_rng(1)
-r_obs = np.corrcoef(advice[off], friendship[off])[0, 1]
-draws = np.array([np.corrcoef(advice[off], relabel(friendship[off], rng.permutation(n), off, False))[0, 1]
-                  for _ in range(5000)])
-print(f"correlation {r_obs:.3f}")
-print(f"share of relabelings at least as extreme {np.mean(np.abs(draws) >= abs(r_obs) - 1e-10):.4f}")
+# TODO(code, Python): needs net_qap_cor(): the QAP correlation of advice with friendship.
 ```
 
 ::: {.code-output}
 ```text
-correlation 0.155
-share of relabelings at least as extreme 0.0340
+TODO(output)
 ```
 :::
 
@@ -668,7 +538,7 @@ The leftover part carries no linear overlap with the other predictors, so relabe
 
 This is the hardest paragraph in the chapter, and on a first read you can skim to the next heading. The picture to keep: take the part of, say, friendship that the org chart and other predictors can't explain, shuffle only that, and see how big a coefficient luck alone produces. Everything else stays put, so the test is aimed at one predictor at a time.
 
-Now the real model: advice on friendship, reporting, same department, level gap, age gap and tenure gap, with 5,000 relabelings. We fit it twice, once with each method. (The R and Rust tabs use the same random generator and agree exactly; the Python tab draws its own relabelings, so its p-values differ a little.)
+Now the real model: advice on friendship, reporting, same department, level gap, age gap and tenure gap, with 5,000 relabelings. We fit it twice, once with each method. (The R and Rust tabs use the same random generator and agree exactly.)
 
 Look at the t statistics next to the permutation p-values: they tell quite different stories.
 
@@ -678,18 +548,16 @@ Look at the t statistics next to the permutation p-values: they tell quite diffe
 ## R
 
 ```r
-terms <- names(predictors)
 fit_dsp <- net_mrqap(advice, predictors, reps = 5000, seed = 1)
 fit_y <- net_mrqap(advice, predictors, reps = 5000, seed = 1, method = "y")
-tibble(
-  term = terms,
-  coefficient = fit_dsp$coefficients[-1],
-  t = fit_dsp$t[-1],
-  p_dsp = fit_dsp$p.value[-1, "Pr(>=|b|)"],
-  p_y = fit_y$p.value[-1, "Pr(>=|b|)"]
-) |>
-  mutate(across(where(is.numeric), \(v) round(v, 3)))
-tibble(intercept = round(fit_dsp$coefficients[[1]], 3), r_squared = round(fit_dsp$r.squared, 3), dyads = fit_dsp$dyads)
+data.frame(
+  term = names(predictors),
+  coefficient = round(as.numeric(fit_dsp$coefficients[-1]), 3),
+  t = round(as.numeric(fit_dsp$t[-1]), 3),
+  p_dsp = round(as.numeric(fit_dsp$p.value[-1, "Pr(>=|b|)"]), 3),
+  p_y = round(as.numeric(fit_y$p.value[-1, "Pr(>=|b|)"]), 3)
+)
+data.frame(intercept = round(as.numeric(fit_dsp$coefficients[[1]]), 3), r_squared = round(fit_dsp$r.squared, 3), dyads = fit_dsp$dyads)
 ```
 
 ::: {.code-output}
@@ -713,53 +581,12 @@ tibble(intercept = round(fit_dsp$coefficients[[1]], 3), r_squared = round(fit_ds
 ## Python
 
 ```python
-def ols(y, D):
-    """Ordinary least squares: coefficients, t statistics, residuals."""
-    gram_inv = np.linalg.inv(D.T @ D)
-    beta = gram_inv @ D.T @ y
-    resid = y - D @ beta
-    se = np.sqrt(np.diag(gram_inv) * (resid @ resid) / (len(y) - D.shape[1]))
-    return beta, beta / se, resid
-
-def mrqap(y_mat, mats, reps, seed, cells=off, sym=False, columns=None, y_method=True):
-    """MRQAP by hand: p-values by double semi-partialling and, optionally, by permuting the response."""
-    rng = np.random.default_rng(seed)
-    y = y_mat[cells]
-    D = np.column_stack([np.ones(len(y))] + [m[cells] for m in mats])
-    beta, t, resid = ols(y, D)
-    columns = range(D.shape[1]) if columns is None else columns
-    # What is left of each predictor once the others are removed.
-    rest = {k: D[:, k] - np.delete(D, k, axis=1) @ np.linalg.lstsq(np.delete(D, k, axis=1), D[:, k], rcond=None)[0]
-            for k in columns}
-    p_dsp, p_y = np.zeros(D.shape[1]), np.zeros(D.shape[1])
-    for _ in range(reps):
-        p = rng.permutation(n)
-        if y_method:
-            p_y += np.abs(ols(relabel(y, p, cells, sym), D)[1]) >= np.abs(t) - 1e-10
-        for k in columns:
-            Dp = D.copy()
-            Dp[:, k] = relabel(rest[k], p, cells, sym)
-            p_dsp[k] += abs(ols(y, Dp)[1][k]) >= abs(t[k]) - 1e-10
-    r2 = 1 - (resid @ resid) / ((y - y.mean()) @ (y - y.mean()))
-    return dict(beta=beta, t=t, p_dsp=p_dsp / reps, p_y=p_y / reps, r2=r2, dyads=len(y))
-
-fit = mrqap(advice, list(predictors.values()), reps=5000, seed=1)
-print(f"{'':<12} {'coefficient':>11} {'t':>7} {'p (dsp)':>8} {'p (y)':>8}")
-for k, label in enumerate(predictors, start=1):
-    print(f"{label:<12} {fit['beta'][k]:>11.3f} {fit['t'][k]:>7.2f} {fit['p_dsp'][k]:>8.3f} {fit['p_y'][k]:>8.3f}")
-print(f"intercept {fit['beta'][0]:.3f}, R-squared {fit['r2']:.3f} on {fit['dyads']} dyads")
+# TODO(code, Python): needs net_mrqap(): multiple-regression QAP, with both the double semi-partialling and the y-permutation methods.
 ```
 
 ::: {.code-output}
 ```text
-             coefficient       t  p (dsp)    p (y)
-friendship         0.116    2.05    0.176    0.160
-reports_to         0.434    3.61    0.001    0.001
-same_dept         -0.066   -1.10    0.338    0.328
-level_gap          0.083    2.72    0.265    0.265
-age_gap           -0.004   -1.45    0.322    0.323
-tenure_gap        -0.009   -2.46    0.091    0.091
-intercept 0.539, R-squared 0.113 on 420 dyads
+TODO(output)
 ```
 :::
 
@@ -847,10 +674,11 @@ Look at how far the p-value wanders with only 100 relabelings, compared with 10,
 
 ```r
 # The friendship coefficient's p-value, with more and more relabelings and three different seeds.
-tidyr::expand_grid(reps = c(100, 1000, 10000), seed = 1:3) |>
-  mutate(p = map2_dbl(reps, seed, \(r, s) net_mrqap(advice, predictors, reps = r, seed = s)$p.value["friendship", "Pr(>=|b|)"])) |>
-  summarise(p_seed_1 = p[1], p_seed_2 = p[2], p_seed_3 = p[3], .by = reps) |>
-  mutate(sd_of_p = sqrt(p_seed_1 * (1 - p_seed_1) / reps))
+reps <- c(100, 1000, 10000)
+p_value <- \(r, s) net_mrqap(advice, predictors, reps = r, seed = s)$p.value["friendship", "Pr(>=|b|)"]
+p <- sapply(1:3, \(s) sapply(reps, p_value, s = s))
+colnames(p) <- paste0("p_seed_", 1:3)
+data.frame(reps, p, sd_of_p = round(sqrt(p[, 1] * (1 - p[, 1]) / reps), 4))
 ```
 
 ::: {.code-output}
@@ -867,18 +695,12 @@ tidyr::expand_grid(reps = c(100, 1000, 10000), seed = 1:3) |>
 ## Python
 
 ```python
-print(f"{'reps':>6} {'seed 1':>7} {'seed 2':>7} {'seed 3':>7} {'sd of p':>8}")
-for reps in (100, 1000, 10000):
-    ps = [mrqap(advice, list(predictors.values()), reps, seed, columns=[1], y_method=False)["p_dsp"][1] for seed in (1, 2, 3)]
-    print(f"{reps:>6} {ps[0]:>7.3f} {ps[1]:>7.3f} {ps[2]:>7.3f} {np.sqrt(ps[0] * (1 - ps[0]) / reps):>8.3f}")
+# TODO(code, Python): needs net_mrqap() over several numbers of relabelings and seeds.
 ```
 
 ::: {.code-output}
 ```text
-  reps  seed 1  seed 2  seed 3  sd of p
-   100   0.140   0.180   0.140    0.035
-  1000   0.167   0.180   0.148    0.012
- 10000   0.172   0.174   0.167    0.004
+TODO(output)
 ```
 :::
 
@@ -933,14 +755,13 @@ valued_predictors <- list(
   level_gap = abs(level_gap), age_gap = age_gap, tenure_gap = tenure_gap
 )
 fit_valued <- net_mrqap(mutual(advice), valued_predictors, reps = 5000, seed = 1, mode = "graph")
-tibble(
+data.frame(
   term = names(valued_predictors),
-  coefficient = fit_valued$coefficients[-1],
-  t = fit_valued$t[-1],
-  p = fit_valued$p.value[-1, "Pr(>=|b|)"]
-) |>
-  mutate(across(where(is.numeric), \(v) round(v, 3)))
-tibble(intercept = round(fit_valued$coefficients[[1]], 3), r_squared = round(fit_valued$r.squared, 3), pairs = fit_valued$dyads)
+  coefficient = round(as.numeric(fit_valued$coefficients[-1]), 3),
+  t = round(as.numeric(fit_valued$t[-1]), 3),
+  p = round(as.numeric(fit_valued$p.value[-1, "Pr(>=|b|)"]), 3)
+)
+data.frame(intercept = round(as.numeric(fit_valued$coefficients[[1]]), 3), r_squared = round(fit_valued$r.squared, 3), pairs = fit_valued$dyads)
 ```
 
 ::: {.code-output}
@@ -964,28 +785,12 @@ tibble(intercept = round(fit_valued$coefficients[[1]], 3), r_squared = round(fit
 ## Python
 
 ```python
-# A valued response: how many of the two advice ties between a pair exist (0, 1 or 2). Pairs, not ordered pairs.
-low = np.tril_indices(n, -1)
-mutual = lambda m: m + m.T
-valued = {"friendship": mutual(friendship), "reports_to": mutual(reports_to), "same_dept": same_dept,
-          "level_gap": np.abs(level_gap), "age_gap": age_gap, "tenure_gap": tenure_gap}
-fit_valued = mrqap(mutual(advice), list(valued.values()), reps=5000, seed=1, cells=low, sym=True, y_method=False)
-print(f"{'':<12} {'coefficient':>11} {'t':>7} {'p':>8}")
-for k, label in enumerate(valued, start=1):
-    print(f"{label:<12} {fit_valued['beta'][k]:>11.3f} {fit_valued['t'][k]:>7.2f} {fit_valued['p_dsp'][k]:>8.3f}")
-print(f"intercept {fit_valued['beta'][0]:.3f}, R-squared {fit_valued['r2']:.3f} on {fit_valued['dyads']} pairs")
+# TODO(code, Python): needs net_mrqap(mode = "graph"): a valued (0, 1, 2) response on pairs.
 ```
 
 ::: {.code-output}
 ```text
-             coefficient       t        p
-friendship         0.194    2.63    0.033
-reports_to         0.588    3.10    0.004
-same_dept         -0.201   -1.53    0.169
-level_gap          0.141    1.68    0.236
-age_gap           -0.007   -1.08    0.441
-tenure_gap        -0.022   -3.04    0.032
-intercept 0.994, R-squared 0.164 on 210 pairs
+TODO(output)
 ```
 :::
 
@@ -1050,122 +855,24 @@ Look at the odds ratios and permutation p-values first, then at the fit check be
 ## R
 
 ```r
-# Logistic regression by Newton's method (knappnet has no logistic network regression yet, so this is by hand).
-X <- cbind(1, do.call(cbind, map(predictors, \(m) m[off])))
-y <- advice[off]
-logit_fit <- \(X, y) {
-  step <- \(b, i) {
-    p <- as.vector(plogis(X %*% b))
-    b + solve(crossprod(X, X * (p * (1 - p))), crossprod(X, y - p))[, 1]
-  }
-  newton <- \(b, left) if (left == 0) b else newton(step(b, NULL), left - 1)
-  b <- newton(rep(0, ncol(X)), 15)
-  p <- as.vector(plogis(X %*% b))
-  list(b = b, fitted = p, info = crossprod(X, X * (p * (1 - p))))
-}
-z_of <- \(fit, k) fit$b[k] / sqrt(solve(fit$info)[k, k])
-fit <- logit_fit(X, y)
-
-# Double semi-partialling again: relabel what is left of predictor k, refit, and compare z.
-relabel <- \(v, p) { m <- matrix(0, n, n); m[off] <- v; m[p, p][off] }
-set.seed(1)
-perm_list <- map(seq_len(400), \(i) sample(n))
-p_logit <- map_dbl(2:7, \(k) {
-  rest <- resid(lm(X[, k] ~ X[, -k] - 1))
-  z_perm <- map_dbl(perm_list, \(p) { Xp <- X; Xp[, k] <- relabel(rest, p); z_of(logit_fit(Xp, y), k) })
-  mean(abs(z_perm) >= abs(z_of(fit, k)) - 1e-10)
-})
-tibble(term = names(predictors), log_odds = fit$b[-1], odds_ratio = exp(fit$b[-1]), z = map_dbl(2:7, \(k) z_of(fit, k)), p = p_logit) |>
-  mutate(across(where(is.numeric), \(v) round(v, 3)))
-
-# Does the fitted model reproduce the number of mutual pairs...
-fitted <- matrix(0, n, n)
-fitted[off] <- fit$fitted
-tibble(mutual_observed = sum(advice * t(advice)) / 2, mutual_expected = round(sum(fitted * t(fitted)) / 2, 1))
-# ...and the spread of how many people each manager asks (standard deviation of out-degree)?
-tibble(sd_observed = round(sd(rowSums(advice)), 2),
-       sd_expected = round(sqrt(var(rowSums(fitted)) + mean(rowSums(fitted * (1 - fitted)))), 2))
+# TODO(code, R): needs net_logit_qap(): logistic network regression (Newton's method) with permutation p-values by double semi-partialling, plus the fitted tie probabilities.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 6 × 5
-  term       log_odds odds_ratio     z     p
-  <chr>         <dbl>      <dbl> <dbl> <dbl>
-1 friendship    0.511      1.67   2.03 0.175
-2 reports_to    2.89      18.1    2.74 0.002
-3 same_dept    -0.256      0.774 -0.94 0.395
-4 level_gap     0.392      1.48   2.72 0.292
-5 age_gap      -0.02       0.98  -1.46 0.355
-6 tenure_gap   -0.04       0.96  -2.51 0.092
-# A tibble: 1 × 2
-  mutual_observed mutual_expected
-            <dbl>           <dbl>
-1              45            42.5
-# A tibble: 1 × 2
-  sd_observed sd_expected
-        <dbl>       <dbl>
-1        5.45        2.75
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-def solve_logit(D, y, iters=15):
-    """Logistic regression by Newton's method: coefficients, fitted probabilities, information matrix."""
-    b = np.zeros(D.shape[1])
-    for _ in range(iters):
-        p = 1 / (1 + np.exp(-D @ b))
-        info = D.T @ (D * (p * (1 - p))[:, None])
-        b = b + np.linalg.solve(info, D.T @ (y - p))
-    p = 1 / (1 + np.exp(-D @ b))
-    return b, p, D.T @ (D * (p * (1 - p))[:, None])
-
-def z_of(b, info, k):
-    return b[k] / np.sqrt(np.linalg.inv(info)[k, k])
-
-D = np.column_stack([np.ones(d)] + [m[off] for m in predictors.values()])
-y = advice[off]
-b, fitted, info = solve_logit(D, y)
-
-# Double semi-partialling again: relabel what is left of predictor k, refit, and compare z.
-rng = np.random.default_rng(1)
-perm_list = [rng.permutation(n) for _ in range(400)]
-p_logit = np.zeros(D.shape[1])
-for k in range(1, D.shape[1]):
-    others = np.delete(D, k, axis=1)
-    rest = D[:, k] - others @ np.linalg.lstsq(others, D[:, k], rcond=None)[0]
-    z_obs = z_of(b, info, k)
-    for p in perm_list:
-        Dp = D.copy()
-        Dp[:, k] = relabel(rest, p, off, False)
-        bp, _, ip = solve_logit(Dp, y)
-        p_logit[k] += abs(z_of(bp, ip, k)) >= abs(z_obs) - 1e-10
-print(f"{'':<12} {'log-odds':>9} {'odds ratio':>11} {'z':>7} {'p':>7}")
-for k, label in enumerate(predictors, start=1):
-    print(f"{label:<12} {b[k]:>9.3f} {np.exp(b[k]):>11.3f} {z_of(b, info, k):>7.2f} {p_logit[k] / 400:>7.3f}")
-
-# Does the fitted model reproduce the number of mutual pairs...
-P = np.zeros((n, n))
-P[off] = fitted
-print(f"mutual pairs: observed {np.sum(advice * advice.T) / 2:g}, expected under the model {np.sum(P * P.T) / 2:.1f}")
-# ...and the spread of how many people each manager asks (standard deviation of out-degree)?
-expected_sd = np.sqrt(P.sum(axis=1).var(ddof=1) + (P * (1 - P)).sum(axis=1).mean())
-print(f"spread of out-degree: observed {advice.sum(axis=1).std(ddof=1):.2f}, expected under the model {expected_sd:.2f}")
+# TODO(code, Python): needs net_logit_qap(): logistic network regression (Newton's method) with permutation p-values by double semi-partialling, plus the fitted tie probabilities.
 ```
 
 ::: {.code-output}
 ```text
-              log-odds  odds ratio       z       p
-friendship       0.511       1.667    2.03   0.193
-reports_to       2.894      18.070    2.74   0.005
-same_dept       -0.256       0.774   -0.94   0.425
-level_gap        0.392       1.480    2.72   0.265
-age_gap         -0.020       0.980   -1.46   0.292
-tenure_gap      -0.040       0.960   -2.51   0.092
-mutual pairs: observed 45, expected under the model 42.5
-spread of out-degree: observed 5.45, expected under the model 2.75
+TODO(output)
 ```
 :::
 
@@ -1300,7 +1007,7 @@ spread of out-degree: observed 5.45, expected under the model 2.75
 
 :::
 
-Start with the odds ratios. The odds of an advice tie are about 18 times as large for a reporting pair (log-odds 2.89), holding the others fixed. That is a ratio of *odds*, not of chances; the exercises return to the difference. Friendship's odds ratio is 1.67. The permutation p-values tell the same story as the linear model: only reports_to separates clearly from chance (0.002 to 0.005, depending on which random relabelings each language drew), with friendship at about 0.2.
+Start with the odds ratios. The odds of an advice tie are about 18 times as large for a reporting pair (log-odds 2.89), holding the others fixed. That is a ratio of *odds*, not of chances; the exercises return to the difference. Friendship's odds ratio is 1.67. The permutation p-values tell the same story as the linear model: only reports_to separates clearly from chance (0.005 here), with friendship at about 0.2.
 
 Now the fit check. Mutual pairs are fine: 45 observed against 42.5 expected. The spread of out-degree is not: the standard deviation is 5.45 in the data and the model expects 2.75, about half. Managers differ enormously in how many colleagues they ask, far more than the six predictors can account for. The model has no term for sociability, so it treats two managers with the same predictor values as equally likely to ask the same number of people.
 
@@ -1355,7 +1062,7 @@ Here it is on four people along a path, Ana - Ben - Cleo - Dev, with outcomes $y
 
 The eigenvalues of this $W$ (numbers that summarize how the matrix stretches things; you can take them on trust) are $1, \tfrac12, -\tfrac12, -1$, so $\det(I - \rho W) = (1 - \rho^2)(1 - \rho^2/4)$, which at $\rho = 0.5$ is $0.75 \times 0.9375 = 0.703125$. With $\rho = 0$ and an intercept only, the filtered outcome is $y$ itself, with mean 2.5, residual sum of squares 5, and $\sigma^2 = 1.25$, so $\ell = -2\,(\ln(2\pi \cdot 1.25) + 1) = -6.122$. The code does all of this and finds the peak.
 
-The code does the path example from scratch. Look for the filtered outcome, the determinant and the log-likelihood that we worked out by hand.
+The Rust code does the path example from scratch. Look for the filtered outcome, the determinant and the log-likelihood that we worked out by hand.
 
 
 ::: {.panel-tabset group="language"}
@@ -1363,91 +1070,24 @@ The code does the path example from scratch. Look for the filtered outcome, the 
 ## R
 
 ```r
-# Four people on a path Ana - Ben - Cleo - Dev. W gives each person's neighbors equal weight (rows add to 1).
-ring_w <- matrix(c(0, 1, 0, 0,  1, 0, 1, 0,  0, 1, 0, 1,  0, 0, 1, 0), 4, byrow = TRUE)
-w4 <- ring_w / rowSums(ring_w)
-y4 <- c(1, 2, 4, 3)
-
-# The profile log-likelihood of rho: filter y by (I - rho W), fit the regression part by least squares.
-profile_ll <- \(rho, y, X, W) {
-  A <- diag(nrow(W)) - rho * W
-  ys <- as.vector(A %*% y)
-  beta <- as.vector(solve(crossprod(X), crossprod(X, ys)))
-  sigma2 <- sum((ys - X %*% beta)^2) / length(y)
-  list(ll = -length(y) / 2 * (log(2 * pi * sigma2) + 1) + as.numeric(determinant(A)$modulus),
-       beta = beta, sigma2 = sigma2)
-}
-x4 <- matrix(1, 4, 1) # intercept only
-best <- optimize(\(r) profile_ll(r, y4, x4, w4)$ll, c(-0.99, 0.99), maximum = TRUE, tol = 1e-10)
-list(
-  filtered_at_half = as.vector((diag(4) - 0.5 * w4) %*% y4),
-  det_at_half = det(diag(4) - 0.5 * w4),
-  ll_at_zero = round(profile_ll(0, y4, x4, w4)$ll, 3),
-  ll_at_half = round(profile_ll(0.5, y4, x4, w4)$ll, 3),
-  best_rho = round(best$maximum, 3), ll_at_best = round(best$objective, 3)
-)
+# TODO(code, R): needs net_lnam(): the network autocorrelation (spatial lag) model, with its profile log-likelihood over rho.
 ```
 
 ::: {.code-output}
 ```text
-$filtered_at_half
-[1] 0.00 0.75 2.75 1.00
-
-$det_at_half
-[1] 0.703125
-
-$ll_at_zero
-[1] -6.122
-
-$ll_at_half
-[1] -6.059
-
-$best_rho
-[1] 0.291
-
-$ll_at_best
-[1] -5.938
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# Four people on a path Ana - Ben - Cleo - Dev. W gives each person's neighbors equal weight (rows add to 1).
-path = np.array([[0, 1, 0, 0], [1, 0, 1, 0], [0, 1, 0, 1], [0, 0, 1, 0]], dtype=float)
-w4 = path / path.sum(axis=1, keepdims=True)
-y4 = np.array([1.0, 2.0, 4.0, 3.0])
-
-def profile_ll(rho, y, X, W):
-    """Profile log-likelihood of rho: filter y by (I - rho W), fit the regression part by least squares."""
-    A = np.eye(len(y)) - rho * W
-    ys = A @ y
-    beta = np.linalg.solve(X.T @ X, X.T @ ys)
-    sigma2 = np.sum((ys - X @ beta) ** 2) / len(y)
-    return -len(y) / 2 * (np.log(2 * np.pi * sigma2) + 1) + np.linalg.slogdet(A)[1], beta, sigma2
-
-def golden(f, lo=-0.99, hi=0.99, tol=1e-10):
-    """The rho that maximizes f, by golden-section search."""
-    g = (np.sqrt(5) - 1) / 2
-    while hi - lo > tol:
-        c, e = hi - g * (hi - lo), lo + g * (hi - lo)
-        lo, hi = (lo, e) if f(c) > f(e) else (c, hi)
-    return (lo + hi) / 2
-
-x4 = np.ones((4, 1))  # intercept only
-best = golden(lambda r: profile_ll(r, y4, x4, w4)[0])
-print("filtered y at rho = 0.5:", (np.eye(4) - 0.5 * w4) @ y4)
-print(f"det(I - 0.5 W) = {np.linalg.det(np.eye(4) - 0.5 * w4):.6f}")
-print(f"log-likelihood at rho = 0: {profile_ll(0, y4, x4, w4)[0]:.3f}, at rho = 0.5: {profile_ll(0.5, y4, x4, w4)[0]:.3f}")
-print(f"best rho {best:.3f}, log-likelihood there {profile_ll(best, y4, x4, w4)[0]:.3f}")
+# TODO(code, Python): needs net_lnam(): the network autocorrelation (spatial lag) model, with its profile log-likelihood over rho.
 ```
 
 ::: {.code-output}
 ```text
-filtered y at rho = 0.5: [0.   0.75 2.75 1.  ]
-det(I - 0.5 W) = 0.703125
-log-likelihood at rho = 0: -6.122, at rho = 0.5: -6.059
-best rho 0.291, log-likelihood there -5.938
+TODO(output)
 ```
 :::
 
@@ -1515,101 +1155,24 @@ Look at the best $\rho$, its interval, and especially the last table, where the 
 ## R
 
 ```r
-# Outcome: years with the firm. Predictors: age and level. Weights: whom each manager goes to for advice,
-# averaged (each row of W adds to 1), so (W y)_i is the average tenure of manager i's advisers.
-rows <- \(m) m / pmax(rowSums(m), 1) # each row adds to 1; people with no ties keep a row of zeros
-w_advice <- rows(advice)
-X_ten <- cbind(intercept = 1, age = nodes$age, level = nodes$level)
-fit_net <- \(y, X, W) {
-  rho <- optimize(\(r) profile_ll(r, y, X, W)$ll, c(-0.99, 0.99), maximum = TRUE, tol = 1e-10)$maximum
-  c(list(rho = rho), profile_ll(rho, y, X, W))
-}
-lnam <- fit_net(nodes$tenure, X_ten, w_advice)
-ols_ll <- profile_ll(0, nodes$tenure, X_ten, w_advice)
-
-lr <- 2 * (lnam$ll - ols_ll$ll)
-grid <- seq(-0.99, 0.99, by = 0.001)
-inside <- grid[map_dbl(grid, \(r) profile_ll(r, nodes$tenure, X_ten, w_advice)$ll) >= lnam$ll - 1.920729]
-tibble(
-  rho = round(lnam$rho, 3), age = round(lnam$beta[2], 3), level = round(lnam$beta[3], 3), intercept = round(lnam$beta[1], 3),
-  sigma2 = round(lnam$sigma2, 2), age_if_rho_0 = round(ols_ll$beta[2], 3), level_if_rho_0 = round(ols_ll$beta[3], 3)
-)
-tibble(lr = round(lr, 2), p = round(pchisq(lr, 1, lower.tail = FALSE), 3), rho_low = min(inside), rho_high = max(inside))
-
-# The same model with other weight matrices: the answer depends on who counts as a neighbor.
-sym <- \(m) pmax(m, t(m))
-list(advice_out = w_advice, advice_either_way = rows(sym(advice)), friendship_out = rows(friendship),
-     friendship_either_way = rows(sym(friendship)), same_department = rows(same_dept - diag(n))) |>
-  map(\(W) fit_net(nodes$tenure, X_ten, W)) |>
-  imap(\(f, label) tibble(weights = label, rho = round(f$rho, 3),
-                          lr = round(2 * (f$ll - profile_ll(0, nodes$tenure, X_ten, w_advice)$ll), 2))) |>
-  list_rbind()
+# TODO(code, R): needs net_lnam(): fit the network effects model to years with the firm, with a likelihood-ratio test, a profile interval for rho, and a comparison across weight matrices.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 1 × 7
-    rho   age level intercept sigma2 age_if_rho_0 level_if_rho_0
-  <dbl> <dbl> <dbl>     <dbl>  <dbl>        <dbl>          <dbl>
-1 0.538 0.326 -4.34      2.64   34.4        0.331          -5.28
-# A tibble: 1 × 4
-     lr     p rho_low rho_high
-  <dbl> <dbl>   <dbl>    <dbl>
-1  2.79 0.095  -0.106    0.945
-# A tibble: 5 × 3
-  weights                  rho    lr
-  <chr>                  <dbl> <dbl>
-1 advice_out             0.538  2.79
-2 advice_either_way      0.178  0.09
-3 friendship_out        -0.116  0.17
-4 friendship_either_way -0.566  1.3 
-5 same_department        0.07   0.07
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# Outcome: years with the firm. Predictors: age and level. Weights: whom each manager goes to for advice,
-# averaged (each row of W adds to 1), so (W y)_i is the average tenure of manager i's advisers.
-def rows(m):
-    s = m.sum(axis=1, keepdims=True)
-    return np.divide(m, s, out=np.zeros_like(m), where=s > 0)
-
-w_advice = rows(advice)
-X_ten = np.column_stack([np.ones(n), age, level])
-
-def fit_net(y, X, W):
-    rho = golden(lambda r: profile_ll(r, y, X, W)[0])
-    return (rho, *profile_ll(rho, y, X, W))
-
-rho, ll, beta, sigma2 = fit_net(tenure, X_ten, w_advice)
-ll0, beta0, _ = profile_ll(0, tenure, X_ten, w_advice)
-lr = 2 * (ll - ll0)
-grid = np.arange(-0.99, 0.9901, 0.001)
-inside = [r for r in grid if profile_ll(r, tenure, X_ten, w_advice)[0] >= ll - 1.920729]
-print(f"rho {rho:.3f}; intercept {beta[0]:.3f}, age {beta[1]:.3f}, level {beta[2]:.3f}; sigma2 {sigma2:.2f}")
-print(f"the same regression with rho = 0: age {beta0[1]:.3f}, level {beta0[2]:.3f}")
-print(f"likelihood ratio {lr:.2f}, p {math.erfc(math.sqrt(lr / 2)):.3f}, 95% interval for rho {min(inside):.3f} to {max(inside):.3f}")
-
-# The same model with other weight matrices: the answer depends on who counts as a neighbor.
-sym = lambda m: np.maximum(m, m.T)
-for label, W in [("advice_out", w_advice), ("advice_either_way", rows(sym(advice))), ("friendship_out", rows(friendship)),
-                 ("friendship_either_way", rows(sym(friendship))), ("same_department", rows(same_dept - np.eye(n)))]:
-    r, l, _, _ = fit_net(tenure, X_ten, W)
-    print(f"{label:<22} rho {r:+.3f}  likelihood ratio {2 * (l - profile_ll(0, tenure, X_ten, W)[0]):.2f}")
+# TODO(code, Python): needs net_lnam(): fit the network effects model to years with the firm, with a likelihood-ratio test, a profile interval for rho, and a comparison across weight matrices.
 ```
 
 ::: {.code-output}
 ```text
-rho 0.538; intercept 2.644, age 0.326, level -4.340; sigma2 34.41
-the same regression with rho = 0: age 0.331, level -5.282
-likelihood ratio 2.79, p 0.095, 95% interval for rho -0.106 to 0.945
-advice_out             rho +0.538  likelihood ratio 2.79
-advice_either_way      rho +0.178  likelihood ratio 0.09
-friendship_out         rho -0.116  likelihood ratio 0.17
-friendship_either_way  rho -0.566  likelihood ratio 1.30
-same_department        rho +0.070  likelihood ratio 0.07
+TODO(output)
 ```
 :::
 
@@ -1695,89 +1258,24 @@ Look at how much each coefficient moves between the real fit, the fit with ties 
 ## R
 
 ```r
-# A stress check: (1) drop a tenth of the advice ties at random; (2) keep how many people each manager asks,
-# but choose the people at random. Same model, same seed.
-keys <- stream(7, 190 + n * (n - 1))
-ties <- which(advice == 1, arr.ind = TRUE)
-ties <- ties[order(ties[, 1], ties[, 2]), ] # row by row, as in the other tabs
-dropped <- advice
-dropped[ties[order(keys[1:190])[1:19], ]] <- 0
-
-shuffled <- matrix(0, n, n)
-row_keys <- matrix(keys[-(1:190)], n, byrow = TRUE)
-for_rows <- map(seq_len(n), \(i) setdiff(seq_len(n), i)[order(row_keys[i, ])[seq_len(sum(advice[i, ]))]])
-shuffled[cbind(rep(seq_len(n), lengths(for_rows)), unlist(for_rows))] <- 1
-
-options(pillar.width = 110)
-refit <- \(y) net_mrqap(y, predictors, reps = 1000, seed = 1)
-list(observed = advice, dropped_tenth = dropped, shuffled_recipients = shuffled) |>
-  imap(\(y, label) {
-    f <- refit(y)
-    tibble(term = names(predictors), coefficient = f$coefficients[-1], p = f$p.value[-1, "Pr(>=|b|)"]) |>
-      mutate(version = label)
-  }) |>
-  list_rbind() |>
-  mutate(across(where(is.numeric), \(v) round(v, 3))) |>
-  tidyr::pivot_wider(names_from = version, values_from = c(coefficient, p))
+# TODO(code, R): needs stress-check helpers: drop a share of ties at random and redraw each manager's recipients at random (net_remove_edges() and a degree-keeping shuffle), then refit net_mrqap() on each version.
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 6 × 7
-  term       coefficient_observed coefficient_dropped_tenth
-  <chr>                     <dbl>                     <dbl>
-1 friendship                0.116                     0.124
-2 reports_to                0.434                     0.384
-3 same_dept                -0.066                    -0.129
-4 level_gap                 0.083                     0.06 
-5 age_gap                  -0.004                    -0.003
-6 tenure_gap               -0.009                    -0.01 
-  coefficient_shuffled_recipi…¹ p_observed p_dropped_tenth p_shuffled_recipients
-                          <dbl>      <dbl>           <dbl>                 <dbl>
-1                         0.023      0.166           0.111                 0.782
-2                         0.245      0               0.001                 0.049
-3                         0.042      0.346           0.051                 0.552
-4                        -0.017      0.272           0.42                  0.822
-5                        -0.004      0.302           0.434                 0.307
-6                        -0.007      0.081           0.031                 0.138
-# ℹ abbreviated name: ¹​coefficient_shuffled_recipients
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# A stress check: (1) drop a tenth of the advice ties at random; (2) keep how many people each manager asks,
-# but choose the people at random. Same model, same seed.
-keys = stream(7, 190 + n * (n - 1))
-ties = np.argwhere(advice == 1)
-dropped = advice.copy()
-for i, j in ties[np.argsort(keys[:190])[:19]]:
-    dropped[i, j] = 0
-
-shuffled = np.zeros((n, n))
-row_keys = keys[190:].reshape(n, n - 1)
-for i in range(n):
-    others = [j for j in range(n) if j != i]
-    for pos in np.argsort(row_keys[i])[: int(advice[i].sum())]:
-        shuffled[i, others[pos]] = 1
-
-fits = {label: mrqap(y, list(predictors.values()), reps=1000, seed=1, y_method=False)
-        for label, y in [("observed", advice), ("dropped a tenth", dropped), ("shuffled recipients", shuffled)]}
-print(f"{'':<12}" + "".join(f"{label:>24}" for label in fits))
-for k, term in enumerate(predictors, start=1):
-    print(f"{term:<12}" + "".join(f"{f['beta'][k]:>16.3f} (p {f['p_dsp'][k]:.3f})" for f in fits.values()))
+# TODO(code, Python): needs stress-check helpers: drop a share of ties at random and redraw each manager's recipients at random (net_remove_edges() and a degree-keeping shuffle), then refit net_mrqap() on each version.
 ```
 
 ::: {.code-output}
 ```text
-                            observed         dropped a tenth     shuffled recipients
-friendship             0.116 (p 0.167)           0.124 (p 0.122)           0.023 (p 0.773)
-reports_to             0.434 (p 0.001)           0.384 (p 0.000)           0.245 (p 0.048)
-same_dept             -0.066 (p 0.351)          -0.129 (p 0.059)           0.042 (p 0.506)
-level_gap              0.083 (p 0.272)           0.060 (p 0.416)          -0.017 (p 0.805)
-age_gap               -0.004 (p 0.320)          -0.003 (p 0.466)          -0.004 (p 0.317)
-tenure_gap            -0.009 (p 0.087)          -0.010 (p 0.037)          -0.007 (p 0.144)
+TODO(output)
 ```
 :::
 
