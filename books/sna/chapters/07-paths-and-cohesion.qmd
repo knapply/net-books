@@ -59,21 +59,16 @@ The code below builds the friendship network, finds every distance and prints th
 
 ```r
 library(knappnet)
-library(dplyr)
-library(tibble)
-
-# Show four significant digits in tibbles, so 1.978 stays 1.978.
-options(pillar.sigfig = 4)
 
 # The ten-person friendship network from the last chapter. One row of the edge table is one tie.
 people <- c("Ana", "Ben", "Cleo", "Dev", "Eli", "Fay", "Gus", "Hana", "Ivo", "Jo")
 from <- c(0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 4, 5, 5, 6, 7, 8)
 to   <- c(1, 2, 3, 5, 3, 4, 6, 3, 5, 4, 5, 6, 6, 6, 7, 7, 8, 9)
-edges <- tibble(source = people[from + 1], target = people[to + 1])
-friends <- net_frame(edges, nodes = tibble(id = people), directed = FALSE)
+edges <- data.frame(source = people[from + 1], target = people[to + 1])
+friends <- net_frame(edges, nodes = data.frame(id = people), directed = FALSE)
 friends
 
-tibble(mean_distance = net_mean_distance(friends), diameter = net_diameter(friends))
+c(mean_distance = net_mean_distance(friends), diameter = net_diameter(friends)) |> round(3)
 ```
 
 ::: {.code-output}
@@ -225,29 +220,19 @@ The code below computes the same numbers by machine. Look for whether they agree
 ```r
 # Five people: Ben, Cleo and Dev form a triangle; Ana hangs off Ben and Eli off Dev.
 five <- c("Ana", "Ben", "Cleo", "Dev", "Eli")
-small <- tibble(
-  source = c("Ana", "Ben", "Ben", "Cleo", "Dev"),
-  target = c("Ben", "Cleo", "Dev", "Dev", "Eli")
-) |>
-  net_frame(nodes = tibble(id = five), directed = FALSE)
+small <- net_frame(
+  data.frame(source = c("Ana", "Ben", "Ben", "Cleo", "Dev"),
+             target = c("Ben", "Cleo", "Dev", "Dev", "Eli")),
+  nodes = data.frame(id = five), directed = FALSE
+)
 
 # The distance table. A person's eccentricity is the largest number in their row.
 net_distances(small)
-tibble(person = five, eccentricity = net_eccentricity(small))
+net_eccentricity(small)
 
-# knappnet's R package has no function for the harmonic mean distance yet, so we write
-# it from the distance table: one over the average of 1/d across ordered pairs.
-harmonic_mean_distance <- function(g) {
-  d <- net_distances(g)
-  1 / mean(1 / d[row(d) != col(d)])
-}
-
-tibble(
-  radius = net_radius(small),
-  diameter = net_diameter(small),
-  mean_distance = net_mean_distance(small),
-  harmonic_mean_distance = harmonic_mean_distance(small)
-)
+c(radius = net_radius(small), diameter = net_diameter(small),
+  mean_distance = net_mean_distance(small))
+# TODO(code, R): needs net_harmonic_mean_distance() (one over the average of 1/d across ordered pairs)
 ```
 
 ::: {.code-output}
@@ -393,16 +378,14 @@ The code below adds a separate pair, Kai and Lou, to the friendship network and 
 
 ```r
 # Two more people, Kai and Lou, who only know each other.
-everyone <- edges |>
-  add_row(source = "Kai", target = "Lou") |>
-  net_frame(nodes = tibble(id = c(people, "Kai", "Lou")), directed = FALSE)
+everyone <- net_frame(
+  rbind(edges, data.frame(source = "Kai", target = "Lou")),
+  nodes = data.frame(id = c(people, "Kai", "Lou")), directed = FALSE
+)
 everyone
 
-parts <- net_components(everyone, mode = "weak")
-everyone$nodes |>
-  mutate(component = parts$membership) |>
-  group_by(component) |>
-  summarise(size = n(), people = paste(id, collapse = ", "))
+# Who is in each connected piece.
+split(everyone$nodes$id, net_components(everyone, mode = "weak")$membership)
 ```
 
 ::: {.code-output}
@@ -493,20 +476,16 @@ Following arrows, A can reach D, through B, then C, then the extra arrow. D can 
 ## R
 
 ```r
-library(purrr)
-
 # Three people in a one-way loop (A to B to C to A), two who point at each other (D and E),
 # and one arrow from C to D.
-chain <- tibble(
-  source = c("A", "B", "C", "D", "E", "C"),
-  target = c("B", "C", "A", "E", "D", "D")
-) |>
-  net_frame(nodes = tibble(id = LETTERS[1:5]), directed = TRUE)
+chain <- net_frame(
+  data.frame(source = c("A", "B", "C", "D", "E", "C"), target = c("B", "C", "A", "E", "D", "D")),
+  nodes = data.frame(id = LETTERS[1:5]), directed = TRUE
+)
 
-c(weak = "weak", strong = "strong") |>
-  map(\(kind) net_components(chain, mode = kind)) |>
-  map(\(p) tibble(pieces = p$no, sizes = paste(sort(p$csize, decreasing = TRUE), collapse = ", "))) |>
-  list_rbind(names_to = "kind")
+lapply(c(weak = "weak", strong = "strong"), function(kind) {
+  split(chain$nodes$id, net_components(chain, mode = kind)$membership)
+})
 ```
 
 ::: {.code-output}
@@ -578,24 +557,14 @@ Convention 2 is the one to be careful with, because it can move in the wrong dir
 ## R
 
 ```r
-# Share of ordered pairs of people with no route between them.
-unreachable_share <- function(g) {
-  sizes <- net_components(g)$csize
-  n <- nrow(g$nodes)
-  1 - sum(sizes * (sizes - 1)) / (n * (n - 1))
-}
-
-tibble(
-  measure = c("mean distance, reachable pairs only", "diameter, reachable pairs only",
-              "mean distance, unreachable counted as infinite", "harmonic mean distance",
-              "share of pairs with no route"),
-  friends = c(net_mean_distance(friends), net_diameter(friends),
-              net_mean_distance(friends, unconnected = FALSE), harmonic_mean_distance(friends),
-              unreachable_share(friends)),
-  everyone = c(net_mean_distance(everyone), net_diameter(everyone),
-               net_mean_distance(everyone, unconnected = FALSE), harmonic_mean_distance(everyone),
-               unreachable_share(everyone))
-)
+# Distances over the pairs that have a route, and what changes if the rest count as infinite.
+data.frame(
+  friends = c(mean_distance = net_mean_distance(friends), diameter = net_diameter(friends),
+              mean_distance_infinite = net_mean_distance(friends, unconnected = FALSE)),
+  everyone = c(mean_distance = net_mean_distance(everyone), diameter = net_diameter(everyone),
+               mean_distance_infinite = net_mean_distance(everyone, unconnected = FALSE))
+) |> round(3)
+# TODO(code, R): needs net_harmonic_mean_distance() and a share-of-pairs-with-no-route measure
 ```
 
 ::: {.code-output}
@@ -614,27 +583,12 @@ tibble(
 ## Python
 
 ```python
-def reachable_stats(g):
-    """Mean and largest distance over the ordered pairs that have a route, and the share that have none."""
-    n = g.number_of_nodes()
-    lengths = [d for u, row in nx.all_pairs_shortest_path_length(g) for v, d in row.items() if v != u]
-    return sum(lengths) / len(lengths), max(lengths), 1 - len(lengths) / (n * (n - 1))
-
-for name, g in [("friends", friends), ("everyone", everyone)]:
-    mean, diameter, none = reachable_stats(g)
-    print(f"{name:<9} mean {mean:.3f}  diameter {diameter}  harmonic {1 / nx.global_efficiency(g):.3f}  no route {none:.3f}")
-
-try:
-    nx.average_shortest_path_length(everyone)
-except nx.NetworkXError as error:
-    print("NetworkX refuses on everyone:", error)
+# TODO(code, Python): needs mean distance and diameter over the reachable pairs only, and the share of pairs with no route (NetworkX raises on a disconnected network; the Python package has no such function)
 ```
 
 ::: {.code-output}
 ```text
-friends   mean 1.978  diameter 4  harmonic 1.547  no route 0.000
-everyone  mean 1.957  diameter 4  harmonic 2.194  no route 0.303
-NetworkX refuses on everyone: Graph is not connected.
+TODO(output)
 ```
 :::
 
@@ -771,17 +725,16 @@ The code below builds rings in which everyone has four ties, however big the rin
 # A ring in which everyone is tied to the two people on each side: 4 ties each, however big the ring.
 ring <- function(n) {
   i <- 0:(n - 1)
-  tibble(source = c(i, i), target = c((i + 1) %% n, (i + 2) %% n)) |>
-    mutate(across(everything(), as.character)) |>
-    net_frame(nodes = tibble(id = as.character(i)), directed = FALSE)
+  net_frame(
+    data.frame(source = as.character(c(i, i)), target = as.character(c((i + 1) %% n, (i + 2) %% n))),
+    nodes = data.frame(id = as.character(i)), directed = FALSE
+  )
 }
 
-c(20, 100, 500) |>
-  map(\(n) {
-    g <- ring(n)
-    tibble(people = n, ties = nrow(g$edges), density = net_density(g), mean_distance = net_mean_distance(g))
-  }) |>
-  list_rbind()
+sapply(c(20, 100, 500), function(n) {
+  g <- ring(n)
+  c(people = n, ties = nrow(g$edges), density = net_density(g), mean_distance = net_mean_distance(g))
+}) |> t() |> as.data.frame() |> round(3)
 ```
 
 ::: {.code-output}
@@ -875,14 +828,14 @@ The code below enters the five-person advice network and prints its reciprocity.
 
 ```r
 # The directed advice network from "Getting started": five people, seven ties.
-advice <- tibble(
-  source = c("Ana", "Ana", "Ben", "Chloe", "Dev", "Dev", "Eli"),
-  target = c("Ben", "Chloe", "Chloe", "Ana", "Ana", "Chloe", "Chloe")
-) |>
-  net_frame(nodes = tibble(id = c("Ana", "Ben", "Chloe", "Dev", "Eli")), directed = TRUE)
+advice <- net_frame(
+  data.frame(source = c("Ana", "Ana", "Ben", "Chloe", "Dev", "Dev", "Eli"),
+             target = c("Ben", "Chloe", "Chloe", "Ana", "Ana", "Chloe", "Chloe")),
+  nodes = data.frame(id = c("Ana", "Ben", "Chloe", "Dev", "Eli")), directed = TRUE
+)
 advice
 
-round(net_reciprocity(advice), 3)
+net_reciprocity(advice) |> round(3)
 ```
 
 ::: {.code-output}
@@ -983,11 +936,9 @@ The same network, four conventions. The code below asks for each one in turn. Lo
 
 ```r
 # The same five-person advice network under the four conventions.
-tibble(
-  convention = c("default", "ratio", "dyadic", "correlation"),
-  value = map_dbl(convention, \(m) net_reciprocity(advice, mode = m))
-) |>
-  add_row(convention = "density, for comparison", value = net_density(advice))
+c(sapply(c("default", "ratio", "dyadic", "correlation"),
+         function(m) net_reciprocity(advice, mode = m)),
+  `density, for comparison` = net_density(advice)) |> round(3)
 ```
 
 ::: {.code-output}
@@ -1006,28 +957,12 @@ tibble(
 ## Python
 
 ```python
-# Count the dyads (pairs of people): mutual, asymmetric and null.
-mutual = sum(1 for u, v in advice.edges if u < v and advice.has_edge(v, u))
-asym = advice.number_of_edges() - 2 * mutual
-null = 5 * 4 // 2 - mutual - asym
-arcs, dens = advice.number_of_edges(), nx.density(advice)
-share = 2 * mutual / arcs
-print(f"dyads: {mutual} mutual, {asym} asymmetric, {null} null")
-print(f"default      {share:.3f}   (nx.reciprocity gives {nx.reciprocity(advice):.3f})")
-print(f"ratio        {mutual / (mutual + asym):.3f}")
-print(f"dyadic       {(mutual + null) / (mutual + asym + null):.3f}")
-print(f"correlation  {(share - dens) / (1 - dens):.3f}")
-print(f"density      {dens:.3f}")
+# TODO(code, Python): needs the four reciprocity conventions (ratio, dyadic, correlation) in the Python package; nx.reciprocity gives only the default
 ```
 
 ::: {.code-output}
 ```text
-dyads: 1 mutual, 5 asymmetric, 4 null
-default      0.286   (nx.reciprocity gives 0.286)
-ratio        0.167
-dyadic       0.500
-correlation  -0.099
-density      0.350
+TODO(output)
 ```
 :::
 
@@ -1152,7 +1087,7 @@ The code below counts the triad types in the five-person advice network. Look fo
 
 ```r
 # One count per triad type, in the order of the figure.
-enframe(net_triad_census(advice), name = "triad", value = "count")
+data.frame(count = net_triad_census(advice))
 ```
 
 ::: {.code-output}
@@ -1271,7 +1206,7 @@ $\kappa$ (kappa) is the fewest people you must remove to break the network, $\la
 
 The right-hand inequality is easy to see: cut every tie of the person with the fewest ties and you have isolated them. The left-hand one says it is never harder to break a network by removing people than by removing ties, because for any set of ties that disconnects it, removing one end of each tie does the job with no more removals. A network is **k-connected** when $\kappa \ge k$, so that at least $k$ people must go before it falls apart. For any network of three or more people, $\kappa = 1$ means there is a cut point; every tree is like that.
 
-The code below finds the cut points and bridges of the friendship network, then counts connectivity by brute force. Look for Hana and Ivo as cut points.
+The code below finds the cut points and bridges of the friendship network, then counts connectivity (the R tab leaves the connectivity count blank until knappnet's R package has a function for it; see the engine gaps). Look for Hana and Ivo as cut points.
 
 ::: {.panel-tabset group="language"}
 
@@ -1281,20 +1216,7 @@ The code below finds the cut points and bridges of the friendship network, then 
 # Cut points, and the bridges as rows of the edge table.
 net_cut_points(friends)
 friends$edges[net_bridges(friends), ]
-
-# knappnet's R package has no connectivity function yet, so count by brute force: the
-# smallest number of people whose removal leaves the rest in more than one piece.
-vertex_connectivity <- function(g, max_k = 4) {
-  ids <- g$nodes$id
-  splits <- function(drop) net_components(net_subnetwork(g, setdiff(ids, drop)))$no > 1
-  detect(seq_len(max_k), \(k) any(combn(ids, k, splits)))
-}
-
-core7 <- net_subnetwork(friends, people[1:7])
-tibble(
-  network = c("whole friendship network", "seven-person core"),
-  vertex_connectivity = c(vertex_connectivity(friends), vertex_connectivity(core7))
-)
+# TODO(code, R): needs net_vertex_connectivity() (the fewest people whose removal splits the network)
 ```
 
 ::: {.code-output}
@@ -1398,39 +1320,12 @@ The code below finds the separating sets of the six-person ring. Look for none o
 ## R
 
 ```r
-# Six people in a ring (s, a, b, t, c, d) with an extra tie between a and c.
-six <- c("s", "a", "b", "t", "c", "d")
-ring6 <- tibble(
-  source = c("s", "a", "b", "t", "c", "d", "a"),
-  target = c("a", "b", "t", "c", "d", "s", "c")
-) |>
-  net_frame(nodes = tibble(id = six), directed = FALSE)
-
-# Does removing these people leave s and t in different pieces?
-separates <- function(drop) {
-  rest <- setdiff(six, drop)
-  membership <- net_components(net_subnetwork(ring6, rest))$membership
-  membership[match("s", rest)] != membership[match("t", rest)]
-}
-
-# Every set of other people of each size, and the ones that separate s from t.
-separators <- map(1:3, \(k) keep(combn(c("a", "b", "c", "d"), k, simplify = FALSE), separates))
-tibble(size = 1:3, separating_sets = map_int(separators, length))
-map_chr(separators[[2]], \(s) paste(s, collapse = " + "))
-
-vertex_connectivity(ring6)
+# TODO(code, R): needs net_node_connectivity(), net_node_disjoint_paths() and net_minimum_node_cut() for a pair of people
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 3 × 2
-   size separating_sets
-  <int>           <int>
-1     1               0
-2     2               3
-3     3               4
-[1] "a + c" "a + d" "b + c"
-[1] 2
+TODO(output)
 ```
 :::
 
@@ -1484,7 +1379,7 @@ whole network: vertex connectivity 2, edge connectivity 2
 
 :::
 
-R finds the separating sets by brute force: none of size one and three of size two (the list shows which). Python and Rust also print the two routes that share nobody in between and one smallest separating set, and all three agree that the whole six-person network has vertex connectivity 2 (Python and Rust add that its edge connectivity is 2 too).
+The R tab is a stub: knappnet's R package does not yet expose separating sets or node-disjoint routes. Python and Rust print the two routes that share nobody in between and one smallest separating set, and both agree that the whole six-person network has vertex connectivity 2 and edge connectivity 2.
 
 ### What connectivity means in different settings
 
@@ -1520,9 +1415,7 @@ The code below gives each person's core number. Look for seven threes, a two and
 ## R
 
 ```r
-friends$nodes |>
-  mutate(coreness = net_coreness(friends)) |>
-  arrange(desc(coreness))
+net_coreness(friends) |> sort(decreasing = TRUE)
 ```
 
 ::: {.code-output}
@@ -1602,27 +1495,18 @@ The code below measures the marriage network end to end. Look at the radius, the
 rows <- read.csv("data/florentine/edges.csv")
 florence <- net_frame(rows, directed = FALSE)
 
-tibble(
-  families = nrow(florence$nodes),
-  marriages = nrow(florence$edges),
-  density = net_density(florence),
-  components = net_components(florence)$no,
-  radius = net_radius(florence),
-  diameter = net_diameter(florence),
-  mean_distance = net_mean_distance(florence),
-  harmonic_mean_distance = harmonic_mean_distance(florence)
-)
+c(families = nrow(florence$nodes), marriages = nrow(florence$edges),
+  density = net_density(florence), components = net_components(florence)$no,
+  radius = net_radius(florence), diameter = net_diameter(florence),
+  mean_distance = net_mean_distance(florence)) |> round(3)
 
 # The center (smallest eccentricity) and the periphery (largest).
-as_tibble(florence$nodes) |>
-  mutate(eccentricity = net_eccentricity(florence)) |>
-  filter(eccentricity %in% range(eccentricity)) |>
-  arrange(eccentricity, id) |>
-  rename(family = id)
+ecc <- net_value(net_eccentricity(florence))
+sort(ecc[ecc %in% range(ecc)])
 
 net_cut_points(florence)
 florence$edges[net_bridges(florence), ]
-vertex_connectivity(florence)
+# TODO(code, R): needs net_vertex_connectivity() and net_harmonic_mean_distance()
 ```
 
 ::: {.code-output}
@@ -1665,7 +1549,7 @@ with open("data/florentine/edges.csv") as f:
     marriages = [tuple(r) for r in list(csv.reader(f))[1:]]
 florence = nx.Graph(marriages)
 
-mean, diameter, _ = reachable_stats(florence)
+mean, diameter = nx.average_shortest_path_length(florence), nx.diameter(florence)
 print(f"{florence.number_of_nodes()} families, {len(marriages)} marriages, density {nx.density(florence):.3f}, "
       f"components {nx.number_connected_components(florence)}")
 print(f"radius {nx.radius(florence)}  diameter {diameter}  mean distance {mean:.3f}  "
@@ -1779,108 +1663,24 @@ The code below removes each family in turn, then each pair, then each marriage, 
 ## R
 
 ```r
-ids <- florence$nodes$id
-
-# What is left after taking some families out: the number of pieces and the size of the biggest.
-after_removing <- function(drop) {
-  parts <- net_components(net_subnetwork(florence, setdiff(ids, drop)))
-  tibble(pieces = parts$no, largest = max(parts$csize))
-}
-
-# One family at a time. Only the families whose removal splits the network are shown.
-tibble(family = ids) |>
-  bind_cols(map(ids, after_removing) |> list_rbind()) |>
-  filter(pieces > 1)
-
-# Every pair of families.
-two <- combn(ids, 2, simplify = FALSE) |> map(after_removing) |> list_rbind()
-tibble(
-  pairs = nrow(two),
-  split = sum(two$pieces > 1),
-  share_split = mean(two$pieces > 1),
-  mean_largest = mean(two$largest)
-)
-
-# One marriage at a time.
-without_marriage <- function(i) {
-  g <- net_frame(florence$edges[-i, ], nodes = florence$nodes, directed = FALSE)
-  tibble(pieces = net_components(g)$no, diameter = net_diameter(g), mean_distance = net_mean_distance(g))
-}
-lost <- seq_len(nrow(florence$edges)) |> map(without_marriage) |> list_rbind()
-tibble(marriages = nrow(lost), splits = sum(lost$pieces > 1))
-lost |>
-  filter(pieces == 1) |>
-  summarise(across(c(diameter, mean_distance), list(min = min, max = max)))
+# TODO(code, R): needs net_removal_effects(): the number of pieces and the size of the biggest after removing each person, each pair of people, or each tie
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 4 × 3
-  family   pieces largest
-  <chr>     <int>   <int>
-1 Medici        3      11
-2 Albizzi       2      13
-3 Guadagni      2      13
-4 Salviati      2      13
-# A tibble: 1 × 4
-  pairs split share_split mean_largest
-  <int> <int>       <dbl>        <dbl>
-1   105    47      0.4476        12.24
-# A tibble: 1 × 2
-  marriages splits
-      <int>  <int>
-1        20      5
-# A tibble: 1 × 4
-  diameter_min diameter_max mean_distance_min mean_distance_max
-         <dbl>        <dbl>             <dbl>             <dbl>
-1            5            6             2.505             2.762
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-def pieces_without(g, drop):
-    """Sizes of the connected pieces left after taking the people in `drop` out, largest first."""
-    rest = g.subgraph(set(g) - set(drop))
-    return sorted((len(c) for c in nx.connected_components(rest)), reverse=True)
-
-# One family at a time. Only the families whose removal splits the network are shown.
-for family in florence:
-    parts = pieces_without(florence, [family])
-    if len(parts) > 1:
-        print(f"{family:<9} leaves pieces of {parts}")
-
-# Every pair of families.
-pairs = list(combinations(florence, 2))
-after = [pieces_without(florence, p) for p in pairs]
-split = sum(1 for parts in after if len(parts) > 1)
-print(f"pairs {len(pairs)}, split {split} ({split / len(pairs):.3f}), "
-      f"mean size of the largest piece {sum(p[0] for p in after) / len(after):.2f}")
-
-# One marriage at a time.
-still_joined, splits = [], 0
-for tie in list(florence.edges):
-    g = florence.copy()
-    g.remove_edge(*tie)
-    if nx.is_connected(g):
-        still_joined.append((nx.diameter(g), nx.average_shortest_path_length(g)))
-    else:
-        splits += 1
-print(f"marriages {florence.number_of_edges()}, splits {splits}")
-print(f"the other {len(still_joined)}: diameter {min(d for d, _ in still_joined)} to {max(d for d, _ in still_joined)}, "
-      f"mean distance {min(m for _, m in still_joined):.3f} to {max(m for _, m in still_joined):.3f}")
+# TODO(code, Python): needs net_removal_effects() in the Python package: pieces and largest piece after removing each person, each pair, or each tie
 ```
 
 ::: {.code-output}
 ```text
-Medici    leaves pieces of [11, 2, 1]
-Albizzi   leaves pieces of [13, 1]
-Guadagni  leaves pieces of [13, 1]
-Salviati  leaves pieces of [13, 1]
-pairs 105, split 47 (0.448), mean size of the largest piece 12.24
-marriages 20, splits 5
-the other 15: diameter 5 to 6, mean distance 2.505 to 2.762
+TODO(output)
 ```
 :::
 
@@ -1987,39 +1787,31 @@ The code below builds one summary column per relation: density, reciprocity, com
 ## R
 
 ```r
-library(tidyr)
-
 # Krackhardt's 21 managers: three relations among the same people, numbered 1 to 21.
 kr <- read.csv("data/krackhardt/edges.csv")
-managers <- tibble(id = as.character(1:21))
+managers <- data.frame(id = as.character(1:21))
 
-layers <- c("advice", "friendship", "reports_to") |>
-  set_names() |>
-  map(\(r) kr |>
-        filter(relation == r) |>
-        transmute(source = as.character(from), target = as.character(to)) |>
-        net_frame(nodes = managers, directed = TRUE))
+layers <- lapply(c(advice = "advice", friendship = "friendship", reports_to = "reports_to"),
+  function(r) {
+    e <- kr[kr$relation == r, ]
+    net_frame(data.frame(source = as.character(e$from), target = as.character(e$to)),
+              nodes = managers, directed = TRUE)
+  })
 
 # "Following arrows" respects who asked whom; "ignoring direction" treats every tie as two-way.
-layers |>
-  map(\(g) {
-    weak <- net_components(g, mode = "weak")
-    strong <- net_components(g, mode = "strong")
-    enframe(c(
-      arcs = nrow(g$edges),
-      density = net_density(g),
-      reciprocity = net_reciprocity(g),
-      weak_components = weak$no,
-      strong_components = strong$no,
-      largest_strong = max(strong$csize),
-      mean_distance_following = net_mean_distance(g),
-      diameter_following = net_diameter(g),
-      mean_distance_ignoring = net_mean_distance(g, mode = "all"),
-      diameter_ignoring = net_diameter(g, mode = "all")
-    ), name = "measure", value = "value")
-  }) |>
-  list_rbind(names_to = "relation") |>
-  pivot_wider(names_from = relation, values_from = value)
+sapply(layers, function(g) {
+  strong <- net_components(g, mode = "strong")
+  c(arcs = nrow(g$edges),
+    density = net_density(g),
+    reciprocity = net_reciprocity(g),
+    weak_components = net_components(g, mode = "weak")$no,
+    strong_components = strong$no,
+    largest_strong = max(strong$csize),
+    mean_distance_following = net_mean_distance(g),
+    diameter_following = net_diameter(g),
+    mean_distance_ignoring = net_mean_distance(g, mode = "all"),
+    diameter_ignoring = net_diameter(g, mode = "all"))
+}) |> round(3)
 ```
 
 ::: {.code-output}
@@ -2043,47 +1835,12 @@ layers |>
 ## Python
 
 ```python
-# Krackhardt's 21 managers: three relations among the same people, numbered 1 to 21.
-with open("data/krackhardt/edges.csv") as f:
-    kr_rows = list(csv.DictReader(f))
-
-def layer(relation):
-    g = nx.DiGraph()
-    g.add_nodes_from(range(1, 22))
-    g.add_edges_from((int(r["from"]), int(r["to"])) for r in kr_rows if r["relation"] == relation)
-    return g
-
-layers = {name: layer(name) for name in ["advice", "friendship", "reports_to"]}
-
-def summarize(g):
-    follow_mean, follow_diameter, _ = reachable_stats(g)
-    ignore_mean, ignore_diameter, _ = reachable_stats(g.to_undirected())
-    strong = [len(c) for c in nx.strongly_connected_components(g)]
-    return [g.number_of_edges(), f"{nx.density(g):.3f}", f"{nx.reciprocity(g):.3f}",
-            nx.number_weakly_connected_components(g), len(strong), max(strong),
-            f"{follow_mean:.3f}", follow_diameter, f"{ignore_mean:.3f}", ignore_diameter]
-
-names = ["arcs", "density", "reciprocity", "weak components", "strong components", "largest strong",
-         "mean distance, following", "diameter, following", "mean distance, ignoring", "diameter, ignoring"]
-table = {name: summarize(g) for name, g in layers.items()}
-print(f"{'':<26} {'advice':>8} {'friendship':>11} {'reports_to':>11}")
-for k, label in enumerate(names):
-    print(f"{label:<26} {table['advice'][k]:>8} {table['friendship'][k]:>11} {table['reports_to'][k]:>11}")
+# TODO(code, Python): needs mean distance and diameter over the reachable pairs, following arrows and ignoring direction, in the Python package (NetworkX raises on a network that is not strongly connected)
 ```
 
 ::: {.code-output}
 ```text
-                             advice  friendship  reports_to
-arcs                            190         102          20
-density                       0.452       0.243       0.048
-reciprocity                   0.474       0.451       0.000
-weak components                   1           1           1
-strong components                 1           3          21
-largest strong                   21          19           1
-mean distance, following      1.640       2.103       1.444
-diameter, following               3           5           2
-mean distance, ignoring       1.310       1.648       2.981
-diameter, ignoring                2           3           4
+TODO(output)
 ```
 :::
 

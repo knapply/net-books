@@ -21,7 +21,7 @@ So here is the plan. We count the patterns that two and three people can form. W
 
 ::: {.callout-tip appearance="simple"}
 ## Code lives next to the idea
-Each block has an R, a Python and a Rust tab. The Rust blocks run top to bottom as one script, so a later block can use what an earlier one built. Where a random draw is involved, R and Rust use the same engine and the same seed, so they print the same numbers. The Python tab draws its own random networks, so its digits differ a little.
+Each block has an R, a Python and a Rust tab. The Rust blocks run top to bottom as one script, so a later block can use what an earlier one built. Where a random draw is involved, R and Rust use the same engine and the same seed, so they print the same numbers. Where knappnet's R or Python package has no function for a step yet, that tab is a short stub that names what is missing (`python3 tools/pending.py` lists them all); the Rust tab always has the full code.
 :::
 
 ## Dyads: mutual, asymmetric, null
@@ -64,39 +64,20 @@ The code below counts the mutual, one-way and empty pairs of the five-person adv
 
 ```r
 library(knappnet)
-library(dplyr)
-library(tibble)
-library(tidyr)
-library(purrr)
 
 # The advice network from the last chapter: five people, seven "goes to for advice" ties.
 people <- c("Ana", "Ben", "Chloe", "Dev", "Eli")
-five_advice <- tibble(
-  source = c("Ana", "Ana", "Ben", "Chloe", "Dev", "Dev", "Eli"),
-  target = c("Ben", "Chloe", "Chloe", "Ana", "Ana", "Chloe", "Chloe")
-) |>
-  net_frame(nodes = tibble(id = people), directed = TRUE, quiet = TRUE)
-
-# knappnet's R package has no dyad census function yet, so we count it from the
-# edge table: a tie is returned when the reversed tie is also in the table.
-dyad_census <- function(g) {
-  arcs <- select(g$edges, source, target)
-  returned <- nrow(semi_join(arcs, arcs, by = c(source = "target", target = "source")))
-  pairs <- choose(nrow(g$nodes), 2)
-  tibble(
-    mutual = returned / 2,
-    asymmetric = nrow(arcs) - returned,
-    null = pairs - mutual - asymmetric
-  )
-}
-dyad_census(five_advice)
+five_advice <- net_frame(
+  data.frame(source = c("Ana", "Ana", "Ben", "Chloe", "Dev", "Dev", "Eli"),
+             target = c("Ben", "Chloe", "Chloe", "Ana", "Ana", "Chloe", "Chloe")),
+  nodes = data.frame(id = people), directed = TRUE, quiet = TRUE
+)
+# TODO(code, R): needs net_dyad_census() (mutual, asymmetric and null pairs)
 
 # The three reciprocity ratios.
-tibble(
-  edgewise = net_reciprocity(five_advice),
+c(edgewise = net_reciprocity(five_advice),
   ratio = net_reciprocity(five_advice, mode = "ratio"),
-  dyadic = net_reciprocity(five_advice, mode = "dyadic")
-)
+  dyadic = net_reciprocity(five_advice, mode = "dyadic")) |> round(3)
 ```
 
 ::: {.code-output}
@@ -116,7 +97,6 @@ tibble(
 
 ```python
 import csv
-import itertools
 
 import networkx as nx
 import numpy as np
@@ -124,31 +104,17 @@ import numpy as np
 NAMES = ["003", "012", "102", "021D", "021U", "021C", "111D", "111U",
          "030T", "030C", "201", "120D", "120U", "120C", "210", "300"]
 
-def dyad_census(g):
-    # A pair is mutual when both ties are there, asymmetric when exactly one is.
-    mutual = sum(1 for u, v in g.edges if g.has_edge(v, u)) // 2
-    asym = g.number_of_edges() - 2 * mutual
-    n = g.number_of_nodes()
-    return mutual, asym, n * (n - 1) // 2 - mutual - asym
-
 # The advice network from the last chapter: five people, seven "goes to for advice" ties.
 five_advice = nx.DiGraph([("Ana", "Ben"), ("Ana", "Chloe"), ("Ben", "Chloe"), ("Chloe", "Ana"),
                           ("Dev", "Ana"), ("Dev", "Chloe"), ("Eli", "Chloe")])
-mutual, asym, null = dyad_census(five_advice)
-print(f"mutual {mutual}, asymmetric {asym}, null {null}")
-
-# The three reciprocity ratios.
+# TODO(code, Python): needs a dyad census (mutual, asymmetric, null) and the ratio and dyadic
+# reciprocity conventions in the Python package; nx.reciprocity gives only the edgewise one.
 print(f"edgewise {nx.reciprocity(five_advice):.3f}")
-print(f"ratio    {mutual / (mutual + asym):.3f}")
-print(f"dyadic   {(mutual + null) / (mutual + asym + null):.3f}")
 ```
 
 ::: {.code-output}
 ```text
-mutual 1, asymmetric 5, null 4
 edgewise 0.286
-ratio    0.167
-dyadic   0.500
 ```
 :::
 
@@ -181,7 +147,7 @@ dyadic   0.500
 
 :::
 
-All three tabs agree: one mutual pair, five one-way pairs, four empty pairs, and three different numbers that all go by the name reciprocity.
+The Rust tab counts one mutual pair, five one-way pairs and four empty pairs; R and Python wait for a dyad census function in knappnet (R prints the three different numbers that all go by the name reciprocity; Python prints the default one).
 
 ### Reciprocity against chance
 
@@ -203,31 +169,19 @@ The code below draws many random networks with the same number of ties and compa
 # Krackhardt's 21 managers, one relation at a time. Nodes are the manager numbers 1 to 21.
 kr <- read.csv("data/krackhardt/edges.csv")
 read_relation <- function(name) {
-  kr |>
-    filter(relation == name) |>
-    transmute(source = as.character(from), target = as.character(to)) |>
-    net_frame(nodes = tibble(id = as.character(1:21)), directed = TRUE, quiet = TRUE)
+  e <- kr[kr$relation == name, ]
+  net_frame(data.frame(source = as.character(e$from), target = as.character(e$to)),
+            nodes = data.frame(id = as.character(1:21)), directed = TRUE, quiet = TRUE)
 }
 advice <- read_relation("advice")
 friends <- read_relation("friendship")
 
 # Random networks with the same people and the same number of ties: 2,000 draws each.
-list(advice = advice, friendship = friends) |>
-  imap(\(g, name) {
-    test <- net_cug_test(g, net_reciprocity, conditioning = "edges", reps = 2000, seed = 1)
-    bind_cols(
-      tibble(relation = name, density = net_density(g)),
-      dyad_census(g),
-      tibble(
-        reciprocity = test$observed,
-        chance_mean = mean(test$null),
-        chance_sd = sd(test$null),
-        share_as_high = test$p_greater
-      )
-    )
-  }) |>
-  list_rbind() |>
-  mutate(across(c(density, reciprocity, chance_mean, chance_sd), \(x) round(x, 3)))
+sapply(list(advice = advice, friendship = friends), function(g) {
+  test <- net_cug_test(g, net_reciprocity, conditioning = "edges", reps = 2000, seed = 1)
+  c(density = net_density(g), reciprocity = test$observed, chance_mean = mean(test$null),
+    chance_sd = sd(test$null), share_as_high = test$p_greater)
+}) |> t() |> as.data.frame() |> round(3)
 ```
 
 ::: {.code-output}
@@ -256,23 +210,15 @@ def read_relation(name):
 
 advice = read_relation("advice")
 friends = read_relation("friendship")
-
-# Random networks with the same people and the same number of ties: 2,000 draws each.
-rng = np.random.default_rng(1)
 for name, g in [("advice", advice), ("friendship", friends)]:
-    m = g.number_of_edges()
-    chance = np.array([nx.reciprocity(nx.gnm_random_graph(21, m, directed=True, seed=int(rng.integers(2**31))))
-                       for _ in range(2000)])
-    observed = nx.reciprocity(g)
-    mutual, asym, null = dyad_census(g)
-    print(f"{name:<10} density {nx.density(g):.3f}  M {mutual} A {asym} N {null}  reciprocity {observed:.3f}  "
-          f"chance {chance.mean():.3f} (sd {chance.std(ddof=1):.3f})  as high {np.mean(chance >= observed - 1e-12):.4f}")
+    print(f"{name:<10} density {nx.density(g):.3f}  reciprocity {nx.reciprocity(g):.3f}")
+# TODO(code, Python): needs a conditional-uniform-graph test (net_cug_test()) in the Python package
 ```
 
 ::: {.code-output}
 ```text
-advice     density 0.452  M 45 A 100 N 65  reciprocity 0.474  chance 0.450 (sd 0.038)  as high 0.3115
-friendship density 0.243  M 23 A 56 N 131  reciprocity 0.451  chance 0.240 (sd 0.052)  as high 0.0000
+advice     density 0.452  reciprocity 0.474
+friendship density 0.243  reciprocity 0.451
 ```
 :::
 
@@ -417,25 +363,23 @@ The code below counts the triad types of the five-person network and computes gl
 ## R
 
 ```r
-five_ties <- tibble(
-  source = c("Ana", "Ana", "Ben", "Chloe", "Dev"),
-  target = c("Ben", "Chloe", "Chloe", "Dev", "Eli")
-) |>
-  net_frame(nodes = tibble(id = people), directed = FALSE, quiet = TRUE)
+five_ties <- net_frame(
+  data.frame(source = c("Ana", "Ana", "Ben", "Chloe", "Dev"),
+             target = c("Ben", "Chloe", "Chloe", "Dev", "Eli")),
+  nodes = data.frame(id = people), directed = FALSE, quiet = TRUE
+)
 
 # An undirected tie counts as a mutual pair, so the four undirected types show up as
 # 003, 102, 201 and 300: zero, one, two and three of the three possible ties.
-enframe(net_triad_census(five_ties), name = "triad", value = "count") |>
-  filter(triad %in% c("003", "102", "201", "300")) |>
-  mutate(ties = 0:3, .before = 1)
+census <- net_triad_census(five_ties)[c("003", "102", "201", "300")]
+names(census) <- paste(0:3, "ties")
+census
 
-tibble(person = people, friends = net_degree(five_ties), local = net_clustering(five_ties))
+data.frame(friends = net_degree(five_ties), local = net_clustering(five_ties))
 
-tibble(
-  transitivity = net_transitivity(five_ties),
+c(transitivity = net_transitivity(five_ties),
   average_left_out = net_avg_clustering(five_ties),
-  average_as_zero = net_avg_clustering(five_ties, convention = "networkx")
-)
+  average_as_zero = net_avg_clustering(five_ties, convention = "networkx")) |> round(3)
 ```
 
 ::: {.code-output}
@@ -548,26 +492,19 @@ The code below lists the Florentine families with at least three marriages and c
 ## R
 
 ```r
-florence <- read.csv("data/florentine/edges.csv") |>
-  net_frame(directed = FALSE, quiet = TRUE)
+florence <- net_frame(read.csv("data/florentine/edges.csv"), directed = FALSE, quiet = TRUE)
 
 # Families with at least three marriages: how many pairs of partners they have, and how many
 # of those pairs are themselves married.
-tibble(
-  family = florence$nodes$id,
-  ties = net_degree(florence),
-  pairs = choose(ties, 2),
-  local = net_clustering(florence)
-) |>
-  filter(ties >= 3) |>
-  arrange(desc(ties), desc(local))
+ties <- net_value(net_degree(florence))
+scores <- data.frame(ties = ties, pairs = choose(ties, 2), local = net_clustering(florence))
+scores <- scores[scores$ties >= 3, ]
+scores[order(-scores$ties, -scores$local), ] |> round(3)
 
-tibble(
-  density = net_density(florence),
+c(density = net_density(florence),
   transitivity = net_transitivity(florence),
   average_left_out = net_avg_clustering(florence),
-  average_as_zero = net_avg_clustering(florence, convention = "networkx")
-)
+  average_as_zero = net_avg_clustering(florence, convention = "networkx")) |> round(3)
 ```
 
 ::: {.code-output}
@@ -731,8 +668,8 @@ That is one 003, two 012, three 021U, one each of 021C, 111D, 120D and 120C. The
 
 ```r
 # The triad census of the five-person advice network, keeping only the types that occur.
-enframe(net_triad_census(five_advice), name = "triad", value = "count") |>
-  filter(count > 0)
+triads <- net_triad_census(five_advice)
+triads[triads > 0]
 ```
 
 ::: {.code-output}
@@ -813,13 +750,8 @@ Pick one mutual pair. The third person in a triad can be any of the other $n - 2
 # Mutual pairs inside each of the 16 types, in census order.
 mutual_in_type <- c(0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 2, 1, 1, 1, 2, 3)
 
-tibble(
-  triad = names(net_triad_census(advice)),
-  advice = unname(net_triad_census(advice)),
-  friendship = unname(net_triad_census(friends))
-) |>
-  add_row(triad = "mutual pairs implied", advice = sum(mutual_in_type * net_triad_census(advice)) / 19,
-          friendship = sum(mutual_in_type * net_triad_census(friends)) / 19)
+census <- data.frame(advice = net_triad_census(advice), friendship = net_triad_census(friends))
+rbind(census, `mutual pairs implied` = colSums(mutual_in_type * census) / 19)
 ```
 
 ::: {.code-output}
@@ -989,27 +921,29 @@ The code below draws random networks with the same dyad census and computes each
 ## R
 
 ```r
-obs <- net_triad_census(advice)
-d <- dyad_census(advice)
+obs <- net_value(net_triad_census(advice))
+
+# The dyad counts of the advice network, worked out from the reciprocity and the number of ties.
+# TODO(code, R): needs net_dyad_census() in place of the two lines below
+arcs <- nrow(advice$edges)
+mutual <- round(net_reciprocity(advice) * arcs / 2)
+asymmetric <- arcs - 2 * mutual
 
 # One row per random network, one column per triad type.
-draw_census <- \(graphs) graphs |> map(\(g) as_tibble_row(net_triad_census(g))) |> list_rbind()
+draw_census <- function(graphs) t(sapply(graphs, function(g) net_value(net_triad_census(g))))
 
 # How the observed census compares with a null: mean, spread and z-score for each type.
-compare <- \(null) {
-  tibble(
-    triad = names(obs),
-    observed = unname(obs),
-    null_mean = unname(colMeans(null)),
-    null_sd = unname(map_dbl(null, sd)),
-    z = (observed - null_mean) / null_sd
-  )
+compare <- function(null) {
+  null_mean <- colMeans(null)
+  null_sd <- apply(null, 2, sd)
+  data.frame(observed = obs, null_mean = null_mean, null_sd = null_sd,
+             z = (obs - null_mean) / null_sd)
 }
 
 # 1,000 random directed networks with the same number of mutual, asymmetric and null pairs.
-uman <- net_random_uman(21, d$mutual, d$asymmetric, reps = 1000, seed = 1) |> draw_census()
+uman <- net_random_uman(21, mutual, asymmetric, reps = 1000, seed = 1) |> draw_census()
 uman_table <- compare(uman)
-uman_table |> mutate(across(c(null_mean, null_sd, z), \(x) round(x, 1)))
+round(uman_table, 1)
 ```
 
 ::: {.code-output}
@@ -1039,54 +973,12 @@ uman_table |> mutate(across(c(null_mean, null_sd, z), \(x) round(x, 1)))
 ## Python
 
 ```python
-obs = census_vector(advice)
-mutual, asym, null = dyad_census(advice)
-pairs = list(itertools.combinations(range(1, 22), 2))
-
-def uman_draw():
-    # Pick which pairs are mutual and which are asymmetric, then point each asymmetric tie at random.
-    pick = rng.permutation(len(pairs))
-    g = nx.DiGraph()
-    g.add_nodes_from(range(1, 22))
-    for k in pick[:mutual]:
-        u, v = pairs[k]
-        g.add_edges_from([(u, v), (v, u)])
-    for k in pick[mutual:mutual + asym]:
-        u, v = pairs[k]
-        g.add_edge(*((u, v) if rng.random() < 0.5 else (v, u)))
-    return g
-
-def compare(null):
-    mean, sd = null.mean(axis=0), null.std(axis=0, ddof=1)
-    return mean, sd, (obs - mean) / sd
-
-# 1,000 random directed networks with the same number of mutual, asymmetric and null pairs.
-uman = np.array([census_vector(uman_draw()) for _ in range(1000)])
-uman_mean, uman_sd, uman_z = compare(uman)
-print(f"{'triad':<5} {'observed':>8} {'null mean':>9} {'null sd':>8} {'z':>6}")
-for k, name in enumerate(NAMES):
-    print(f"{name:<5} {obs[k]:>8} {uman_mean[k]:>9.1f} {uman_sd[k]:>8.1f} {uman_z[k]:>6.1f}")
+# TODO(code, Python): needs net_random_uman() in the Python package: random directed networks with fixed numbers of mutual, asymmetric and null pairs
 ```
 
 ::: {.code-output}
 ```text
-triad observed null mean  null sd      z
-003         74      38.3      5.2    6.8
-012        153     182.3     10.6   -2.8
-102         90      81.4      7.7    1.1
-021D       160      70.1      8.1   11.2
-021U        86      70.7      7.8    2.0
-021C        49     140.2     10.6   -8.6
-111D        59     128.0     10.3   -6.7
-111U       101     127.9     10.6   -2.5
-030T       190     106.2      7.9   10.6
-030C         2      35.0      5.4   -6.1
-201         72      55.9      6.5    2.5
-120D        62      48.7      6.7    2.0
-120U        78      48.6      6.7    4.4
-120C        17      97.4      9.2   -8.8
-210        107      86.8      7.7    2.6
-300         30      12.5      3.2    5.4
+TODO(output)
 ```
 :::
 
@@ -1147,143 +1039,31 @@ Read the z column. Against this null, 030T (190 against about 106, z = 10.5) and
 
 Now the fourth rung. Keep every manager's number of advice-seekers and advice-givers fixed and rewire the rest.
 
-The code below rewires ties by swapping the heads of two ties (we write it out by hand, since the R package cannot rewire a directed network yet) and then computes the same table. Look at what happens to 030T.
+The code below rewires ties by swapping the heads of two ties and then computes the same table. Only the Rust tab does this today; the R and Python tabs wait for a directed rewiring function in knappnet. Look at what happens to 030T.
 
 ::: {.panel-tabset group="language"}
 
 ## R
 
 ```r
-# knappnet's R package cannot rewire a directed network yet, so we write the swap ourselves:
-# take two ties a -> b and c -> d and turn them into a -> d and c -> b, unless that would
-# make a loop or repeat a tie. Every manager keeps the same in- and out-degree.
-n <- 21
-swap_once <- function(e, pick) {
-  i <- pick[[1]]
-  j <- pick[[2]]
-  new_i <- e$from[i] * n + e$to[j]
-  new_j <- e$from[j] * n + e$to[i]
-  ok <- i != j && e$from[i] != e$to[j] && e$from[j] != e$to[i] &&
-    !(new_i %in% e$code) && !(new_j %in% e$code)
-  if (!ok) return(e)
-  e$to[c(i, j)] <- e$to[c(j, i)]
-  e$code <- e$from * n + e$to
-  e
-}
-# Apply the swaps one after another, each picking up the network the last one left.
-# (A short recursive helper stands in for a loop.)
-walk <- function(e, picks, i = 1) {
-  if (i > ncol(picks)) e else walk(swap_once(e, picks[, i]), picks, i + 1)
-}
-chain <- function(e, steps) {
-  walk(e, matrix(sample.int(length(e$from), 2 * steps, replace = TRUE), nrow = 2))
-}
-
-start <- list(from = as.integer(advice$edges$source), to = as.integer(advice$edges$target))
-start$code <- start$from * n + start$to
-
-# Forget the start with 2,000 swaps, then make each of 1,000 networks with 600 more swaps.
-# (The Python and Rust tabs run one long chain and keep a network every 400 swaps.)
-set.seed(1)
-burned <- start |> chain(500) |> chain(500) |> chain(500) |> chain(500)
-states <- map(1:1000, \(k) chain(burned, 600))
-degree_null <- states |>
-  map(\(e) net_frame(tibble(source = e$from, target = e$to), nodes = tibble(id = 1:21),
-                     directed = TRUE, quiet = TRUE)) |>
-  draw_census()
-degree_table <- compare(degree_null)
-
-# The two nulls side by side.
-degree_table |>
-  transmute(
-    triad, observed,
-    degree_mean = round(null_mean, 1),
-    z_degree = round(z, 1),
-    z_dyads = round(uman_table$z, 1)
-  )
-
-# The mutual pairs this null expects (from the identity above), and how in- and out-degree move together.
-tibble(
-  mutual_pairs_expected = sum(mutual_in_type * degree_table$null_mean) / 19,
-  mutual_pairs_observed = d$mutual,
-  in_out_correlation = cor(net_degree(advice, mode = "in"), net_degree(advice, mode = "out"))
-) |>
-  mutate(across(everything(), \(x) round(x, 2)))
+# TODO(code, R): needs a directed degree-preserving rewiring function (net_swap_edges() or net_rewire()) that keeps every in- and out-degree
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 16 × 5
-   triad observed degree_mean z_degree z_dyads
-   <chr>    <dbl>       <dbl>    <dbl>   <dbl>
- 1 003         74        52.3      3.4     7  
- 2 012        153       177.      -2.2    -2.9
- 3 102         90        33        6.6     1.1
- 4 021D       160       160.       0      11.9
- 5 021U        86        87.2     -0.1     2  
- 6 021C        49        75.1     -2.1    -9  
- 7 111D        59        56.1      0.3    -6.7
- 8 111U       101        92.1      0.8    -2.5
- 9 030T       190       233.      -1.7    10.5
-10 030C         2         7.4     -1.4    -5.9
-11 201         72        30.3      5.6     2.4
-12 120D        62        67.9     -0.7     2  
-13 120U        78        91.3     -1.4     4.6
-14 120C        17        54.7     -3.7    -9.3
-15 210        107        96.8      1.4     2.8
-16 300         30        15.9      4       5.6
-# A tibble: 1 × 3
-  mutual_pairs_expected mutual_pairs_observed in_out_correlation
-                  <dbl>                 <dbl>              <dbl>
-1                  36.7                    45              -0.32
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-# One long chain of degree-preserving swaps: 4,000 to forget the start, then a network
-# after every 400 more. NetworkX swaps three ties at a time and changes the network in place.
-g = advice.copy()
-nx.directed_edge_swap(g, nswap=4000, max_tries=400_000, seed=1)
-degree_draws = []
-for k in range(1000):
-    nx.directed_edge_swap(g, nswap=400, max_tries=40_000, seed=2 + k)
-    degree_draws.append(census_vector(g))
-degree = np.array(degree_draws)
-degree_mean, degree_sd, degree_z = compare(degree)
-
-# The two nulls side by side.
-print(f"{'triad':<5} {'observed':>8} {'degree mean':>11} {'z degree':>9} {'z dyads':>8}")
-for k, name in enumerate(NAMES):
-    print(f"{name:<5} {obs[k]:>8} {degree_mean[k]:>11.1f} {degree_z[k]:>9.1f} {uman_z[k]:>8.1f}")
-
-# The mutual pairs this null expects (from the identity above), and how in- and out-degree move together.
-expected = np.dot(mutual_in_type, degree_mean) / 19
-in_out = np.corrcoef([advice.in_degree(v) for v in advice], [advice.out_degree(v) for v in advice])[0, 1]
-print(f"mutual pairs: expected {expected:.1f}, observed {mutual}; in- and out-degree correlation {in_out:.2f}")
+# TODO(code, Python): needs a directed degree-preserving rewiring function (net_swap_edges() or net_rewire()) in the Python package, with the triad census compared against it
 ```
 
 ::: {.code-output}
 ```text
-triad observed degree mean  z degree  z dyads
-003         74        51.6       3.7      6.8
-012        153       176.8      -2.2     -2.8
-102         90        32.8       6.5      1.1
-021D       160       159.2       0.1     11.2
-021U        86        88.6      -0.3      2.0
-021C        49        76.3      -2.2     -8.6
-111D        59        55.6       0.4     -6.7
-111U       101        91.7       0.8     -2.5
-030T       190       233.7      -1.8     10.6
-030C         2         7.6      -1.4     -6.1
-201         72        30.1       5.9      2.5
-120D        62        66.8      -0.6      2.0
-120U        78        92.1      -1.5      4.4
-120C        17        54.2      -3.9     -8.8
-210        107        96.6       1.4      2.6
-300         30        16.3       3.9      5.4
-mutual pairs: expected 36.6, observed 45; in- and out-degree correlation -0.32
+TODO(output)
 ```
 :::
 
@@ -1382,24 +1162,21 @@ The code below computes, for each of the three waves, the number of ties, the mu
 ## R
 
 ```r
-sampson <- read.csv("data/sampson/edges.csv") |> filter(relation == "liking")
+sampson <- read.csv("data/sampson/edges.csv")
+sampson <- sampson[sampson$relation == "liking", ]
 novices <- unique(c(sampson$from, sampson$to))
 
-# One row per wave: ties, mutual pairs, the two three-tie triad types, and transitivity
-# of the ties read as undirected.
-map(1:3, \(wave) {
-  g <- sampson |>
-    filter(time == wave) |>
-    select(source = from, target = to) |>
-    net_frame(nodes = tibble(id = novices), directed = TRUE, quiet = TRUE)
+# One row per wave: ties, the two three-tie triad types, and transitivity of the ties read
+# as undirected.
+# TODO(code, R): needs net_dyad_census() for the mutual pairs per wave
+sapply(1:3, function(wave) {
+  w <- sampson[sampson$time == wave, ]
+  g <- net_frame(data.frame(source = w$from, target = w$to),
+                 nodes = data.frame(id = novices), directed = TRUE, quiet = TRUE)
   census <- net_triad_census(g)
-  tibble(
-    wave, arcs = nrow(g$edges), mutual_pairs = dyad_census(g)$mutual,
-    t030T = census[["030T"]], t030C = census[["030C"]],
-    transitivity = round(net_transitivity(g), 3)
-  )
-}) |>
-  list_rbind()
+  c(wave = wave, arcs = nrow(g$edges), t030T = census[["030T"]], t030C = census[["030C"]],
+    transitivity = net_transitivity(g))
+}) |> t() |> as.data.frame() |> round(3)
 ```
 
 ::: {.code-output}
@@ -1420,24 +1197,24 @@ with open("data/sampson/edges.csv") as f:
     liking = [r for r in csv.DictReader(f) if r["relation"] == "liking"]
 novices = sorted({r["from"] for r in liking} | {r["to"] for r in liking})
 
-# One row per wave: ties, mutual pairs, the two three-tie triad types, and transitivity
-# of the ties read as undirected.
-print(f"{'wave':>4} {'arcs':>5} {'mutual':>7} {'030T':>5} {'030C':>5} {'transitivity':>13}")
+# One row per wave: ties, the two three-tie triad types, and transitivity of the ties read
+# as undirected. (The mutual pairs per wave need a dyad census, which the Python package lacks.)
+print(f"{'wave':>4} {'arcs':>5} {'030T':>5} {'030C':>5} {'transitivity':>13}")
 for wave in (1, 2, 3):
     g = nx.DiGraph()
     g.add_nodes_from(novices)
     g.add_edges_from((r["from"], r["to"]) for r in liking if int(r["time"]) == wave)
     census = nx.triadic_census(g)
-    print(f"{wave:>4} {g.number_of_edges():>5} {dyad_census(g)[0]:>7} {census['030T']:>5} {census['030C']:>5} "
+    print(f"{wave:>4} {g.number_of_edges():>5} {census['030T']:>5} {census['030C']:>5} "
           f"{nx.transitivity(g.to_undirected()):>13.3f}")
 ```
 
 ::: {.code-output}
 ```text
-wave  arcs  mutual  030T  030C  transitivity
-   1    55      14     7     0         0.262
-   2    57      15     2     2         0.337
-   3    56      15     3     1         0.426
+wave  arcs  030T  030C  transitivity
+   1    55     7     0         0.262
+   2    57     2     2         0.337
+   3    56     3     1         0.426
 ```
 :::
 
@@ -1497,69 +1274,24 @@ The code below drops 19 advice ties at random 500 times and recomputes transitiv
 ## R
 
 ```r
-set.seed(2)
-arcs <- select(advice$edges, source, target)
-nodes <- tibble(id = as.character(1:21))
-
-# Drop 19 of the 190 ties (10 percent) at random, 500 times, and recompute three summaries.
-dropped <- map(1:500, \(i) {
-  g <- net_frame(slice_sample(arcs, n = 171), nodes = nodes, directed = TRUE, quiet = TRUE)
-  census <- net_triad_census(g)
-  tibble(t030T = census[["030T"]], t030C = census[["030C"]], transitivity = net_transitivity(g))
-}) |>
-  list_rbind()
-
-tibble(
-  statistic = names(dropped),
-  full_network = c(obs[["030T"]], obs[["030C"]], net_transitivity(advice)),
-  mean_after_dropping = unname(map_dbl(dropped, mean)),
-  low_5pct = map_dbl(dropped, \(x) unname(quantile(x, 0.05))),
-  high_95pct = map_dbl(dropped, \(x) unname(quantile(x, 0.95)))
-) |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
+# TODO(code, R): needs net_perturb(): drop a share of the ties at random many times and summarize any statistic (here the 030T and 030C counts and the transitivity)
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 3 × 5
-  statistic    full_network mean_after_dropping low_5pct high_95pct
-  <chr>               <dbl>               <dbl>    <dbl>      <dbl>
-1 t030T             190                 162.     132.       191    
-2 t030C               2                   3.47     1          7    
-3 transitivity        0.735               0.682    0.655      0.704
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-rng = np.random.default_rng(2)
-ties = list(advice.edges)
-
-# Drop 19 of the 190 ties (10 percent) at random, 500 times, and recompute three summaries.
-dropped = []
-for _ in range(500):
-    kept = rng.permutation(len(ties))[19:]
-    g = nx.DiGraph()
-    g.add_nodes_from(advice)
-    g.add_edges_from(ties[k] for k in kept)
-    c = nx.triadic_census(g)
-    dropped.append((c["030T"], c["030C"], nx.transitivity(g.to_undirected())))
-dropped = np.array(dropped)
-full = (obs[8], obs[9], nx.transitivity(advice.to_undirected()))
-
-print(f"{'statistic':<13} {'full':>8} {'mean after':>11} {'low 5%':>8} {'high 95%':>9}")
-for k, name in enumerate(["030T", "030C", "transitivity"]):
-    low, high = np.percentile(dropped[:, k], [5, 95])
-    print(f"{name:<13} {full[k]:>8.3f} {dropped[:, k].mean():>11.3f} {low:>8.3f} {high:>9.3f}")
+# TODO(code, Python): needs net_perturb() in the Python package: drop a share of the ties at random many times and summarize any statistic
 ```
 
 ::: {.code-output}
 ```text
-statistic         full  mean after   low 5%  high 95%
-030T           190.000     164.138  135.000   194.050
-030C             2.000       3.466    1.000     7.000
-transitivity     0.735       0.684    0.658     0.707
+TODO(output)
 ```
 :::
 
@@ -1625,7 +1357,7 @@ Differences we saw between tools, using the same networks:
 - **Three reciprocities.** The edgewise, ratio and dyadic versions gave 0.286, 0.167 and 0.500 on the same five people. knappnet exposes all three by name; igraph has the first two, sna has all three under different names, and NetworkX computes only the first.
 - **Average clustering.** igraph's convention leaves people with one friend out; NetworkX's counts them as zero. On the Florentine families that is the difference between two averages.
 - **111D and 111U.** NetworkX, igraph and knappnet all call "a mutual pair plus a tie pointing into it" 111D. sna agrees too, and all four tools returned identical censuses for the advice network. Compare a tiny example before trusting the label in any other tool.
-- **Null draws.** R and Rust draw the same random networks (same engine, same seed), so they print the same table; NetworkX draws its own, so the Python numbers agree only up to simulation noise.
+- **Null draws.** Where R and Rust both draw, they use the same engine and seed, so they print the same table; NetworkX draws its own, so any Python numbers agree only up to simulation noise.
 
 ## Where this leads
 

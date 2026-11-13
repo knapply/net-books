@@ -131,20 +131,18 @@ The code below counts each person's ties in the friendship network. Look for Dev
 
 ```r
 library(knappnet)
-library(dplyr)
-library(purrr)
 
 # People are rows of the node table; one row of the edge table is one tie.
 people <- c("Ana", "Ben", "Cleo", "Dev", "Eli", "Fay", "Gus", "Hana", "Ivo", "Jo")
-friends <- tibble(
+friends <- data.frame(
   source = people[c(1, 1, 1, 1, 2, 2, 2, 3, 3, 4, 4, 4, 5, 6, 6, 7, 8, 9)],
   target = people[c(2, 3, 4, 6, 4, 5, 7, 4, 6, 5, 6, 7, 7, 7, 8, 8, 9, 10)]
 )
-g <- net_frame(friends, nodes = tibble(id = people), directed = FALSE)
+g <- net_frame(friends, nodes = data.frame(id = people), directed = FALSE)
 g
 
-# Measures go in columns next to the people they describe.
-g$nodes |> mutate(degree = net_degree(g))
+# A measure comes back as a vector named by person.
+net_degree(g)
 ```
 
 ::: {.code-output}
@@ -292,7 +290,7 @@ The code below scores everyone in the friendship network on closeness. Look for 
 ## R
 
 ```r
-g$nodes |> mutate(closeness = round(net_closeness(g, normalized = TRUE), 3))
+net_closeness(g, normalized = TRUE) |> round(3)
 ```
 
 ::: {.code-output}
@@ -417,17 +415,15 @@ To see the difference, add a separate pair, F and G, to the five-node network.
 ```r
 # The five-node network plus a separate pair, F - G.
 split_net <- net_frame(
-  tibble(source = c("A", "A", "B", "C", "D", "F"), target = c("B", "C", "C", "D", "E", "G")),
-  nodes = tibble(id = LETTERS[1:7]), directed = FALSE
+  data.frame(source = c("A", "A", "B", "C", "D", "F"), target = c("B", "C", "C", "D", "E", "G")),
+  nodes = data.frame(id = LETTERS[1:7]), directed = FALSE
 )
 
-split_net$nodes |>
-  mutate(
-    ignore = net_closeness(split_net, normalized = TRUE),
-    wasserman_faust = net_closeness(split_net, normalized = TRUE, convention = "networkx"),
-    harmonic = net_harmonic(split_net, normalized = TRUE)
-  ) |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
+data.frame(
+  ignore = net_closeness(split_net, normalized = TRUE),
+  wasserman_faust = net_closeness(split_net, normalized = TRUE, convention = "networkx"),
+  harmonic = net_harmonic(split_net, normalized = TRUE)
+) |> round(3)
 ```
 
 ::: {.code-output}
@@ -529,7 +525,7 @@ The code below counts, for every person in the friendship network, the shortest 
 ## R
 
 ```r
-g$nodes |> mutate(betweenness = round(net_betweenness(g), 1))
+net_betweenness(g) |> round(1)
 ```
 
 ::: {.code-output}
@@ -687,20 +683,18 @@ The code below scores the karate club three ways: ignoring the weights, treating
 ## R
 
 ```r
-karate <- read.csv("data/karate/edges.csv") |> as_tibble() |> mutate(across(c(source, target), as.character))
+karate <- read.csv("data/karate/edges.csv")
+karate$source <- as.character(karate$source)
+karate$target <- as.character(karate$target)
 club <- net_frame(karate, directed = FALSE, weight = "contexts", weight_type = "strength")
 
 # Three readings of the same weights: ignore them, call them distances, call them strengths.
+top_five <- function(scores) round(head(sort(net_value(scores), decreasing = TRUE), 5), 1)
 list(
-  unweighted = net_betweenness(club, weighted = FALSE),
-  `as distances` = net_betweenness(club, weighted = TRUE, weights_as = "distance"),
-  `as strengths` = net_betweenness(club, weighted = TRUE, weights_as = "strength")
-) |>
-  map(\(scores) club$nodes |>
-    mutate(score = scores) |>
-    slice_max(score, n = 5, with_ties = FALSE) |>
-    summarise(top_five = paste0(id, " (", round(score, 1), ")", collapse = ", "))) |>
-  list_rbind(names_to = "weights")
+  unweighted = top_five(net_betweenness(club, weighted = FALSE)),
+  `as distances` = top_five(net_betweenness(club, weighted = TRUE, weights_as = "distance")),
+  `as strengths` = top_five(net_betweenness(club, weighted = TRUE, weights_as = "strength"))
+)
 ```
 
 ::: {.code-output}
@@ -839,7 +833,7 @@ The code below finds the eigenvector score for everyone in the friendship networ
 
 ```r
 # Scaled so the largest score is 1 (the default).
-g$nodes |> mutate(eigenvector = round(net_eigen(g), 3))
+net_eigen(g) |> round(3)
 ```
 
 ::: {.code-output}
@@ -964,7 +958,7 @@ Among the solutions we want the *leading* eigenvector, the one that goes with th
 An "eigenvector" is a list of scores that comes back as itself, only stretched, when you apply the rule. There can be several such lists, and the "leading" one is the one with the biggest stretch. The theorem's message is reassuring: for a connected network there is one sensible all-positive ranking, so nobody has to choose between competing answers. The scale (top score 1, or length 1) is only a choice of units, like measuring in meters or feet.
 :::
 
-It breaks in three ways. On a **disconnected** network the score lives on the piece with the largest eigenvalue and the other pieces get zero, or the tool refuses: NetworkX's `eigenvector_centrality_numpy` raised an error on the disconnected networks in the stress test below, so that tab takes the leading eigenvector straight from the matrix. In a **directed** network you use incoming ties, $x_i = \lambda^{-1} \sum_j a_{ji} x_j$, and you need the network to be **strongly connected** (everyone can reach everyone else by following the arrows) for a unique answer; a network with no cycles at all, such as a pure chain of command, has no positive eigenvalue and gives every person a score of zero. And on a network with one dense core and a long tail, the score collapses onto the core.
+It breaks in three ways. On a **disconnected** network the score lives on the piece with the largest eigenvalue and the other pieces get zero, or the tool refuses: NetworkX's `eigenvector_centrality_numpy` raised an error on the disconnected networks in the stress test below, which is why that comparison has no Python tab yet. In a **directed** network you use incoming ties, $x_i = \lambda^{-1} \sum_j a_{ji} x_j$, and you need the network to be **strongly connected** (everyone can reach everyone else by following the arrows) for a unique answer; a network with no cycles at all, such as a pure chain of command, has no positive eigenvalue and gives every person a score of zero. And on a network with one dense core and a long tail, the score collapses onto the core.
 
 **Katz.** Eigenvector centrality listens to walks of unlimited length, so it hears mainly the densest region. Katz asks the same question as eigenvector centrality, but turns down the volume on faraway people. Katz damps walks by their length:
 
@@ -1020,19 +1014,17 @@ The code below scores the eight people at three settings of $\beta$. Look at how
 ```r
 # Pat has three partners who have nobody else; Quinn and Rory sit further along.
 bargain <- net_frame(
-  tibble(source = c("Pat", "Pat", "Pat", "Quinn", "Quinn", "Rory", "Rory"),
-         target = c("Ada", "Bix", "Cam", "Pat", "Rory", "Dot", "Eve")),
-  nodes = tibble(id = c("Pat", "Quinn", "Rory", "Ada", "Bix", "Cam", "Dot", "Eve")),
+  data.frame(source = c("Pat", "Pat", "Pat", "Quinn", "Quinn", "Rory", "Rory"),
+             target = c("Ada", "Bix", "Cam", "Pat", "Rory", "Dot", "Eve")),
+  nodes = data.frame(id = c("Pat", "Quinn", "Rory", "Ada", "Bix", "Cam", "Dot", "Eve")),
   directed = FALSE
 )
 
-bargain$nodes |>
-  mutate(
-    plus = net_bonacich(bargain, exponent = 0.3),
-    zero = net_bonacich(bargain, exponent = 0),
-    minus = net_bonacich(bargain, exponent = -0.3)
-  ) |>
-  mutate(across(where(is.numeric), \(x) round(x, 2)))
+data.frame(
+  plus = net_bonacich(bargain, exponent = 0.3),
+  zero = net_bonacich(bargain, exponent = 0),
+  minus = net_bonacich(bargain, exponent = -0.3)
+) |> round(2)
 ```
 
 ::: {.code-output}
@@ -1054,36 +1046,12 @@ bargain$nodes |>
 ## Python
 
 ```python
-import numpy as np
-
-# NetworkX has no Bonacich power centrality, so it is written from the formula.
-people = ["Pat", "Quinn", "Rory", "Ada", "Bix", "Cam", "Dot", "Eve"]
-bargain = nx.Graph()
-bargain.add_nodes_from(people)
-bargain.add_edges_from([("Pat", "Ada"), ("Pat", "Bix"), ("Pat", "Cam"), ("Quinn", "Pat"),
-                        ("Quinn", "Rory"), ("Rory", "Dot"), ("Rory", "Eve")])
-a = nx.to_numpy_array(bargain, nodelist=people)
-
-def bonacich(a, beta):
-    c = np.linalg.solve(np.eye(len(a)) - beta * a, a @ np.ones(len(a)))
-    return c * np.sqrt(len(a) / (c @ c))  # scale so the squares sum to n
-
-print("node     plus   zero  minus")
-for i, v in enumerate(people):
-    print(f"{v:<6} " + " ".join(f"{bonacich(a, b)[i]:>6.2f}" for b in (0.3, 0, -0.3)))
+# TODO(code, Python): needs net_bonacich() in the Python package (NetworkX has no Bonacich power centrality)
 ```
 
 ::: {.code-output}
 ```text
-node     plus   zero  minus
-Pat      1.71   1.94   2.31
-Quinn    1.24   0.97  -0.11
-Rory     1.24   1.46   1.60
-Ada      0.69   0.49  -0.16
-Bix      0.69   0.49  -0.16
-Cam      0.69   0.49  -0.16
-Dot      0.55   0.49   0.05
-Eve      0.55   0.49   0.05
+TODO(output)
 ```
 :::
 
@@ -1143,21 +1111,19 @@ The code below puts every measure side by side for the five-node network. Look f
 ```r
 # The five-node network: a triangle A, B, C with a tail C - D - E.
 five <- net_frame(
-  tibble(source = c("A", "A", "B", "C", "D"), target = c("B", "C", "C", "D", "E")),
-  nodes = tibble(id = LETTERS[1:5]), directed = FALSE
+  data.frame(source = c("A", "A", "B", "C", "D"), target = c("B", "C", "C", "D", "E")),
+  nodes = data.frame(id = LETTERS[1:5]), directed = FALSE
 )
 
-five$nodes |>
-  mutate(
-    degree = net_degree(five),
-    close = net_closeness(five, normalized = TRUE),
-    harmonic = net_harmonic(five, normalized = TRUE),
-    between = net_betweenness(five),
-    eigen = net_eigen(five),
-    katz = net_katz(five, alpha = 0.1),
-    pagerank = net_pagerank(five)
-  ) |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
+data.frame(
+  degree = net_degree(five),
+  close = net_closeness(five, normalized = TRUE),
+  harmonic = net_harmonic(five, normalized = TRUE),
+  between = net_betweenness(five),
+  eigen = net_eigen(five),
+  katz = net_katz(five, alpha = 0.1),
+  pagerank = net_pagerank(five)
+) |> round(3)
 ```
 
 ::: {.code-output}
@@ -1278,21 +1244,21 @@ The code below grows a path of people from 5 to 101 and prints the middle person
 
 ```r
 # The middle person of a path of n people: how each score grows with n.
-tibble(n = c(5, 11, 51, 101)) |>
-  mutate(
-    middle = (n + 1) / 2,
-    path = map(n, \(k) net_frame(
-      tibble(source = as.character(1:(k - 1)), target = as.character(2:k)),
-      nodes = tibble(id = as.character(1:k)), directed = FALSE, quiet = TRUE
-    )),
-    raw = map2_dbl(path, middle, \(h, m) net_betweenness(h)[m]),
-    share = map2_dbl(path, middle, \(h, m) net_betweenness(h, normalized = TRUE)[m]),
+middle_of_path <- function(n) {
+  path <- net_frame(
+    data.frame(source = as.character(1:(n - 1)), target = as.character(2:n)),
+    nodes = data.frame(id = as.character(1:n)), directed = FALSE, quiet = TRUE
+  )
+  middle <- (n + 1) / 2
+  raw <- net_betweenness(path)[[middle]]
+  c(n = n, raw = raw,
+    share = net_betweenness(path, normalized = TRUE)[[middle]],
     endpoints = raw + n - 1,
-    closeness = map2_dbl(path, middle, \(h, m) net_closeness(h, normalized = TRUE)[m]),
-    degree = map2_dbl(path, middle, \(h, m) net_degree(h)[m]) / (n - 1)
-  ) |>
-  select(!c(path, middle)) |>
-  mutate(across(c(share, closeness, degree), \(x) round(x, 3)))
+    closeness = net_closeness(path, normalized = TRUE)[[middle]],
+    degree = net_degree(path)[[middle]] / (n - 1))
+}
+
+sapply(c(5, 11, 51, 101), middle_of_path) |> t() |> round(3)
 ```
 
 ::: {.code-output}
@@ -1379,38 +1345,33 @@ The code below builds a star and a two-group network with a connector, and print
 
 ```r
 ties_frame <- function(ties, n) {
-  net_frame(tibble(source = as.character(ties$a), target = as.character(ties$b)),
-            nodes = tibble(id = as.character(seq_len(n) - 1)), directed = FALSE, quiet = TRUE)
+  net_frame(data.frame(source = as.character(ties$a), target = as.character(ties$b)),
+            nodes = data.frame(id = as.character(seq_len(n) - 1)), directed = FALSE, quiet = TRUE)
 }
 
-# Degree is a share of n - 1; the others are as before.
-position_table <- function(h, who) {
-  h$nodes |>
-    mutate(
-      degree = net_degree(h) / (nrow(h$nodes) - 1),
-      closeness = net_closeness(h, normalized = TRUE),
-      betweenness = net_betweenness(h),
-      eigenvector = net_eigen(h),
-      role = names(who)[match(id, who)]
-    ) |>
-    filter(!is.na(role)) |>
-    select(role, degree, closeness, betweenness, eigenvector)
+# Degree is a share of n - 1; the others are as before. `who` names the people to show.
+position_table <- function(network, h, who) {
+  scores <- data.frame(
+    degree = net_degree(h) / (nrow(h$nodes) - 1),
+    closeness = net_closeness(h, normalized = TRUE),
+    betweenness = net_betweenness(h),
+    eigenvector = net_eigen(h)
+  )
+  data.frame(network = network, role = names(who), round(scores[who, ], 3), row.names = NULL)
 }
 
 # Two groups of four, each fully tied inside, joined only through a connector, node 8.
-cluster_ties <- tibble(a = c(0, 0, 0, 1, 1, 2, 4, 4, 4, 5, 5, 6, 8, 8),
-                       b = c(1, 2, 3, 2, 3, 3, 5, 6, 7, 6, 7, 7, 0, 4))
+cluster_ties <- data.frame(a = c(0, 0, 0, 1, 1, 2, 4, 4, 4, 5, 5, 6, 8, 8),
+                           b = c(1, 2, 3, 2, 3, 3, 5, 6, 7, 6, 7, 7, 0, 4))
 one_link <- ties_frame(cluster_ties, 9)
 # The same, plus a second connector, node 9, between members 1 and 5.
-two_links <- ties_frame(bind_rows(cluster_ties, tibble(a = 9, b = c(1, 5))), 10)
+two_links <- ties_frame(rbind(cluster_ties, data.frame(a = 9, b = c(1, 5))), 10)
 
-list(
-  star = position_table(ties_frame(tibble(a = 0, b = 1:8), 9), c(hub = "0", spoke = "1")),
-  one_connector = position_table(one_link, c(connector = "8", access = "0", inside = "1")),
-  two_connectors = position_table(two_links, c(connector = "8", access = "0", inside = "2"))
-) |>
-  list_rbind(names_to = "network") |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
+rbind(
+  position_table("star", ties_frame(data.frame(a = 0, b = 1:8), 9), c(hub = "0", spoke = "1")),
+  position_table("one connector", one_link, c(connector = "8", access = "0", inside = "1")),
+  position_table("two connectors", two_links, c(connector = "8", access = "0", inside = "2"))
+)
 ```
 
 ::: {.code-output}
@@ -1559,16 +1520,14 @@ florence
 
 # The four families with the most routes running through them. The last column
 # is the share of all pairs of other families whose shortest routes they sit on.
-as_tibble(florence$nodes) |>
-  mutate(
-    ties = net_degree(florence),
-    closeness = net_closeness(florence, normalized = TRUE),
-    betweenness = net_betweenness(florence),
-    share = betweenness / choose(n() - 1, 2)
-  ) |>
-  slice_max(betweenness, n = 4) |>
-  rename(family = id) |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
+n <- nrow(florence$nodes)
+scores <- data.frame(
+  ties = net_degree(florence),
+  closeness = net_closeness(florence, normalized = TRUE),
+  betweenness = net_betweenness(florence)
+)
+scores$share <- scores$betweenness / choose(n - 1, 2)
+head(scores[order(-scores$betweenness), ], 4) |> round(3)
 ```
 
 ::: {.code-output}
@@ -1720,30 +1679,21 @@ The code below reads all three networks and counts, for each manager, how many p
 ```r
 # Krackhardt's 21 managers: three relations among the same people, numbered 1 to 21.
 kr <- read.csv("data/krackhardt/edges.csv")
-managers <- tibble(id = as.character(1:21))
+managers <- data.frame(id = as.character(1:21))
 
 # One network per relation: advice, friendship, reports_to.
-graphs <- kr |>
-  split(~relation) |>
-  map(\(e) net_frame(tibble(source = as.character(e$from), target = as.character(e$to)),
-                     nodes = managers, directed = TRUE))
-map_int(graphs, \(h) nrow(h$edges))
+graphs <- lapply(split(kr, kr$relation), function(e) {
+  net_frame(data.frame(source = as.character(e$from), target = as.character(e$to)),
+            nodes = managers, directed = TRUE)
+})
+sapply(graphs, function(h) nrow(h$edges))
 
 # Prestige: how many people name each manager. The top three for each relation.
-prestige <- graphs |>
-  map(\(h) mutate(h$nodes, received = net_degree(h, mode = "in"))) |>
-  list_rbind(names_to = "relation") |>
-  rename(manager = id)
-
-prestige |>
-  group_by(relation) |>
-  slice_max(received, n = 3, with_ties = FALSE)
+received <- lapply(graphs, function(h) net_value(net_degree(h, mode = "in")))
+lapply(received, function(s) head(sort(s, decreasing = TRUE), 3))
 
 # Where does the CEO, manager 7, rank for advice?
-prestige |>
-  filter(relation == "advice") |>
-  mutate(rank = min_rank(desc(received))) |>
-  filter(manager == "7")
+sum(received$advice > received$advice[["7"]]) + 1
 ```
 
 ::: {.code-output}
@@ -1876,7 +1826,7 @@ The code below computes five scores for each network and prints how well they ag
 # Five scores per network. For the directed advice network "in" means being sought out.
 measures <- function(h) {
   m <- if (h$directed) "in" else "all"
-  tibble(
+  data.frame(
     degree = net_degree(h, mode = m),
     harmonic = net_harmonic(h, mode = m),
     betweenness = net_betweenness(h),
@@ -1886,11 +1836,8 @@ measures <- function(h) {
 }
 
 # Spearman correlation: do two measures put people in the same order?
-list(Florentine = florence, `Krackhardt advice` = graphs$advice) |>
-  map(\(h) measures(h) |>
-    mutate(across(everything(), \(x) round(x, 9))) |>
-    cor(method = "spearman") |>
-    round(2))
+lapply(list(Florentine = florence, `Krackhardt advice` = graphs$advice),
+       function(h) round(cor(round(measures(h), 9), method = "spearman"), 2))
 ```
 
 ::: {.code-output}
@@ -1916,52 +1863,12 @@ pagerank      0.91     0.93        0.38        0.95     1.00
 ## Python
 
 ```python
-import numpy as np
-from scipy.stats import spearmanr
-
-def leading_vector(G):
-    # NetworkX refuses to compute eigenvector centrality on a disconnected network,
-    # and ties will go missing below, so take the leading eigenvector of the matrix.
-    values, vectors = np.linalg.eig(nx.to_numpy_array(G, nodelist=list(G)).T)
-    return dict(zip(G, np.abs(vectors[:, np.argmax(values.real)].real)))
-
-def measures5(G):
-    directed = G.is_directed()
-    eigen = leading_vector(G)
-    return {
-        "degree": dict(G.in_degree() if directed else G.degree()),
-        "harmonic": nx.harmonic_centrality(G),
-        "between": nx.betweenness_centrality(G, normalized=False),
-        "eigen": eigen,
-        "pagerank": nx.pagerank(G),
-    }
-
-# Spearman correlation: do two measures put people in the same order?
-for label, G in [("Florentine families", florence), ("Krackhardt advice", advice)]:
-    table = measures5(G)
-    columns = np.round([[table[k][v] for k in table] for v in G], 9)
-    print(label)
-    print(f"{'':<9}" + "".join(f"{k:>9}" for k in table))
-    for k, row in zip(table, spearmanr(columns).statistic):
-        print(f"{k:<9}" + "".join(f"{x:>9.2f}" for x in row))
+# TODO(code, Python): needs a Spearman comparison of five measures on a disconnected network (NetworkX eigenvector centrality refuses it; the Python package has no net_eigen())
 ```
 
 ::: {.code-output}
 ```text
-Florentine families
-            degree harmonic  between    eigen pagerank
-degree        1.00     0.90     0.77     0.93     0.96
-harmonic      0.90     1.00     0.85     0.91     0.91
-between       0.77     0.85     1.00     0.68     0.82
-eigen         0.93     0.91     0.68     1.00     0.86
-pagerank      0.96     0.91     0.82     0.86     1.00
-Krackhardt advice
-            degree harmonic  between    eigen pagerank
-degree        1.00     0.99     0.39     0.97     0.91
-harmonic      0.99     1.00     0.39     0.98     0.93
-between       0.39     0.39     1.00     0.40     0.38
-eigen         0.97     0.98     0.40     1.00     0.95
-pagerank      0.91     0.93     0.38     0.95     1.00
+TODO(output)
 ```
 :::
 
@@ -2034,7 +1941,7 @@ In the marriage network all five orders are broadly alike (degree against PageRa
 
 ### Stress test: drop ties and see who moves
 
-This is the second of the three quick checks, done properly: drop a random tenth of the ties, recompute everything, and compare with the original. For each measure the table gives two numbers: the average Spearman correlation between the original order and the new one, and the share of runs in which the person who topped the original list is still at the top (a tie for first counts). Each language draws its own random ties, so the three tabs agree closely but not digit for digit; the numbers below are from the Rust tab.
+This is the second of the three quick checks, done properly: drop a random tenth of the ties, recompute everything, and compare with the original. For each measure the table gives two numbers: the average Spearman correlation between the original order and the new one, and the share of runs in which the person who topped the original list is still at the top (a tie for first counts). The R and Python tabs are stubs until knappnet exposes a tie-dropping stability function (`net_perturb()`); the numbers below are from the Rust tab.
 
 The code below drops ties at random 500 times and reports two numbers per measure. Look for which measure's top person changes most often.
 
@@ -2043,93 +1950,24 @@ The code below drops ties at random 500 times and reports two numbers per measur
 ## R
 
 ```r
-set.seed(1)
-
-# Drop a tenth of the ties at random, 500 times. For each measure, how well does the new
-# order of people match the original (Spearman), and is the original top person still on top?
-stability <- function(h, edges, share = 0.1, reps = 500) {
-  base <- measures(h)
-  k <- round(share * nrow(edges))
-  tops <- map_int(base, which.max)
-  map(seq_len(reps), \(r) {
-    now <- edges[-sample(nrow(edges), k), ] |>
-      net_frame(nodes = tibble(id = h$nodes$id), directed = h$directed, quiet = TRUE) |>
-      measures()
-    tibble(
-      measure = names(base),
-      rho = map2_dbl(base, now, \(a, b) cor(round(a, 9), round(b, 9), method = "spearman")),
-      top_kept = map2_lgl(now, tops, \(b, t) b[t] >= max(b) - 1e-9)
-    )
-  }) |>
-    list_rbind() |>
-    summarise(mean_rho = mean(rho), top_kept = mean(top_kept), .by = measure)
-}
-
-advice_edges <- kr |> filter(relation == "advice") |> transmute(source = as.character(from), target = as.character(to))
-list(Florentine = stability(florence, rows), `Krackhardt advice` = stability(graphs$advice, advice_edges)) |>
-  list_rbind(names_to = "network") |>
-  mutate(across(where(is.numeric), \(x) round(x, 2)))
+# TODO(code, R): needs net_perturb(): drop a share of the ties at random many times and summarize any statistic (here the mean Spearman correlation with the full-network order and how often the top person stays on top)
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 10 × 4
-   network           measure     mean_rho top_kept
-   <chr>             <chr>          <dbl>    <dbl>
- 1 Florentine        degree          0.93     1   
- 2 Florentine        harmonic        0.89     0.93
- 3 Florentine        betweenness     0.84     0.93
- 4 Florentine        eigenvector     0.84     0.63
- 5 Florentine        pagerank        0.89     0.97
- 6 Krackhardt advice degree          0.97     0.95
- 7 Krackhardt advice harmonic        0.96     0.93
- 8 Krackhardt advice betweenness     0.95     0.95
- 9 Krackhardt advice eigenvector     0.95     0.78
-10 Krackhardt advice pagerank        0.96     0.93
+TODO(output)
 ```
 :::
 
 ## Python
 
 ```python
-rng = np.random.default_rng(3)
-
-def stability(G, share=0.1, reps=500):
-    ties, full = list(G.edges), measures5(G)
-    keep = len(ties) - round(share * len(ties))
-    tops = {k: max(full[k], key=full[k].get) for k in full}
-    rho = {k: [] for k in full}
-    kept = {k: 0 for k in full}
-    for _ in range(reps):
-        H = G.__class__()
-        H.add_nodes_from(G)
-        H.add_edges_from(ties[i] for i in rng.permutation(len(ties))[:keep])
-        now = measures5(H)
-        for k in full:
-            a, b = (np.round([full[k][v] for v in G], 9), np.round([now[k][v] for v in G], 9))
-            rho[k].append(spearmanr(a, b).statistic)
-            kept[k] += now[k][tops[k]] >= max(now[k].values()) - 1e-9
-    return {k: (np.nanmean(rho[k]), kept[k] / reps) for k in full}
-
-print(f"{'network':<19} {'measure':<10} {'mean_rho':>8} {'top_kept':>8}")
-for label, G in [("Florentine", florence), ("Krackhardt advice", advice)]:
-    for k, (r, t) in stability(G).items():
-        print(f"{label:<19} {k:<10} {r:>8.2f} {t:>8.2f}")
+# TODO(code, Python): needs a tie-dropping stability helper (the same as the R net_perturb() gap)
 ```
 
 ::: {.code-output}
 ```text
-network             measure    mean_rho top_kept
-Florentine          degree         0.93     1.00
-Florentine          harmonic       0.89     0.95
-Florentine          between        0.85     0.95
-Florentine          eigen          0.84     0.66
-Florentine          pagerank       0.89     0.99
-Krackhardt advice   degree         0.97     0.95
-Krackhardt advice   harmonic       0.97     0.92
-Krackhardt advice   between        0.95     0.97
-Krackhardt advice   eigen          0.96     0.74
-Krackhardt advice   pagerank       0.96     0.95
+TODO(output)
 ```
 :::
 
@@ -2223,13 +2061,8 @@ Here's a good example of why we write down our choices. The code below computes 
 ## R
 
 ```r
-tibble(
-  convention = c("default", "loops left out"),
-  centralization = round(c(
-    net_centralization(g, "degree"),
-    net_centralization(g, "degree", loops = FALSE)
-  ), 3)
-)
+c(default = net_centralization(g, "degree"),
+  `loops left out` = net_centralization(g, "degree", loops = FALSE)) |> round(3)
 ```
 
 ::: {.code-output}
@@ -2245,19 +2078,12 @@ tibble(
 ## Python
 
 ```python
-# NetworkX has no centralization index, so compute it from the definition:
-# the summed gap to the top score, divided by the largest sum possible.
-n = g.number_of_nodes()
-degrees = [d for _, d in g.degree()]
-gap = sum(max(degrees) - d for d in degrees)
-print(f"default convention   {gap / (n * (n - 1)):.3f}")  # maximum allows for self-loops
-print(f"loops left out       {gap / ((n - 1) * (n - 2)):.3f}")  # Freeman's maximum (a star)
+# TODO(code, Python): needs net_centralization() in the Python package (NetworkX has no centralization index)
 ```
 
 ::: {.code-output}
 ```text
-default convention   0.267
-loops left out       0.333
+TODO(output)
 ```
 :::
 
@@ -2295,7 +2121,7 @@ $$
 $c_i$ is person $i$'s score and $c^*$ (c star) is the highest score in the network. The top of the fraction adds up the gaps $c^* - c_i$ between the leader and everyone else, so it is zero when everyone ties. The bottom is the same sum for a star, the most lopsided shape, so the result lands between 0 and 1. For degree in a star of five people, the hub has 4 and the others 1, so the gaps are $3 + 3 + 3 + 3 = 12$; the star's maximum is $(n-1)(n-2) = 12$, so the score is $12/12 = 1.00$. In a path of five the degrees are 1, 2, 2, 2, 1, the gaps are 1, 0, 0, 0, 1, and the score is $2/12 = 0.167$. For the friendship network, the leader has 6, the 36 total degrees leave gaps adding to $60 - 36 = 24$, and the maximum for ten people is $9 \times 8 = 72$, so $24/72 = 0.333$, the number quoted above.
 :::
 
-where the denominator is the same sum in the most centralized network of the same size, which for degree, closeness and betweenness is the star [@freeman1978centrality]. The code below also writes these maximums out by hand, so it checks the library instead of copying it. For degree that maximum is $(n-1)(n-2)$. For betweenness with raw scores it is $(n-1)^2(n-2)/2$, and for normalized closeness it is $(n-1)(n-2)/(2n-3)$. The Python tab uses exactly these, so it is a check on the library, not a copy of it.
+where the denominator is the same sum in the most centralized network of the same size, which for degree, closeness and betweenness is the star [@freeman1978centrality]. For degree that maximum is $(n-1)(n-2)$. For betweenness with raw scores it is $(n-1)^2(n-2)/2$, and for normalized closeness it is $(n-1)(n-2)/(2n-3)$. NetworkX has no centralization index, so the Python tabs wait for a `net_centralization()` in the Python package.
 
 ::: {.panel-tabset group="language"}
 
@@ -2303,21 +2129,18 @@ where the denominator is the same sum in the most centralized network of the sam
 
 ```r
 shapes <- list(
-  star = ties_frame(tibble(a = 0, b = 1:9), 10),
-  ring = ties_frame(tibble(a = 0:9, b = c(1:9, 0)), 10),
-  path = ties_frame(tibble(a = 0:8, b = 1:9), 10),
+  star = ties_frame(data.frame(a = 0, b = 1:9), 10),
+  ring = ties_frame(data.frame(a = 0:9, b = c(1:9, 0)), 10),
+  path = ties_frame(data.frame(a = 0:8, b = 1:9), 10),
   kite = g,
   Florentine = florence
 )
 
-shapes |>
-  map(\(h) tibble(
-    degree = net_centralization(h, "degree", loops = FALSE),
-    closeness = net_centralization(h, "closeness", loops = FALSE),
-    betweenness = net_centralization(h, "betweenness", loops = FALSE)
-  )) |>
-  list_rbind(names_to = "network") |>
-  mutate(across(where(is.numeric), \(x) round(x, 3)))
+sapply(shapes, function(h) c(
+  degree = net_centralization(h, "degree", loops = FALSE),
+  closeness = net_centralization(h, "closeness", loops = FALSE),
+  betweenness = net_centralization(h, "betweenness", loops = FALSE)
+)) |> t() |> round(3) |> as.data.frame()
 ```
 
 ::: {.code-output}
@@ -2336,30 +2159,12 @@ shapes |>
 ## Python
 
 ```python
-# From the definition: the summed gap to the top score, over the same sum for a star.
-def freeman(G):
-    m = len(G)
-    gap = lambda s: sum(max(s) - x for x in s)
-    return (gap([d for _, d in G.degree()]) / ((m - 1) * (m - 2)),
-            gap(list(nx.closeness_centrality(G).values())) / ((m - 1) * (m - 2) / (2 * m - 3)),
-            gap(list(nx.betweenness_centrality(G, normalized=False).values())) / ((m - 1) ** 2 * (m - 2) / 2))
-
-shapes = {"star": nx.star_graph(9), "ring": nx.cycle_graph(10), "path": nx.path_graph(10),
-          "kite": g, "Florentine": florence}
-print(f"{'network':<11} {'degree':>7} {'closeness':>9} {'betweenness':>11}")
-for label, G in shapes.items():
-    d, c, b = freeman(G)
-    print(f"{label:<11} {d:>7.3f} {c:>9.3f} {b:>11.3f}")
+# TODO(code, Python): needs net_centralization() in the Python package, for degree, closeness and betweenness (NetworkX has no centralization index)
 ```
 
 ::: {.code-output}
 ```text
-network      degree closeness betweenness
-star          1.000     1.000       1.000
-ring          0.000     0.000       0.000
-path          0.028     0.176       0.247
-kite          0.333     0.270       0.296
-Florentine    0.275     0.322       0.437
+TODO(output)
 ```
 :::
 
@@ -2395,7 +2200,7 @@ Florentine    0.275     0.322       0.437
 
 :::
 
-The star scores 1 and the ring 0 on every measure, as they must. In between, the measures disagree about the same network. The ten-person line is almost uncentralized by degree (0.028, since every degree is 1 or 2) but clearly centralized by betweenness (0.247), because the middle of a line sits between far more pairs than the ends. The Florentine marriages score 0.275 on degree and 0.437 on betweenness, and the friendship kite scores 0.333, 0.270 and 0.296 on degree, closeness and betweenness. The Python tab, written from the definitions, and the library agree to three decimals on all fifteen numbers.
+The star scores 1 and the ring 0 on every measure, as they must. In between, the measures disagree about the same network. The ten-person line is almost uncentralized by degree (0.028, since every degree is 1 or 2) but clearly centralized by betweenness (0.247), because the middle of a line sits between far more pairs than the ends. The Florentine marriages score 0.275 on degree and 0.437 on betweenness, and the friendship kite scores 0.333, 0.270 and 0.296 on degree, closeness and betweenness.
 
 What does a centralization score say? How unequal the distribution of one measure is, compared with a star of the same size. What it doesn't say is whether the network is fragile (a line and a star have very different weak points and a score of one number can't show which), whether the center is helpful, or anything about a different measure: a network can be spread out by degree and concentrated by betweenness, as the line is. So a centralization "of 0.3" without the measure named is meaningless. Comparing scores across networks of very different size or density needs care for the same reasons as raw scores in the size table. And as the convention example showed, even degree centralization depends on whether self-loops count.
 
