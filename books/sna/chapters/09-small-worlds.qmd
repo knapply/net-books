@@ -5,6 +5,14 @@
 @sec-paths-and-cohesion: distance, mean distance, components and clustering. We use three small classic networks from the appendix (the karate club, the Florentine marriages and Krackhardt's managers) and some random ones we generate ourselves, each with a fixed seed so the numbers repeat.
 :::
 
+::: {.callout-note title="The short version"}
+A number about your network, like "people are 2.4 steps apart", means little until you know what to compare it with. This chapter builds a small set of random networks to compare against, each one keeping a different feature of the real network and scrambling the rest. Along the way you meet three famous stories: a crowd of random ties suddenly clumps into one big piece, a few shortcuts make a big world feel small, and a few very popular people can emerge from simple "the popular get more popular" growth. The key habit is to treat these models as rulers for measuring your network, never as explanations of where it came from.
+:::
+
+::: {.callout-tip title="Why you might care"}
+Suppose someone tells you their team's collaboration network is "highly clustered" or "a small world". Without a baseline, that's just a nice-sounding phrase. With one, you can say how much of the pattern is simply what you'd expect from how many ties each person has, and how much is something real worth explaining. That's the difference between a finding and a coincidence.
+:::
+
 ## What counts as typical
 
 Suppose you've measured something. The transitivity of your network is 0.26, or the typical distance between two people is 2.4 steps. Is that a lot?
@@ -27,21 +35,34 @@ And one warning that runs through all of it: these are models for *comparison*. 
 As in the earlier chapters, the Rust blocks run top to bottom as one script, and so do the R blocks and the Python blocks. The random networks come from the engine's generators, so the Rust and R tabs print the same numbers. NetworkX draws different random networks from the same recipe, so the Python tabs agree with the others only up to the usual random wobble. The Python tabs also use `scipy` for distances.
 :::
 
+::: {.callout-tip appearance="simple"}
+## A note on the math in this chapter
+There are a handful of formulas here. Each one is followed by a box called "In plain words" that says what it computes, reads the symbols aloud and plugs in a small example. If formulas aren't your thing, read those boxes and the sentences around the code; you'll lose nothing you need.
+:::
+
 ## The degree distribution
 
 ### The idea
 
-A person's **degree** is the number of ties they have. Count it for everyone, and you have a list of $n$ numbers. The **degree distribution** is that list, summarized: how many people have no ties, how many have one, and so on.
+Think of a party where you ask everyone how many of the other guests they know. A person's **degree** is exactly that count: the number of ties they have. Count it for everyone, and you have a list of $n$ numbers, where $n$ is the number of people. The **degree distribution** is that list, summarized: how many people have no ties, how many have one, and so on.
 
-Two ways of drawing it matter. Write $n_k$ for the number of people with degree exactly $k$, and $p_k = n_k / n$ for their share. A **histogram** plots $p_k$ against $k$. The **complementary cumulative distribution** (CCDF) plots
+Two ways of drawing it matter. Write $n_k$ for the number of people with degree exactly $k$, and $p_k = n_k / n$ for their share. A **histogram** is a bar chart of those shares: one bar for each degree. The **complementary cumulative distribution** (CCDF) answers a slightly different question, "what share of people have *at least* this many ties?", and plots
 
 $$P(K \ge k) = \sum_{j \ge k} p_j,$$
 
 the share of people with *at least* $k$ ties. Here $K$ is the degree of a person picked at random, and the sum runs over every degree $j$ from $k$ upward. The CCDF starts at 1 (everyone has at least zero ties) and falls. It needs no binning, so there are no arbitrary bar widths, and it keeps the rare big values visible on the right. That's why people who study tails prefer it.
 
-One identity ties degrees to the total number of ties $m$: add up everyone's degree and you count each tie twice, once from each end, so
+::: {.callout-tip title="In plain words"}
+The formula says: to find the share of people with at least $k$ ties, add up the shares for degree $k$, degree $k+1$, and so on to the top. Here $K$ means "the number of ties of someone picked at random", and $p_j$ is the share of people with exactly $j$ ties. In the six-person example below, the share with at least 2 ties is $p_2 + p_3 + p_4 = 3/6 + 0 + 1/6 = 4/6$.
+:::
+
+One handy fact connects degrees to the total number of ties, which we call $m$. Add up everyone's degree and you count each tie twice, once from each end, like counting handshakes by asking each person how many hands they shook. So
 
 $$\sum_i k_i = 2m, \qquad \text{mean degree } \langle k \rangle = \frac{2m}{n}.$$
+
+::: {.callout-tip title="In plain words"}
+The sigma sign means "add up". Here $k_i$ is person $i$'s degree, so the first formula says that the sum of everyone's degree equals twice the number of ties. The second says the average degree, written $\langle k \rangle$, is that total divided by the number of people. In the six-person example below there are $m = 6$ ties, so the degrees add to 12 and the average is $12/6 = 2$.
+:::
 
 ### By hand
 
@@ -51,6 +72,8 @@ Six people. Ana knows Ben, Cleo, Dev and Eli; Ben knows Cleo; Eli knows Fay. Tha
 - The list is 4, 2, 2, 1, 2, 1, and it does add to 12.
 - Two people have degree 1, three have degree 2, none has degree 3, one has degree 4. So $p_1 = 2/6$, $p_2 = 3/6$, $p_3 = 0$, $p_4 = 1/6$.
 - For the CCDF, add from the right. At least 4 ties: 1/6. At least 3: still 1/6, since nobody has exactly 3. At least 2: $1/6 + 3/6 = 4/6$. At least 1: everyone, so 1.
+
+The first block builds the six people and prints their degrees and the "at least" shares; check them against the hand count.
 
 ::: {.panel-tabset group="language"}
 
@@ -149,11 +172,11 @@ degree people   share share_at_least
 
 :::
 
-The table matches the hand count: shares 0.333, 0.500, 0.000 and 0.167, and at-least shares 1.000, 0.667, 0.167 and 0.167.
+The table matches the hand count: shares 0.333, 0.500, 0.000 and 0.167, and at-least shares 1.000, 0.667, 0.167 and 0.167. So the computer is doing exactly the tallying we just did on paper.
 
 ### A real one: the karate club
 
-Wayne Zachary observed a university karate club that eventually split in two, and recorded which members interacted outside club meetings [@zachary1977information]. The network has 34 members and 78 ties. We'll use it all through the chapter, because it's small enough to see whole and rich enough to disagree with a random network.
+Wayne Zachary observed a university karate club that eventually split in two, and recorded which members interacted outside club meetings [@zachary1977information]. The network has 34 members and 78 ties. We'll use it all through the chapter, because it's small enough to see whole and rich enough to disagree with a random network. The next block loads it and tallies how many members have each degree; look at how the mean compares with the median, and how far the biggest degrees sit from the rest.
 
 ::: {.panel-tabset group="language"}
 
@@ -309,38 +332,46 @@ Different settings read the same picture differently, so here is what a high or 
 - **A transport or supply network.** A high degree is a hub: many routes meet there. A heavy tail means a few hubs carry a lot, which matters for how the system copes when one of them fails.
 - **An online platform.** Follower counts and link counts are usually heavy tailed because attention is unequal. A heavy tail on its own doesn't say how it came about.
 
-Two ways it fails, with numbers. First, **truncation**: in the karate club, seven members have six or more ties. A survey that let each person name at most five contacts would have flattened all seven to five, and the tail would be gone before any analysis began. Second, **size**: a network of 34 people has only five members with more than six ties. Any statement about "the tail" is a statement about five people.
+Two ways it fails, with numbers. First, **truncation** (a survey cap that cuts off the biggest values): in the karate club, seven members have six or more ties. A survey that let each person name at most five contacts would have flattened all seven to five, and the tail would be gone before any analysis began. Second, **size**: a network of 34 people has only five members with more than six ties. Any statement about "the tail" is a statement about five people.
 
-Keep going; the next sections give you something to compare the karate club's shape with.
+Keep going; the next sections give you something to compare the karate club's shape with. A quick picture to carry: a school classroom where most kids have two or three close friends and one or two are friends with half the school.
 
 ## The Erdős-Rényi random graph
 
 ### The question
 
-Place ties completely at random. What does the resulting network look like? That's a worthwhile exercise, because the answer is a yardstick. If your network looks like this, nothing about its structure needs explaining. If it doesn't look like this, the way it differs is the finding.
+Imagine handing out friendships by drawing names from a hat. What does the resulting network look like? That's a worthwhile exercise, because the answer is a yardstick. If your network looks like this, nothing about its structure needs explaining. If it doesn't look like this, the way it differs is the finding.
 
 ### The model
 
-There are two standard versions, which behave almost identically for large networks.
+A "random graph" is a network where chance decides every tie. There are two standard versions, which behave almost identically for large networks.
 
 - $G(n, m)$: pick $m$ pairs of people uniformly at random out of all $\binom{n}{2}$ possible pairs, and tie them. This is the model of Erdős and Rényi [@erdos1959random].
 - $G(n, p)$: for each of the $\binom{n}{2}$ pairs, tie them with probability $p$, independently. This version is due to Gilbert [@gilbert1959random] and is often loosely called "Erdős-Rényi" too.
 
-Here $n$ is the number of people, $m$ the number of ties, and $p$ the chance that any given pair is tied. Three facts follow almost by inspection.
+::: {.callout-tip title="In plain words"}
+Both recipes are lotteries over pairs of people. In the first you fix the number of ties and let chance choose which pairs get them; in the second you fix the chance and let each pair flip its own coin. The symbol $\binom{n}{2}$ ("n choose 2") just means the number of different pairs you can make from $n$ people. With the six people of our earlier example that's $6 \times 5 / 2 = 15$ pairs, so a network with 6 ties is $G(6, 6)$ and one where every pair has a 40% chance would be $G(6, 0.4)$, expected to have $15 \times 0.4 = 6$ ties as well.
+:::
+
+Here $n$ is the number of people, $m$ the number of ties, and $p$ the chance that any given pair is tied. Three facts follow almost by inspection. (Binomial and Poisson below are the textbook names for "count of successes in many independent chances"; all you need is that the counts cluster tightly around their average.)
 
 1. **Density is $p$.** The density of a network is the share of possible ties that are present. In $G(n,p)$ it's $p$ on average.
-2. **Degrees are spread narrowly.** A person has $n - 1$ possible partners, each tied with probability $p$, so their degree is Binomial, with mean $(n-1)p$. When $n$ is large and $p$ small, call the mean $c = np$; the share of people with degree $k$ is close to the Poisson formula $e^{-c} c^k / k!$. The spread is about $\sqrt{c}$. Nobody has a hundred ties in a network where everyone averages four.
+2. **Degrees are spread narrowly.** A person has $n - 1$ possible partners, each tied with probability $p$, so their degree is Binomial, with mean $(n-1)p$. When $n$ is large and $p$ small, call the mean $c = np$; the share of people with degree $k$ is close to the Poisson formula $e^{-c} c^k / k!$. In words: $e$ is the constant 2.718..., $k!$ ("k factorial") is $k$ times every whole number below it, and the formula gives the share of people with exactly $k$ ties when the average is $c$. For $k = 0$ it reduces to $e^{-c}$. The spread is about $\sqrt{c}$, so with an average of four the typical person is within a couple of ties of four. Nobody has a hundred ties in a network where everyone averages four.
 3. **Clustering is $p$ too.** Whether your two friends know each other is, in this model, just one more pair, tied with probability $p$. So transitivity is about $p$, which for a large sparse network is tiny.
 
-A check on the Poisson claim: with $c = 4$, the share of people with no ties at all should be $e^{-4} = 0.018$, so in a network of 2,000 people about 37 of them. We'll see below.
+A check on the Poisson claim: with $c = 4$, the share of people with no ties at all should be $e^{-4} = 0.018$, so in a network of 2,000 people about 37 of them ($2000 \times 0.018 = 37$). We'll see below.
 
 ### A threshold worth knowing
 
-Hold the average degree $c$ fixed and let $n$ grow. There's a sharp change at $c = 1$. Below it, the network is a scatter of small pieces; above it, one **giant component** appears holding a share of everyone that doesn't shrink as $n$ grows (a standard result; see for example @bollobas1998modern and the review by @newman2003structure). Call that share $S$. In the large-$n$ limit it solves
+Here is a surprising fact. Hold the average degree $c$ fixed and let the number of people $n$ grow. There's a sharp change at $c = 1$. Below it, the network is a scatter of small pieces; above it, one **giant component** appears holding a share of everyone that doesn't shrink as $n$ grows (a standard result; see for example @bollobas1998modern and the review by @newman2003structure). Think of it as a phase change, like water freezing: a small tweak to the average number of ties, and the whole character of the network flips. Call the share of people in the giant component $S$. With a very large number of people, it solves
 
 $$S = 1 - e^{-cS}.$$
 
-Read it as: a person is *outside* the giant component when none of their $c$ expected neighbours leads into it, and the chance of that is $e^{-cS}$. Below $c = 1$ the only solution is $S = 0$. The next block draws 20 random networks of 2,000 people for each of several $c$ and compares the share in the largest component with that equation, which we solve by simply iterating it.
+::: {.callout-tip title="In plain words"}
+The equation says: the share inside the giant piece ($S$) equals one minus the chance of being left out. Being left out means that none of your ties, on average $c$ of them, lead into the giant piece, and that chance is $e^{-cS}$. You can't solve it with a quick rearrangement, but you can guess an $S$, plug it in and see what comes out, then repeat. For $c = 2$, try $S = 0.797$: $1 - e^{-2 \times 0.797} = 1 - e^{-1.594} = 1 - 0.203 = 0.797$. It gives back what we put in, so about 80% of people sit in the giant piece. (We worked that last step by hand; the chapter's table gets the same 0.797.)
+:::
+
+Read it as: a person is *outside* the giant component when none of their $c$ expected neighbours leads into it, and the chance of that is $e^{-cS}$. Below $c = 1$ the only solution is $S = 0$. The next block draws 20 random networks of 2,000 people for each of several $c$ and compares the share in the largest component with that equation, which we solve by simply iterating it. In the output, compare the "simulated" share with the "predicted" one in each row; the threshold shows up as the jump from almost nothing to a big share.
 
 ::: {.panel-tabset group="language"}
 
@@ -470,11 +501,15 @@ The Erdős-Rényi graph gives the wrong picture of nearly every real social netw
 
 If ties are placed at random, nobody gets very many. How could a few people end up with hundreds?
 
-One answer, from Barabási and Albert [@barabasi1999emergence], is a growth story. Start with a few people. Add newcomers one at a time. Each newcomer ties to $m$ existing people, and picks them with probability proportional to how many ties they already have. People who are already well connected are more likely to be picked, so they get more connected: the rich get richer. This is called **preferential attachment**.
+One answer, from Barabási and Albert [@barabasi1999emergence], is a growth story, like a new town where each arriving family tends to befriend the families who already know the most people. Start with a few people. Add newcomers one at a time. Each newcomer ties to $m$ existing people, and picks them with probability proportional to how many ties they already have. People who are already well connected are more likely to be picked, so they get more connected: the rich get richer. This is called **preferential attachment**.
 
 Build the story by hand for the smallest case. Take two people tied to each other (degrees 1 and 1, total degree 2) and a newcomer who ties to one existing person ($m = 1$). Each is picked with probability $1/2$. Say person 1 is picked. Now the degrees are 2, 1, 1 (total 4). The next newcomer picks person 1 with probability $2/4$ and each of the others with $1/4$. The early lead compounds. Over many newcomers a few early people end up with a very large share of the ties.
 
-The model produces a degree distribution with a long right tail, and Barabási and Albert reported a tail that falls off as a power of the degree. Compare it with ties placed at random, with the same number of people and about the same number of ties each.
+::: {.callout-tip title="In plain words"}
+There's no formula here, just a rule: your chance of being picked equals your share of all the tie ends in the network. In the example, person 1 had 2 of the 4 tie ends, so a $2/4$ chance, up from $1/2$ a moment earlier. Each win makes the next win more likely, which is the whole mechanism.
+:::
+
+The model produces a degree distribution with a long right tail, and Barabási and Albert reported a tail that falls off as a power of the degree. Compare it with ties placed at random, with the same number of people and about the same number of ties each. The next block builds both networks with 2,000 people and prints their summaries; look at the largest degree and at how much of all ties the top 1% of people hold.
 
 ::: {.panel-tabset group="language"}
 
@@ -596,27 +631,31 @@ What the grown network shows is that one simple mechanism *can* produce a heavy 
 
 ### The question
 
-You've measured something on a real network, and you suspect it might just be a consequence of who has how many ties. A highly connected person has more chances to sit in triangles, more chances to lie on shortest paths, and more chances to be tied to other highly connected people. How much of what you see is *only* that?
+You've measured something on a real network, and you suspect it might just be a consequence of who has how many ties. (Think of a party: the guest who knows everyone will be in many triangles whatever the other guests are like.) A highly connected person has more chances to sit in triangles, more chances to lie on shortest paths, and more chances to be tied to other highly connected people. How much of what you see is *only* that?
 
 The way to ask is to build random networks in which everyone has exactly the degree they have in your data, and everything else is random.
 
 ### The model
 
-The **configuration model** works like this. Give each person as many *stubs* (half-ties) as their degree. Pool all the stubs, shuffle, and pair them off at random. Each pair of stubs becomes a tie. The people keep their degrees by construction, and nothing else is constrained [@molloy1995critical; @newman2001random].
+The **configuration model** works like a lottery with half-ties. Give each person as many *stubs* (half-ties) as their degree. Pool all the stubs, shuffle, and pair them off at random. Each pair of stubs becomes a tie. The people keep their degrees by construction, and nothing else is constrained [@molloy1995critical; @newman2001random].
 
-Take four people with degrees 3, 2, 2, 1: eight stubs, so four ties. The pairing is random, so you might get person 1 tied to everyone else and persons 2 and 3 tied to each other; or person 1 tied twice to person 2. That second outcome is the catch: random pairing can produce a **loop** (a stub paired with another stub of the same person) or a **repeated tie** between the same two people. In large sparse networks those are rare. In small networks, or ones with big hubs, they're nearly certain. The textbook fix is to throw out any draw that has one and pair again. Every simple network with that degree sequence arises from the same number of pairings (the product of the degrees' factorials), so the survivors are drawn uniformly. The first lines of the next block show where that stops working: for the karate club and the managers, the engine finds no simple network in 100,000 pairings.
+Here is a tiny case. Take four people with degrees 3, 2, 2, 1: eight stubs, so four ties. The pairing is random, so you might get person 1 tied to everyone else and persons 2 and 3 tied to each other; or person 1 tied twice to person 2. That second outcome is the catch: random pairing can produce a **loop** (a stub paired with another stub of the same person) or a **repeated tie** between the same two people. In large sparse networks those are rare. In small networks, or ones with big hubs, they're nearly certain. The textbook fix is to throw out any draw that has one and pair again. Every simple network with that degree sequence arises from the same number of pairings (the product of the degrees' factorials), so the survivors are drawn uniformly. The first lines of the next block show where that stops working: for the karate club and the managers, the engine finds no simple network in 100,000 pairings.
 
-The standard practical answer starts from your own network and **swaps ties** [@maslov2002specificity]. Pick two ties, $a$-$b$ and $c$-$d$, and replace them with $a$-$d$ and $c$-$b$, unless that would make a loop or repeat a tie. Every person keeps their degree. Do it many times (we use ten times the number of ties) and you have a random network with exactly your degrees. The Rust engine and NetworkX both have this. The R package doesn't expose the engine's version yet, so the R tab writes the swap by hand.
+The standard practical answer starts from your own network and **swaps ties** [@maslov2002specificity]. Imagine two couples dancing who trade partners: each person still has one partner, but the pairs are new. Pick two ties, $a$-$b$ and $c$-$d$, and replace them with $a$-$d$ and $c$-$b$, unless that would make a loop or repeat a tie. Every person keeps their degree. Do it many times (we use ten times the number of ties) and you have a random network with exactly your degrees. The Rust engine and NetworkX both have this. The R package doesn't expose the engine's version yet, so the R tab writes the swap by hand.
 
-A useful consequence of the pairing story (before any throwing out): the expected number of ties between person $i$ and person $j$ is
+A useful consequence of the pairing story (before any throwing out) answers the question "how many ties would we expect between these two particular people, given only how many ties each has?":
 
 $$\frac{k_i k_j}{2m - 1},$$
 
-because each of $i$'s $k_i$ stubs is matched with one of $j$'s $k_j$ stubs with probability $k_j/(2m-1)$. In the karate club the two busiest members have 17 and 16 ties, and $m = 78$, so the pairing story expects $17 \times 16 / 155 = 1.75$ ties between them: they would very likely be tied. In the data they aren't tied at all, and they sit on opposite sides of the split (the `faction` column in the club's node file). That's a small piece of information a degree-only baseline hands you for free: two hubs that, by degree, ought to be neighbours aren't. It's one pair, so don't build much on it, but it shows how a baseline tells you where your network departs from it, and that departure is the finding.
+::: {.callout-tip title="In plain words"}
+Multiply the two people's degrees and divide by one less than the total number of tie ends. Here $k_i$ and $k_j$ are the degrees of person $i$ and person $j$, and $2m - 1$ is the number of stubs left to pair with after one is used. Busy people are expected to be tied to each other, quiet people not. In the four-person example, the expected number of ties between the degree-3 person and a degree-2 person is $3 \times 2 / (8 - 1) = 6/7 \approx 0.86$.
+:::
+
+The reason: each of $i$'s $k_i$ stubs is matched with one of $j$'s $k_j$ stubs with probability $k_j/(2m-1)$. In the karate club the two busiest members have 17 and 16 ties, and $m = 78$, so the pairing story expects $17 \times 16 / 155 = 1.75$ ties between them: they would very likely be tied. In the data they aren't tied at all, and they sit on opposite sides of the split (the `faction` column in the club's node file). That's a small piece of information a degree-only baseline hands you for free: two hubs that, by degree, ought to be neighbours aren't. It's one pair, so don't build much on it, but it shows how a baseline tells you where your network departs from it, and that departure is the finding.
 
 ### A worked comparison
 
-The next block compares three networks with two random baselines each. Both baselines keep the number of people and ties; only the second keeps degrees. We measure transitivity (the share of connected triples that close, from @sec-paths-and-cohesion) and mean distance. The three networks: the karate club, the Florentine marriages, and the friendship relation among Krackhardt's 21 managers [@krackhardt1987cognitive] with the direction of each answer ignored. The block averages 500 random networks per cell.
+The next block compares three networks with two random baselines each, using the swap method for the second one. Both baselines keep the number of people and ties; only the second keeps degrees. We measure transitivity (the share of connected triples that close, from @sec-paths-and-cohesion) and mean distance. The three networks: the karate club, the Florentine marriages, and the friendship relation among Krackhardt's 21 managers [@krackhardt1987cognitive] with the direction of each answer ignored. The block averages 500 random networks per cell.
 
 ::: {.panel-tabset group="language"}
 
@@ -900,7 +939,7 @@ managers    mean distance     1.648    1.653         1.647
 
 :::
 
-Read the table across each row.
+Read the table across each row, comparing "observed" with the two random baselines and then looking at the last column.
 
 - **Karate club.** Transitivity is 0.256, nearly twice the 0.135 of random networks with the same number of ties. Someone who stopped there would call the club highly clustered. But random networks that keep every member's degree average 0.225, so most of the excess is what a few busy members would produce anyway. The last column says 13% of the same-degree networks were at least as clustered as the club, so the remaining gap is well inside what chance gives. Mean distance, 2.408, is about the same in both baselines.
 - **Florentine marriages.** 0.191 observed, 0.166 random, 0.159 same degrees, and 48% of same-degree networks are at least as clustered. There is essentially nothing here for degrees not to explain.
@@ -916,23 +955,27 @@ The R tab uses its own random draws and lands within a point or two of these sha
 
 ### The question
 
-Real social networks have two properties that look as if they should be in tension. Your friends tend to know each other (lots of triangles, high clustering), and yet you're only a few steps from nearly anyone (short distances). A tight cluster of mutual friends feels like a place where you'd go round in circles, not a springboard to the rest of the world. Can one network have both?
+Here is a puzzle. Real social networks have two properties that look as if they should be in tension. Your friends tend to know each other (lots of triangles, high clustering), and yet you're only a few steps from nearly anyone (short distances). A tight cluster of mutual friends feels like a place where you'd go round in circles, not a springboard to the rest of the world. Can one network have both?
 
 Duncan Watts and Steven Strogatz answered with a small construction [@watts1998collective]. Start from a very regular network, rewire a few of its ties at random, and watch what happens to clustering and distance.
 
 ### The construction
 
-Put $n$ people on a ring. Tie each person to the $k$ people nearest to them on the ring, $k/2$ on each side. That's the **ring lattice**. Then visit each tie and, with probability $p$, rewire it: keep one end where it is and move the other end to a person chosen at random (avoiding loops and repeats). With $p = 0$ nothing changes. With $p = 1$ every tie is rewired and the network is essentially random. The interesting action is in between.
+Put $n$ people on a ring. Tie each person to the $k$ people nearest to them on the ring, $k/2$ on each side. That's the **ring lattice**: picture people sitting around a round table, each knowing only their near neighbours. Then visit each tie and, with probability $p$, rewire it: keep one end where it is and move the other end to a person chosen at random (avoiding loops and repeats). With $p = 0$ nothing changes. With $p = 1$ every tie is rewired and the network is essentially random. The interesting action is in between.
 
-By hand: $n = 8$, $k = 4$, $p = 0$. Each person is tied to the two nearest on each side. Look at person 0: the neighbours are 1, 2, 6 and 7. Which of the six pairs among these four are tied? Three are: 1-2, 6-7 and 7-1 (each of these pairs sits within two places of each other on the ring). The other three, 1-6, 2-6 and 2-7, are not. So clustering is $3/6 = 0.5$ for every person. The general formula for a ring lattice is
+This is the one place where a formula takes a little work to follow. On a first read you can skim to "The experiment"; you'll still have the main idea, that a few rewired ties shorten distances a lot. Now the details. By hand: $n = 8$, $k = 4$, $p = 0$. Each person is tied to the two nearest on each side. Look at person 0: the neighbours are 1, 2, 6 and 7. Which of the six pairs among these four are tied? Three are: 1-2, 6-7 and 7-1 (each of these pairs sits within two places of each other on the ring). The other three, 1-6, 2-6 and 2-7, are not. So clustering is $3/6 = 0.5$ for every person. The general formula for the clustering of a person in a ring lattice answers "what share of my friends' pairs know each other?":
 
 $$C(0) = \frac{3(k-2)}{4(k-1)},$$
+
+::: {.callout-tip title="In plain words"}
+Here $C(0)$ is the clustering of a ring (with no rewiring) and $k$ is how many neighbours each person has. The formula depends only on $k$: with 4 neighbours, $3 \times 2 / (4 \times 3) = 6/12 = 0.5$, which matches the count of 3 tied pairs out of 6 that we just did by hand. With more neighbours the answer climbs toward three quarters.
+:::
 
 which for $k = 4$ gives $3 \cdot 2 / (4 \cdot 3) = 0.5$ and for $k = 10$ gives $24/36 = 0.667$. For distances from person 0: four people at distance 1 (1, 2, 6 and 7) and three at distance 2 (3, reached through 1 or 2; 4, through 2 or 6; and 5, through 6 or 7). The distances are $1,1,1,1,2,2,2$, which sum to 10 over 7 people, a mean of $10/7 = 1.4286$. For a big ring, mean distance is roughly $n / (2k)$: many people, and each hop covers at most $k/2$ places.
 
 ### The experiment
 
-Now the experiment itself. Take 1,000 people, $k = 10$, and sweep $p$ from 0.0001 to 1. For each $p$ draw 10 random networks and average clustering (the mean of the local coefficients) and mean distance, each divided by its value at $p = 0$. We add one more column, $(1-p)^3$: a triangle in the ring survives rewiring only if none of its three ties is rewired, so this is the clustering we'd keep *if* rewiring only destroyed triangles and never created any.
+Now the experiment itself: how fast do clustering and distance fall as we rewire more ties? Take 1,000 people, $k = 10$, and sweep $p$ from 0.0001 to 1. For each $p$ draw 10 random networks and average clustering (the mean of the local coefficients) and mean distance, each divided by its value at $p = 0$. We add one more column, $(1-p)^3$: a triangle in the ring survives rewiring only if none of its three ties is rewired, so this is the clustering we'd keep *if* rewiring only destroyed triangles and never created any. In the output, watch the distance column drop long before the clustering column does.
 
 ::: {.panel-tabset group="language"}
 
@@ -1091,11 +1134,15 @@ It also says nothing about uneven degrees. In this model everyone has about the 
 
 ## The small-world quotient, and what's wrong with it
 
-To turn "high clustering with short paths" into one number, researchers compare both with a random network of the same size:
+To turn "high clustering with short paths" into one number, researchers compare both with a random network of the same size. The question it answers is "how much more clustered is this network than random, relative to how much more spread out it is?":
 
 $$Q = \frac{C / C_{\text{random}}}{L / L_{\text{random}}}.$$
 
-$C$ is the network's clustering and $L$ its mean distance. $C_{\text{random}}$ and $L_{\text{random}}$ are the same two quantities averaged over random networks with the same number of people and ties. The top is how many times more clustered than random the network is. The bottom is how much longer its distances are than random ones. A network that is much more clustered than random but not much more spread out gets a large $Q$. This form is often called small-world-ness [@humphries2008network]. The engine's version averages $G(n,m)$ draws and uses transitivity for $C$, with $L$ the mean distance over pairs that are connected.
+::: {.callout-tip title="In plain words"}
+Divide your network's clustering by a random network's clustering; divide your mean distance by a random network's mean distance; then divide the first answer by the second. A big result means "lots more clustered, hardly any more spread out". In the karate club, $0.256/0.135 = 1.9$ on top and $2.408/2.396 = 1.0$ on the bottom, so $Q$ is about $1.9$ (the chapter's block gets 1.88 from unrounded values).
+:::
+
+$C$ is the network's clustering and $L$ its mean distance. $C_{\text{random}}$ and $L_{\text{random}}$ are the same two quantities averaged over random networks with the same number of people and ties. The top is how many times more clustered than random the network is. The bottom is how much longer its distances are than random ones. A network that is much more clustered than random but not much more spread out gets a large $Q$. This form is often called small-world-ness [@humphries2008network]. The engine's version averages $G(n,m)$ draws and uses transitivity for $C$, with $L$ the mean distance over pairs that are connected. The block below computes $Q$ for the three networks; look at the three quotients and compare them with the "1" that means "nothing special".
 
 ::: {.panel-tabset group="language"}
 
@@ -1180,7 +1227,7 @@ The quotients are 1.88 for the karate club, 1.12 for the Florentine marriages an
 
 ### Pitfalls
 
-**Size.** For a fixed kind of structure, $C/C_{\text{random}}$ grows with the number of people, because $C_{\text{random}}$ shrinks like $1/n$ for a sparse network while the lattice's clustering doesn't. So $Q$ rises with size even when nothing about the structure has changed. The next block builds ring lattices with $p = 0.05$ and $k = 10$ at three sizes.
+**Size.** For a fixed kind of structure, $C/C_{\text{random}}$ grows with the number of people, because $C_{\text{random}}$ shrinks like $1/n$ for a sparse network while the lattice's clustering doesn't. So $Q$ rises with size even when nothing about the structure has changed. The next block builds ring lattices with $p = 0.05$ and $k = 10$ at three sizes; watch what $Q$ does as the size grows.
 
 ::: {.panel-tabset group="language"}
 
@@ -1271,21 +1318,27 @@ We don't have more detail about the study in our sources than that, so we stop t
 
 ## Is it scale-free?
 
+This is the most technical section of the chapter. On a first read you can skim to "Baselines, not explanations"; you'll still have the practical rule, which is that a straight-looking line on a plot isn't evidence of a power law.
+
 ### The claim
 
-Barabási and Albert's model produced a degree distribution whose tail falls off like a power of the degree: the share of people with degree $k$ is proportional to $k^{-\alpha}$ for some exponent $\alpha$. They reported that several real networks looked like this [@barabasi1999emergence], and "**scale-free**" became shorthand for a network with such a tail. On a log-log plot a power law is a straight line, so the test many people used was to plot the degree distribution on log axes and see whether the dots lined up.
+Barabási and Albert's model produced a degree distribution whose tail falls off like a power of the degree: the share of people with degree $k$ is proportional to $k^{-\alpha}$ for some exponent $\alpha$ (a small $\alpha$ means a fatter tail; each doubling of the degree cuts the share by a fixed factor, $2^{\alpha}$, which is the "no typical scale" idea behind the name). They reported that several real networks looked like this [@barabasi1999emergence], and "**scale-free**" became shorthand for a network with such a tail. On a log-log plot a power law is a straight line, so the test many people used was to plot the degree distribution on log axes and see whether the dots lined up.
 
 ### Why the picture isn't enough
 
 Many distributions look roughly straight over a decade or two of a log-log plot, and a straight line fitted by least squares to a log-log histogram gives biased estimates. Clauset, Shalizi and Newman set out a better procedure [@clauset2009powerlaw]:
 
-1. Choose where the tail starts, $x_{\min}$, by a stated rule, because the power law is only claimed above it.
-2. Estimate the exponent by maximum likelihood. For counts, a common approximation is
+1. Choose where the tail starts, which we call $x_{\min}$ (the smallest degree we count as "in the tail"), by a stated rule, because the power law is only claimed above it.
+2. Estimate the exponent by **maximum likelihood** (pick the exponent that makes the observed degrees most probable). For counts, a common approximation is
 $$\hat\alpha = 1 + n_{\text{tail}} \left[ \sum_{i} \ln \frac{x_i}{x_{\min} - 1/2} \right]^{-1},$$
 where the $x_i$ are the degrees at or above $x_{\min}$ and $n_{\text{tail}}$ is how many there are.
+
+::: {.callout-tip title="In plain words"}
+This formula turns a list of big degrees into a single steepness number. Take each tail person's degree, divide it by a bit less than the cutoff, take the natural logarithm (a way of measuring "how many times bigger"), add those up, and divide the number of tail people by that total; then add 1. The hat on $\hat\alpha$ means "estimated from data". Tiny invented example, worked by hand: three people with degrees 6, 8 and 12 and $x_{\min} = 6$, so we divide by $5.5$. The logs are $0.087$, $0.375$ and $0.780$, which sum to $1.242$, so $\hat\alpha = 1 + 3/1.242 = 3.42$. Bigger degrees in the list would push the sum up and the estimate down, meaning a fatter tail.
+:::
 3. Test whether the fit is plausible, and compare it with alternatives such as the log-normal and the exponential. A power law that is merely not rejected hasn't been shown to be better than a rival.
 
-The next block applies step 2 with $x_{\min} = 6$ (chosen by eye, not by the full procedure) to the two networks from the preferential attachment section, and then checks the fit by comparing the share of the tail at several points with what the fitted law predicts: under the fit, the share of the tail with degree at least $k$ is $((k - 1/2)/(x_{\min} - 1/2))^{1-\hat\alpha}$.
+The next block applies step 2 with $x_{\min} = 6$ (chosen by eye, not by the full procedure) to the two networks from the preferential attachment section, and then checks the fit by comparing the share of the tail at several points with what the fitted law predicts: under the fit, the share of the tail with degree at least $k$ is $((k - 1/2)/(x_{\min} - 1/2))^{1-\hat\alpha}$. In plain words, that's how far out $k$ is compared with the cutoff, raised to a negative power so that the share shrinks as $k$ grows. For $\hat\alpha = 2.83$ and $k = 12$ it is $(11.5/5.5)^{-1.83} = 0.259$, which we worked out by hand and which matches the chapter's fitted value.
 
 ::: {.panel-tabset group="language"}
 
@@ -1435,7 +1488,7 @@ So what are these models for? They're *rulers*. The question is always "what doe
 
 ## A stress check: how stable is the karate club's clustering?
 
-Before reporting any of the numbers on the karate club, ask how much they'd change if a tenth of the ties had been missed, which in a real data collection is not far-fetched (@sec-networks-as-data). Drop 8 of the 78 ties at random, recompute, and repeat 200 times.
+This is a quick test of how fragile a number is, like asking whether a recipe still works if you're short a pinch of salt. Before reporting any of the numbers on the karate club, ask how much they'd change if a tenth of the ties had been missed, which in a real data collection is not far-fetched (@sec-networks-as-data). Drop 8 of the 78 ties at random, recompute, and repeat 200 times. Look at how wide the range of results is compared with the gap you care about.
 
 ::: {.panel-tabset group="language"}
 
@@ -1571,16 +1624,16 @@ An over-claiming sentence: "The karate club is a small-world, scale-free network
 ::: {.callout-note collapse="true"}
 ## Answers
 
-1. Degrees: Ana 3, Ben 2, Cleo 2, Dev 2, Eli 1. So $p_1 = 1/5$, $p_2 = 3/5$, $p_3 = 1/5$. CCDF: $P(K \ge 1) = 1$, $P(K \ge 2) = 4/5$, $P(K \ge 3) = 1/5$. There are 5 ties and 5 people, so $2m/n = 10/5 = 2$, and the degrees $3 + 2 + 2 + 2 + 1 = 10$ divided by 5 is 2 as well.
-2. Expected degree $(n-1)p = 100 \times 0.03 = 3$. Expected ties $\binom{101}{2} \times 0.03 = 5050 \times 0.03 = 151.5$. Share with no ties, about $e^{-3} = 0.050$.
-3. Stubs: $3 + 2 + 2 + 1 = 8$, so 4 ties. Expected ties between the degree-3 person and a degree-2 person: $3 \times 2/(8 - 1) = 6/7 \approx 0.86$.
-4. $C(0) = 3(k-2)/(4(k-1)) = 3 \times 2/(4 \times 3) = 0.5$. From person 0 the distances are 1 to four people (the two nearest on each side), 2 to four people (those three or four places away, reached in two hops) and 3 to the one person opposite: $1+1+1+1+2+2+2+2+3 = 15$ over 9 people, so $15/9 = 1.667$. (NetworkX gives the same two numbers.)
-5. The degrees are 1, 1, 1, 1, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 6: mean $40/15 = 2.67$, median 3, maximum 6. The family with 6 ties (the Medici) holds $6/40 = 15\%$ of the tie ends.
-6. With NetworkX and 10 draws each, the largest component at $c = 1.0$ holds about 17% of the people at $n = 200$, 6.5% at $n = 2{,}000$ and 2.7% at $n = 20{,}000$: it shrinks toward the predicted 0 as $n$ grows. At $c = 1.2$ the share stays near 0.3 at every size (about 0.30, 0.29, 0.30), as the equation predicts. The transition gets sharper with size.
-7. With transitivity: $C = 0.256$, $C_{\text{random}} = 0.135$, $Q = 1.88$. With the mean of the local coefficients: $C = 0.571$, $C_{\text{random}} = 0.133$, $Q = 4.28$. They differ because the mean of local coefficients gives every member equal weight, so the many low-degree members whose few friends all know each other count as much as the hubs, while transitivity weights each member by their number of pairs of friends. Report which you used.
-8. Ask for: the CCDF on log axes; how the network was assembled (all mail, or a sample, over what period, and whether external addresses are included); a maximum likelihood fit with a stated $x_{\min}$, a goodness-of-fit check, and a comparison with at least one alternative such as the log-normal; and the same summary for a random network with the same mean degree. A heavy tail is plausible for email. "Scale-free" needs the fit, and "grew by preferential attachment" needs evidence about growth, which a degree distribution can't provide.
-9. The baseline and the number of draws; whether $C$ is transitivity or mean local clustering; the mean degree and density; how the 20,000 people were sampled; and the same quotient computed against a degree-preserving baseline. The quotient grows with size at fixed local structure (the size table showed 4.3 at 100 people and 56.5 at 1,600), so 8 for 20,000 people may be small. It can't be compared with the karate club's 1.9 at 34 people.
-10. Defensible: "The Florentine marriage network has transitivity 0.191, close to the 0.166 of random networks with the same number of ties and the 0.159 of random networks with the same degrees; about half of the same-degree networks are at least as clustered." Over-claiming: "Florentine families married in tight local circles that kept power inside a small world." The network doesn't show more clustering than its degrees imply, and a table of ties says nothing about circles or power.
+1. Count each person's ties first: Ana 3, Ben 2, Cleo 2, Dev 2, Eli 1. So $p_1 = 1/5$, $p_2 = 3/5$, $p_3 = 1/5$. CCDF: $P(K \ge 1) = 1$, $P(K \ge 2) = 4/5$, $P(K \ge 3) = 1/5$. There are 5 ties and 5 people, so $2m/n = 10/5 = 2$, and the degrees $3 + 2 + 2 + 2 + 1 = 10$ divided by 5 is 2 as well.
+2. Each person has 100 possible partners, each with a 3% chance, so the expected degree is $(n-1)p = 100 \times 0.03 = 3$. Expected ties $\binom{101}{2} \times 0.03 = 5050 \times 0.03 = 151.5$. Share with no ties, about $e^{-3} = 0.050$.
+3. Every tie needs two stubs, so count the stubs and halve: $3 + 2 + 2 + 1 = 8$ stubs, so 4 ties. Expected ties between the degree-3 person and a degree-2 person: $3 \times 2/(8 - 1) = 6/7 \approx 0.86$.
+4. Clustering first: with 4 neighbours each, $C(0) = 3(k-2)/(4(k-1)) = 3 \times 2/(4 \times 3) = 0.5$. From person 0 the distances are 1 to four people (the two nearest on each side), 2 to four people (those three or four places away, reached in two hops) and 3 to the one person opposite: $1+1+1+1+2+2+2+2+3 = 15$ over 9 people, so $15/9 = 1.667$. (NetworkX gives the same two numbers.)
+5. List every family's number of ties, then summarize: the degrees are 1, 1, 1, 1, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 6: mean $40/15 = 2.67$, median 3, maximum 6. The family with 6 ties (the Medici) holds $6/40 = 15\%$ of the tie ends.
+6. At $c = 1$ the big piece shrinks as the network grows, and at $c = 1.2$ it stays put. With NetworkX and 10 draws each, the largest component at $c = 1.0$ holds about 17% of the people at $n = 200$, 6.5% at $n = 2{,}000$ and 2.7% at $n = 20{,}000$: it shrinks toward the predicted 0 as $n$ grows. At $c = 1.2$ the share stays near 0.3 at every size (about 0.30, 0.29, 0.30), as the equation predicts. The transition gets sharper with size.
+7. The two versions of clustering count different things, so they give different quotients. With transitivity: $C = 0.256$, $C_{\text{random}} = 0.135$, $Q = 1.88$. With the mean of the local coefficients: $C = 0.571$, $C_{\text{random}} = 0.133$, $Q = 4.28$. They differ because the mean of local coefficients gives every member equal weight, so the many low-degree members whose few friends all know each other count as much as the hubs, while transitivity weights each member by their number of pairs of friends. Report which you used.
+8. Don't accept it yet; ask for evidence. Ask for: the CCDF on log axes; how the network was assembled (all mail, or a sample, over what period, and whether external addresses are included); a maximum likelihood fit with a stated $x_{\min}$, a goodness-of-fit check, and a comparison with at least one alternative such as the log-normal; and the same summary for a random network with the same mean degree. A heavy tail is plausible for email. "Scale-free" needs the fit, and "grew by preferential attachment" needs evidence about growth, which a degree distribution can't provide.
+9. You can't compare them without more information. You'd want: the baseline and the number of draws; whether $C$ is transitivity or mean local clustering; the mean degree and density; how the 20,000 people were sampled; and the same quotient computed against a degree-preserving baseline. The quotient grows with size at fixed local structure (the size table showed 4.3 at 100 people and 56.5 at 1,600), so 8 for 20,000 people may be small. It can't be compared with the karate club's 1.9 at 34 people.
+10. Say what the numbers show and no more. Defensible: "The Florentine marriage network has transitivity 0.191, close to the 0.166 of random networks with the same number of ties and the 0.159 of random networks with the same degrees; about half of the same-degree networks are at least as clustered." Over-claiming: "Florentine families married in tight local circles that kept power inside a small world." The network doesn't show more clustering than its degrees imply, and a table of ties says nothing about circles or power.
 :::
 
 ## Summary

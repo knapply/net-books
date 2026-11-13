@@ -7,6 +7,14 @@
 
 ## Groups inside the network
 
+::: {.callout-note title="The short version"}
+Networks clump: people tie mostly to others in their own circle and less to outsiders. This chapter is about finding those circles. There are strict ways (everyone in the group knows everyone else), relaxed ways (nearly everyone does), and a statistical way, called a community, where a group just has more ties inside than you'd expect by chance. The catch is that different methods give different groups on the same network, and a good score doesn't make a grouping true. So the skill is reading what a set of groups does and doesn't tell you.
+:::
+
+::: {.callout-tip title="Why you might care"}
+Teams, friend circles, factions and online tribes are what people usually want from a network, whether they're studying a club that is about to split, an office whose departments don't talk, or a platform full of echo chambers. Group-finding tools can show you these structures in minutes. Knowing their limits keeps you from announcing "there are four communities" when what you found is one of many equally good ways to slice the same ties.
+:::
+
 ::: {.callout-tip appearance="simple"}
 ## Code lives next to the idea
 Each idea comes with its code right where it is explained. The Rust blocks in this chapter run top to bottom as one script: the first enters the karate club, and later ones reuse it.
@@ -26,9 +34,9 @@ That's the promise of this chapter, and also its risk. There are many ways to de
 
 ### Cliques
 
-A **clique** is a set of people in which *everyone is tied to everyone else*. It's the strictest idea of a group, and it has a long history in sociology. A clique is **maximal** if you can't add anyone without breaking it. Maximal cliques overlap, since one person can belong to several, and that's a feature: it matches the way people really belong to more than one circle.
+A **clique** is a set of people in which *everyone is tied to everyone else*, like a dinner table where every guest already knows every other guest. It's the strictest idea of a group, and it has a long history in sociology. A clique is **maximal** if you can't add anyone without breaking it. Maximal cliques overlap, since one person can belong to several, and that's a feature: it matches the way people really belong to more than one circle.
 
-Cliques are demanding. In a large network, groups that are obviously meaningful to the people in them often have one or two missing ties, and a strict definition would split or discard them. A computer finds all maximal cliques with a classic algorithm [@bron1973algorithm], but on big networks there can be a huge number of them, most of them small and overlapping.
+Cliques are demanding. In a large network, groups that are obviously meaningful to the people in them often have one or two missing ties, and a strict definition would split or discard them. A computer finds all maximal cliques with a classic algorithm [@bron1973algorithm], but on big networks there can be a huge number of them, most of them small and overlapping. The next block lists the cliques of the karate club; look at the size of the biggest one and at how many cliques there are.
 
 ::: {.panel-tabset group="language"}
 
@@ -160,13 +168,13 @@ maximal cliques  25 (of 3 or more people)
 
 :::
 
-The biggest clique has five members, and there are 25 maximal cliques of three or more people. Cliques exist, but they overlap heavily, and a 34-person club is clearly more than 25 separate little circles.
+The biggest clique has five members, and there are 25 maximal cliques of three or more people (a **maximal** clique is one that can't be grown by adding anyone). Cliques exist, but they overlap heavily, and a 34-person club is clearly more than 25 separate little circles.
 
 ### Relaxing the rule
 
 Sociologists have long relaxed the clique rule. An **n-clique** allows people to be up to $n$ steps apart rather than one [@luce1950connectivity]. A **k-plex** lets each member miss up to $k - 1$ ties to others in the group [@seidman1978graph]. The k-core from @sec-paths-and-cohesion is another relaxation: everyone has *at least* $k$ ties inside the group, whether or not they know the same people. Each definition is a different idea of what makes a group solid, and it's worth choosing one on purpose, based on what you think holds your groups together.
 
-Here are the definitions precisely. Write $d(i, j)$ for the number of steps on a shortest path between $i$ and $j$, and let $S$ be a set of $s$ people.
+Here are the definitions precisely, for readers who want them. Each is a different way to answer "how tight does a group have to be?". Write $d(i, j)$ for the number of steps on a shortest path between $i$ and $j$, and let $S$ be a set of $s$ people.
 
 - A **clique** has $d(i, j) = 1$ for every pair in $S$. It is **maximal** when nobody can be added.
 - An **n-clique** is a maximal set in which $d(i, j) \le n$ for every pair, with distances measured in the *whole* network [@luce1950connectivity]. A 1-clique is a clique. The odd part is that two members can be close only through someone *outside* the set.
@@ -175,7 +183,11 @@ Here are the definitions precisely. Write $d(i, j)$ for the number of steps on a
 - A **k-core** is a maximal set in which each person has at least $k$ ties to others in the set [@seidman1983network].
 - A **k-truss** is a maximal set of ties in which every tie closes at least $k - 2$ triangles made of ties in the set [@wang2012truss]. The number of triangles a tie closes is its **support**, and a tie's **truss number** is the largest $k$ for which it stays.
 
-Try them on seven people you can check on paper. A, B, C and D all know each other. E knows C and D. F knows E, and G knows F. By hand: ABCD is a clique of four, and C, D and E make a triangle. G has one tie, so a 2-core peel removes G, then F (now with one tie), and then stops: E still has C and D. The tie C-D sits in three triangles (with A, with B and with E), the tie A-B in two, and E-F in none.
+::: {.callout-tip title="In plain words"}
+Read the list as a ladder of promises. A clique promises that everyone is one step from everyone. An n-clique relaxes that to "within $n$ steps", counting paths through outsiders; an n-clan insists the paths stay inside the group. A k-plex says "each person can miss at most $k - 1$ of the others", so a 1-plex misses none and is a clique. A k-core says "each person has at least $k$ ties inside", and a k-truss says "each tie is backed by at least $k - 2$ shared friends". The letters $i$ and $j$ stand for any two people, $d(i,j)$ for the steps between them, and $s$ for the size of the set. In the seven-person example just below, ABCD is a clique ($d = 1$ for every pair), and A and E are two steps apart, which is why they can't be in a clique together.
+:::
+
+Try them on seven people you can check on paper. The block after that runs the same definitions on the computer; look for whether its groups match what you found by hand. A, B, C and D all know each other. E knows C and D. F knows E, and G knows F. By hand: ABCD is a clique of four, and C, D and E make a triangle. G has one tie, so a 2-core peel removes G, then F (now with one tie), and then stops: E still has C and D. The tie C-D sits in three triangles (with A, with B and with E), the tie A-B in two, and E-F in none.
 
 ::: {.panel-tabset group="language"}
 
@@ -347,7 +359,7 @@ karate: pieces 1; people by core number 1 to 4 [1, 11, 12, 10]
 
 :::
 
-Read the output against the paper. ABCD is the one clique of four, and CDE is a triangle that overlaps it in C and D. The 2-plexes are looser: ACDE is one (A and E don't know each other, but that is the only tie missing for either of them), and so is BCDE, while all of ABCDE is not, because E misses both A and B. Coreness peels from the tail: G, then F, leave first, E keeps two ties and so has core number 2, and ABCD form the 3-core. The truss counts say something finer. Eight ties close at least one triangle, but only the six ties inside ABCD survive to the 4-truss, so E's ties to C and D drop out even though E stays in the 2-core. A core asks for a minimum number of ties, a truss for a minimum number of shared friends, and those are different promises.
+Read the output against the paper, in plain words: the computer finds the same tight group, then shows how each looser rule lets in a few more people. ABCD is the one clique of four, and CDE is a triangle that overlaps it in C and D. The 2-plexes are looser: ACDE is one (A and E don't know each other, but that is the only tie missing for either of them), and so is BCDE, while all of ABCDE is not, because E misses both A and B. Coreness peels from the tail: G, then F, leave first, E keeps two ties and so has core number 2, and ABCD form the 3-core. The truss counts say something finer. Eight ties close at least one triangle, but only the six ties inside ABCD survive to the 4-truss, so E's ties to C and D drop out even though E stays in the 2-core. A core asks for a minimum number of ties, a truss for a minimum number of shared friends, and those are different promises.
 
 The ring shows why a distance rule needs the "clan" repair. People 1, 3 and 5 are each two steps from the others, so they form a 2-clique, but the paths run through 2, 4 and 6, who are outside the set. Inside the set nobody knows anybody. It is a 2-clique and not a 2-clan, and the six sets of three neighbors along the ring are 2-clans.
 
@@ -355,7 +367,7 @@ Which definition to use depends on what you think holds your groups together: re
 
 ### Communities
 
-The loosest and, today, the most used idea is the **community**: a set of people who have more ties among themselves than you'd expect by chance. There's no demand that every pair be tied, or even that anyone know a minimum number of others. The group only has to be *denser inside than it is to the outside*. That's flexible enough to find groups in networks of millions of people, and it's why community detection has become a standard tool.
+The loosest and, today, the most used idea is the **community**, which is rather like a neighbourhood: nobody needs to know everyone, but people mostly talk to those nearby. a set of people who have more ties among themselves than you'd expect by chance. There's no demand that every pair be tied, or even that anyone know a minimum number of others. The group only has to be *denser inside than it is to the outside*. That's flexible enough to find groups in networks of millions of people, and it's why community detection has become a standard tool.
 
 ### Components, cores and communities
 
@@ -373,9 +385,9 @@ There is a definition of a community that sits between the strict and the statis
 
 ## What "more than chance" means: modularity
 
-To make "more ties inside than expected by chance" precise, we need a model of chance. The standard one asks: if we shuffled the ties at random, *keeping every person's number of ties fixed*, how many would land inside each group? People with many ties are more likely to be tied to someone in the group by luck, so the model accounts for that.
+This section is the technical heart of the chapter. If the formulas feel heavy, read the "In plain words" boxes, skim to "The karate club, two ways", and you'll still have the main idea: modularity scores a grouping by how many more ties fall inside groups than chance would put there. To make "more ties inside than expected by chance" precise, we need a model of chance. The standard one asks: if we shuffled the ties at random, *keeping every person's number of ties fixed*, how many would land inside each group? People with many ties are more likely to be tied to someone in the group by luck, so the model accounts for that.
 
-**Modularity**, usually written $Q$, is the result. For each group it takes the share of all ties that fall inside it, subtracts the share you'd expect by chance, and adds the differences up [@newman2004finding; @newman2006modularity]. For an undirected network with $m$ ties,
+**Modularity**, usually written $Q$, is the result. For each group it takes the share of all ties that fall inside it, subtracts the share you'd expect by chance, and adds the differences up [@newman2004finding; @newman2006modularity]. The question it answers is "how much better than random shuffling is this grouping?". For an undirected network with $m$ ties,
 
 $$
 Q = \sum_{c} \left[ \frac{L_c}{m} - \left( \frac{d_c}{2m} \right)^2 \right],
@@ -383,11 +395,15 @@ $$
 
 where $L_c$ is the number of ties inside group $c$ and $d_c$ is the total number of ties its members have (their degrees added up). A higher $Q$ means the groups hold more ties than chance would put there. Zero means no better than chance. The values for good partitions of real networks are often between about 0.3 and 0.7.
 
+::: {.callout-tip title="In plain words"}
+Go group by group. For each group $c$, take the share of all ties that sit inside it ($L_c / m$), then subtract the share you'd expect if ties were shuffled but everybody kept their number of ties. That expected share is the group's total degree $d_c$ divided by twice the number of ties, squared. The big sigma means "add up over all the groups". Example, which we work again below: two triangles joined by one tie, so $m = 7$. One triangle holds 3 ties and its members' degrees add to 7, so it contributes $3/7 - (7/14)^2 = 0.429 - 0.25 = 0.179$. The other triangle does the same, and $Q = 0.357$.
+:::
+
 ![Modularity adds up, over communities, how much more of the network's ties fall inside the community than random rewiring would put there. Here the four communities sum to Q = 0.419.](../figures/modularity-bars.svg){#fig-modularity-bars fig-alt="A grouped bar chart with four pairs of bars, one pair per community. In every pair the solid bar, the observed share of ties inside the community, is taller than the dashed bar, the share expected by chance."}
 
 @fig-modularity-bars shows this for the karate club. In every community the observed share of ties (solid bar) beats the share expected by chance (dashed bar), and the gaps add up to $Q = 0.419$.
 
-Modularity can also come with a tuning knob, the **resolution**, that makes the groups coarser or finer [@reichardt2006statistical]. We'll see why that matters in a moment.
+Modularity can also come with a tuning knob, the **resolution**, that makes the groups coarser or finer, like zooming a map in and out [@reichardt2006statistical]. We'll see why that matters in a moment.
 
 ::: {.panel-tabset group="language"}
 
@@ -450,17 +466,21 @@ A note on reproducibility. Some copies of the karate club data you'll find onlin
 
 ### Where the formula comes from
 
-"More than chance" needs a chance model, and the standard one is the **configuration model** of @sec-small-worlds: give every person as many stubs (half-ties) as their degree $k_i$, pool all $2m$ stubs, and pair them up at random. Person $i$ has $k_i$ stubs and a given stub of person $j$ is one of $2m$ stubs, so the expected number of ties between $i$ and $j$ is about $k_i k_j / 2m$. Add that up over every pair inside a group $c$ and you get $d_c^2 / 4m$ expected ties inside it, which is $(d_c / 2m)^2$ as a share of all $m$ ties. That's the second term in the formula above. Written once for every pair of people instead of once per group, the same sum reads
+"More than chance" needs a chance model, and the standard one is the **configuration model** of @sec-small-worlds: give every person as many stubs (half-ties) as their degree $k_i$, pool all $2m$ stubs, and pair them up at random. Person $i$ has $k_i$ stubs and a given stub of person $j$ is one of $2m$ stubs, so the expected number of ties between $i$ and $j$ is about $k_i k_j / 2m$. Add that up over every pair inside a group $c$ and you get $d_c^2 / 4m$ expected ties inside it, which is $(d_c / 2m)^2$ as a share of all $m$ ties. That's the second term in the formula above. The same sum can be written once for every pair of people instead of once per group. This is the version software uses:
 
 $$
 Q = \frac{1}{2m} \sum_{i,j} \left( A_{ij} - \gamma \, \frac{k_i k_j}{2m} \right) \delta(c_i, c_j),
 $$
 
+::: {.callout-tip title="In plain words"}
+For every pair of people, ask "are they tied, and how many ties did chance expect between them?", and keep the difference only when the two are in the same group. Then divide the total by $2m$. In symbols, $A_{ij}$ is 1 for a tie and 0 for none, $k_i k_j / 2m$ is the expected number of ties, $\delta$ ("delta") switches the pair on when they share a group, and $\gamma$ ("gamma") is the resolution knob, set to 1 normally. In the two-triangle example, persons 3 and 4 have three ties each, so chance expects $3 \times 3 / 14 = 0.643$ ties between them; they have one, so that pair is not pulling its weight, which is also why they sit in different groups.
+:::
+
 where $A_{ij}$ is 1 if $i$ and $j$ are tied and 0 if not, $\delta(c_i, c_j)$ is 1 when they're in the same group and 0 otherwise, and $\gamma$ is the resolution (1 is the standard score). Each pair inside a group adds "observed minus expected". A few facts follow. One group holding everybody gives $Q = 0$, always: the observed share inside is 1 and so is the expected share. $Q$ can be negative, when the groups hold fewer ties than chance would put there. And $Q$ is below 1, but how high it can get depends on the network, so no fixed number is "high". For directed networks use the version with in- and out-degrees [@leicht2008community], and for weighted ones put weights where the ties were and strengths where the degrees were [@newman2004analysis]. Finding the partition that maximizes $Q$ is hard in the computer-science sense [@brandes2008modularity], which is why the methods below are heuristics.
 
-A hand example. Two triangles, 1-2-3 and 4-5-6, are joined by the tie 3-4. That's $m = 7$ ties. Take each triangle as a group: 3 ties inside, and the degrees add to $2 + 2 + 3 = 7$, so each group contributes $3/7 - (7/14)^2 = 0.179$ and $Q = 0.357$. Put everybody in one group: $7/7 - (14/14)^2 = 0$. Put everybody alone: nothing is inside, and the chance terms are $-(2^2 \cdot 4 + 3^2 \cdot 2)/14^2 = -0.173$. People 3 and 4 have three ties each, so chance alone would give them $3 \times 3 / 14 = 0.643$ ties; they have one.
+Now a hand example you can check. Two triangles, 1-2-3 and 4-5-6, are joined by the tie 3-4. That's $m = 7$ ties. Take each triangle as a group: 3 ties inside, and the degrees add to $2 + 2 + 3 = 7$, so each group contributes $3/7 - (7/14)^2 = 0.179$ and $Q = 0.357$. Put everybody in one group: $7/7 - (14/14)^2 = 0$. Put everybody alone: nothing is inside, and the chance terms are $-(2^2 \cdot 4 + 3^2 \cdot 2)/14^2 = -0.173$. People 3 and 4 have three ties each, so chance alone would give them $3 \times 3 / 14 = 0.643$ ties; they have one.
 
-While we're on this graph, two more ways to cut it. The tie 3-4 lies on every shortest path between a person in one triangle and a person in the other, which is $3 \times 3 = 9$ paths. A tie inside a triangle carries far fewer: the tie 1-3 carries the paths from 1 to each of 3, 4, 5 and 6, so 4, and the tie 1-2 only its own pair, so 1. That's the idea of Girvan and Newman: remove the tie with the highest betweenness, recompute, repeat, and keep the partition (among all those the removals produce) with the highest $Q$. The other idea is spectral. Let $D$ be the diagonal matrix of degrees and $A$ the matrix of ties, and look at the eigenvector for the second-smallest eigenvalue of the **Laplacian** $L = D - A$, the Fiedler vector [@fiedler1973algebraic]. Its signs split the people into two sets joined by few ties relative to their sizes (it relaxes a "ratio cut" problem, see @shi2000normalized for the normalized version). Its eigenvalue, the algebraic connectivity, is larger when the network is harder to cut.
+While we're on this graph, two more ways to cut it (skip to the code if you like; you'll still have modularity). The tie 3-4 lies on every shortest path between a person in one triangle and a person in the other, which is $3 \times 3 = 9$ paths. A tie inside a triangle carries far fewer: the tie 1-3 carries the paths from 1 to each of 3, 4, 5 and 6, so 4, and the tie 1-2 only its own pair, so 1. That's the idea of Girvan and Newman: remove the tie with the highest betweenness, recompute, repeat, and keep the partition (among all those the removals produce) with the highest $Q$. The other idea is spectral. Let $D$ be the table that has each person's degree on its diagonal and zeros elsewhere, and $A$ the table of ties (1 if tied, 0 if not). Subtract to get the **Laplacian** $L = D - A$, and look at a special list of numbers attached to it, the eigenvector for the second-smallest eigenvalue, called the Fiedler vector [@fiedler1973algebraic]. (An eigenvector is a pattern of numbers, one per person, that the table only stretches and doesn't twist.) Its signs split the people into two sets joined by few ties relative to their sizes (it relaxes a "ratio cut" problem, see @shi2000normalized for the normalized version). Its eigenvalue, the algebraic connectivity, is larger when the network is harder to cut.
 
 ::: {.panel-tabset group="language"}
 
@@ -592,13 +612,13 @@ second-smallest eigenvalue 0.438; its eigenvector -0.465 -0.465 -0.261 0.261 0.4
 
 :::
 
-The first table matches the paper: 0.357, 0, and $-0.173$. The busiest tie is the bridge, with 9, then the four ties that run from a triangle's corner to the end of the bridge carry 4 each, and the two ties that touch neither person 3 nor person 4 carry 1 each, as counted above. Girvan and Newman cut the bridge first, and the two triangles are what's left. The Fiedler vector gets the same cut a different way: one triangle gets negative entries and the other positive (which one gets which sign depends on the software), and people 3 and 4 have the smallest magnitude, because they sit nearest the seam.
+In plain words, the code agrees with the paper and shows which tie to cut. The first table matches the paper: 0.357, 0, and $-0.173$. The busiest tie is the bridge, with 9, then the four ties that run from a triangle's corner to the end of the bridge carry 4 each, and the two ties that touch neither person 3 nor person 4 carry 1 each, as counted above. Girvan and Newman cut the bridge first, and the two triangles are what's left. The Fiedler vector gets the same cut a different way: one triangle gets negative entries and the other positive (which one gets which sign depends on the software), and people 3 and 4 have the smallest magnitude, because they sit nearest the seam.
 
 ### The resolution limit, with numbers
 
 The chance term has a built-in flaw: it depends on $m$, the number of ties in the *whole* network. Two small groups joined by a single tie are expected to share about $d_c d_{c'} / 2m$ ties by chance. When $m$ is large that is far below one, so one tie counts as "more than chance" and merging the two groups raises $Q$, even though nobody would call them one group. Fortunato and Barthélemy showed this [@fortunato2007resolution], and later work asks which scores can avoid it at all [@traag2011narrow].
 
-Here is their picture, with numbers. Take a ring of 30 cliques, each a group of five people who all know each other (10 ties), and tie each clique to the next one with a single tie. That's $m = 30 \times 10 + 30 = 330$ ties. Every person can see that there are 30 groups. A clique on its own has 10 ties inside and degrees adding to $2 \times 10 + 2 = 22$, so its term is $10/330 - (22/660)^2 = 0.0292$, and 30 of them give $Q = 0.8758$. Merge cliques in pairs: 21 ties inside (the two cliques' 10 plus the tie between them) and degrees adding to 44, so each of 15 groups gives $21/330 - (44/660)^2 = 0.0592$, and $Q = 0.8879$. The *worse* description scores higher.
+Here is their picture, with numbers, and with the small formula from above used three times. Take a ring of 30 cliques, each a group of five people who all know each other (10 ties), and tie each clique to the next one with a single tie. That's $m = 30 \times 10 + 30 = 330$ ties. Every person can see that there are 30 groups. A clique on its own has 10 ties inside and degrees adding to $2 \times 10 + 2 = 22$, so its term is $10/330 - (22/660)^2 = 0.0292$, and 30 of them give $Q = 0.8758$. Merge cliques in pairs: 21 ties inside (the two cliques' 10 plus the tie between them) and degrees adding to 44, so each of 15 groups gives $21/330 - (44/660)^2 = 0.0592$, and $Q = 0.8879$. The *worse* description scores higher. In plain words: modularity would rather have 15 big groups than the 30 groups every person can see, because the whole network is so large that a single tie between two cliques looks like "more than chance".
 
 ::: {.panel-tabset group="language"}
 
@@ -707,7 +727,7 @@ The two hand scores, 0.8758 and 0.8879, are what the code prints. Louvain at the
 
 ## Finding communities
 
-Finding the partition with the highest modularity is hard, so people use methods that find good ones quickly. A few worth knowing by name:
+Finding the partition with the highest modularity is hard, so people use methods that find good ones quickly. (A **partition** is just a split of everyone into groups, each person in exactly one.) A few worth knowing by name:
 
 - **Girvan and Newman's method** [@girvan2002community] works by *removing* ties. It repeatedly deletes the tie with the highest betweenness (the same idea as @sec-centrality, applied to ties), because ties that bridge groups carry the most routes. As bridges fall away, groups separate. It's intuitive but slow.
 - **Louvain** [@blondel2008fast] is fast and popular. It starts with every person in their own group, then moves people one at a time to whichever neighboring group raises modularity most, merges the groups into single nodes, and repeats.
@@ -789,7 +809,7 @@ Louvain finds four communities with modularity 0.419, higher than the 0.358 of t
 
 ### Louvain and Leiden
 
-Louvain [@blondel2008fast] repeats two phases. In the *local moving* phase it visits people one at a time and moves each to whichever neighboring group raises $Q$ the most, until nobody wants to move. In the *aggregation* phase it shrinks every group to a single node, with the ties between groups added up, and starts over on the smaller network. It stops when a pass changes nothing. It's fast because the change in $Q$ from one move can be worked out from a few counts, and it's greedy: the order in which people are visited matters, which is why the seed matters.
+Think of Louvain as people at a party drifting toward whichever table they have the most friends at, then tables merging into bigger tables. Louvain [@blondel2008fast] repeats two phases. In the *local moving* phase it visits people one at a time and moves each to whichever neighboring group raises $Q$ the most, until nobody wants to move. In the *aggregation* phase it shrinks every group to a single node, with the ties between groups added up, and starts over on the smaller network. It stops when a pass changes nothing. It's fast because the change in $Q$ from one move can be worked out from a few counts, and it's greedy: the order in which people are visited matters, which is why the seed matters.
 
 Louvain has a known flaw [@traag2019louvain]. When a person moves out of a group, the group they leave can fall into pieces that no longer touch each other, and Louvain never goes back to check. Leiden adds a *refinement* step between the two phases. Before aggregating, it splits each group into well-connected subgroups and aggregates *those*, so a fragment can find a new home at the next level. Run until it stops changing, Leiden guarantees that every group it reports is connected, and its authors prove stronger properties as well. On small networks like the ones in this chapter the two often return the same partition. The difference shows up on large networks.
 
@@ -797,19 +817,23 @@ One practical trap: Leiden can optimize modularity or a different score, the Con
 
 ### Label propagation
 
-Give everyone a different label. Then, in a random order, let each person take the label that most of their neighbors carry (ties broken at random), and repeat until every person's label is one of the most common among their neighbors [@raghavan2007near]. Labels that start in a tight cluster spread through it and stop at its edge. There's no score being optimized, which is why it's fast and also why a run has no $Q$ to be judged by: different seeds give different partitions, and on a tight network one label can sweep everything. @sec-case-karate runs it from 200 seeds and gets anywhere from one group to four.
+Think of rumor-spreading: everyone starts with their own rumor and adopts what most of their friends say. Give everyone a different label. Then, in a random order, let each person take the label that most of their neighbors carry (ties broken at random), and repeat until every person's label is one of the most common among their neighbors [@raghavan2007near]. Labels that start in a tight cluster spread through it and stop at its edge. There's no score being optimized, which is why it's fast and also why a run has no $Q$ to be judged by: different seeds give different partitions, and on a tight network one label can sweep everything. @sec-case-karate runs it from 200 seeds and gets anywhere from one group to four.
 
 ### Infomap and the map equation
 
-Picture a random walker who moves from person to person along ties, picking a neighbor at random each step. In a network with communities the walker spends long stretches inside a group before crossing out. Rosvall and Bergstrom's idea [@rosvall2008maps] is to describe the walker's path like an address book. Give each group a name and each person a short name that's only unique within the group, the way two towns can each have a "Main Street". While the walker stays in a group you only spell out person-names. You spend extra bits only when it crosses into another group. A partition that traps the walker for long stretches gives a short description, and the **map equation** is the average number of bits per step of the best such code [@rosvall2009map].
+This is the most abstract method in the chapter; on a first read you can skim to "The block model view", and you'll still have the idea that a good grouping is one a wandering walker rarely leaves. Picture a random walker who moves from person to person along ties, picking a neighbor at random each step. In a network with communities the walker spends long stretches inside a group before crossing out. Rosvall and Bergstrom's idea [@rosvall2008maps] is to describe the walker's path like an address book. Give each group a name and each person a short name that's only unique within the group, the way two towns can each have a "Main Street". While the walker stays in a group you only spell out person-names. You spend extra bits only when it crosses into another group. A partition that traps the walker for long stretches gives a short description, and the **map equation** is the average number of bits per step of the best such code [@rosvall2009map].
 
-For an undirected, unweighted network, the walker visits person $i$ a share $p_i = k_i / 2m$ of the time. For a partition into modules $c$, let $p_c$ be the sum of the $p_i$ in the module, $q_c$ the share of steps that leave module $c$ (its ties to the outside, divided by $2m$), and $q = \sum_c q_c$. Writing $\operatorname{plogp}(x) = x \log_2 x$,
+For an undirected, unweighted network, the walker visits person $i$ a share $p_i = k_i / 2m$ of the time. For a partition into modules $c$, let $p_c$ be the sum of the $p_i$ in the module, $q_c$ the share of steps that leave module $c$ (its ties to the outside, divided by $2m$), and $q = \sum_c q_c$. The question the formula answers is "how many bits per step does it take, on average, to say where the walker is?". Writing $\operatorname{plogp}(x) = x \log_2 x$ (a short name for "$x$ times the base-2 logarithm of $x$", which is negative for shares below 1),
 
 $$
 L = \operatorname{plogp}(q) - 2 \sum_c \operatorname{plogp}(q_c) - \sum_i \operatorname{plogp}(p_i) + \sum_c \operatorname{plogp}(q_c + p_c).
 $$
 
-With one module there are no exits, $q = q_c = 0$, and $L$ is just the entropy of the visit shares $-\sum_i p_i \log_2 p_i$. The Infomap method searches for the partition with the smallest $L$. The block below prints $L$ for four partitions of the karate club.
+::: {.callout-tip title="In plain words"}
+$L$ is the average length of the walker's address, in bits (a bit is one yes/no answer). The four terms add up the cost of announcing "the walker changed groups" and the cost of naming a person within a group. Symbols: $p_i$ is the share of time spent on person $i$, $p_c$ the share spent in group $c$, $q_c$ the share of steps that leave group $c$, and $q$ the total of those exit shares. With a good grouping the exit shares are small, so $L$ is small. We worked the two-triangle graph by hand for you, with $p_i = 2/14$ or $3/14$, each triangle's $p_c = 7/14$ and exit share $q_c = 1/14$: one big group costs $2.557$ bits per step, and splitting into the two triangles brings it down to $2.321$. A shorter code means a better grouping.
+:::
+
+With one module there are no exits, $q = q_c = 0$, and $L$ is just the entropy of the visit shares $-\sum_i p_i \log_2 p_i$. The Infomap method searches for the partition with the smallest $L$. The block below prints $L$ for four partitions of the karate club; look for which partition has the smallest number.
 
 ::: {.panel-tabset group="language"}
 
@@ -899,17 +923,17 @@ entropy of the visit shares  4.704 bits
 
 :::
 
-One module costs 4.704 bits per step, which is the entropy printed on the last line. The real two-side split brings it to 4.462, Louvain's four groups to 4.336, and Infomap's three, which it searched for, to 4.312, the shortest of the four. Notice that the ranking is not the modularity ranking: Louvain has the higher $Q$ and Infomap the shorter code. The two scores ask different questions (how many ties are inside versus how long a walker stays), and on directed networks, where Infomap uses the arrows and modularity usually does not, they can differ much more.
+One module costs 4.704 bits per step, which is the entropy printed on the last line. The real two-side split brings it to 4.462, Louvain's four groups to 4.336, and Infomap's three, which it searched for, to 4.312, the shortest of the four. Notice that the ranking is not the modularity ranking: Louvain has the higher $Q$ and Infomap the shorter code. So in plain words: two reasonable scores disagree about the best grouping. The two scores ask different questions (how many ties are inside versus how long a walker stays), and on directed networks, where Infomap uses the arrows and modularity usually does not, they can differ much more.
 
 ### The block model view
 
-A third way to think about communities is as a statistical model. In a **stochastic block model** [@holland1983stochastic] every person belongs to one block, and the chance that two people are tied depends only on their two blocks. "Communities" are the special case where the chance is higher inside a block than between blocks. If you know the blocks, estimating the model is counting: the best chance for each pair of blocks is the share of its possible pairs that are tied. For the karate club's two real sides, @sec-case-karate counts 35 ties among the 136 possible pairs inside Mr. Hi's side, 32 of 136 inside the officer's side, and 11 of $17 \times 17 = 289$ between. That's densities of 0.257, 0.235 and 0.038, against 0.139 for the whole club. A model that only knows "same side" or "different side" has read the structure off the ties.
+A third way to think about communities is as a statistical model, a recipe that could have produced the network. In a **stochastic block model** [@holland1983stochastic] every person belongs to one block, and the chance that two people are tied depends only on their two blocks. "Communities" are the special case where the chance is higher inside a block than between blocks. If you know the blocks, estimating the model is counting ("what share of the possible pairs are tied?"): the best chance for each pair of blocks is the share of its possible pairs that are tied. For the karate club's two real sides, @sec-case-karate counts 35 ties among the 136 possible pairs inside Mr. Hi's side, 32 of 136 inside the officer's side, and 11 of $17 \times 17 = 289$ between. That's densities of 0.257, 0.235 and 0.038, against 0.139 for the whole club. A model that only knows "same side" or "different side" has read the structure off the ties.
 
 What the model adds is a principled answer to "how many groups?" and "how sure?", because it has a likelihood, and models with more groups can be penalized for their extra parameters [@peixoto2014hierarchical]. Plain block models give hubs their own block, which is why the fitted model in @sec-latent-space finds five busy members and then everyone else; the degree-corrected version [@karrer2011stochastic] lets people differ in popularity so that blocks can be groups and not just levels of activity. Which of these is the "community" is again a modeling choice, and @sec-latent-space shows both.
 
 ### Nine methods, one marriage network
 
-The Florentine families (15 families, 20 marriages, from @sec-centrality) are small enough to run every method, including the exact optimum. The table gives each method's number of groups, its modularity, and its adjusted Rand index against the best partition (the exact optimum in the R and Rust tabs; NetworkX has no exact optimizer, so its tab compares against the fast greedy partition).
+The Florentine families (15 families, 20 marriages, from @sec-centrality) are small enough to run every method, including the exact optimum. The table gives each method's number of groups, its modularity, and its adjusted Rand index against the best partition (the exact optimum in the R and Rust tabs; NetworkX has no exact optimizer, so its tab compares against the fast greedy partition). In the table, look at whether methods with nearly the same modularity pick the same groups.
 
 ::: {.panel-tabset group="language"}
 
@@ -1073,7 +1097,7 @@ Girvan-Newman              4      0.397          0.802
 
 :::
 
-Fast greedy lands on the exact optimum (adjusted Rand 1.000) with three groups and $Q = 0.399$. Louvain, Leiden, Walktrap, Infomap and Girvan-Newman all find four groups with $Q = 0.397$, within 0.002 of the best, but they aren't the same four groups: against the optimum Louvain and Leiden score 0.604, and Walktrap, Infomap and Girvan-Newman 0.802. Label propagation finds two groups with $Q = 0.319$ and the leading eigenvector three with 0.364. So almost-equal modularity hides real disagreement about who goes with whom. That is the **degeneracy** of modularity: a great many partitions score close to the maximum, and the maximum itself is not special. If you pick one by its score alone, you pick among near-ties.
+Fast greedy lands on the exact optimum (adjusted Rand 1.000) with three groups and $Q = 0.399$. Louvain, Leiden, Walktrap, Infomap and Girvan-Newman all find four groups with $Q = 0.397$, within 0.002 of the best, but they aren't the same four groups: against the optimum Louvain and Leiden score 0.604, and Walktrap, Infomap and Girvan-Newman 0.802. Label propagation finds two groups with $Q = 0.319$ and the leading eigenvector three with 0.364. In plain words: methods with nearly the same score often disagree about who goes with whom. So almost-equal modularity hides real disagreement about who goes with whom. That is the **degeneracy** of modularity: a great many partitions score close to the maximum, and the maximum itself is not special. If you pick one by its score alone, you pick among near-ties.
 
 The same exercise on bigger classic networks is done in the case studies, and we don't repeat their numbers. @sec-case-karate runs eleven methods on the karate club and gets two, three or four groups, with modularity from 0.358 (the real split, the lowest of all) to 0.420 (the exact optimum). @sec-case-sampson finds three communities in each of Sampson's three liking waves, and their agreement with Sampson's four hand-drawn groups is close to what shuffling the labels would give. Three networks, and three different ways for methods to disagree.
 
@@ -1093,7 +1117,7 @@ Is the four-community answer "wrong"? No. It's a different and finer description
 
 ### Turning the dial
 
-The resolution setting makes this explicit. @fig-resolution-sweep shows what Louvain finds on the same network as the setting rises.
+The resolution setting makes this explicit. The next block runs Louvain at several settings; look at how the number of groups grows. @fig-resolution-sweep shows what Louvain finds on the same network as the setting rises, a bit like zooming a map from country level down to streets.
 
 ![The resolution setting controls how fine the communities are. The setting with the highest modularity is not necessarily the one that matches your question.](../figures/resolution-sweep.svg){#fig-resolution-sweep fig-alt="A bar chart with five bars for resolution settings 0.5, 1, 1.5, 2 and 3, showing 2, 4, 5, 8 and 12 communities. The bar for resolution 1, four communities, is highlighted because it has the highest modularity, 0.419."}
 
@@ -1168,13 +1192,13 @@ resolution 3: 12 groups, modularity 0.226
 
 :::
 
-Turning the dial up gives more and smaller groups: two at 0.5, four at the standard setting of 1, twelve at 3. Scored on the same standard yardstick, the middle setting wins, but note that the winner depends on the yardstick.
+In plain words, a higher setting means smaller groups. Turning the dial up gives more and smaller groups: two at 0.5, four at the standard setting of 1, twelve at 3. Scored on the same standard yardstick, the middle setting wins, but note that the winner depends on the yardstick.
 
 The R and Python tabs draw different random numbers from the Rust one, so the middle rows of their sweep can differ in the last digits or by a group.
 
 ## Comparing partitions
 
-How do you tell whether two ways of dividing a network agree? Several scores exist, and they answer the question slightly differently. The **adjusted Rand index** [@hubert1985comparing] counts pairs of people who are grouped together in both partitions or apart in both, and corrects for the agreement you'd get by chance. The **variation of information** [@meila2007comparing] and **normalized mutual information** measure how much knowing one partition tells you about the other. Adjusted mutual information [@vinh2010information] corrects the latter for chance. All of them are useful for the same three jobs: checking a method against known groups, checking whether two methods agree, and checking whether one method gives the same answer on repeated runs.
+How do you tell whether two ways of dividing a network agree? (Think of two teachers each splitting the same class into project teams: how alike are their lists?) Several scores exist, and they answer the question slightly differently. The **adjusted Rand index** [@hubert1985comparing] counts pairs of people who are grouped together in both partitions or apart in both, and corrects for the agreement you'd get by chance. The **variation of information** [@meila2007comparing] and **normalized mutual information** measure how much knowing one partition tells you about the other. Adjusted mutual information [@vinh2010information] corrects the latter for chance. The next block computes the adjusted Rand index between the Louvain communities and the real sides. All of them are useful for the same three jobs: checking a method against known groups, checking whether two methods agree, and checking whether one method gives the same answer on repeated runs.
 
 ::: {.panel-tabset group="language"}
 
@@ -1236,19 +1260,31 @@ adjusted Rand  0.392
 
 :::
 
-The adjusted Rand index is 1 for identical partitions and about 0 for agreement no better than chance. At 0.392 the communities agree with the real split a fair amount, which fits the picture: they nest inside the two sides, apart from a few members who sit between.
+In plain words, the score says how closely the two splits agree. The adjusted Rand index is 1 for identical partitions and about 0 for agreement no better than chance. At 0.392 the communities agree with the real split a fair amount, which fits the picture: they nest inside the two sides, apart from a few members who sit between.
 
 ### Three scores, read off one table
 
-All three scores come from the same table, the **contingency table** whose cell $n_{ij}$ counts the people in group $i$ of the first partition and group $j$ of the second. Let $a_i$ be the row sums, $b_j$ the column sums, and $n$ the number of people. Eight people make a table you can do by hand. Partition $X$ puts the first four together and the last four together. Partition $Y$ puts the first three together and the last five together. The table is
+This part has the most formulas in the chapter. On a first read you can skim to the code's output; you'll still have the rule of thumb that 1 means identical and 0 means no better than chance. All three scores come from the same table, the **contingency table** (a grid whose cell counts the people placed in a given group by the first partition and a given group by the second) whose cell $n_{ij}$ counts the people in group $i$ of the first partition and group $j$ of the second. Let $a_i$ be the row sums, $b_j$ the column sums, and $n$ the number of people. Eight people make a table you can do by hand. Partition $X$ puts the first four together and the last four together. Partition $Y$ puts the first three together and the last five together. The table is
 
 $$
 \begin{array}{c|cc|c} & Y_1 & Y_2 & \\ \hline X_1 & 3 & 1 & 4 \\ X_2 & 0 & 4 & 4 \\ \hline & 3 & 5 & 8 \end{array}
 $$
 
+::: {.callout-tip title="In plain words"}
+Rows are the groups of the first partition and columns are the groups of the second. The first row says: of the four people in $X_1$, three are in $Y_1$ and one is in $Y_2$. The right-hand column and bottom row are the row and column totals, written $a_i$ and $b_j$, and 8 in the corner is everybody.
+:::
+
 **Adjusted Rand index.** Count pairs of people. There are $\binom{8}{2} = 28$. The pairs that sit together in both partitions are $\sum_{ij} \binom{n_{ij}}{2} = 3 + 0 + 0 + 6 = 9$. The pairs together in $X$ are $\sum_i \binom{a_i}{2} = 6 + 6 = 12$, and in $Y$ they are $\sum_j \binom{b_j}{2} = 3 + 10 = 13$. By chance you'd expect $12 \times 13 / 28 = 5.57$ pairs together in both, and the most possible, averaging the two, is $(12 + 13)/2 = 12.5$. So $\text{ARI} = (9 - 5.57)/(12.5 - 5.57) = 0.495$.
 
+::: {.callout-tip title="In plain words"}
+The adjusted Rand index asks, of all pairs of people, how many does the table treat the same way in both partitions, after subtracting what luck would give? The top is "pairs together in both, minus the pairs luck would put together in both", and the bottom is "the most that is possible, minus the same luck figure". With 28 pairs, 9 together in both, and 5.57 expected by luck, the answer is $0.495$: about half-way from chance to perfect agreement.
+:::
+
 **Normalized mutual information and variation of information.** Use entropies, $H(X) = -\sum_i (a_i/n) \ln (a_i/n)$ and the same for $Y$, and the mutual information $I = \sum_{ij} (n_{ij}/n) \ln \frac{n \, n_{ij}}{a_i b_j}$, which says how much knowing a person's group in one partition tells you about the other. Here $H(X) = 0.693$, $H(Y) = 0.662$ and $I = 0.380$. Then $\text{NMI} = 2I/(H(X) + H(Y)) = 0.562$ and $\text{VI} = H(X) + H(Y) - 2I = 0.594$. NMI is 1 for identical partitions and 0 for unrelated ones. VI is a distance, 0 for identical partitions, and it obeys the triangle inequality [@meila2007comparing]; here it is in natural-log units.
+
+::: {.callout-tip title="In plain words"}
+Entropy, $H$, measures how mixed-up one partition is: $0$ if everyone were in one group, higher with more evenly sized groups. Mutual information, $I$, measures how much knowing someone's group in $X$ narrows down their group in $Y$. NMI rescales $I$ to run from 0 to 1, and VI measures the distance between the two partitions. In our eight-person example, $H(X) = 0.693$ and $H(Y) = 0.662$ and $I = 0.380$, so $\text{NMI} = 2 \times 0.380 / (0.693 + 0.662) = 0.562$, and $\text{VI} = 0.693 + 0.662 - 2 \times 0.380 = 0.594$.
+:::
 
 ::: {.panel-tabset group="language"}
 
@@ -1328,13 +1364,13 @@ variation of information       0.594
 
 :::
 
-The code agrees with the paper: 0.495, 0.562 and 0.594. Three habits go with these scores. Say which one you used, because they weigh disagreements differently and aren't interchangeable. The adjusted Rand index can go below zero (agreement worse than chance), while NMI can't, and raw NMI tends to rise just because one partition has more groups, which is why Vinh and colleagues built a version corrected for chance [@vinh2010information]. And always ask what the other partition is. Agreement with "known groups" such as departments or the sides in the karate club tells you about how those labels relate to ties, not about whether the algorithm is right, a point the case studies press.
+In plain words, the computer reproduces the hand numbers. The code agrees with the paper: 0.495, 0.562 and 0.594. Three habits go with these scores. Say which one you used, because they weigh disagreements differently and aren't interchangeable. The adjusted Rand index can go below zero (agreement worse than chance), while NMI can't, and raw NMI tends to rise just because one partition has more groups, which is why Vinh and colleagues built a version corrected for chance [@vinh2010information]. And always ask what the other partition is. Agreement with "known groups" such as departments or the sides in the karate club tells you about how those labels relate to ties, not about whether the algorithm is right, a point the case studies press.
 
 ## How stable is a partition?
 
-A partition from one run is a single draw. Three kinds of wobble are worth separating. **Algorithm noise**: the same method with a different seed. **Data noise**: the same method after a few ties are dropped or added, which is how much the answer depends on the exact data you happened to collect. **Scale**: the same method at a different resolution. @sec-case-karate runs the first and third on the karate club (200 seeds, six resolutions), and drops a tenth of the ties in its stress tests. Here we use the Florentine marriages to show how to read the first one.
+A partition from one run is a single draw, like photographing a crowd on one afternoon. Three kinds of wobble are worth separating. **Algorithm noise**: the same method with a different seed. **Data noise**: the same method after a few ties are dropped or added, which is how much the answer depends on the exact data you happened to collect. **Scale**: the same method at a different resolution. @sec-case-karate runs the first and third on the karate club (200 seeds, six resolutions), and drops a tenth of the ties in its stress tests. Here we use the Florentine marriages to show how to read the first one.
 
-The standard trick is **consensus clustering**. Run the method many times. For every pair of people, record the share of runs in which they land in the same group (the *co-association* matrix). Pairs near 1 are together for good, pairs near 0 are apart for good, and pairs in between are the unsettled ones. You can then cluster that matrix once more to get one consensus partition, or just look at which people are unsettled, which is often the more useful finding.
+The standard trick is **consensus clustering**: run the method many times and keep what is stable. Run the method many times. For every pair of people, record the share of runs in which they land in the same group (the *co-association* matrix). Pairs near 1 are together for good, pairs near 0 are apart for good, and pairs in between are the unsettled ones. You can then cluster that matrix once more to get one consensus partition, or just look at which people are unsettled, which is often the more useful finding.
 
 ::: {.panel-tabset group="language"}
 
@@ -1452,7 +1488,7 @@ Seed stability is the easy test. A partition that survives different seeds can s
 
 ## Do communities exist here?
 
-Every network has a partition with a positive $Q$, and optimization finds structure in noise. So a high modularity can't be read on its own. The question to ask is whether the network has *more* community structure than a random network with the same degrees would, and the way to ask it is the null comparison of @sec-tests-and-null-models: generate random networks that keep every person's degree (the configuration model of @sec-small-worlds), run the same method on each, and see where the observed score falls.
+Every network has a partition with a positive $Q$, and optimization finds structure in noise, the way you can find shapes in clouds. So a high modularity can't be read on its own. The question to ask is whether the network has *more* community structure than a random network with the same degrees would, and the way to ask it is the null comparison of @sec-tests-and-null-models: generate random networks that keep every person's degree (the configuration model of @sec-small-worlds), run the same method on each, and see where the observed score falls.
 
 ::: {.panel-tabset group="language"}
 
@@ -1540,7 +1576,7 @@ observed 0.397; same-degree networks: mean 0.374, highest 0.465, share as high 0
 
 :::
 
-The Florentine marriages score 0.397, and random networks with the same degrees score 0.374 on average, with the best of the 200 reaching 0.465. About 23% of the random networks are at least as modular as the real one (Rust run; the R and Python tabs draw different random networks, so their figures differ in the last digits). So for this network the high-looking 0.397 is not evidence of community structure beyond what the degrees give. That's a small network, 15 families and 20 marriages, and a modest null, so say it with its limits: the data don't show community structure beyond the degrees, which is not the same as showing there is none.
+The Florentine marriages score 0.397, and random networks with the same degrees score 0.374 on average, with the best of the 200 reaching 0.465. About 23% of the random networks are at least as modular as the real one (Rust run; the R and Python tabs draw different random networks, so their figures differ in the last digits). In plain words: random networks with the same degrees often score about as high, so 0.397 isn't special here. So for this network the high-looking 0.397 is not evidence of community structure beyond what the degrees give. That's a small network, 15 families and 20 marriages, and a modest null, so say it with its limits: the data don't show community structure beyond the degrees, which is not the same as showing there is none.
 
 The karate club passes the same test. In @sec-case-karate the best Louvain score of 0.419 sits against about 0.29 on average, and never above 0.35, in 200 rewired networks. The point isn't that one passes and one fails. It's that the number needs a yardstick before it means anything.
 
@@ -1554,7 +1590,7 @@ Most community methods were written for undirected, unweighted, all-positive tie
 
 **Signed.** A dislike isn't the absence of a like, so the usual score, which counts only the presence of ties, is the wrong tool. There are signed versions of modularity [@traag2009community], and the balance-theory approach of @sec-signed-and-valued looks for groups with positive ties inside and negative ties between.
 
-Two blocks of numbers. First, Sampson's novices at the third time they were asked whom they like, which @sec-case-sampson studies at length: we symmetrize two ways, and run Infomap on the arrows. Second, the karate club with Zachary's counts of contexts as weights.
+The next code shows what changes when ties have directions or weights; look at whether the groups change. Two blocks of numbers. First, Sampson's novices at the third time they were asked whom they like, which @sec-case-sampson studies at length: we symmetrize two ways, and run Infomap on the arrows. Second, the karate club with Zachary's counts of contexts as weights.
 
 ::: {.panel-tabset group="language"}
 
@@ -1825,15 +1861,15 @@ What we saw while writing this chapter, so you can recognize it:
 ## Worked answers
 
 1. The community panel is two complete groups of four, joined by one tie. The maximal cliques of three or more are those two groups of four, and nobody belongs to both. The joining tie is a clique of two, which the "three or more" rule leaves out.
-2. With $m = 7$: each triangle has 3 ties inside and degrees adding to 7, so $Q = 2 (3/7 - (7/14)^2) = 0.357$. One group of everybody has $7/7 - (14/14)^2 = 0$. Two triangles is higher, because the observed share inside (6 of 7 ties) is well above the share degrees alone would put inside.
-3. With A-E added, ACDE is a clique too, so the maximal cliques of three or more are ABCD and ACDE. E now has ties to A, C, D and F. Peeling removes G and then F, and everyone else keeps three ties or more, so coreness is 3 for A to E and 1 for F and G. Every tie inside A to E closes at least two triangles (for instance A-B closes with C and D; B-E isn't a tie), so 9 ties are in the 3-truss and 9 in the 4-truss, and none survives in the 5-truss (the ties with three triangles, A-C, A-D and C-D, lose support once the others are peeled).
-4. The table has rows $X$ and columns $Y$: $\begin{pmatrix} 2 & 1 & 0 \\ 0 & 1 & 2 \end{pmatrix}$. Pairs together in both: $1 + 0 + 0 + 0 + 0 + 1 = 2$. Pairs together in $X$: $3 + 3 = 6$. In $Y$: $1 + 1 + 1 = 3$. Of $\binom{6}{2} = 15$ pairs, chance gives $6 \times 3 / 15 = 1.2$, and the average is $(6 + 3)/2 = 4.5$. So ARI $= (2 - 1.2)/(4.5 - 1.2) = 0.242$.
-5. There are $4c$ ties. A triangle alone has 3 ties inside and degrees adding to $3 \cdot 2 + 2 = 8$, so $Q = c\,[3/(4c) - (8/8c)^2] = 3/4 - 1/c$. A merged pair has $3 + 3 + 1 = 7$ ties inside and degrees adding to 16, so $Q = (c/2)\,[7/(4c) - (16/8c)^2] = 7/8 - 2/c$. Merging wins when $7/8 - 2/c > 3/4 - 1/c$, which is when $c > 8$. At $c = 8$ they tie at 0.625, and at $c = 10$ merging scores 0.675 against 0.65. That is the resolution limit: for a big enough ring the "wrong" grouping scores higher.
-6. In the Rust run of @sec-case-karate, 199 of 200 seeds gave four communities and one gave three. The members that move are the ones whose ties split between circles, and which ones differ by seed, so a list from five seeds will not match a list from another five. Report a share of runs, not a yes or no.
-7. In this chapter's numbering the 4-core has 10 people, including both leaders and people from both sides. The 4-truss has 12 people and 25 ties, and the 5-truss 6 people (members 0, 1, 2, 3, 7 and 13), all on Mr. Hi's side. A core asks for a number of ties, a truss for shared friends, and the stricter truss finds the tight cluster around one leader.
+2. Splitting into the two triangles scores higher than lumping everyone together. With $m = 7$: each triangle has 3 ties inside and degrees adding to 7, so $Q = 2 (3/7 - (7/14)^2) = 0.357$. One group of everybody has $7/7 - (14/14)^2 = 0$. Two triangles is higher, because the observed share inside (6 of 7 ties) is well above the share degrees alone would put inside.
+3. Adding A-E makes a second four-person clique. With A-E added, ACDE is a clique too, so the maximal cliques of three or more are ABCD and ACDE. E now has ties to A, C, D and F. Peeling removes G and then F, and everyone else keeps three ties or more, so coreness is 3 for A to E and 1 for F and G. Every tie inside A to E closes at least two triangles (for instance A-B closes with C and D; B-E isn't a tie), so 9 ties are in the 3-truss and 9 in the 4-truss, and none survives in the 5-truss (the ties with three triangles, A-C, A-D and C-D, lose support once the others are peeled).
+4. The two partitions agree on some pairs and not others, and the table shows exactly where. The table has rows $X$ and columns $Y$: $\begin{pmatrix} 2 & 1 & 0 \\ 0 & 1 & 2 \end{pmatrix}$. Pairs together in both: $1 + 0 + 0 + 0 + 0 + 1 = 2$. Pairs together in $X$: $3 + 3 = 6$. In $Y$: $1 + 1 + 1 = 3$. Of $\binom{6}{2} = 15$ pairs, chance gives $6 \times 3 / 15 = 1.2$, and the average is $(6 + 3)/2 = 4.5$. So ARI $= (2 - 1.2)/(4.5 - 1.2) = 0.242$.
+5. Merging triangles in pairs wins only when the ring is long, and the algebra shows how long. There are $4c$ ties. A triangle alone has 3 ties inside and degrees adding to $3 \cdot 2 + 2 = 8$, so $Q = c\,[3/(4c) - (8/8c)^2] = 3/4 - 1/c$. A merged pair has $3 + 3 + 1 = 7$ ties inside and degrees adding to 16, so $Q = (c/2)\,[7/(4c) - (16/8c)^2] = 7/8 - 2/c$. Merging wins when $7/8 - 2/c > 3/4 - 1/c$, which is when $c > 8$. At $c = 8$ they tie at 0.625, and at $c = 10$ merging scores 0.675 against 0.65. That is the resolution limit: for a big enough ring the "wrong" grouping scores higher.
+6. Almost always yes, four communities each time. In the Rust run of @sec-case-karate, 199 of 200 seeds gave four communities and one gave three. The members that move are the ones whose ties split between circles, and which ones differ by seed, so a list from five seeds will not match a list from another five. Report a share of runs, not a yes or no.
+7. The three sets are nested and shrinking, and none of them is a whole side. In this chapter's numbering the 4-core has 10 people, including both leaders and people from both sides. The 4-truss has 12 people and 25 ties, and the 5-truss 6 people (members 0, 1, 2, 3, 7 and 13), all on Mr. Hi's side. A core asks for a number of ties, a truss for shared friends, and the stricter truss finds the tight cluster around one leader.
 8. Good news: communication really follows the formal structure; and the method recovered a known structure, which is a sanity check. Caution: the match may come from how the data were collected (a survey sent by department), from tuning the resolution until it matched, or from a run that was not repeated with other seeds. Also, three large groups are easy to match, so ask what agreement a random shuffle gives.
-9. Ask what the ties are, which method, resolution and seed, and what random networks with the same degrees score (the Florentine marriages score 0.397 where the random average is 0.374, so a score alone is not a verdict). Then run it with several seeds and resolutions, compare against degree-matched random networks, and report which people change group.
-10. Cliques are too strict, since friend groups have missing ties. A modularity method such as Louvain or Leiden is a reasonable start, run with several seeds and resolutions, plus a null comparison. Check the result against attributes you didn't use (class, activities, seating) and ask the students, since ties from a survey may differ from friendship.
+9. Don't agree yet; a score alone isn't a verdict. Ask what the ties are, which method, resolution and seed, and what random networks with the same degrees score (the Florentine marriages score 0.397 where the random average is 0.374, so a score alone is not a verdict). Then run it with several seeds and resolutions, compare against degree-matched random networks, and report which people change group.
+10. Start with a modularity method, not cliques. Cliques are too strict, since friend groups have missing ties. A modularity method such as Louvain or Leiden is a reasonable start, run with several seeds and resolutions, plus a null comparison. Check the result against attributes you didn't use (class, activities, seating) and ask the students, since ties from a survey may differ from friendship.
 :::
 
 ## Summary
