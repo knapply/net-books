@@ -1,0 +1,54 @@
+id = "missing-data-checks"
+title = "Missing people, missing ties and invented ties: stress checks"
+kind = "procedure"
+chapter = "collecting-data"
+summary = "Damage the data in ways that match how it could have gone wrong, recompute, and report which findings move."
+answers = "How much would my conclusions change if some people did not answer, some ties were not recorded, or some recorded ties were false?"
+
+data_requirements = [
+  "A statement of who responded and what each person was asked.",
+  "A guess, from the design, of which kind of damage is plausible: nonresponse, a cap on names, a boundary, recording errors.",
+  "A fixed random seed or an exact enumeration, so the check can be repeated.",
+]
+
+assumptions = [
+  "The damage used in the check resembles the real damage. Random loss is a baseline; real loss is rarely random.",
+  "The measures compared are the ones the conclusion rests on.",
+  "The check covers whole-network features (density, clustering, distances) as well as people-level ranks.",
+]
+
+readings = [
+  { context = "Survey of an organization with nonresponse", high = "Rank correlations stay high after dropping a few respondents: ranks are stable to this kind of loss, but levels (reciprocity, density) may not be.", low = "Low values mean the conclusion depends on the missing people. Collect them or say so." },
+  { context = "Network built from logs or trace data", high = "Missed ties are likely random noise; false ties from shared accounts or bots may not be.", low = "If a few false ties change the ranking, the ranking is fragile." },
+  { context = "Archival network (records, minutes, filings)", high = "What is missing is whatever was not written down, which is not random.", low = "A stable result still describes only the recorded ties." },
+]
+
+pitfalls = [
+  "Checking only random loss when the plausible loss is of the best-connected people.",
+  "Reporting one measure that is stable and not the ones that moved. Density can stay near constant when people are lost at random while mean degree falls.",
+  "Treating missed ties and false ties as the same kind of error; in sparse networks false ties act as shortcuts and can distort path-based measures more.",
+  "Reading reciprocity from respondents when some did not respond; a mutual tie looks one-way when one side is missing.",
+]
+
+checks = [
+  "Drop people, drop ties, add false ties, and drop the best-connected people, each at several amounts.",
+  "Report rank correlations for each measure you use and the ratio of the whole-network numbers to the full-data values.",
+  "Use exact enumeration when the number of cases is small.",
+  "Report the worst case as well as the average.",
+]
+
+do_not_claim = [
+  "That a result is robust to missing data because it survived random loss.",
+  "That missing ties are harmless because ranks stayed the same.",
+  "That one network's stability carries over to another with different density.",
+]
+
+report_template = "To check the effect of {damage}, {draws} {kind_of_draw} were made, and {measures} were recomputed. Rank correlations with the full data averaged {rho} (worst {worst}). The results that moved most were {moved}. Results for {unchanged} did not change appreciably."
+
+related = ["boundary-specification", "permutation-test", "null-models-choice"]
+sources = ["kossinets2006effects", "borgatti2006robustness", "costenbader2003stability", "robins2004missing", "handcock2010modeling"]
+
+[knappnet]
+rust = "Remove rows and columns from the table or entries from the edge list, rebuild with Graph::from_edges, and call the measure again; the chapter uses a shared random generator so draws agree across languages"
+r = "Build a smaller table or edge list, call as_net_frame() or net_frame() and the measure again; net_subnetwork() removes people"
+python = "H = G.copy(); H.remove_nodes_from(...) or H.remove_edges_from(...); recompute with networkx"

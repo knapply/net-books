@@ -1,8 +1,30 @@
 # Collecting network data {#sec-collecting-data}
 
+::: {.callout-note appearance="simple"}
+## Prerequisites
+@sec-networks-as-data, and the ideas of degree and betweenness from @sec-centrality. @sec-ego-networks matters for the section on sampling people. We use Zachary's karate club and Krackhardt's 21 managers again, and two smaller data sets: Sampson's novices and the Southern women. All numbers are from the code in the chapter.
+:::
+
+## Introduction
+
+Every measure in this book starts from a table somebody made. Before anyone computes a degree, someone decided who counted, what a tie was, whom to ask, how many names to allow, and what to do about the people who did not answer. Those decisions are quiet, and they move the numbers more than most choices of formula do.
+
+This chapter is about those decisions. It asks questions you can answer before you collect anything, and checks you can run after. Where is the boundary, and what happens to people near it? How does the wording of a question define the network? What do snowball, respondent-driven and ego designs each do to degree and centrality? If some people don't answer, or some ties are missing or false, which measures move and which hold still? What do you owe the people in the data? And how do you turn a raw table into a network in a way someone else can check?
+
+We answer with numbers on bundled data. One device makes that possible in three languages: a tiny shared random number generator, so that when a check says "drop 20% of the ties at random, 200 times", R, Python and Rust drop the same ties and print the same numbers.
+
+::: {.callout-tip appearance="simple"}
+## How to read the code
+The blocks run top to bottom as one script per language. The first block defines helpers and loads the karate club; later blocks reuse them. The first block also holds every Rust `use` line.
+:::
+
 ## Where the boundary is
 
-PROSE
+A **boundary** is the rule that says who is in the data. Two kinds are usually distinguished: a *realist* boundary follows what the people themselves treat as the group (everyone who says they belong), and a *nominalist* boundary is set by the researcher to fit a question (everyone on this payroll, everyone who used this hashtag). @marsden1990network surveys the standard approaches. Either way, the rule cuts ties, and the people near the cut pay for it.
+
+Take six people in a line, a to f, where each knows the next. Person c sits between a and b on one side and d, e and f on the other, so c lies on 2 × 3 = 6 shortest routes between others. Now study only c to f. Person c is the end of a line and lies on none. The person didn't change. The boundary did.
+
+For a real case, suppose we study only Mr. Hi's side of the karate club [@zachary1977information]. That is a nominalist boundary, and an awkward one, because the split is the thing the club is famous for. The block compares the club with that side alone.
 
 ::: {.panel-tabset group="language"}
 
@@ -247,12 +269,19 @@ rank correlation with the whole-club value, Mr. Hi's side only: degree 0.885, be
 
 :::
 
+Read it by rows. Dropping the officer's side keeps 17 members and 35 of the 78 ties, and cuts 11 ties that led across. Mean degree barely moves (4.588 to 4.118), but density almost doubles (0.139 to 0.257) and clustering rises from 0.256 to 0.392. Those jumps come from the smaller size and from cutting the ties that join the two sides, not from the people. Three of the 17 members lose at least a third of their ties.
 
-PROSE
+The rank correlations are the part to remember. Among Mr. Hi's side, degree keeps its order fairly well (0.885), and betweenness does not (0.587), because betweenness depends on routes through the other side. Whoever sits on the border looks like a dead end, and routes that ran through the other side disappear. @fig-boundary-cut shows the cut.
 
-## Name generators
+![Studying only Mr. Hi's side of the karate club keeps 17 members and 35 ties and cuts 11 ties to members outside the boundary.](../figures/boundary-cut.svg){#fig-boundary-cut fig-alt="A network of 34 numbered members. Seventeen members on Mr. Hi's side are blue circles joined by 35 solid black ties. Seventeen members on the officer's side are faded gray circles joined by faint gray ties. Eleven red dashed ties cross between the two sides."}
 
-PROSE
+Four habits follow. Write the boundary rule down with the data. Count the ties that cross it (a survey item such as "how many of your contacts are outside the firm?" does this). Never compare densities, clustering or distances between data sets with different boundaries without saying so. And be suspicious of a boundary drawn around the very groups you then compare: it builds part of the answer into the data. The card `boundary-specification` lists the checks.
+
+## Name generators and interpreters
+
+If the boundary says who is in, the **name generator** says who is a tie. It is the question respondents answer by listing people: "Who do you go to for advice?", "Who do you consider a friend?", "Who did you talk to this week?". The follow-up questions about each named person (how close, how long, which group) are the **name interpreters**. @sec-ego-networks used both for ego networks; here we look at what the wording does to a whole network [@marsden1990network; @burt1984network].
+
+Krackhardt asked 21 managers two questions and also took the formal reporting lines from company records [@krackhardt1987cognitive]. Same people, three relations. Do they agree? Then a second question, about how many names a respondent may give. Sampson's novices named at most three people each time, which is a **fixed-choice** design, and Krackhardt's managers named as many as they liked. The block ends by capping the managers' lists at 2, 3 and 5 names, keeping a random subset of each manager's arcs, averaged over 200 draws.
 
 ::: {.panel-tabset group="language"}
 
@@ -509,12 +538,37 @@ advice        5      92.0        0.278         0.849
 
 :::
 
+The two questions give two different networks. Advice has 190 arcs and friendship 102. Only 60 arcs are in both: 31.6% of advice arcs are friendships, and 58.8% of friendship arcs are advice arcs. The people who are sought out differ: the three most-named managers for advice are 2, 18 and 21, and for friendship 2, 1 and 12, and the rank correlation of in-degree is 0.139, of out-degree -0.094. A manager who is popular for advice is not, on this evidence, popular as a friend. Neither question is the "real" network. Each is a different relation, and the sentence that describes your results has to name the question.
 
-PROSE
+The archival relation behaves differently again. The org chart (collected from records, not asked) has 20 arcs, and 19 of them also appear as advice from subordinate to boss. Only 12 appear as friendship. A formal line is a good predictor of an advice tie in this firm, and a poor one of friendship.
 
-## Snowball
+For the cap, the survey wrote the limit into the data. Sampson's novices name 3 or 4 people per wave (a few gave tied ranks), against 0 to 18 for the managers' friendships. Capping costs in two ways. Arcs are lost, of course (friendship drops from 102 to 36, 48 or 68 as the cap rises from 2 to 5). More important, mutual ties vanish, because a mutual tie needs *both* people to name each other: the reciprocated share of friendship arcs falls from 0.451 to 0.220 at a cap of 2, 0.304 at 3 and 0.381 at 5. In-degree order is better preserved, with rank correlations of 0.623, 0.698 and 0.819. This was a random cap. If respondents list their closest people first, the lost arcs are the weaker ones, which is a different loss, and one you can't recover without the question order.
 
-PROSE
+Fixed-choice data also settle how to read a repeated measure. Sampson's liking was collected in three waves. 38 choices appear in one wave, 20 in two and 30 in all three. The network is therefore 88 arcs if one wave is enough, 50 if two are needed and 30 if all three are. That is a decision, not a fact: say which you made.
+
+## Where the data come from: survey, archive, trace
+
+The same relation can come from three kinds of source, and each makes different mistakes.
+
+| | Survey (people are asked) | Archive (records written for another purpose) | Digital trace (logs of what systems recorded) |
+| --- | --- | --- | --- |
+| **What a tie is** | What the person says it is, as worded | What the record happens to link: co-signers, co-authors, board seats | An event: a message, a call, a follow, a co-location |
+| **Who is missing** | Non-respondents, and people named but never asked | Whoever the record did not cover; the unrecorded | Anyone off the platform; people who use other channels |
+| **Typical errors** | Memory, social desirability, caps on names, fatigue | Recording gaps, clerical errors, one tie standing for a whole group | Shared accounts, bots, automatic messages, one click standing for a friendship |
+| **Strength** | Can ask about meaning and about ties among alters | Often covers the whole population over a long time | Large, timed, no recall error |
+| **Check first** | Response rate by group; the question wording | Why the record was kept and what it omits | What one event means, and whether it needs two people |
+
+Two cautions apply to all of them. People's reports of the network differ from one another [@krackhardt1987cognitive], so a survey tie is a report, not a measurement of contact. And a log records events, so turning events into a tie is a modeling step with its own threshold ("at least one message", "at least three in a month"). The last section of the chapter shows that step.
+
+## Sampling designs and what they do to degree and centrality
+
+When you cannot list everyone, you sample. Three designs are common, and each distorts something different.
+
+**Snowball sampling.** Pick seed people, ask them to name contacts, ask those contacts, and so on in waves [@goodman1961snowball]. It reaches people no list contains, and the sample is connected by construction. The price is that people with many ties are named often, so they are over-represented.
+
+A tiny case: five people in a line, A to E, and a seed at A. After two waves A, B and C are named, and A and B are interviewed. The ties seen are A-B and B-C. C was named, not interviewed, so we see one tie of C's and its real degree of 2 looks like 1. The last wave always looks like the edge of the network.
+
+The block below runs this on every possible seed, so the averages are exact, not random. A person is *named* if within `waves` steps of the seed, *interviewed* if within `waves - 1`, and a tie is *seen* if one of its ends was interviewed. Columns: the share of the network reached, the average true degree of those reached, their average degree as seen in the sample, the share whose seen degree is below their true degree, how many of the network's three highest-degree people were reached, and the rank correlation of betweenness inside the sample with the whole network's betweenness (averaged where it is defined).
 
 ::: {.panel-tabset group="language"}
 
@@ -693,12 +747,31 @@ karate club, two waves: from 6 people (seed 17) to 33 (seed 32)
 
 :::
 
+Start with the first column set. The karate club's mean degree is 4.588, and the people reached by one wave have an average true degree of 7.852. After two waves it is 5.149 and after three 4.932. The Krackhardt friendship network gives the same pattern from 9.096 down to 7.524, the population mean. Those who are named are the well connected, because well-connected people are on more lists. It is Feld's friendship paradox: your friends have more friends than you do [@feld1991friends]. The excess shrinks as the sample grows to cover everybody.
 
-PROSE
+The *seen* degree is the opposite problem. After two waves in the karate club, 61.8% of the people reached have a seen degree below their true one, and the average seen degree is 2.907 against 5.149. Only after three waves, when 86% are reached, does the seen average (4.167) get near the truth. In the Krackhardt network three waves reach everyone and the seen degree is 7.515, almost exact.
 
-## RDS and ego
+Centrality is hit differently. The rank correlation of betweenness is negative after one wave (-0.422 for the club): the sample is a star, in which the seed has all the betweenness. It is 0.503 after two waves and 0.881 after three. Reaching the busiest three people helps too: 0.471 of them on average after one wave, 0.735 after two, 0.980 after three. A snowball from one seed will usually find the hubs only if it runs long enough to reach almost everyone, at which point it is not saving much.
 
-PROSE
+The seed matters. Two waves reach from 6 people (seed 17) to 33 (seed 32). @fig-snowball-seeds shows the extremes of choice: starting from member 12, who has one contact, or member 1, who has sixteen.
+
+![A two-wave snowball sample from member 12 names 17 members and sees 16 ties. From member 1 it names 26 members and sees 51 ties.](../figures/snowball-seeds.svg){#fig-snowball-seeds fig-alt="Two drawings of the 34-member karate club. On the left the sample starts at member 12: 17 members are colored, 2 were interviewed, and 16 ties are drawn bold. On the right it starts at member 1: 26 members are colored, 17 were interviewed, and 51 ties are drawn bold. Members never reached are faded gray."}
+
+What this does and does not show: it is two small networks, exact enumeration, one seed at a time. It says that the bias *exists* and which way it points. It does not give a size for your study, because the size depends on the network. The card `snowball-sampling` lists what to report.
+
+**Respondent-driven sampling (RDS).** In RDS each respondent gets a few coupons to recruit peers, and each respondent reports their degree (how many people in the population they know) [@heckathorn1997respondent]. The design adds a correction: the chain of recruits tends to reach person $i$ with a probability proportional to their degree $d_i$, so weighting each respondent by $1/d_i$ should undo the lean toward well-connected people.
+
+Why that works, on four people. A hub knows three others, who each know only the hub, so the degrees are 3, 1, 1, 1 and the mean degree is 1.5. A long random chain reaches the hub half the time (3 out of 6 ends of ties) and each other person a sixth of the time. The average degree of a respondent is $\tfrac12 \cdot 3 + \tfrac12 \cdot 1 = 2.0$, too high. With weights $1/d$, the hub counts $\tfrac12 \cdot \tfrac13 = \tfrac16$ and the three others $\tfrac16$ each, so the weighted average is $\tfrac{(1/6)\cdot 3 + 3\cdot(1/6)\cdot 1}{1/6 + 3\cdot 1/6} = 1.5$, the truth. In general, with $p_i = d_i / \sum_j d_j$ the long-run chance of reaching person $i$ and $y_i$ the quantity of interest,
+
+$$
+\hat\mu = \frac{\sum_i p_i\, y_i / d_i}{\sum_i p_i / d_i}
+$$
+
+equals the population mean of $y$ exactly in this idealized limit. The assumptions in the limit are strong: ties are mutual, recruiting is random among contacts, the chain is long, sampling is nearly with replacement, and reported degree is right. Real studies break each of them to some degree,.
+
+Ego sampling is the third design: draw people at random and record each one's own ties (@sec-ego-networks). Here the sample *is* random, so the mean of an ego measure is unbiased and its standard error for $k$ people out of $n$ is $s\sqrt{(1 - k/n)/k}$, where $s$ is the standard deviation of the measure over everyone. What an ego sample cannot see is paths: no betweenness, no distances, and constraint needs each alter's total degree.
+
+The block computes the long-run values exactly, so there is no simulation noise. The attribute is "belongs to the officer's faction" for the karate club and "is a middle manager (level 3)" for the Krackhardt managers. The last weighted row shows what happens if respondents can report a degree of at most 6.
 
 ::: {.panel-tabset group="language"}
 
@@ -865,12 +938,26 @@ people sampled    karate  Krackhardt
 
 :::
 
+For the mean degree the lean is large. A chain would report a mean degree of 7.769 in the karate club, against a truth of 4.588, and 9.215 against 7.524 in the firm. Weighting by $1/d$ gives back 4.588 and 7.524 exactly. For an attribute the effect depends on how the attribute lines up with degree. The officer's faction has the same share in the long-run chain (0.481) as in the club (0.500), because the two factions have similar total degree. The share of middle managers in the chain is 0.816, against 0.762 in the firm, because they are the better-connected people, and weighting repairs it. But if reported degree is cut off at 6, the weighted share is 0.800: most of the bias is back. RDS inherits whatever errors the degree reports carry.
 
-PROSE
+For ego samples the standard errors on the mean degree are large for small samples: with 5 people, 1.602 in the club (mean 4.588) and 1.427 in the firm (mean 7.524). With 15 they are 0.748 and 0.504. Part of why the 21-person firm falls faster is the finite population correction. These are standard errors for a mean over people, and your sample size has to come from the question you ask, not from a rule.
 
-## Nonresponse
+::: {.callout-note appearance="simple"}
+## Statistical models for sampled networks
+These weights fix *means of attributes*. They do not make a sampled network into a whole network. If the design matters for a model of ties, the model has to include it [@frank1978sampling; @handcock2010modeling]; @sec-ergm and @sec-reporting say where this bites.
+:::
 
-PROSE
+## Missing data and nonresponse
+
+Missing data are in every network study, and in network data they come in three kinds with different consequences.
+
+- **Non-respondents.** People who were asked and did not answer. Their *own* choices are missing, but others may have named them, so half of each tie is often still there.
+- **Missing ties.** Real ties nobody recorded: a cap on names, a forgotten contact, a missing log.
+- **Missing people.** People left out of the list altogether, so nobody can be asked about them and nobody named them.
+
+The effects depend on the measure and on how the data went missing [@kossinets2006effects; @borgatti2006robustness; @costenbader2003stability]. We check this in two ways. First, exactly, on Krackhardt's friendship network, where we can silence every possible set of one, two or three managers. Their own friendship choices vanish and what others said about them stays.
+
+A three-person case shows the main effect. Ana, Ben and Chloe each name the other two: six arcs, all of them mutual. Now Ana doesn't answer. Ben's and Chloe's arcs to Ana remain, Ana's to them are gone, leaving four arcs. The Ana-Ben and Ana-Chloe pairs now look one-way, so only Ben-Chloe is mutual, and the share of arcs that are reciprocated drops from 1 to 2/4 = 0.5. As pairs, all three ties are still there, because the other side named them. That is why the block uses both: arcs seen, pairs seen (a pair counts if either person named the other), the reciprocated share, and rank correlations of in-degree and of betweenness in the pair network with the full data.
 
 ::: {.panel-tabset group="language"}
 
@@ -991,12 +1078,14 @@ the 3 who name fewest        1  0.990  1.000         0.436          0.988       
 
 :::
 
+With nobody missing, 45.1% of the friendship arcs are reciprocated. Lose one manager and the average share of arcs seen is 0.952, and of pairs 0.966, because a pair is lost only if both people are silent. Rank orders hold: in-degree 0.977, betweenness 0.953. The reciprocated share is already down to 0.428. With three silent (1,330 ways) the arcs seen average 0.857 and the pairs 0.895, in-degree order 0.935 and betweenness order 0.859, but the worst of the 1,330 ways gets betweenness down to 0.558. That is the figure to keep. An average hides the cases where the wrong people go quiet.
 
-PROSE
+Who goes quiet matters more than how many. If the three managers who name the most are silent, only 0.608 of the arcs and 0.658 of the pairs are seen, and betweenness order falls to 0.683. If the three who name the fewest are silent, almost nothing changes (0.990 and 1.000). Heavy talkers are also the ones who carry the most ties, and nonresponse is not usually random with respect to that.
 
-## Random loss
+Reciprocity is the most fragile number: it drops with every silent person (0.428, 0.405, 0.382 for one, two and three silent, 0.323 if the heavy talkers are the silent ones). If you report reciprocity from a survey with nonresponse, say so and report it among respondent pairs only.
 
-PROSE
+Second, a second look from the other side: not who is silent, but which ties or people are lost, at random, in the karate club, with 200 draws for each row. We also remove the three best-connected and the six least-connected members, to see lost people that are not random. Columns: rank correlation of degree and of betweenness with the full club (among the people left), then ratios to the full-club values of mean degree, density, clustering and mean distance, then the average number of separate pieces.
+
 
 ::: {.panel-tabset group="language"}
 
@@ -1208,12 +1297,19 @@ the 6 least connected missing        0.981       0.938     1.043    1.275      1
 
 :::
 
+Two things stand out. First, different measures fail in different ways. When people go missing at random, density stays at about 1 (0.992, 0.998 and 1.002 for 3, 7 and 10 people), but mean degree falls with the share lost (0.902, 0.786, 0.699), because the people left have lost ties to the people who left. When ties go missing at random, density and mean degree fall by the share lost (0.897 for 8 of 78, 0.795 for 16, 0.705 for 23), clustering falls with them (0.909, 0.800, 0.712), and mean distance rises (1.048, 1.104, 1.164). The same data loss shows up as a fall in one number or a rise in another.
 
-PROSE
+Second, ranks hold up better than levels. With a fifth of the ties gone (16 of 78) the degree order still correlates 0.893 with the original, and betweenness 0.860. If you only report ranks, small random losses are tolerable. If you report levels, they aren't. Random loss is the mild case. Remove the three best-connected members (34, 1 and 33) and the club breaks into 8 pieces, density falls to 0.526 of its value, and the betweenness order falls to 0.722. Remove the six least-connected and the network gets denser (1.275 times its density) and nothing breaks.
 
-## Errors
+Use a loss that resembles your own risk. Missing at random is a baseline, and the card `missing-data-checks` lists the damage to try.
 
-PROSE
+## Measurement error: false ties and missed ties
+
+A recorded tie can be wrong in two ways: a real tie is not recorded (a **false negative**, a miss) or a recorded tie isn't real (a **false positive**, an invention). Respondents forget, and also name the wrong person, and logs link accounts that belong to one person or to a bot. In a sparse network the two errors are not mirror images.
+
+Why. Take the line of six people, a to f, again. The distance from a to f is 5. Invent one tie from a to d and it becomes a, d, e, f: 3. Miss the tie between c and d instead and the line is cut in two, and a to f has no route at all. Invented ties are *shortcuts*; missed ties are *breaks*. Shortcuts change who lies on the shortest routes, so path-based measures suffer.
+
+The block misses and invents ties in the karate club at the same total error, 200 draws each. Invented ties are chosen from the 483 pairs without a tie.
 
 ::: {.panel-tabset group="language"}
 
@@ -1335,12 +1431,17 @@ missed invented degree rho between rho  mean deg  density clustering  distance  
 
 :::
 
+At the same number of wrong ties, the damage differs. With 8 wrong ties, missing 8 leaves the degree order at 0.948 and betweenness at 0.930, and inventing 8 gives 0.929 and 0.842. At 16 the betweenness order is 0.868 when 16 real ties are missed and 0.754 when 16 false ones are added. The two also push other numbers in opposite directions. Missed ties lower clustering (0.907 and 0.805 for 8 and 16) and lengthen distances (1.050 and 1.105), while invented ties leave clustering about the same (1.019 and 1.044) and shorten distances (0.934, 0.892). Mixing, 8 of each, falls between (betweenness 0.798, distance 0.977, clustering 0.922).
 
-PROSE
+So, in *this* network, with these error counts: false ties damage betweenness more than missed ties, and missed ties damage clustering and distance more. A different network, with another density, could differ. What carries over is the question to ask of your own data: which kind of error is likelier, and which of your numbers does that kind move? Logs tend to invent (shared accounts, bots); surveys tend to miss (memory, caps). The two reports of one friendship often disagree: in Krackhardt's data only 23 of 79 friendship pairs are mutual (@sec-ego-networks), which is one view of how noisy a single report is.
 
-## Ethics
+## Ethics, consent and who can be found
 
-PROSE
+Network data are data about relationships, so they are almost always about people who didn't agree to be there. A respondent who lists contacts has put them in your data. An archive of messages includes people who never knew a study was happening. Three rules for working with such data are short. Collect only what the question needs. Keep names apart from ties. Think, before release, about who could be picked out.
+
+That last one is less obvious than it sounds, because **removing names does not make a network anonymous**. Structure alone can identify people: researchers have shown attacks that match an anonymized network with another source by structure, and that plant a pattern of ties to find chosen people [@backstrom2007wherefore; @narayanan2009deanonymizing]. A cousin of the problem in tables is k-anonymity, the idea that each record should look like at least k-1 others [@sweeney2002kanonymity].
+
+A tiny case. Five people in a line, A to E, have degrees 1, 2, 2, 2, 1. Nobody is unique by degree. Add what the person's contacts have, their degrees sorted: C is the only one whose contacts both have degree 2, and is unique; A and E look alike, and so do B and D, because the line has a mirror. So one of five is picked out by their circle. The block does the same count on two real networks: people alone in their degree, people alone in their degree plus the degrees of their contacts, and the biggest group sharing a degree.
 
 ::: {.panel-tabset group="language"}
 
@@ -1427,12 +1528,21 @@ Krackhardt friendship        21                5               21               
 
 :::
 
+In the karate club 6 of 34 members are unique by degree alone, and 23 are unique once you add their contacts' degrees. In the managers' friendship network 5 of 21 are unique by degree, and *all 21* by degree plus contacts' degrees. Someone who knows a manager's number of friends and how many friends each of them has can find that manager in a "name-free" edge list, every time. That is an attacker with exact knowledge, which is generous. It is still the right worry, because an attacker is often a colleague who knows who talks to whom.
 
-PROSE
+What to do about it. Share the minimum. Publish aggregate numbers and groups, not people. Perturb or coarsen the released tie list if it must be released, and say so, because that changes the results. Where the data cannot be made safe to publish, share them under an access agreement instead. If the network is inside an organization, results about named individuals (a manager's "brokerage score") can affect careers, so decide in advance who sees them. Rules differ between places, institutions and data owners, so ask the relevant ethics board; this chapter can't replace them. The card `network-data-ethics` has the checklist.
 
-## Raw tables
+## Turning raw tables into networks, with a record
 
-PROSE
+Most network data start as a table that is not a network: an event log, an export from a system, a list of who attended what. The step from table to network holds more choices than it looks like, and each choice should leave a trace.
+
+Three common raw forms:
+
+- **An event log** (a time, a sender, a receiver). Choices: which rows count, whether a tie is directed, whether the weight is the number of messages or the number of days with a message, and over what window.
+- **An edge list from a system** (two columns of IDs). Choices: whether IDs match across files, how to treat self-ties and repeats, and what to do with IDs that are on no roster.
+- **An affiliation table** (person, event). It becomes a person-to-person network by counting shared events, and that is a projection with its own choices (@sec-two-mode).
+
+The first part of the next block builds a network from twelve messages with the usual mess in them. Each cleaning rule is a step, kept in order, and the report says how many rows each step removed. The second part turns the Southern women's attendance table [@davis1941deep] into a count of shared events.
 
 ::: {.panel-tabset group="language"}
 
@@ -1642,9 +1752,82 @@ the largest event (E8) had 14 women, so it alone ties 91 pairs
 
 :::
 
+The report is the provenance. 12 messages come in; the rules remove 1 with no recipient, 1 sent to self, 2 that name someone not on the roster (a typo, "Cloe", and a stranger) and 2 repeats, leaving 6 rows. They make 5 ties among 5 people, and Ben to Chloe is the only one with two days. Note the order. The case-fixing step comes first, so "ana " becomes "Ana" and the 1 March message turns out to be a repeat. Reverse the first and last rules and that repeat survives as a second "day" for Ana to Ben on the same date (Exercise 10). A rule list written next to the data, with counts, lets a reader see what you did and check it. Keep the raw table, the rules (as code) and the counts, and a hash or a date of the raw file. @sec-reproducibility covers the tools for this; @sec-reporting covers how to say it in a paper.
 
-PROSE
+The affiliation table has 18 women, 14 events and 89 attendances. By the rule "tied if they shared at least one event", 139 of the 153 pairs of women are tied. One pair shared 7 events. The largest event, E8, had 14 women, so it alone ties 91 pairs. A projection hides the event sizes: a crowded event ties many people who may never have spoken. A weight (the number of shared events), or a rule that discounts large events, is a choice you should state; @sec-two-mode works through it.
+
+Provenance for the *network* is the same idea as for the table. A short record, kept beside the results, is enough to start:
+
+| Item | Example from this chapter |
+| --- | --- |
+| Source and date | "Message export of 8 March; 12 rows" |
+| Boundary | The five people on the roster |
+| Tie rule | A message sent, direction kept, weight = days with a message |
+| Rules applied, in order, with counts | The five steps and their counts above |
+| Who was asked, who answered | Not applicable to logs; response rate for a survey |
+| Software and random seed | Versions; seed 99 for the cap, 12345 for dropped people |
+
+
+## Several readings of the same decision
+
+| Decision | Office survey | Online platform | Archive (records) |
+| --- | --- | --- | --- |
+| **Boundary** | Payroll list. Ties to clients and ex-staff are cut. | Everyone who used a tag. The quiet are out. | Whoever the files cover. |
+| **Tie question** | "Whom do you ask for advice?" gives a work network; "Whom do you trust?" a different one. | A reply, a mention and a follow are three relations. | A signature, a co-authorship, a board seat. |
+| **A cap on names** | Makes mutual ties rarer and caps out-degree. | A platform's own limits on follows or messages do the same. | A form with room for three names does too. |
+| **Nonresponse or missing** | The busiest people may be the least likely to answer. | Deleted accounts and private profiles. | What was not written down. |
+| **What the sample number does not show** | Whether the unseen are different. | Whether accounts are people. | Why the record was kept. |
+
+None of these is a finding. Each is a reason a number could be off, and each says what to check.
+
+## A checklist for the data section
+
+Before analysis, write down (and, per @sec-reporting, publish with the results):
+
+1. The boundary rule, its date, and the number of ties known to cross it.
+2. The tie question, as asked, the response options, any cap, and the interpreters.
+3. The design: whole network, snowball (seeds, waves), RDS (coupons, weights), or ego sample (how people were drawn).
+4. Who responded, who did not, and what is known about the difference.
+5. The raw-to-network rules, in order, with counts, kept as code (@sec-reproducibility).
+6. Which stress checks you ran (people missing, ties missing, false ties, targeted loss) and which results moved.
+7. What consent covered, how names are stored, and what was released.
 
 ## Exercises
 
-1. x
+1. **By hand.** Six people in a line, a to f. Compute the betweenness of c, then study only c to f and compute it again. What does the boundary do to c's degree?
+2. **By hand.** Five people in a line, A to E. A snowball starts at A and runs two waves. Who is named, who is interviewed, which ties are seen, and what is C's seen degree against its true degree?
+3. **By hand.** In a star with a hub and three leaves, compute the mean degree, the average degree of a person reached by a long random chain, and the $1/d$-weighted average.
+4. **By hand.** Ana, Ben and Chloe each name the other two. Ben doesn't answer. What happens to the share of arcs that are reciprocated, and how many pairs are still visible?
+5. **By hand.** In a line of five, which people are unique by degree, and which by degree plus the degrees of their contacts?
+6. **Coding.** Change the cap in the name-generator block from 3 to 4 for friendship. Predict whether the arcs kept land between 48 and 68, then check.
+7. **Coding.** Run the damage block with 3 people missing chosen by a different seed. Do the rank correlations change by much? What does that say about reporting one run?
+8. **Interpretation.** A report says "our survey of 12 seeds and their friends shows the average employee has 9 friends". The survey is a one-wave snowball. Write a short, kind reply about what the number shows.
+9. **Interpretation.** A team plans to publish the managers' friendship ties with names replaced by numbers. Use the fingerprint block to say what is wrong with that and what you would offer instead.
+10. **Coding.** In the cleaning block, move the repeat-removal rule to the front of the list. How many rows does the report show at each step, and what happens to Ana to Ben?
+
+::: {.callout-note collapse="true"}
+## Worked answers
+
+1. The routes between {a, b} and {d, e, f} all pass through c: 2 × 3 = 6. Restricted to c to f, c is an end, so its betweenness is 0, and its degree goes from 2 to 1. The person did not change; the cut did.
+2. A and B are interviewed (within one step), A, B and C are named (within two). Ties seen: A-B and B-C. C's seen degree is 1; its true degree is 2.
+3. Mean degree is (3 + 1 + 1 + 1)/4 = 1.5. A long chain reaches the hub half the time and each leaf a sixth of the time, so the average degree is 0.5 × 3 + 0.5 × 1 = 2.0. Weighted by $1/d$ it is 1.5 again.
+4. Six arcs become four. Pairs Ana-Ben and Ana-Chloe have only one arc left, so only Ben-Chloe is mutual: 2 of 4 arcs, 0.5, down from 1. All three pairs are still visible because the other side named them.
+5. By degree alone nobody is unique: the ends have degree 1 and the other three have degree 2. By degree plus contacts' degrees, only the middle person (contacts 2 and 2) is unique; the two ends match each other, and so do B and D.
+6. The arcs kept for a cap of 4 must lie between 48 (cap 3) and 68 (cap 5), since a bigger cap keeps at least as many arcs. If the pattern continues, the reciprocated share should land between 0.304 and 0.381, and the rank correlation between 0.698 and 0.819.
+7. The averages should move only in the second digit; the point is that the *spread* between draws and the worst case are part of the result, which is why the chapter also reports worst cases. A single run could happen to remove a hub.
+8. A kind reply: "Thanks, this is a useful start. With one wave of a snowball the people we reach are the seeds' friends, and people with many friends are on more lists, so the average among them is higher than for employees in general. In the managers' data the figure is 9.096 for those reached after one wave, against 7.524 for everyone. I would say 'the people we reached have 9 friends on average' and not generalize until we have a design that reaches people at random or a weighting."
+9. In the output, all 21 managers are unique by degree plus their contacts' degrees, so anyone who knows a manager's friend count and the counts of their friends can find that manager in a "numbered" list. Offer aggregates (by department), a coarsened or perturbed tie list with a statement of what changed, or access under an agreement.
+10. With the repeat rule first, only the exact duplicate (Ana to Dev on 3 March) is removed at that step, so 11 rows remain. The case-fixing step then makes "ana " into "Ana" but nothing removes the second 1 March message, so Ana to Ben ends up with two rows, and a weight of 2 "days" on a single day. The order of the rules changes the network.
+:::
+
+## Summary
+
+::: {.callout-tip appearance="simple"}
+A network dataset is the result of decisions: the boundary, the question that defines a tie, the cap on names, the design that found people, and the rules that turned a table into a network. On the karate club, cutting at the faction line left 17 members and cut 11 of 78 ties, so betweenness for those members correlated only 0.587 with its value in the whole club. Different questions make different networks: advice and friendship share 60 of their arcs, and their in-degree order correlates 0.139. Snowball samples lean toward the well connected (mean true degree 7.852 against 4.588 after one wave) and undercount the degree of people in the last wave. When people go quiet at random, ranks hold up and levels such as reciprocity do not; when the busiest people go quiet, the damage is much larger. False ties hurt betweenness more than missed ties of the same number, and removing names does not anonymize a network. Keep the rules, the counts, and the stress checks next to the data.
+
+The one-line takeaway: write down how the data were made, then check which of your numbers would move if they had been made a little differently.
+:::
+
+## Further reading
+
+For how network data are collected and measured, @marsden1990network, and for personal-network data @perry2018egocentric; for the design of a whole-network study and its measures, @wasserman1994social and @kolaczyk2009statistical. For snowball and respondent-driven designs, @goodman1961snowball and @heckathorn1997respondent. For how missing data and errors affect network measures, @kossinets2006effects, @borgatti2006robustness and @costenbader2003stability, and for modeling with missing data in the exponential random graph framework, @robins2004missing. For the friendship paradox, @feld1991friends. For re-identification, @backstrom2007wherefore and @narayanan2009deanonymizing. For hidden networks, @everton2012disrupting. The shared random number generator is the one of @parkmiller1988random.
