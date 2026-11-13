@@ -2,29 +2,107 @@
 
 ::: {.callout-note appearance="simple"}
 ## Prerequisites
-Reproducibility and scale.
+@sec-reproducibility, in particular the section on conventions (@sec-repro-conventions). You will also meet numbers from @sec-centrality, @sec-paths-and-cohesion, @sec-triads-and-motifs, @sec-small-worlds, @sec-subgroups, @sec-ego-networks and @sec-tests-and-null-models, where each difference first showed up.
 :::
 
 ## Introduction
 
-Where R, Python and other tools disagree, and how to read each.
+You run the same measure on the same network in two programs and get two numbers. Before you suspect a bug, check whether the two programs are answering slightly different questions. A **convention** is a choice that a measure's definition leaves open: what to do with someone who can't reach everyone, whether to divide by a maximum, whether a tie from a person to themselves counts. Tools make these choices differently, mostly document them, and the numbers differ.
 
-TODO(prose, see docs/VOICE.md): motivating question, the idea in plain words, what the reader can
-do after this chapter.
+This appendix is the long list. Each row is something we ran into while writing the book, with the numbers we saw and the chapter where you can see it happen. The short version, with one worked example, is in @sec-repro-conventions. Use this appendix the way you'd use a phrasebook: find the measure, see which choices it hides, and write down which one you used.
+
+A word on what the table does and doesn't claim. The numbers in the "what we saw" column came from code in this book, on the networks named in the chapters. Where a row says "documented", the engine's own documentation lists the difference but we did not run that tool for the book, so treat it as a lead to check, not as a result. Software changes; a difference listed here may have been fixed or may appear in a new place. The habit that always works is the one in the last section: try each tool on a tiny network whose answer you can work out by hand.
 
 ## A table of known differences
 
-TODO(prose): concept, definition, a small worked example by hand.
+Each table below covers one part of an analysis, in the order you'd meet them. The first column names the choice, the second says what the readings are and who is known to do what, the third gives numbers from this book, and the fourth says where.
 
-Every code example uses this three-tab block. The tab text is placeholder until
-the library interface is final; the comment names the measure it will call.
+### How the network is read
+
+| Choice | Readings | What we saw | Where |
+| --- | --- | --- | --- |
+| **An undirected tie: one tie or two arcs** | A matrix stores the pair $\{i, j\}$ as two entries, $a_{ij}$ and $a_{ji}$. Some programs count the two entries, others count the pair once. | Five ties are ten matrix entries (the degrees add to 10). Documented, not run: on an undirected network, brokerage roles read each tie as two arrows, so a broker of two untied friends can be counted twice. | @sec-math-review, @sec-ego-networks |
+| **Loops** (a tie from a person to themselves) | Counted in the number of ties and in degree, or ignored. Allowed as possible ties in the maximum a score is divided by, or not. | Degree centralization of the friendship network: 0.267 when loops count as possible, 0.333 with Freeman's classic maximum. igraph and NetworkX count loops in density; sna and UCINET do not. Documented, not run: NetworkX counts loops in a person's total tie strength for constraint, knappnet and igraph ignore them. | @sec-centrality, @sec-paths-and-cohesion, @sec-ego-networks |
+| **Repeated ties** (the same pair twice) | One tie or two. | Counting every listed edge can push density above 1; counting each pair once cannot. Random networks built by pairing stubs can contain repeated ties and loops; in 20,000 pairings of the karate club's degrees none was a simple network. | @sec-paths-and-cohesion, @sec-small-worlds, @sec-tests-and-null-models |
+| **Directed data read as undirected** | A pair is tied if *either* person names the other, or only if *both* do (mutual). Some tools add the two arcs, so a mutual pair has strength 2. | The managers' 102 friendship arcs make 79 pairs, of which 23 are mutual. Constraint under "either" and "both directions counted" agrees (rank correlation 0.977); mutual-only leaves four managers without a value and changes the three least constrained. Knappnet's Louvain needs an undirected network, so it symmetrizes first; NetworkX's Louvain quietly switches to a directed form of modularity. | @sec-ego-networks, @sec-subgroups |
+| **Weights: strength or distance** | A larger weight means a closer tie (constraint, strength, modularity) or a longer route (betweenness, closeness). | Weighted betweenness reads weights as distances, so a strength must be turned into $1/w$ first. Member 1 of the karate club scored 208.5 in one tool and 209 in another, because tied path lengths built from sums like $1/2 + 1/3$ differ in the last bit; read it to the nearest whole number. The karate club's real split has modularity 0.358 without weights and 0.391 with them. | @sec-centrality, @sec-subgroups |
+| **Numbering from 0 or 1** | Python and Rust count from 0, R from 1. Files may use either. | The karate club's files number members 1 to 34; NetworkX's copy numbers them 0 to 33. An off-by-one turns "member 9" into "member 10" with no complaint. | @sec-reproducibility |
+
+### Distance and closeness
+
+| Choice | Readings | What we saw | Where |
+| --- | --- | --- | --- |
+| **Mean distance on a disconnected network** | Refuse (NetworkX raises an error); average over the pairs that have a route (igraph, knappnet); count an unreachable pair as infinite. | Adding two people who know only each other made mean distance *fall*, from 1.978 to 1.957, because 40 of the 132 ordered pairs were dropped from the average. With unreachable pairs infinite the answer is infinity. | @sec-paths-and-cohesion |
+| **Closeness when someone can't reach everyone** | Average over those reached (igraph); that average scaled by the share reached (NetworkX, from Wasserman and Faust); zero unless everyone is reached (sna); a missing distance counts as the longest plus one (UCINET). | In a network of two pieces, person F (who knows one other person) scored 1.000, 0.167, 0 and 0.286, and person C 0.800, 0.533, 0 and 0.462. The answers to "who is most central" were F and G, C, and nobody. | @sec-centrality, @sec-reproducibility |
+| **Harmonic distance** | Offered directly, or only as its inverse (NetworkX's global efficiency), or left to compute from the distance table. | Same number once inverted: harmonic mean distance 1.547 and 2.194 for the network without and with the two-person island. | @sec-paths-and-cohesion |
+| **Closeness in a directed network: which way** | Distances out of a person or into them. Documented, not run: igraph follows paths out, NetworkX follows paths into a person. | Most directed networks are not strongly connected, so the disconnection problem above is the normal case. | @sec-centrality |
+
+### Centrality scores
+
+| Choice | Readings | What we saw | Where |
+| --- | --- | --- | --- |
+| **Betweenness: raw, share or with endpoints** | Raw count of pairs whose shortest routes pass through the person (knappnet); that count divided by the number of pairs not including the person (NetworkX's default); a count that also credits the person for routes they start or end (an option in NetworkX). | The middle person of a line of five: 4 raw, 0.667 as a share, 8 with endpoints. For the Medici, 47.5 of 91 pairs is 52 percent. | @sec-centrality |
+| **Eigenvector scale** | Largest score equals 1 (igraph, knappnet's default) or the scores have unit length (NetworkX, sna, UCINET). | The same ranking differs by 0.63 between the two scales and by $10^{-12}$ once rescaled. On a network with several pieces NetworkX's solver refused where the leading eigenvector can still be read from the matrix. In this book's five-person example Cleo is 1.000 on one scale and 0.604 on the other. | @sec-reproducibility, @sec-centrality, @sec-math-review |
+| **Katz scale** | Raw sums (igraph, knappnet's default) or unit length (NetworkX's default). | The table in the centrality chapter used raw sums; NetworkX's default would have rescaled them. | @sec-centrality |
+| **PageRank: damping and stopping rule** | The damping (0.85 is the usual default, but name it) and how small the change per round must get before the method stops. | NetworkX's default tolerance of $10^{-6}$ left an error of $4.5 \times 10^{-6}$ against the exact solution on the karate club; tightening it to $10^{-12}$ brought the gap to $10^{-11}$. Documented, not run: tools differ on dangling nodes (people with no outgoing ties), isolates and loops, and one benchmark suite does not pass the rank held by dangling nodes on, so its scores add to less than 1. | @sec-reproducibility, @sec-centrality |
+| **Centralization maximum** | Divide by the largest value a star could reach, with or without loops. | 0.267 against 0.333 for one network (see loops above). Documented, not run: the engine's igraph reading gives a star of eight 0.75 where Freeman's maximum gives 1. | @sec-centrality |
+
+### Clustering, reciprocity and triads
+
+| Choice | Readings | What we saw | Where |
+| --- | --- | --- | --- |
+| **Average clustering: people with fewer than two friends** | Left out of the average (igraph) or counted as zero (NetworkX). | Five people, one with a single friend: 0.583 against 0.467. Florentine families: 0.218 against 0.160. | @sec-triads-and-motifs, @sec-reproducibility |
+| **Transitivity or average clustering** | A ratio over all connected triples, or the mean of each person's local ratio. They weigh people differently and are different numbers. | Both are computed on the same networks in the chapter and differ. | @sec-triads-and-motifs |
+| **Reciprocity** | The share of ties that are returned; the share of connected pairs that are mutual; the share of all pairs that are mutual or empty; the correlation between the two directions. | One five-person advice network: 0.286, 0.167, 0.500 and $-0.099$. Knappnet has all three shares by name; igraph has the first two, sna has all three under other names, NetworkX only the first. | @sec-paths-and-cohesion, @sec-triads-and-motifs |
+| **Triad type labels (111D and 111U)** | Which way the lone one-way tie points relative to the mutual pair. | NetworkX, igraph, knappnet and sna agreed on the advice network, so this one did *not* differ. Test it on a tiny example before trusting another tool. | @sec-triads-and-motifs |
+| **Small-world coefficient** | Compare with random networks of the same size and number of ties, or with randomized copies of the network itself. | NetworkX's `sigma` uses randomized copies, so its value is not comparable with the one in the chapter. | @sec-small-worlds |
+
+### Groups and modularity
+
+| Choice | Readings | What we saw | Where |
+| --- | --- | --- | --- |
+| **What the algorithm optimizes** | Modularity or another score. | NetworkX's Leiden with default settings optimizes the Constant Potts Model and returned 15 groups of one person each on the Florentine marriages; asking for modularity gave four groups. It ran without complaint. | @sec-subgroups |
+| **Modularity resolution** | The knob $\gamma$ that makes groups coarser or finer; 1 is the standard score. Documented, not run: one tool's resolution is the reciprocal of this one. | In a ring of 30 cliques Louvain at resolution 1 returned 17 groups (18 in NetworkX); at resolution 2 it returned all 30. | @sec-subgroups |
+| **Label propagation** | A family of update and stopping rules, not one algorithm. | NetworkX's version scored 0.385 on the karate club and the Rust engine's 0.374. | @sec-subgroups |
+| **Partition comparison** | NMI divides by a mean of the two entropies and the choice differs between tools; variation of information may be in nats or bits. Adjusted Rand is the same everywhere. | The book's engine uses the arithmetic mean, $2I / (H(X) + H(Y))$. | @sec-subgroups |
+
+### Random draws, swaps and tests
+
+| Choice | Readings | What we saw | Where |
+| --- | --- | --- | --- |
+| **Same seed, different draws** | A seed fixes one tool's stream of random numbers, not another's. | R and Rust share the engine and print the same random networks; NetworkX draws its own. Averages over a few hundred draws differ in the third decimal and tail probabilities in the second; the ring of cliques gave 17 groups in one stream and 18 in the other. | @sec-triads-and-motifs, @sec-small-worlds, @sec-subgroups |
+| **Counting a swap** | Count the swaps that were *accepted* or those that were *tried*. | The engine and NetworkX count accepted swaps; the number tried is larger. | @sec-tests-and-null-models |
+| **The permutation p-value** | $(1 + b)/(B + 1)$, which counts the real data as one arrangement and can't be zero; or $b / B$, which can be zero. | With 2,000 draws the smallest value is $1/2001 \approx 0.0005$, the value the chapter reports when none reached the observed one. | @sec-tests-and-null-models, @sec-math-review |
+| **Stopping rules and rounding** | Iterative methods stop at a tolerance; sums added in a different order differ in the last bits. | Compare two tools with a tolerance chosen on purpose, about $10^{-9}$ for scores between 0 and 1, never with `==`. | @sec-reproducibility |
+
+## Seeing a few of them side by side
+
+The code below runs the choices that are easiest to check on one tiny network. Five people, A to E, make a triangle (A, B, C) with a chain (C-D-E), and F and G know only each other. Each tab asks for the same four quantities under the rules named in the table: average clustering with undefined people left out and counted as zero, mean distance over the pairs that have a route and with an unreachable pair counted as infinite, and betweenness of C as a raw count and as a share. Python also asks NetworkX to refuse and to count endpoints, and the R and Rust tabs use the engine's switches.
 
 ::: {.panel-tabset group="language"}
 
 ## R
 
 ```r
-# TODO(code, R): list the convention presets
+library(knappnet)
+library(dplyr)
+library(tibble)
+
+# A, B, C, D, E: a triangle A-B-C with a chain C-D-E; F and G know only each other.
+split_net <- net_frame(
+  tibble(source = c("A", "A", "B", "C", "D", "F"), target = c("B", "C", "C", "D", "E", "G")),
+  nodes = tibble(id = LETTERS[1:7]), directed = FALSE, quiet = TRUE
+)
+
+tibble(
+  quantity = c("average clustering, undefined left out (igraph)", "average clustering, undefined as zero (NetworkX)",
+               "mean distance, reachable pairs only (igraph, knappnet)", "mean distance, unreachable as infinite",
+               "betweenness of C, raw count (knappnet)", "betweenness of C, share (NetworkX's default)"),
+  value = c(net_avg_clustering(split_net), net_avg_clustering(split_net, convention = "networkx"),
+            net_mean_distance(split_net), net_mean_distance(split_net, unconnected = FALSE),
+            net_betweenness(split_net)[3], net_betweenness(split_net)[3] / choose(6, 2))
+) |>
+  mutate(value = round(value, 3))
 ```
 
 ::: {.code-output}
@@ -36,41 +114,135 @@ TODO(output): the printed result of the code above, once it runs.
 ## Python
 
 ```python
-# TODO(code, Python): list the convention presets
+import networkx as nx
+
+# A, B, C, D, E: a triangle A-B-C with a chain C-D-E; F and G know only each other.
+split = nx.Graph([("A", "B"), ("A", "C"), ("B", "C"), ("C", "D"), ("D", "E"), ("F", "G")])
+
+# Average clustering: people with fewer than two friends are left out (igraph's way) or counted as zero (NetworkX's way).
+local = nx.clustering(split)
+counted = [local[v] for v in split if split.degree(v) >= 2]
+print(f"average clustering: left out {sum(counted) / len(counted):.3f}, as zero {nx.average_clustering(split):.3f}")
+
+# Mean distance: average over the pairs that have a route, call an unreachable pair infinite, or refuse.
+lengths = [d for u, row in nx.all_pairs_shortest_path_length(split) for v, d in row.items() if v != u]
+print(f"mean distance: reachable pairs only {sum(lengths) / len(lengths):.3f} ({len(lengths)} of 42 ordered pairs), unreachable as infinite inf")
+try:
+    nx.average_shortest_path_length(split)
+except nx.NetworkXError as error:
+    print("mean distance, NetworkX:", error)
+
+# Betweenness of C: raw count, NetworkX's default share, and NetworkX's count with endpoints.
+raw = nx.betweenness_centrality(split, normalized=False)["C"]
+share = nx.betweenness_centrality(split)["C"]
+ends = nx.betweenness_centrality(split, normalized=False, endpoints=True)["C"]
+print(f"betweenness of C: raw {raw:.0f}, share {share:.3f}, with endpoints {ends:.0f}")
 ```
 
 ::: {.code-output}
 ```text
-TODO(output): the printed result of the code above, once it runs.
+average clustering: left out 0.583, as zero 0.333
+mean distance: reachable pairs only 1.636 (22 of 42 ordered pairs), unreachable as infinite inf
+mean distance, NetworkX: Graph is not connected.
+betweenness of C: raw 4, share 0.267, with endpoints 8
 ```
 :::
 
 ## Rust
 
 ```rust
-// TODO(code, Rust): list the convention presets
+use knappnet::metrics::descriptive::{compute_average_clustering, compute_mean_distance, ClusteringOptions, PathOptions, Undefined};
+use knappnet::{compute_betweenness, BetweennessOptions, Graph};
+
+// A, B, C, D, E: a triangle A-B-C with a chain C-D-E; F and G know only each other.
+let split = Graph::from_edges(7, &[0, 0, 1, 2, 3, 5], &[1, 2, 2, 3, 4, 6], None, false)?;
+
+let igraph = ClusteringOptions::default(); // people with fewer than two friends are left out
+let networkx = ClusteringOptions { undefined: Undefined::Zero, ..Default::default() };
+println!("average clustering: left out {:.3}, as zero {:.3}",
+         compute_average_clustering(&split, igraph)?, compute_average_clustering(&split, networkx)?);
+
+// The last argument says whether to average over reachable pairs only (true) or to let an unreachable pair make the answer infinite (false).
+let paths = PathOptions::default();
+println!("mean distance: reachable pairs only {:.3}, unreachable as infinite {}",
+         compute_mean_distance(&split, paths, true)?, compute_mean_distance(&split, paths, false)?);
+
+// Betweenness of C: raw count, and the same divided by the number of pairs that do not include C.
+let raw = compute_betweenness(&split, BetweennessOptions::default())?[2];
+println!("betweenness of C: raw {raw:.0}, share {:.3}", raw / 15.0);
 ```
 
 ::: {.code-output}
 ```text
-TODO(output): the printed result of the code above, once it runs.
+average clustering: left out 0.583, as zero 0.333
+mean distance: reachable pairs only 1.636, unreachable as infinite inf
+betweenness of C: raw 4, share 0.267
 ```
 :::
 
 :::
 
+Read the output against the rules. Average clustering moves from 0.583 to 0.333 because of who is in the average: the four people with two or more friends (A, B, C, D) have local values 1, 1, 0.333 and 0, which average 0.583, and the three with fewer than two friends (E, F, G) are either skipped or counted as zero, which divides the same total by seven. Mean distance is 1.636 over the 22 ordered pairs that have a route; the other 20 of the 42 pairs have none, and that is what makes NetworkX refuse and the infinite reading return infinity. C sits on the only routes between A or B and D or E, so its raw betweenness is 4; dividing by the 15 pairs that don't include C gives 0.267; and NetworkX's endpoint option adds one for every other person C can reach, here four, giving 8.
+
+None of these is a mistake. Each is the answer to a slightly different question: "among the people who have a friend pair, how clustered?" against "how clustered across everyone?", "how far apart, among those who can reach each other?" against "how far apart, if you insist everyone can?".
+
+### Switches in knappnet
+
+When a measure has a known convention, the engine names it, so you can reproduce another tool's number on purpose. Here are the switches that appear in this book, as the R package spells them.
+
+| Choice | Switch | Values |
+| --- | --- | --- |
+| Closeness on a disconnected network | `net_closeness(g, convention = ...)` | `"igraph"`, `"networkx"`, `"sna"`, `"ucinet"` |
+| Average clustering, undefined people | `net_avg_clustering(g, convention = ...)` | default (left out), `"networkx"` (as zero) |
+| Mean distance, unreachable pairs | `net_mean_distance(g, unconnected = ...)` | `TRUE` (reachable pairs only), `FALSE` (infinite) |
+| Reciprocity | `net_reciprocity(g, mode = ...)` | `"default"`, `"ratio"`, `"dyadic"`, `"correlation"` |
+| Centralization and loops | `net_centralization(g, "degree", loops = ...)` | `TRUE` (default), `FALSE` (Freeman's maximum) |
+| Eigenvector scale | `net_eigen(g, convention = ...)` | default (largest is 1), `"networkx"` (unit length) |
+| Weights in betweenness | `net_betweenness(g, weighted = TRUE, weights_as = ...)` | `"distance"` |
+| PageRank stopping rule | `net_pagerank(g, tol = ...)` | any tolerance, for example `1e-12` |
+| Modularity resolution | `net_louvain(g, resolution = ...)` | 1 is the standard score |
+
+The Rust engine has the same choices as option structs, such as `Unreachable` for closeness and `Undefined` for clustering. Python's NetworkX has fewer switches, so the Python tabs in the book often write a rule out by hand and check it against NetworkX.
+
+## How to handle a disagreement
+
+When two tools disagree, work down this list. It usually ends by step three.
+
+1. **Find the measure in the table above.** If it is there, you probably have your answer, and the row says which question each tool answered.
+2. **Run both tools on a tiny network whose answer you can work out by hand.** The five-person line and the seven-person network above are good choices: five people give a betweenness you can count on your fingers. The tool that matches your hand count is following the definition you expect; the other follows a convention to look up.
+3. **Change the convention, not the data.** If the tool has a switch, use it to reproduce the other tool's number. If you can, you have learned the whole story. If you can't, only then suspect a bug.
+4. **Separate size from meaning.** Rescale before comparing (eigenvector centrality is the usual case). Compare ranks, or compare with a tolerance chosen on purpose, about $10^{-9}$ for scores between 0 and 1. Tighten the stopping rule of an iterative method before blaming either tool.
+5. **For random draws, compare distributions, not digits.** A seed fixes one tool's stream, not another's. Compare means and tail shares over many draws, and accept differences in the second or third decimal.
+6. **Write the convention down.** A report should say which tool and version, which convention for each measure that has one, and how ties were read (directed, mutual, weighted, loops). @sec-reporting has the checklist, and the interpretation cards in this book carry a line for it.
+
+One sentence that works: "Closeness was computed as the average distance to the people each person can reach (igraph's convention), on the undirected network in which a pair is tied if either person named the other; people without a route to someone were not penalized." It takes a minute to write, and it is the difference between a result someone can check and a number they have to take on trust.
+
 ## Exercises
 
-1. TODO(exercise): a by-hand exercise on a tiny network.
-2. TODO(exercise): a coding exercise on a dataset from the appendix.
-3. TODO(exercise): an interpretation exercise.
+1. **By hand.** Four people, A to D, have the ties A-B (listed twice), B-C, C-D, and a loop at A. How many edges are listed? What is the density if every listed edge counts, and if each pair of different people counts once?
+2. **By hand.** In the seven-person network of this appendix, write down each person's local clustering coefficient (or say it is undefined). Then compute the average both ways.
+3. **Coding.** Compute the betweenness of the middle person in a line of five people as a raw count, as a share of the pairs that don't include them, and with endpoints. Which tool gives which?
+4. **Interpretation.** Two programs print PageRank for the same network and agree to the fifth decimal but not the sixth. Is one of them wrong? What would you try first?
+5. **Interpretation.** A paper on a communication network with two separate pieces reports "average distance 3.1". List three questions you'd ask before comparing it with your own network's average distance.
+6. **Design.** You will report closeness, average clustering and a modularity-based grouping for a directed advice network, using two tools. Write the paragraph that records the conventions, so that a reader could repeat the analysis.
+
+::: {.callout-note collapse="true"}
+## Worked answers
+
+1. Five edges are listed: A-B twice, B-C, C-D and the loop. There are $\binom{4}{2} = 6$ pairs of different people. If every listed edge counts, the density is $5/6 = 0.833$. If each pair of different people counts once and loops are ignored, three pairs are tied (A-B, B-C, C-D) and the density is $3/6 = 0.5$. (NetworkX gives 0.833 for the first reading.) The same network has two densities, and one of them is a repeated tie and a loop pretending to be extra friendships.
+2. A and B each have two friends who know each other, so they score 1. C has three friends (A, B, D); one of the three pairs among them, A-B, is tied, so C scores $1/3$. D has two friends, C and E, who are not tied, so D scores 0. E, F and G have one friend each, so their coefficient is undefined (0 divided by 0). Left out: $(1 + 1 + 1/3 + 0)/4 = 0.583$. Counted as zero: $(1 + 1 + 1/3 + 0)/7 = 0.333$. This is the table row and the first line of the output.
+3. In a line of five, the middle person is on the only route for the pairs (1,4), (1,5), (2,4) and (2,5), so the raw count is 4. Knappnet returns it. The share divides by the 6 pairs that don't include the middle person, $4/6 = 0.667$, which is NetworkX's default. With endpoints, each of the other four people adds one for the middle person's routes to them, so it is $4 + 4 = 8$, an option in NetworkX. The same network gives 4, 0.667 and 8.
+4. Not necessarily. Iterative methods stop when the change per round is small, so two correct programs with different tolerances can differ near the sixth decimal. In the book, NetworkX's default tolerance of $10^{-6}$ left an error of $4.5 \times 10^{-6}$ on the karate club, and a tolerance of $10^{-12}$ brought it down to about $10^{-11}$. Rerun both with the same tight tolerance, compare with a tolerance of about $10^{-9}$, and check the damping (0.85 in both?) and how each treats people with no outgoing ties. If the ranking of people is the same, the difference does not matter for most uses.
+5. First: over which pairs was it computed? If it is the average over the pairs that can reach each other, the people who can't are not in it, and the number can look smaller than it should. Second: how big are the two pieces, and was the average taken inside the larger one? Third: which tool and version, and did it refuse, ignore the unreachable pairs or count them as infinite? You would also ask whether the pieces are real (two groups that never talk) or an accident of how the data were collected.
+6. An example: "Closeness: average distance to the people each person can reach (igraph's convention, `net_closeness(convention = "igraph")`), on the undirected network in which two people are tied if either named the other; in NetworkX, the same rule written by hand and checked against `closeness_centrality` on a small network. Average clustering: people with fewer than two friends left out of the average (igraph's convention); NetworkX's would have counted them as zero. Groups: Louvain on the same undirected network, resolution 1, seed 1, run in knappnet; NetworkX's Louvain was run with the same resolution and its own random numbers, so the groups may differ by a person or two." The paragraph names the tool, the choice and the reason, and it says where the two tools are expected to differ.
+:::
 
 ## Summary
 
 ::: {.callout-tip appearance="simple"}
-TODO(summary): three to five sentences, then the one-line takeaway.
+A convention is a choice that a measure's definition leaves open, and tools make the choice differently. The differences recorded in this book fall into a few families: how the network is read (undirected as two arcs, loops, repeated ties, direction, weights, numbering from 0 or 1), what to do when some people can't reach others (mean distance, closeness), how a score is scaled (betweenness, eigenvector, Katz, centralization), which people an average includes (clustering, reciprocity), what an algorithm optimizes and at which setting (modularity resolution), and what a seed or a tolerance does and does not fix. When two tools disagree, look the measure up, reproduce both on a five-person network by hand, change the convention before suspecting a bug, and write the convention down. The takeaway: a number without its convention is half a result.
 :::
 
 ## Further reading
 
-TODO(refs): cite with `@key` from `shared/bib/references.bib`.
+For the short version with a worked example, read @sec-repro-conventions. For the tools themselves, see @csardi2006igraph for igraph, @hagberg2008exploring for NetworkX, @butts2008sna for sna and @borgatti2002ucinet for UCINET. For the variants of betweenness, see @brandes2008variants, and for closeness on networks with pieces, @wasserman1994social. For modularity and its resolution, see @reichardt2006statistical, and for a directed form of modularity, @leicht2008community. For the "plus one" in permutation p-values, see @phipson2010permutation, and for degree-preserving swaps, @maslov2002specificity.

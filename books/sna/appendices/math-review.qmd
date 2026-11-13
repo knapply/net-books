@@ -2,29 +2,52 @@
 
 ::: {.callout-note appearance="simple"}
 ## Prerequisites
-None.
+None. If you can add, multiply and read a table, you can read this appendix.
 :::
 
 ## Introduction
 
-Graphs, matrices and probability used in the book.
+Network analysis borrows its math from three places: sets (who belongs to what), matrices (a network written as a table you can compute with) and probability (how surprised to be). You can use the book without ever opening this appendix, and many readers do. It is here for the moment a formula in a chapter stops making sense and you want one place that says, slowly, what a symbol means and shows it on five people.
 
-TODO(prose, see docs/VOICE.md): motivating question, the idea in plain words, what the reader can
-do after this chapter.
+Every section works the same way. A question, a tiny example you can check on paper, the idea in words, the formula once you know what it says, then the code in R, Python and Rust so you can see the numbers appear. We use one small network throughout: Ana, Ben, Cleo, Dev and Eli. Ana, Ben and Cleo all know each other, Cleo knows Dev, and Dev knows Eli. After this appendix you should be able to read the chapters' formulas, and to check a number by hand when a program surprises you.
 
-## Graphs and matrices
+## Sets and counting
 
-TODO(prose): concept, definition, a small worked example by hand.
+**The question.** Who are Ana's friends, who do Ana and Ben have in common, and how many ties could this network have had?
 
-Every code example uses this three-tab block. The tab text is placeholder until
-the library interface is final; the comment names the measure it will call.
+A **set** is a collection of things with no order and no repeats, written with braces. The people are the set $V = \{\text{Ana}, \text{Ben}, \text{Cleo}, \text{Dev}, \text{Eli}\}$. A tie is a pair of people, so the ties are a set $E$ of pairs. A network is the two together, $G = (V, E)$.
+
+Three operations on sets do most of the work. The **intersection** $S \cap T$ holds what is in both. The **union** $S \cup T$ holds what is in either. The **size** $|S|$ is how many members there are. Ana's neighbors are $N(\text{Ana}) = \{\text{Ben}, \text{Cleo}\}$ and Ben's are $N(\text{Ben}) = \{\text{Ana}, \text{Cleo}\}$. Their intersection is $\{\text{Cleo}\}$ (the one friend they share), their union is $\{\text{Ana}, \text{Ben}, \text{Cleo}\}$, and the ratio of the sizes is $1/3$. That ratio, $|S \cap T| / |S \cup T|$, is the **Jaccard overlap**, a number from 0 (nothing shared) to 1 (identical sets) that appears whenever a chapter compares two people's circles.
+
+Counting comes with it. With $n$ people there are $\binom{n}{2} = n(n-1)/2$ possible pairs, where $\binom{n}{k}$ ("$n$ choose $k$") is the number of ways to pick $k$ things from $n$ when order doesn't matter. For five people that is $5 \cdot 4 / 2 = 10$ pairs. We have 5 ties, so the **density**, the share of possible pairs that are tied, is $5/10 = 0.5$.
 
 ::: {.panel-tabset group="language"}
 
 ## R
 
 ```r
-# TODO(code, R): build an adjacency matrix
+library(tibble)
+library(dplyr)
+library(purrr)
+
+people <- c("Ana", "Ben", "Cleo", "Dev", "Eli")
+ties <- tibble(a = c("Ana", "Ana", "Ben", "Cleo", "Dev"), b = c("Ben", "Cleo", "Cleo", "Dev", "Eli"))
+
+# The neighbors of a person: everyone on the other end of one of their ties.
+neighbors <- people |>
+  set_names() |>
+  map(\(p) sort(c(ties$b[ties$a == p], ties$a[ties$b == p])))
+
+tibble(possible_pairs = choose(5, 2), ties = nrow(ties), density = nrow(ties) / choose(5, 2))
+
+in_both <- intersect(neighbors$Ana, neighbors$Ben)
+in_either <- union(neighbors$Ana, neighbors$Ben)
+list(Ana = neighbors$Ana, Ben = neighbors$Ben, in_both = in_both, in_either = in_either,
+     overlap = round(length(in_both) / length(in_either), 3))
+
+# Every pair of people that is not in the table of ties.
+tibble(a = combn(people, 2)[1, ], b = combn(people, 2)[2, ]) |>
+  anti_join(ties, by = c("a", "b"))
 ```
 
 ::: {.code-output}
@@ -36,19 +59,117 @@ TODO(output): the printed result of the code above, once it runs.
 ## Python
 
 ```python
-# TODO(code, Python): build an adjacency matrix
+from itertools import combinations
+from math import comb
+
+people = ["Ana", "Ben", "Cleo", "Dev", "Eli"]
+ties = {frozenset(t) for t in [("Ana", "Ben"), ("Ana", "Cleo"), ("Ben", "Cleo"), ("Cleo", "Dev"), ("Dev", "Eli")]}
+
+# The neighbors of a person: everyone on the other end of one of their ties.
+neighbors = {p: {q for q in people if frozenset((p, q)) in ties} for p in people}
+
+pairs = comb(len(people), 2)
+print(f"possible pairs {pairs}, ties {len(ties)}, density {len(ties) / pairs:.2f}")
+print("Ana's neighbors:", sorted(neighbors["Ana"]), " Ben's neighbors:", sorted(neighbors["Ben"]))
+in_both = neighbors["Ana"] & neighbors["Ben"]
+in_either = neighbors["Ana"] | neighbors["Ben"]
+print("in both:", sorted(in_both), " in either:", sorted(in_either), f" overlap {len(in_both) / len(in_either):.3f}")
+
+# Every pair of people that is not in the set of ties.
+missing = [f"{a}-{b}" for a, b in combinations(people, 2) if frozenset((a, b)) not in ties]
+print(len(missing), "pairs without a tie:", ", ".join(missing))
 ```
 
 ::: {.code-output}
 ```text
-TODO(output): the printed result of the code above, once it runs.
+possible pairs 10, ties 5, density 0.50
+Ana's neighbors: ['Ben', 'Cleo']  Ben's neighbors: ['Ana', 'Cleo']
+in both: ['Cleo']  in either: ['Ana', 'Ben', 'Cleo']  overlap 0.333
+5 pairs without a tie: Ana-Dev, Ana-Eli, Ben-Dev, Ben-Eli, Cleo-Eli
 ```
 :::
 
 ## Rust
 
 ```rust
-// TODO(code, Rust): build an adjacency matrix
+use std::collections::BTreeSet;
+
+let people = ["Ana", "Ben", "Cleo", "Dev", "Eli"];
+let ties = [("Ana", "Ben"), ("Ana", "Cleo"), ("Ben", "Cleo"), ("Cleo", "Dev"), ("Dev", "Eli")];
+
+// The neighbors of a person: everyone on the other end of one of their ties.
+fn neighbors<'a>(ties: &[(&'a str, &'a str)], p: &str) -> BTreeSet<&'a str> {
+    ties.iter().filter_map(|&(a, b)| if a == p { Some(b) } else if b == p { Some(a) } else { None }).collect()
+}
+
+let pairs = people.len() * (people.len() - 1) / 2;
+println!("possible pairs {pairs}, ties {}, density {:.2}", ties.len(), ties.len() as f64 / pairs as f64);
+let (ana, ben) = (neighbors(&ties, "Ana"), neighbors(&ties, "Ben"));
+println!("Ana's neighbors: {ana:?}  Ben's neighbors: {ben:?}");
+let in_both: Vec<_> = ana.intersection(&ben).collect();
+let in_either: Vec<_> = ana.union(&ben).collect();
+println!("in both: {in_both:?}  in either: {in_either:?}  overlap {:.3}", in_both.len() as f64 / in_either.len() as f64);
+
+// Every pair of people that is not in the list of ties.
+let missing: Vec<String> = (0..5).flat_map(|i| (i + 1..5).map(move |j| (i, j)))
+    .filter(|&(i, j)| !ties.contains(&(people[i], people[j])))
+    .map(|(i, j)| format!("{}-{}", people[i], people[j]))
+    .collect();
+println!("{} pairs without a tie: {}", missing.len(), missing.join(", "));
+```
+
+::: {.code-output}
+```text
+possible pairs 10, ties 5, density 0.50
+Ana's neighbors: {"Ben", "Cleo"}  Ben's neighbors: {"Ana", "Cleo"}
+in both: ["Cleo"]  in either: ["Ana", "Ben", "Cleo"]  overlap 0.333
+5 pairs without a tie: Ana-Dev, Ana-Eli, Ben-Dev, Ben-Eli, Cleo-Eli
+```
+:::
+
+:::
+
+Five of ten pairs are tied, and the five that aren't are Ana-Dev, Ana-Eli, Ben-Dev, Ben-Eli and Cleo-Eli. Density is a share of a *count of pairs*, so it depends on a count that grows with the square of the number of people. That is why a big network is almost always sparse, and why the chapters warn against comparing densities across very different sizes.
+
+## Matrices and adjacency
+
+**The question.** How do I write a network so a computer (or a formula) can work with all of it at once?
+
+A **matrix** is a rectangular table of numbers. Its rows run across and its columns run down, and the entry in row $i$, column $j$ is written $a_{ij}$. The **adjacency matrix** $A$ of a network has one row and one column for each person, with $a_{ij} = 1$ if there is a tie from $i$ to $j$ and $0$ if not. Number the people 1 to 5 in the order Ana, Ben, Cleo, Dev, Eli and the table for our network is
+
+$$
+A = \begin{pmatrix}
+0 & 1 & 1 & 0 & 0 \\
+1 & 0 & 1 & 0 & 0 \\
+1 & 1 & 0 & 1 & 0 \\
+0 & 0 & 1 & 0 & 1 \\
+0 & 0 & 0 & 1 & 0
+\end{pmatrix}.
+$$
+
+Three things to read off it. The diagonal is all zeros because nobody is tied to themselves (a tie from a person to themselves is a **loop**). The matrix is symmetric, $a_{ij} = a_{ji}$, because friendship here goes both ways; the **transpose** $A^{\top}$ swaps rows and columns, so "symmetric" means $A = A^{\top}$. And each row adds up to that person's number of friends, their **degree**: $k_i = \sum_j a_{ij}$.
+
+In a directed network, say Ana goes to Ben for advice, Ben goes to Cleo, and Ana goes to Cleo, the matrix is not symmetric. Rows are the senders and columns the receivers, so a row sum is a person's **out-degree** (how many they name) and a column sum is their **in-degree** (how many name them). Here the out-degrees are 2, 1, 0 and the in-degrees are 0, 1, 2.
+
+A word on conventions that returns in @sec-conventions. An undirected tie is one pair $\{i, j\}$, and the matrix stores it as two entries, $a_{ij}$ and $a_{ji}$. Some programs store and count the two as two arcs. That is why "the number of ties" can be 5 in one tool and 10 in another for the same network.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+# Row and column i belong to person i; a 1 means "tied". A tie is written once, then mirrored.
+A <- matrix(0L, 5, 5, dimnames = list(people, people))
+A[cbind(match(ties$a, people), match(ties$b, people))] <- 1L
+A <- A + t(A)
+A
+
+list(degrees = rowSums(A), symmetric = isSymmetric(A), ties = sum(A) / 2)
+
+# A directed network: Ana to Ben, Ben to Cleo, Ana to Cleo. Rows send, columns receive.
+D <- matrix(0L, 3, 3, dimnames = list(people[1:3], people[1:3]))
+D[cbind(c(1, 2, 1), c(2, 3, 3))] <- 1L
+list(out_degree = rowSums(D), in_degree = colSums(D), symmetric = isSymmetric(D))
 ```
 
 ::: {.code-output}
@@ -57,20 +178,727 @@ TODO(output): the printed result of the code above, once it runs.
 ```
 :::
 
+## Python
+
+```python
+import numpy as np
+
+# Row and column i belong to person i; a 1 means "tied". A tie is written once, then mirrored.
+index = {p: i for i, p in enumerate(people)}
+A = np.zeros((5, 5), dtype=int)
+for a, b in [("Ana", "Ben"), ("Ana", "Cleo"), ("Ben", "Cleo"), ("Cleo", "Dev"), ("Dev", "Eli")]:
+    A[index[a], index[b]] = A[index[b], index[a]] = 1
+print(A)
+print("degrees (row sums):", A.sum(axis=1), " symmetric:", bool((A == A.T).all()), " ties:", A.sum() // 2)
+
+# A directed network: Ana to Ben, Ben to Cleo, Ana to Cleo. Rows send, columns receive.
+D = np.zeros((3, 3), dtype=int)
+for i, j in [(0, 1), (1, 2), (0, 2)]:
+    D[i, j] = 1
+print("out-degrees (row sums):", D.sum(axis=1), " in-degrees (column sums):", D.sum(axis=0), " symmetric:", bool((D == D.T).all()))
+```
+
+::: {.code-output}
+```text
+[[0 1 1 0 0]
+ [1 0 1 0 0]
+ [1 1 0 1 0]
+ [0 0 1 0 1]
+ [0 0 0 1 0]]
+degrees (row sums): [2 2 3 2 1]  symmetric: True  ties: 5
+out-degrees (row sums): [2 1 0]  in-degrees (column sums): [0 1 2]  symmetric: False
+```
 :::
+
+## Rust
+
+```rust
+// Row and column i belong to person i; a 1 means "tied". A tie is written once, then mirrored.
+let index = |p: &str| people.iter().position(|&q| q == p).unwrap();
+let mut a = vec![vec![0u32; 5]; 5];
+for &(x, y) in &ties {
+    a[index(x)][index(y)] = 1;
+    a[index(y)][index(x)] = 1;
+}
+for row in &a {
+    println!("{row:?}");
+}
+let degrees: Vec<u32> = a.iter().map(|row| row.iter().sum()).collect();
+let symmetric = (0..5).all(|i| (0..5).all(|j| a[i][j] == a[j][i]));
+println!("degrees (row sums): {degrees:?}  symmetric: {symmetric}  ties: {}", degrees.iter().sum::<u32>() / 2);
+
+// A directed network: Ana to Ben, Ben to Cleo, Ana to Cleo. Rows send, columns receive.
+let mut d = [[0u32; 3]; 3];
+for (i, j) in [(0, 1), (1, 2), (0, 2)] {
+    d[i][j] = 1;
+}
+let out_degree: Vec<u32> = d.iter().map(|row| row.iter().sum()).collect();
+let in_degree: Vec<u32> = (0..3).map(|j| (0..3).map(|i| d[i][j]).sum()).collect();
+let d_symmetric = (0..3).all(|i| (0..3).all(|j| d[i][j] == d[j][i]));
+println!("out-degrees {out_degree:?}, in-degrees {in_degree:?}, symmetric: {d_symmetric}");
+```
+
+::: {.code-output}
+```text
+[0, 1, 1, 0, 0]
+[1, 0, 1, 0, 0]
+[1, 1, 0, 1, 0]
+[0, 0, 1, 0, 1]
+[0, 0, 0, 1, 0]
+degrees (row sums): [2, 2, 3, 2, 1]  symmetric: true  ties: 5
+out-degrees [2, 1, 0], in-degrees [0, 1, 2], symmetric: false
+```
+:::
+
+:::
+
+The degrees are 2, 2, 3, 2, 1 and they add to 10, which is twice the number of ties, because every tie is counted once at each end. That small fact, the **handshake rule**, is a good first check on any network you load: if the degrees don't add to an even number, the network isn't undirected or the file has an error.
+
+## Powers and walks
+
+**The question.** How many ways are there to get from Ana to Eli in exactly three steps, and what does multiplying a matrix by itself have to do with it?
+
+A **walk** is a route that follows ties, one step at a time, and is allowed to revisit people. Ana to Cleo to Ben is a walk of length 2. So is Ana to Ben to Ana. Walks are different from shortest paths (the shortest route, which never needs to revisit anyone), and they are easier to count with a matrix.
+
+**Matrix multiplication** builds a new matrix from two: the entry in row $i$, column $j$ of $AB$ is $\sum_k a_{ik} b_{kj}$, row $i$ of the first matrix times column $j$ of the second, term by term. For an adjacency matrix this sum has a plain meaning. The term $a_{ik} a_{kj}$ is 1 exactly when there is a tie from $i$ to $k$ *and* a tie from $k$ to $j$, so the sum counts the middle people $k$ that give a two-step walk. Repeat the idea and you get the rule that matters:
+
+$$
+(A^{\ell})_{ij} = \text{the number of walks of length } \ell \text{ from } i \text{ to } j.
+$$
+
+Check by hand. From Ana to Dev in two steps there is one walk, Ana to Cleo to Dev, so $(A^2)_{\text{Ana},\text{Dev}} = 1$. From Ana back to Ana in two steps there are two, through Ben and through Cleo, which is Ana's degree. In general the diagonal of $A^2$ is the list of degrees, and the diagonal of $A^3$ counts walks that leave a person and come back in three steps, which is only possible around a triangle. Each triangle gives each of its three corners two such walks (one in each direction), so the number of triangles is $\operatorname{trace}(A^3)/6$, where the **trace** is the sum of the diagonal.
+
+Walks also give distances. The shortest distance from $i$ to $j$ is the smallest $\ell$ for which $(A^{\ell})_{ij} > 0$. Ana to Eli has no walk of length 1 or 2 and one walk of length 3, so the distance is 3.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+A2 <- A %*% A
+A3 <- A2 %*% A
+A2
+A3
+
+list(ana_to_dev_in_2 = A2["Ana", "Dev"], diagonal_of_A2 = diag(A2), triangles = sum(diag(A3)) / 6)
+
+# Walks from Ana to Eli of length 1, 2, 3 and 4: the first nonzero entry is the distance.
+accumulate(rep(list(A), 4), `%*%`) |>
+  map_dbl(\(m) m["Ana", "Eli"])
+```
+
+::: {.code-output}
+```text
+TODO(output): the printed result of the code above, once it runs.
+```
+:::
+
+## Python
+
+```python
+A2 = A @ A
+A3 = A2 @ A
+print(A2)
+print(A3)
+print("walks from Ana to Dev of length 2:", A2[0, 3], " diagonal of A^2:", np.diag(A2), " triangles:", np.trace(A3) // 6)
+
+# Walks from Ana to Eli of length 1, 2, 3 and 4: the first nonzero entry is the distance.
+print("Ana to Eli, lengths 1 to 4:", [int(np.linalg.matrix_power(A, k)[0, 4]) for k in range(1, 5)])
+```
+
+::: {.code-output}
+```text
+[[2 1 1 1 0]
+ [1 2 1 1 0]
+ [1 1 3 0 1]
+ [1 1 0 2 0]
+ [0 0 1 0 1]]
+[[2 3 4 1 1]
+ [3 2 4 1 1]
+ [4 4 2 4 0]
+ [1 1 4 0 2]
+ [1 1 0 2 0]]
+walks from Ana to Dev of length 2: 1  diagonal of A^2: [2 2 3 2 1]  triangles: 1
+Ana to Eli, lengths 1 to 4: [0, 0, 1, 1]
+```
+:::
+
+## Rust
+
+```rust
+// Matrix multiplication straight from the definition: row i of x times column j of y.
+fn multiply(x: &[Vec<u32>], y: &[Vec<u32>]) -> Vec<Vec<u32>> {
+    let n = x.len();
+    (0..n).map(|i| (0..n).map(|j| (0..n).map(|k| x[i][k] * y[k][j]).sum()).collect()).collect()
+}
+let a2 = multiply(&a, &a);
+let a3 = multiply(&a2, &a);
+for row in &a2 {
+    println!("{row:?}");
+}
+for row in &a3 {
+    println!("{row:?}");
+}
+let diagonal: Vec<u32> = (0..5).map(|i| a2[i][i]).collect();
+let trace3: u32 = (0..5).map(|i| a3[i][i]).sum();
+println!("walks from Ana to Dev of length 2: {}  diagonal of A^2: {diagonal:?}  triangles: {}", a2[0][3], trace3 / 6);
+
+// Walks from Ana to Eli of length 1, 2, 3 and 4: the first nonzero entry is the distance.
+let a4 = multiply(&a3, &a);
+println!("Ana to Eli, lengths 1 to 4: {:?}", [a[0][4], a2[0][4], a3[0][4], a4[0][4]]);
+```
+
+::: {.code-output}
+```text
+[2, 1, 1, 1, 0]
+[1, 2, 1, 1, 0]
+[1, 1, 3, 0, 1]
+[1, 1, 0, 2, 0]
+[0, 0, 1, 0, 1]
+[2, 3, 4, 1, 1]
+[3, 2, 4, 1, 1]
+[4, 4, 2, 4, 0]
+[1, 1, 4, 0, 2]
+[1, 1, 0, 2, 0]
+walks from Ana to Dev of length 2: 1  diagonal of A^2: [2, 2, 3, 2, 1]  triangles: 1
+Ana to Eli, lengths 1 to 4: [0, 0, 1, 1]
+```
+:::
+
+:::
+
+The single triangle is Ana, Ben and Cleo, as it should be. Notice the word *walk*. $A^3$ has a 2 for Ana to Ana because the walks Ana-Ben-Cleo-Ana and Ana-Cleo-Ben-Ana both return, but there is also a 4 from Ana to Cleo, which includes walks like Ana-Ben-Ana-Cleo that double back. Walk counts reward nearness *and* the number of ways to wander, which is why measures built on them (Katz, eigenvector centrality, in @sec-centrality) are not the same as measures built on shortest routes.
+
+## Eigenvectors and eigenvalues
+
+**The question.** Whose position in the network is high because their friends' positions are high, and how can a table of numbers answer that?
+
+Multiply a matrix by a list of numbers (a **vector**) and you usually get a list that points somewhere new. For a few special vectors the matrix does nothing but stretch them. Such a vector $v$ is an **eigenvector** of $A$, and the stretch factor $\lambda$ is its **eigenvalue**:
+
+$$
+A v = \lambda v.
+$$
+
+Here is the smallest case. Two people tied to each other have $A = \begin{pmatrix} 0 & 1 \\ 1 & 0 \end{pmatrix}$. Take $v = (1, 1)$: then $Av = (1, 1) = 1 \cdot v$, so $\lambda = 1$. Take $v = (1, -1)$: then $Av = (-1, 1) = -1 \cdot v$, so $\lambda = -1$. Two eigenvectors, two eigenvalues.
+
+Now read $Av = \lambda v$ one row at a time: $\lambda v_i = \sum_j a_{ij} v_j$. The score of person $i$ is proportional to the sum of the scores of their friends. That is the idea of **eigenvector centrality**: be well connected to people who are well connected. For a connected network the matrix has one eigenvector with the largest eigenvalue whose entries are all positive (the Perron-Frobenius theorem), and that one is the centrality score [@bonacich1972factoring].
+
+Two things surprise newcomers. First, any multiple of an eigenvector is also an eigenvector, so *the scale is arbitrary*. A tool may scale the scores to add to 1, to have length 1 ($\sum_i v_i^2 = 1$), or to have the largest score equal to 1, and all are correct. The ratios between people never change. Second, the eigenvalue $\lambda$ is a property of the whole network, here about 2.21, and it tells you how strongly the pattern reinforces itself.
+
+You can find the leading eigenvector without any special routine by **power iteration**: start with everyone at 1, replace the scores by $Av$ (each person adds up their friends' scores), rescale, and repeat. The scores settle on the eigenvector. The Rust tab does exactly this.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+e <- eigen(A)
+lead <- abs(e$vectors[, 1])  # the sign of an eigenvector is arbitrary; the leading one is all one sign
+
+list(
+  eigenvalues = round(e$values, 3),
+  unit_length = round(set_names(lead, people), 3),
+  largest_is_1 = round(set_names(lead / max(lead), people), 3),
+  A_v_equals_lambda_v = all.equal(as.vector(A %*% lead), e$values[1] * lead)
+)
+```
+
+::: {.code-output}
+```text
+TODO(output): the printed result of the code above, once it runs.
+```
+:::
+
+## Python
+
+```python
+values, vectors = np.linalg.eigh(A)  # eigh is for symmetric matrices; eigenvalues come smallest first
+lead = np.abs(vectors[:, -1])  # the sign of an eigenvector is arbitrary; the leading one is all one sign
+
+print("eigenvalues:", np.round(values[::-1], 3))
+print("unit length:  ", ", ".join(f"{p} {x:.3f}" for p, x in zip(people, lead)))
+print("largest is 1: ", ", ".join(f"{p} {x:.3f}" for p, x in zip(people, lead / lead.max())))
+print("A v = lambda v holds:", np.allclose(A @ lead, values[-1] * lead))
+```
+
+::: {.code-output}
+```text
+eigenvalues: [ 2.214  1.    -0.539 -1.    -1.675]
+unit length:   Ana 0.497, Ben 0.497, Cleo 0.604, Dev 0.342, Eli 0.155
+largest is 1:  Ana 0.824, Ben 0.824, Cleo 1.000, Dev 0.567, Eli 0.256
+A v = lambda v holds: True
+```
+:::
+
+## Rust
+
+```rust
+// Power iteration: everyone adds up their friends' scores, then rescale to length 1, 200 times.
+let mut v = vec![1.0_f64; 5];
+for _ in 0..200 {
+    let w: Vec<f64> = (0..5).map(|i| (0..5).map(|j| a[i][j] as f64 * v[j]).sum()).collect();
+    let length = w.iter().map(|x| x * x).sum::<f64>().sqrt();
+    v = w.iter().map(|x| x / length).collect();
+}
+let av: Vec<f64> = (0..5).map(|i| (0..5).map(|j| a[i][j] as f64 * v[j]).sum()).collect();
+let lambda: f64 = av.iter().zip(&v).map(|(x, y)| x * y).sum(); // v has length 1, so this is the stretch factor
+let top = v.iter().cloned().fold(f64::MIN, f64::max);
+let fmt = |scale: f64| people.iter().zip(&v).map(|(p, x)| format!("{p} {:.3}", x / scale)).collect::<Vec<_>>().join(", ");
+println!("largest eigenvalue: {lambda:.3}");
+println!("unit length:  {}", fmt(1.0));
+println!("largest is 1: {}", fmt(top));
+println!("A v = lambda v holds: {}", av.iter().zip(&v).all(|(x, y)| (x - lambda * y).abs() < 1e-9));
+```
+
+::: {.code-output}
+```text
+largest eigenvalue: 2.214
+unit length:  Ana 0.497, Ben 0.497, Cleo 0.604, Dev 0.342, Eli 0.155
+largest is 1: Ana 0.824, Ben 0.824, Cleo 1.000, Dev 0.567, Eli 0.256
+A v = lambda v holds: true
+```
+:::
+
+:::
+
+Cleo, who sits in the triangle and also reaches out to Dev, scores highest; Ana and Ben tie, because the network can't tell them apart; Eli, at the end of the tail, scores lowest. Divide by Cleo's 0.604 and Ana becomes 0.824 and Eli 0.256, which is what a tool that fixes the top score at 1 would print. Same people, same order, same ratios, different numbers. When two programs disagree on eigenvector centrality, check the scale before you suspect either of them (@sec-conventions).
+
+## Probability and expectation
+
+**The question.** If ties formed by chance, how many would we expect, and how far from that is what we saw?
+
+**Probability** is a number from 0 to 1 for how likely something is. A **random variable** is a number that depends on chance, such as "the number of ties in a network drawn at random". Its **expectation** (or expected value, or mean) is each possible value weighted by its probability:
+
+$$
+\mathbb{E}[X] = \sum_x x \, P(X = x).
+$$
+
+Its **variance** says how far it typically strays, $\operatorname{Var}(X) = \mathbb{E}[(X - \mathbb{E}[X])^2]$.
+
+The most useful fact in the whole appendix is the **linearity of expectation**: the expectation of a sum is the sum of the expectations, $\mathbb{E}[X + Y] = \mathbb{E}[X] + \mathbb{E}[Y]$, *whether or not $X$ and $Y$ are independent*. Combined with one trick it counts almost anything in a random network. The trick is an **indicator**, a variable that is 1 if something happens and 0 if not, whose expectation is just the probability it happens.
+
+Take the simplest random network: each of the $\binom{n}{2}$ pairs is tied with probability $p$, independently of the others (the Erdős-Rényi model, the baseline behind many null models, see @sec-tests-and-null-models). Count ties by adding one indicator per pair, so $\mathbb{E}[\text{ties}] = \binom{n}{2} p$. With five people and $p = 0.3$ that is $10 \times 0.3 = 3$. The variance of a sum of independent indicators adds up too, $\binom{n}{2} p (1 - p) = 2.1$. A triangle exists when three specific pairs are all tied, which has probability $p^3$, and there are $\binom{n}{3}$ triples of people, so $\mathbb{E}[\text{triangles}] = \binom{n}{3} p^3 = 10 \times 0.027 = 0.27$. Triangles overlap (two of them can share a tie), so they are not independent of each other, and linearity does not mind.
+
+To believe all that, check it the slow way. With five people there are $2^{10} = 1{,}024$ possible networks, few enough to list every one, weigh each by its probability $p^k (1-p)^{10-k}$ for $k$ ties, and add up.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+n <- 5
+p <- 0.3
+slots <- combn(n, 2, simplify = FALSE)  # the 10 possible ties, numbered 1 to 10
+
+# For each group of three people, which three slots must all be tied to make a triangle.
+triples <- combn(n, 3, simplify = FALSE) |>
+  map(\(trio) combn(trio, 2, simplify = FALSE) |> map_int(\(pr) which(map_lgl(slots, \(s) identical(s, pr)))))
+
+# Every possible network is a number from 0 to 1023: bit s says whether slot s is tied.
+tibble(world = 0:1023) |>
+  mutate(
+    on = map(world, \(w) bitwAnd(w, 2^(0:9)) > 0),
+    ties = map_int(on, sum),
+    triangles = map_int(on, \(o) sum(map_lgl(triples, \(s) all(o[s])))),
+    prob = p^ties * (1 - p)^(10 - ties)
+  ) |>
+  summarise(
+    networks = n(), total_probability = sum(prob), expected_ties = sum(prob * ties),
+    variance_of_ties = sum(prob * ties^2) - expected_ties^2, expected_triangles = sum(prob * triangles)
+  ) |>
+  mutate(across(everything(), \(x) round(x, 3)))
+
+# The formulas.
+tibble(expected_ties = choose(n, 2) * p, variance_of_ties = choose(n, 2) * p * (1 - p), expected_triangles = choose(n, 3) * p^3)
+```
+
+::: {.code-output}
+```text
+TODO(output): the printed result of the code above, once it runs.
+```
+:::
+
+## Python
+
+```python
+n, p = 5, 0.3
+slots = list(combinations(range(n), 2))  # the 10 possible ties, numbered 0 to 9
+
+# For each group of three people, which three slots must all be tied to make a triangle.
+triples = [[slots.index(pair) for pair in combinations(trio, 2)] for trio in combinations(range(n), 3)]
+
+# Every possible network is a number from 0 to 1023: bit s says whether slot s is tied.
+total = mean = second = triangles = 0.0
+for world in range(2 ** len(slots)):
+    on = [(world >> s) & 1 for s in range(len(slots))]
+    k = sum(on)
+    prob = p**k * (1 - p) ** (len(slots) - k)
+    total += prob
+    mean += prob * k
+    second += prob * k * k
+    triangles += prob * sum(all(on[s] for s in trio) for trio in triples)
+print(f"all {2 ** len(slots)} networks: probabilities add to {total:.3f}, expected ties {mean:.3f}, "
+      f"variance {second - mean**2:.3f}, expected triangles {triangles:.3f}")
+print(f"the formulas say:           expected ties {comb(n, 2) * p:.3f}, variance {comb(n, 2) * p * (1 - p):.3f}, "
+      f"expected triangles {comb(n, 3) * p**3:.3f}")
+```
+
+::: {.code-output}
+```text
+all 1024 networks: probabilities add to 1.000, expected ties 3.000, variance 2.100, expected triangles 0.270
+the formulas say:           expected ties 3.000, variance 2.100, expected triangles 0.270
+```
+:::
+
+## Rust
+
+```rust
+let n = 5usize;
+let p = 0.3_f64;
+let slots: Vec<(usize, usize)> = (0..n).flat_map(|i| (i + 1..n).map(move |j| (i, j))).collect(); // the 10 possible ties
+let slot = |i: usize, j: usize| slots.iter().position(|&s| s == (i, j)).unwrap();
+
+// For each group of three people, which three slots must all be tied to make a triangle.
+let mut triples: Vec<[usize; 3]> = Vec::new();
+for i in 0..n {
+    for j in i + 1..n {
+        for k in j + 1..n {
+            triples.push([slot(i, j), slot(i, k), slot(j, k)]);
+        }
+    }
+}
+
+// Every possible network is a number from 0 to 1023: bit s says whether slot s is tied.
+let (mut total, mut mean, mut second, mut triangles) = (0.0_f64, 0.0_f64, 0.0_f64, 0.0_f64);
+for world in 0u32..(1 << slots.len()) {
+    let k = world.count_ones() as f64;
+    let prob = p.powf(k) * (1.0 - p).powf(slots.len() as f64 - k);
+    let t = triples.iter().filter(|t| t.iter().all(|&s| (world >> s) & 1 == 1)).count() as f64;
+    total += prob;
+    mean += prob * k;
+    second += prob * k * k;
+    triangles += prob * t;
+}
+println!("all {} networks: probabilities add to {total:.3}, expected ties {mean:.3}, variance {:.3}, expected triangles {triangles:.3}",
+         1u32 << slots.len(), second - mean * mean);
+let choose = |n: u64, k: u64| (0..k).fold(1.0, |acc, i| acc * (n - i) as f64 / (i + 1) as f64);
+println!("the formulas say:           expected ties {:.3}, variance {:.3}, expected triangles {:.3}",
+         choose(5, 2) * p, choose(5, 2) * p * (1.0 - p), choose(5, 3) * p.powi(3));
+```
+
+::: {.code-output}
+```text
+all 1024 networks: probabilities add to 1.000, expected ties 3.000, variance 2.100, expected triangles 0.270
+the formulas say:           expected ties 3.000, variance 2.100, expected triangles 0.270
+```
+:::
+
+:::
+
+The two lines agree: 3 ties on average, a variance of 2.1, and 0.27 triangles on average. Notice what 0.27 means. Most of the 1,024 networks have no triangle at all, and an *average* of 0.27 is a statement about the whole list, not about any one network. When a chapter says "expected under the null model", this is the calculation, usually done by simulation instead of by listing every network because the list grows too fast: 20 people already have $2^{190}$ networks.
+
+## Hypergeometric probability
+
+**The question.** If I pick five of someone's contacts at random from a company of 20 people, 8 of whom are in design, how surprising is it that three or more are in design?
+
+Picture a bag with 20 marbles, 8 black (design) and 12 white. Draw 5 without putting any back. The number of black marbles drawn follows the **hypergeometric distribution**:
+
+$$
+P(X = k) = \frac{\binom{K}{k}\binom{N-K}{m-k}}{\binom{N}{m}},
+$$
+
+where $N$ is the number of marbles (20), $K$ the number of black ones (8), $m$ the number drawn (5) and $k$ the number of black marbles among them. The numerator counts the ways to pick $k$ black and $m - k$ white; the denominator counts all ways to pick $m$. For $k = 3$: $\binom{8}{3}\binom{12}{2} / \binom{20}{5} = 56 \times 66 / 15{,}504 = 0.238$. The expected number of black marbles is $m K / N = 5 \times 8 / 20 = 2$, which fits the intuition that 8 of 20 is 40 percent and 40 percent of 5 is 2.
+
+The "without replacement" part is what separates it from the binomial distribution, where each draw is independent. It is the right model whenever you ask whether two *fixed sets* overlap more than chance: two lists of people, two sets of nodes, the people at two events. @sec-two-mode uses it to ask whether two people attended more of the same events than their attendance counts would give by chance, and Fisher's exact test is the same calculation.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+hyper <- tibble(in_design = 0:5, probability = dhyper(in_design, m = 8, n = 12, k = 5))
+hyper |> mutate(probability = round(probability, 4))
+
+tibble(
+  total = sum(hyper$probability),
+  mean = sum(hyper$in_design * hyper$probability),
+  three_or_more = sum(hyper$probability[hyper$in_design >= 3]),
+  from_phyper = phyper(2, m = 8, n = 12, k = 5, lower.tail = FALSE)
+) |>
+  mutate(across(everything(), \(x) round(x, 4)))
+```
+
+::: {.code-output}
+```text
+TODO(output): the printed result of the code above, once it runs.
+```
+:::
+
+## Python
+
+```python
+N, K, m = 20, 8, 5  # people, people in design, contacts picked
+
+def hypergeometric(k):
+    return comb(K, k) * comb(N - K, m - k) / comb(N, m)
+
+pmf = [hypergeometric(k) for k in range(m + 1)]
+for k, q in enumerate(pmf):
+    print(f"{k} in design: {q:.4f}")
+print(f"adds to {sum(pmf):.4f}; mean {sum(k * q for k, q in enumerate(pmf)):.4f}; 3 or more {sum(pmf[3:]):.4f}")
+```
+
+::: {.code-output}
+```text
+0 in design: 0.0511
+1 in design: 0.2554
+2 in design: 0.3973
+3 in design: 0.2384
+4 in design: 0.0542
+5 in design: 0.0036
+adds to 1.0000; mean 2.0000; 3 or more 0.2962
+```
+:::
+
+## Rust
+
+```rust
+let (people_total, in_design, picked) = (20u64, 8u64, 5u64);
+let choose = |n: u64, k: u64| if k > n { 0.0 } else { (0..k).fold(1.0, |acc, i| acc * (n - i) as f64 / (i + 1) as f64) };
+let pmf: Vec<f64> = (0..=picked)
+    .map(|k| choose(in_design, k) * choose(people_total - in_design, picked - k) / choose(people_total, picked))
+    .collect();
+for (k, q) in pmf.iter().enumerate() {
+    println!("{k} in design: {q:.4}");
+}
+let mean: f64 = pmf.iter().enumerate().map(|(k, q)| k as f64 * q).sum();
+println!("adds to {:.4}; mean {mean:.4}; 3 or more {:.4}", pmf.iter().sum::<f64>(), pmf[3..].iter().sum::<f64>());
+```
+
+::: {.code-output}
+```text
+0 in design: 0.0511
+1 in design: 0.2554
+2 in design: 0.3973
+3 in design: 0.2384
+4 in design: 0.0542
+5 in design: 0.0036
+adds to 1.0000; mean 2.0000; 3 or more 0.2962
+```
+:::
+
+:::
+
+Three or more in design happens about 30 percent of the time by chance alone (0.2962), so seeing it once would not surprise anyone. All five in design, $\binom{8}{5} / \binom{20}{5} = 56 / 15{,}504 = 0.0036$, would. That contrast is the whole logic of an overlap test: the number you saw means little until you know how often chance alone produces it.
+
+## Logs and odds
+
+**The question.** Why do models of networks talk about log-odds, and why do analysts add logs instead of multiplying probabilities?
+
+Two small tools. The **logarithm** $\log x$ asks "what power of $e \approx 2.718$ gives $x$?". Its useful property is that it turns products into sums, $\log(xy) = \log x + \log y$, and powers into products, $\log(x^k) = k \log x$. Computers like that for a practical reason. Multiply 200 probabilities of 0.01 and the true answer is $10^{-400}$, smaller than the smallest positive number a computer can store, so the program reports 0. Add the 200 logs instead and you get $-921.03$, a perfectly ordinary number that still says exactly what the product said. Likelihoods in the models chapters are handled this way.
+
+The **odds** of an event with probability $p$ are $p / (1 - p)$: how many times more likely it is to happen than not. A probability of 0.2 is odds of $0.2 / 0.8 = 0.25$, or "one to four". The **log-odds** (or **logit**) is the log of that, $\log\frac{p}{1-p}$, and running it backwards, $p = 1 / (1 + e^{-x})$, turns any number $x$ back into a probability between 0 and 1.
+
+Why bother? Because log-odds can be any number, positive or negative, so a model can *add* effects to it freely and the answer is still a valid probability. That is how exponential random graph models (@sec-ergm) work: the log-odds that a tie exists is a sum of a baseline and one coefficient for each pattern the tie would create. Adding 1 to the log-odds multiplies the odds by $e \approx 2.718$ whatever the starting point, but it moves the probability by different amounts at different starting points: from 0.2 it goes to 0.40, from 0.9 it would go to 0.96.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+chance <- 0.2
+odds <- chance / (1 - chance)
+tibble(
+  probability = chance, odds = odds, log_odds = log(odds), back_to_probability = plogis(log(odds)),
+  after_adding_1 = plogis(log(odds) + 1), odds_multiplied_by = exp(1), probability_at_minus_2.2 = plogis(-2.2)
+) |>
+  mutate(across(everything(), \(x) round(x, 3)))
+
+tibble(product_of_200 = prod(rep(0.01, 200)), sum_of_their_logs = sum(log(rep(0.01, 200))))
+```
+
+::: {.code-output}
+```text
+TODO(output): the printed result of the code above, once it runs.
+```
+:::
+
+## Python
+
+```python
+from math import exp, log, prod
+
+chance = 0.2
+odds = chance / (1 - chance)
+logistic = lambda x: 1 / (1 + exp(-x))
+print(f"probability {chance}: odds {odds:.3f}, log-odds {log(odds):.3f}, back to a probability {logistic(log(odds)):.3f}")
+print(f"add 1 to the log-odds: odds times {exp(1):.3f}, probability {chance} to {logistic(log(odds) + 1):.3f}")
+print(f"a log-odds of -2.2 is a probability of {logistic(-2.2):.3f}")
+print("product of 200 probabilities of 0.01:", prod([0.01] * 200), " sum of their logs:", round(sum(log(0.01) for _ in range(200)), 3))
+```
+
+::: {.code-output}
+```text
+probability 0.2: odds 0.250, log-odds -1.386, back to a probability 0.200
+add 1 to the log-odds: odds times 2.718, probability 0.2 to 0.405
+a log-odds of -2.2 is a probability of 0.100
+product of 200 probabilities of 0.01: 0.0  sum of their logs: -921.034
+```
+:::
+
+## Rust
+
+```rust
+let chance = 0.2_f64;
+let odds = chance / (1.0 - chance);
+let logistic = |x: f64| 1.0 / (1.0 + (-x).exp());
+println!("probability {chance}: odds {odds:.3}, log-odds {:.3}, back to a probability {:.3}", odds.ln(), logistic(odds.ln()));
+println!("add 1 to the log-odds: odds times {:.3}, probability {chance} to {:.3}", 1f64.exp(), logistic(odds.ln() + 1.0));
+println!("a log-odds of -2.2 is a probability of {:.3}", logistic(-2.2));
+let product: f64 = vec![0.01_f64; 200].iter().product();
+let sum_of_logs: f64 = vec![0.01_f64; 200].iter().map(|x| x.ln()).sum();
+println!("product of 200 probabilities of 0.01: {product:?}  sum of their logs: {sum_of_logs:.3}");
+```
+
+::: {.code-output}
+```text
+probability 0.2: odds 0.250, log-odds -1.386, back to a probability 0.200
+add 1 to the log-odds: odds times 2.718, probability 0.2 to 0.405
+a log-odds of -2.2 is a probability of 0.100
+product of 200 probabilities of 0.01: 0.0  sum of their logs: -921.034
+```
+:::
+
+:::
+
+A coefficient of $-2.2$ for "a tie exists" means a baseline tie probability of about 0.1. Keep that conversion handy: it is how you read a sparse network's edge coefficient without a calculator.
+
+## Permutation tests
+
+**The question.** Three of six colleagues are on the leadership team and they have more contacts. Is that more than a coin toss would give?
+
+Here is the idea without any formula. If being on the leadership team had nothing to do with the number of contacts, then it would have been equally likely for *any* three of the six people to be the leaders. So list every way the three leader seats could have gone to three of the six, compute the same statistic for each, and see where the real arrangement falls. If it sits at the extreme edge, chance alone rarely produces it. If it is somewhere in the middle, it is ordinary.
+
+The six people have 7, 5, 6, 4, 3 and 5 contacts, and the first three are the leaders. The statistic is the difference in average contacts, leaders minus others. Because the total (30 contacts) is fixed and each group has three people, that difference is a straight function of the leaders' total, so we can use the total: the leaders have $7 + 5 + 6 = 18$. There are $\binom{6}{3} = 20$ ways to pick three of six, and the **p-value** is the share of them with a leaders' total at least as large as the real one:
+
+$$
+p = \frac{\#\{\text{arrangements with a total} \ge 18\}}{20}.
+$$
+
+Count by hand. The only totals of 18 or more come from the two 5s being interchangeable: $\{7, 6, 5\}$ can be chosen two ways (using either of the 5s), and nothing larger exists, so 2 of 20 arrangements reach 18, and $p = 2/20 = 0.1$. If you want to count "as extreme in either direction" (the leaders having *fewer* contacts would have been just as notable), the totals of 12 or less also count, and $p = 4/20 = 0.2$.
+
+When there are too many arrangements to list, draw a large number $B$ of them at random and report $p = (1 + \#\{\text{draws} \ge \text{observed}\}) / (B + 1)$, which can never be zero [@phipson2010permutation]. @sec-tests-and-null-models does this for networks, where what you shuffle is the labels on the people, so that every pair moves with its person.
+
+::: {.panel-tabset group="language"}
+
+## R
+
+```r
+contacts <- c(7, 5, 6, 4, 3, 5)
+leaders <- 1:3
+
+# The leaders' total contacts for every way to pick three of the six: 20 ways.
+totals <- combn(6, 3, simplify = FALSE) |>
+  map_dbl(\(chosen) sum(contacts[chosen]))
+observed <- sum(contacts[leaders])
+
+tibble(
+  observed_total = observed, arrangements = length(totals),
+  at_least_as_large = sum(totals >= observed), one_sided_p = mean(totals >= observed),
+  two_sided_p = mean(abs(2 * totals - sum(contacts)) >= abs(2 * observed - sum(contacts)))
+)
+```
+
+::: {.code-output}
+```text
+TODO(output): the printed result of the code above, once it runs.
+```
+:::
+
+## Python
+
+```python
+contacts = [7, 5, 6, 4, 3, 5]
+leaders = (0, 1, 2)
+
+# The leaders' total contacts for every way to pick three of the six: 20 ways.
+totals = [sum(contacts[i] for i in chosen) for chosen in combinations(range(6), 3)]
+observed = sum(contacts[i] for i in leaders)
+center = sum(contacts)
+
+at_least = sum(t >= observed for t in totals)
+two_sided = sum(abs(2 * t - center) >= abs(2 * observed - center) for t in totals)
+print(f"observed total {observed}, {len(totals)} arrangements, {at_least} at least as large: one-sided p {at_least / len(totals):.2f}")
+print(f"as extreme in either direction: {two_sided} arrangements, two-sided p {two_sided / len(totals):.2f}")
+```
+
+::: {.code-output}
+```text
+observed total 18, 20 arrangements, 2 at least as large: one-sided p 0.10
+as extreme in either direction: 4 arrangements, two-sided p 0.20
+```
+:::
+
+## Rust
+
+```rust
+let contacts = [7i32, 5, 6, 4, 3, 5];
+let leaders = [0usize, 1, 2];
+
+// The leaders' total contacts for every way to pick three of the six: one bit pattern with three bits set each.
+let totals: Vec<i32> = (0u32..64).filter(|m| m.count_ones() == 3)
+    .map(|m| (0..6).filter(|&i| (m >> i) & 1 == 1).map(|i| contacts[i]).sum())
+    .collect();
+let observed: i32 = leaders.iter().map(|&i| contacts[i]).sum();
+let center: i32 = contacts.iter().sum();
+
+let at_least = totals.iter().filter(|&&t| t >= observed).count();
+let two_sided = totals.iter().filter(|&&t| (2 * t - center).abs() >= (2 * observed - center).abs()).count();
+println!("observed total {observed}, {} arrangements, {at_least} at least as large: one-sided p {:.2}", totals.len(), at_least as f64 / totals.len() as f64);
+println!("as extreme in either direction: {two_sided} arrangements, two-sided p {:.2}", two_sided as f64 / totals.len() as f64);
+```
+
+::: {.code-output}
+```text
+observed total 18, 20 arrangements, 2 at least as large: one-sided p 0.10
+as extreme in either direction: 4 arrangements, two-sided p 0.20
+```
+:::
+
+:::
+
+Two cautions. With six people the *smallest* p-value possible is $1/20 = 0.05$ one-sided, and here it is 0.1 because two people tie, so a small sample cannot give strong evidence however big the real difference is. And a p-value is not "the probability that the leaders' extra contacts are due to chance". It is the share of rearrangements, in a world where the labels mean nothing, that look at least as extreme as what we saw. It says how unusual the data are under that world, and nothing about how likely the world is.
 
 ## Exercises
 
-1. TODO(exercise): a by-hand exercise on a tiny network.
-2. TODO(exercise): a coding exercise on a dataset from the appendix.
-3. TODO(exercise): an interpretation exercise.
+1. **By hand.** Four people form a square: Ana-Ben, Ben-Cleo, Cleo-Dev and Dev-Ana. Write the adjacency matrix, then find $A^2$. How many walks of length 2 lead from Ana to Cleo, and from Ana to Ben? What is the trace of $A^3$, and what does it say about triangles?
+2. **By hand.** In a random network of five people where each pair is tied with probability 0.2, what is the expected number of ties, the expected degree of one person, and the expected number of triangles?
+3. **Coding.** In the five-person network of this appendix, count the walks of length 4 that start and end at Cleo. Then find the smallest number of steps for which a walk from Eli to Ana exists. How does it compare with their distance?
+4. **By hand.** In the 20-person company with 8 in design, what is the probability that all five randomly picked contacts are in design? What is the probability that three or more are?
+5. **By hand.** An exponential random graph model has a baseline log-odds of $-3$ for a tie. What probability is that? A tie that would close a triangle gets $+1.5$ added to its log-odds. What is its probability now?
+6. **Coding.** Change the leaders' contacts to 8, 6 and 7 (and keep 4, 3 and 5 for the others). List all 20 arrangements again. What is the smallest p-value this design can give, and why is it reached here?
+7. **Interpretation.** One program prints Cleo's eigenvector centrality as 1.000 and Ana's as 0.824. Another prints 0.604 and 0.497. Is one of them wrong?
+8. **Interpretation.** A report says: "The permutation p-value is 0.1, so there is a 10 percent chance the leaders' extra contacts happened by chance." Rewrite the sentence so that it is true.
+
+::: {.callout-note collapse="true"}
+## Worked answers
+
+1. The matrix has ones for Ana-Ben, Ben-Cleo, Cleo-Dev and Dev-Ana. In $A^2$, the entry for Ana to Cleo is 2, because Ben and Dev are both middle people, and the entry for Ana to Ben is 0, because the only way to go two steps from Ana ends at Ana or at Cleo. The diagonal of $A^2$ is 2, 2, 2, 2, the degrees. The trace of $A^3$ is 0: a walk of three steps can't come back to where it started in a square, so there are no triangles.
+2. Ten pairs, each tied with probability 0.2, give $10 \times 0.2 = 2$ expected ties. A person has four possible partners, so the expected degree is $4 \times 0.2 = 0.8$. There are $\binom{5}{3} = 10$ groups of three, each a triangle with probability $0.2^3 = 0.008$, so the expected number of triangles is $0.08$. Note that the expected degrees (0.8 each) add to 4, which is twice the expected number of ties.
+3. There are 12 walks of length 4 from Cleo back to Cleo (in $A^4$ the diagonal entry for Cleo; Ana's is 7). The numbers of walks from Eli to Ana of length 1 to 4 are 0, 0, 1, 1, so the smallest number of steps is 3. That equals their distance (Eli, Dev, Cleo, Ana), which is the rule "distance is the first power with a positive entry".
+4. All five in design: $\binom{8}{5} / \binom{20}{5} = 56 / 15{,}504 = 0.0036$. Three or more: $(56 \times 66 + 70 \times 12 + 56) / 15{,}504 = 4{,}592 / 15{,}504 = 0.2962$, which matches the table above.
+5. A log-odds of $-3$ is a probability of $1 / (1 + e^{3}) = 0.047$. Adding 1.5 gives $-1.5$, and $1 / (1 + e^{1.5}) = 0.182$. The odds were multiplied by $e^{1.5} \approx 4.48$, and the probability went up by a factor of about 3.8.
+6. The leaders now have 8, 6 and 7, a total of 21, and the others 4, 3 and 5. Of the 20 arrangements, only the real one reaches 21, because 8, 7 and 6 are the three largest values and no two people share a value. So the one-sided p-value is $1/20 = 0.05$, the smallest this design can give, and the two-sided value is $2/20 = 0.10$ (the real arrangement and its mirror image, with the leaders and the others swapped). With six people split three and three, you can never do better than this.
+7. Neither is wrong. They are the same eigenvector on two scales. One tool sets the largest score to 1 and the other gives the scores a total length of 1; the ratio of Ana to Cleo is $0.497 / 0.604 = 0.824$ either way, which is the 0.824 in the first line. Compare ratios or ranks, or rescale one tool's output before comparing, and say which scale you used.
+8. A true version: "If the leadership label had nothing to do with the number of contacts, then 2 of the 20 equally likely ways to pick three leaders (10 percent) would give the leaders a total at least as large as the one we saw. With six people that is weak evidence, and it is the smallest p-value the data allow." The first sentence of the report treats the p-value as the probability that "chance" is the explanation, but it is a statement about how unusual the data would be in a world where the labels are meaningless.
+:::
 
 ## Summary
 
 ::: {.callout-tip appearance="simple"}
-TODO(summary): three to five sentences, then the one-line takeaway.
+A network is a set of people and a set of pairs, and sets give you neighbors, overlaps and counts of possible pairs. Written as an adjacency matrix, the same network can be summed (row sums are degrees), multiplied (the entries of $A^{\ell}$ count walks of length $\ell$, and the diagonal of $A^3$ counts triangles) and decomposed (the leading eigenvector scores people by the scores of their friends, on an arbitrary scale). Probability supplies the yardstick for surprise: expectation and its linearity count what chance would give, the hypergeometric distribution says how often two fixed sets overlap by chance, and a permutation test lists the rearrangements to see where the real data fall. Logs turn products into sums and probabilities into log-odds, where models can add effects freely. The takeaway: when a formula in a chapter looks heavy, rebuild it on five people, because every number in it is something you can count.
 :::
 
 ## Further reading
 
-TODO(refs): cite with `@key` from `shared/bib/references.bib`.
+For networks as matrices, see @wasserman1994social, which develops the notation used here, and @newman2018networks, which has a thorough treatment of adjacency matrices, walks and eigenvector centrality. For the eigenvector idea in sociology, see @bonacich1972factoring. For matrix computation in practice, including why power iteration works and when it stalls, see @golub2013matrix. For the permutation p-value with its "plus one", see @phipson2010permutation, and for permutation tests on networks, @sec-tests-and-null-models.
