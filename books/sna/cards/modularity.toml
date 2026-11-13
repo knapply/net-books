@@ -1,0 +1,62 @@
+id = "modularity"
+title = "Modularity and community detection"
+kind = "measure"
+chapter = "subgroups"
+summary = "How much more of the network's ties fall inside the groups of a partition than a degree-preserving random network would put there."
+answers = "Does this division of the people into groups hold more ties inside the groups than chance, given everyone's number of ties?"
+
+data_requirements = [
+  "Ties are relations that can bring people together (talk, friendship, collaboration). If ties only record similarity or co-membership, groups may follow from how the data were built.",
+  "The network is described as undirected for the standard formula. For directed, weighted or signed ties use the matching version or say how the network was symmetrized.",
+  "Enough ties for the null model to mean something. In a network of a few dozen ties, random networks with the same degrees often score high too.",
+]
+
+assumptions = [
+  "The configuration model (random pairing of ties that keeps every person's degree) is the right yardstick for 'by chance'.",
+  "Each person belongs to one group. Overlapping membership is not scored.",
+  "Groups of any size can be compared with the same global chance term. This fails for small groups in large networks (the resolution limit).",
+  "The partition came from a search that may be one of many near-equal ones; the score does not say how many.",
+]
+
+readings = [
+  { context = "Friendship network of a school year or club", high = "Ties concentrate inside circles of friends. This describes the pattern of ties, not liking, trust or stability over time.", low = "Friendships cross circle boundaries about as much as degrees alone would predict." },
+  { context = "Communication or advice network inside an organization", high = "Interaction is concentrated within groups, which often track teams. Compare the groups with the org chart; a mismatch is informative.", low = "People talk across boundaries as much as chance would predict, which can be healthy or can mean the recorded channel misses the real structure." },
+  { context = "Follow or reply network on an online platform", high = "Accounts cluster into groups that follow or reply to each other. The cause may be topic, language, region or the recommender; it does not show shared beliefs.", low = "No clear clusters beyond what the popularity of accounts predicts." },
+  { context = "Marriage or alliance network among families", high = "Alliances concentrate within blocs of families. In a network this small compare with random networks with the same degrees before reading anything into it.", low = "Alliances do not form blocs beyond what the degrees give." },
+]
+
+pitfalls = [
+  "Reading modularity above 0.3 as proof of community structure. Random networks with the same degrees can reach that, especially when small.",
+  "Reading the highest score as the true partition. Many different partitions score within a few hundredths of the best, and the real groups in the karate club score lower than an algorithm's finer split.",
+  "Comparing modularity values across different networks, including the same people with ties symmetrized two ways.",
+  "Reporting one run. The method, seed and resolution all change the partition.",
+  "Missing the resolution limit: small groups in a large network can be merged because one tie counts as more than chance.",
+  "Using a tool that optimizes a different score by default (for example the Constant Potts Model) and calling the result modularity communities.",
+]
+
+checks = [
+  "Run the method with many seeds and report how many different partitions appear and which people change group.",
+  "Run it at several resolutions and report how the number of groups and the score change.",
+  "Compare the best score with the best score on random networks that keep every degree (a configuration model or tie swaps); report where the observed score falls.",
+  "Drop a random 5 to 10 percent of ties several times and compare partitions with the adjusted Rand index.",
+  "Compare with a second method that optimizes a different score (for example Infomap) and with attributes you did not use.",
+  "Score the same partition again with a separate modularity function to catch conversion mistakes.",
+]
+
+do_not_claim = [
+  "That the groups are real social groups, teams or factions, without evidence beyond the ties.",
+  "That the number of groups is the true number.",
+  "That a higher modularity means a better or more accurate partition.",
+  "That two algorithms agreeing confirms the structure, when both optimize the same score.",
+  "That people at the edge of a group belong to it; their ties may split between groups.",
+]
+
+report_template = "In this {tie_meaning} network of {n} {node_type}, {method} (resolution {resolution}, seed {seed}) found {k} groups with modularity {value}. Across {runs} runs the partition {stable_or_not} and {unsettled} could not be placed reliably. Random networks with the same degrees score {null_mean} on average (highest {null_max}), so the observed score is {above_or_not}. This describes where ties concentrate, not whether the groups are meaningful social units."
+
+related = ["components", "configuration-model", "partition-comparison", "k-core", "ergm"]
+sources = ["newman2004finding", "newman2006modularity", "fortunato2007resolution", "blondel2008fast", "traag2019louvain", "brandes2008modularity"]
+
+[knappnet]
+rust = "compute_modularity(&graph, &membership, 1.0, false)"
+r = "net_modularity(g, membership)"
+python = "networkx.community.modularity(G, communities)"

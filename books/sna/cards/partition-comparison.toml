@@ -1,0 +1,57 @@
+id = "partition-comparison"
+title = "Comparing two partitions (adjusted Rand, NMI, variation of information)"
+kind = "measure"
+chapter = "subgroups"
+summary = "A score for how closely two divisions of the same people into groups agree, computed from the table that counts people by their group in each."
+answers = "Do two ways of dividing these people into groups (two methods, two runs, or a method and known groups) put the same people together?"
+
+data_requirements = [
+  "Two partitions of the same people, one label per person, with no missing labels.",
+  "Each person in exactly one group in each partition. Overlapping communities need other scores.",
+  "Labels are arbitrary names; only whether two people share a label matters.",
+]
+
+assumptions = [
+  "Agreement means the same pairs of people are together in both partitions. Different scores weigh disagreements differently.",
+  "Chance agreement depends on the group sizes, so a raw score must be compared with a chance level or corrected for it.",
+  "If one partition is 'known groups' (departments, factions), those labels are a second description of the people, not a gold standard for the ties.",
+]
+
+readings = [
+  { context = "Method against known groups (departments, factions)", high = "The ties line up with the known groups. This says how the labels relate to ties, not that the method is right.", low = "Ties do not follow the labels, or the method finds finer or different structure." },
+  { context = "Two methods on the same network", high = "They carve the people the same way, so conclusions do not depend on the method.", low = "The method matters. Report both and say which question each answers." },
+  { context = "The same method on different seeds or on perturbed data", high = "The partition is stable, so the result is not an accident of the run or of one tie.", low = "The partition is unstable. Report the people who change group and the share of runs." },
+  { context = "The same network at two times", high = "Group structure persisted.", low = "Groups changed, or the labels drifted because the method is unstable. Check seed stability first." },
+]
+
+pitfalls = [
+  "Reading a score without a chance level. The adjusted Rand index is about 0 for chance agreement; raw NMI rises when a partition has many groups.",
+  "Mixing scores or tools. NMI normalizations differ across tools and variation of information may be in nats or bits.",
+  "Comparing partitions with very different numbers of groups and reading a low score as disagreement; four groups can never match two perfectly.",
+  "Treating agreement with known groups as validation of the method.",
+  "Comparing a partition of one set of people with a partition of a different set.",
+]
+
+checks = [
+  "Report the adjusted Rand index and one information-based score (NMI or variation of information), and say which normalization.",
+  "Compute the score against shuffled labels (keeping group sizes) to see what chance gives.",
+  "Look at the contingency table: which groups split or merge, and which people sit off the diagonal.",
+  "Repeat across seeds to separate method noise from real disagreement.",
+]
+
+do_not_claim = [
+  "That a high score proves the method is correct or the groups are real.",
+  "That a low score proves one of the partitions is wrong.",
+  "That scores from different tools or normalizations are comparable.",
+  "That partition agreement says anything about overlapping group membership.",
+]
+
+report_template = "Comparing {first} with {second} for {n} {node_type}, the adjusted Rand index is {ari} (shuffled labels give {chance_mean}, up to {chance_95th} at the 95th percentile) and the {nmi_or_vi} is {value} ({normalization}). The groups that differ are {differences}. This measures agreement of the divisions, not which one is right."
+
+related = ["modularity", "k-core", "components"]
+sources = ["hubert1985comparing", "meila2007comparing", "vinh2010information", "danon2005comparing"]
+
+[knappnet]
+rust = "compare_partitions(&first, &second, CompareMethod::AdjustedRand)"
+r = "net_compare_partitions(a, b, method = \"adjusted_rand\")"
+python = "sklearn.metrics.adjusted_rand_score(a, b)"
