@@ -118,17 +118,15 @@ share[busiest]
 # 6 Frances   woman    6 Evelyn E6
 #   ... 26 more rows     ... 83 more rows
 [1] 18 14
-# A tibble: 2 × 4
-  mode      n fewest  most
-  <chr> <int>  <dbl> <dbl>
-1 woman    18      2     8
-2 event    14      3    14
+       event woman
+n         14    18
+fewest     3     2
+most      14     8
 [1] 0.353
-# A tibble: 2 × 4
-  id     mode  attended share
-  <chr>  <chr>    <dbl> <dbl>
-1 Evelyn woman        8  0.57
-2 E8     event       14  0.78
+   event    woman 
+    "E8" "Evelyn" 
+    E8 Evelyn 
+  0.78   0.57 
 ```
 :::
 
@@ -270,15 +268,10 @@ net_transitivity(club)
 
 ::: {.code-output}
 ```text
-# A tibble: 1 × 2
-  one_mode_density two_mode_density
-             <dbl>            <dbl>
-1            0.179            0.353
-# A tibble: 2 × 2
-  mode  mean_degree
-  <chr>       <dbl>
-1 woman        4.94
-2 event        6.36
+one_mode_density two_mode_density 
+           0.179            0.353 
+event woman 
+ 6.36  4.94 
 [1] 5.56
 [1] 0
 ```
@@ -359,6 +352,7 @@ Here $A$ is the table of 1s and 0s with women as rows and events as columns, and
 # with weight the number of events they shared.
 shared <- net_project(club, which = "first", method = "count")$edges[c("source", "target", "weight")]
 shared <- shared[order(-shared$weight, match(shared$source, women), match(shared$target, women)), ]
+rownames(shared) <- NULL
 c(pairs = nrow(shared), possible = choose(18, 2), total_weight = sum(shared$weight))
 
 # Every event of size k ties k (k - 1) / 2 pairs, so the total can be predicted from the event sizes alone.
@@ -371,32 +365,26 @@ table(weight = shared$weight)
 # The other projection: events tied by shared women.
 dual <- net_project(club, which = "second", method = "count")$edges[c("source", "target", "weight")]
 dual <- dual[order(-dual$weight), ]
+rownames(dual) <- NULL
 c(pairs = nrow(dual), possible = choose(14, 2))
 head(dual, 1)
 ```
 
 ::: {.code-output}
 ```text
-  pairs possible total_weight
-1   139      153          322
-# A tibble: 1 × 1
-  predicted
-      <dbl>
-1       322
+       pairs     possible total_weight 
+         139          153          322 
+predicted 
+      322 
   source  target weight
-1 Evelyn Theresa      7
-  weight  n
-1      1 44
-2      2 49
-3      3 22
-4      4 15
-5      5  1
-6      6  7
-7      7  1
-  pairs possible
-1    66       91
-  source target weight
-1     E8     E9      9
+2 Evelyn Theresa      7
+weight
+ 1  2  3  4  5  6  7 
+44 49 22 15  1  7  1 
+   pairs possible 
+      66       91 
+   source target weight
+46     E8     E9      9
 ```
 :::
 
@@ -532,16 +520,22 @@ data.frame(tied, share = round(tied / 153, 2))
 
 ::: {.code-output}
 ```text
-# A tibble: 1 × 4
-  events pairs total share
-  <chr>  <dbl> <dbl> <dbl>
-1 E8, E9   157   322  0.49
-# A tibble: 3 × 3
-  dropped                 tied share
-  <chr>                  <int> <dbl>
-1 all events               139  0.91
-2 without event 8          121  0.79
-3 without events 8 and 9    81  0.53
+$events
+[1] "E8" "E9"
+
+$pairs
+[1] 157
+
+$total
+[1] 322
+
+$share
+[1] 0.49
+
+                       tied share
+all events              139  0.91
+without event 8         121  0.79
+without events 8 and 9   81  0.53
 ```
 :::
 
@@ -647,21 +641,20 @@ weights <- rbind(
 )
 weights <- weights[weights$source == "Ana" & weights$target %in% c("Ben", "Esi"), c("weighting", "source", "target", "weight")]
 weights$weight <- round(weights$weight, 2)
+rownames(weights) <- NULL
 weights
 ```
 
 ::: {.code-output}
 ```text
-# A tibble: 2 × 3
-  version                tied possible
-  <chr>                 <int>    <dbl>
-1 with the town hall       28       28
-2 without the town hall     8       28
-  weighting source target weight
-1     count    Ana    Ben   2.00
-2     count    Ana    Esi   1.00
-3    newman    Ana    Ben   0.64
-4    newman    Ana    Esi   0.14
+                version tied possible
+1    with the town hall   28       28
+2 without the town hall    8       28
+   weighting source target weight
+1      count    Ana    Ben   2.00
+4      count    Ana    Esi   1.00
+29    newman    Ana    Ben   0.64
+32    newman    Ana    Esi   0.14
 ```
 :::
 
@@ -878,15 +871,14 @@ top_three(scores[club$nodes$mode == "event", ])
 
 ::: {.code-output}
 ```text
-# A tibble: 6 × 3
-  measure     mode  top_three                           
-  <chr>       <chr> <chr>                               
-1 degree      woman Evelyn 0.57, Theresa 0.57, Nora 0.57
-2 closeness   woman Evelyn 0.80, Theresa 0.80, Nora 0.80
-3 betweenness woman Nora 0.11, Evelyn 0.10, Theresa 0.09
-4 degree      event E8 0.78, E9 0.67, E7 0.56           
-5 closeness   event E8 0.85, E9 0.79, E7 0.73           
-6 betweenness event E8 0.24, E9 0.23, E7 0.13           
+     degree         closeness      betweenness   
+[1,] "Evelyn 0.57"  "Evelyn 0.80"  "Nora 0.11"   
+[2,] "Theresa 0.57" "Theresa 0.80" "Evelyn 0.10" 
+[3,] "Nora 0.57"    "Nora 0.80"    "Theresa 0.09"
+     degree    closeness betweenness
+[1,] "E8 0.78" "E8 0.85" "E8 0.24"  
+[2,] "E9 0.67" "E9 0.79" "E9 0.23"  
+[3,] "E7 0.56" "E7 0.73" "E7 0.13"  
 ```
 :::
 
@@ -1415,11 +1407,9 @@ all.equal(as.vector(newman_strength[women]), as.vector(attended[women]))
 
 ::: {.code-output}
 ```text
-# A tibble: 2 × 4
-  woman     events shares_with newman_strength
-  <chr>      <dbl>       <dbl>           <dbl>
-1 Charlotte      4          11               4
-2 Dorothy        2          16               2
+          events shares_with newman_strength
+Dorothy        2          16               2
+Charlotte      4          11               4
 [1] TRUE
 ```
 :::
