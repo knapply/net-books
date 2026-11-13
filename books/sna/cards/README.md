@@ -11,7 +11,7 @@ Required fields (see tools/check_books.py):
 
 | field | meaning |
 | --- | --- |
-| id, title, kind | `kind` is `measure` or `model` |
+| id, title, kind | `kind` is `measure`, `model` or `procedure` (a repeatable analysis step or checklist, such as a permutation test or the reporting checklist) |
 | chapter | slug of the chapter that teaches it |
 | summary | one sentence |
 | answers | the question it answers, in plain words |

@@ -51,8 +51,8 @@ def check_cards(book: Path, outline: dict, keys: set[str]) -> None:
                 problems.append(f"{name}: field {field} is empty")
         if card.get("id") != path.stem:
             problems.append(f"{name}: id {card.get('id')} does not match the file name")
-        if card.get("kind") not in ("measure", "model"):
-            problems.append(f"{name}: kind must be measure or model")
+        if card.get("kind") not in ("measure", "model", "procedure"):
+            problems.append(f"{name}: kind must be measure, model or procedure")
         if card.get("chapter") not in slugs:
             problems.append(f"{name}: chapter {card.get('chapter')} is not in the outline")
         for r in card.get("readings", []):
