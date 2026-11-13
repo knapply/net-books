@@ -5,6 +5,18 @@
 @sec-networks-as-data and @sec-getting-started. The idea of who has a structural advantage comes from @sec-foundations, especially the sections on weak ties and structural holes.
 :::
 
+::: {.callout-note title="The short version"}
+Network analysts have several different ways to say "this person is central", and they give different answers on purpose. One counts how many people you know. One asks how quickly you can reach everybody. One asks how many other people's routes pass through you. One asks whether the people you know are themselves well connected. This chapter walks through each one on a small network you can check by hand, then on two famous real ones, and shows where each can mislead you.
+:::
+
+::: {.callout-note title="Why you might care"}
+Whenever someone says "find the key people", the first thing to ask is key for what? If you are trying to spread news, protect a supply chain, understand who holds an organization together, or work out who to talk to first, a different kind of "central" will point at a different person. Knowing the menu keeps you from handing someone a confident-sounding ranking that answers the wrong question.
+:::
+
+::: {.callout-note title="A note on the math"}
+There are formulas in this chapter, and every one of them is followed by a box called "In plain words" that reads it aloud and plugs in real numbers. If a formula looks scary, read the box and skip the formula. You'll lose nothing you need on a first read.
+:::
+
 ## Who matters here?
 
 ::: {.callout-tip appearance="simple"}
@@ -32,9 +44,17 @@ Linton Freeman's clarifying paper on centrality [@freeman1978centrality] gathere
 
 A short family tree helps with the names. Sabidussi [@sabidussi1966centrality] gave the closeness index. Katz [@katz1953new] proposed a status score for sociometric choices that counts walks of every length, nearer people counting more, and Bonacich [@bonacich1972factoring] proposed the leading eigenvector of the choice matrix as a status score. Freeman [@freeman1977set] defined betweenness. Bonacich [@bonacich1987power] later gave a one-parameter family that runs from degree to eigenvector and can turn negative. PageRank [@brin1998anatomy] is a damped random-walk relative, harmonic centrality [@marchiori2000harmony] repairs closeness for broken networks, and Brandes [@brandes2001faster] made betweenness fast. Textbook treatments to keep beside this chapter are Wasserman and Faust [@wasserman1994social] (their chapter on centrality and prestige), Newman [@newman2018networks], Kolaczyk [@kolaczyk2009statistical] and the free text by Hanneman and Riddle [@hanneman2005introduction].
 
+Don't try to remember who wrote what. Each name shows up again, with its idea, where the idea is explained.
+
 ## Notation, and a network small enough for paper
 
-Every measure here is a function of who is tied to whom, so we fix a few symbols once. A network has $n$ nodes. Its **adjacency matrix** $A$ has entries $a_{ij} = 1$ if there is a tie from $i$ to $j$ and $0$ if not; in an undirected network $a_{ij} = a_{ji}$, and in a weighted one $a_{ij}$ holds the weight. A **walk** is any sequence of ties, revisits allowed; a **path** never revisits a node. The **distance** $d(i, j)$ is the number of steps on a shortest path from $i$ to $j$. We write $\sigma_{st}$ for the number of shortest paths from $s$ to $t$, and $\sigma_{st}(v)$ for how many of those pass through $v$.
+Every measure here depends only on who is tied to whom, so we fix a few symbols once. You'll see them again and again, and each time we'll say them in words.
+
+- The number of people (nodes) is $n$.
+- The **adjacency matrix** $A$ is a grid with one row and one column per person. The entry $a_{ij}$ (row $i$, column $j$) is $1$ if there is a tie from $i$ to $j$ and $0$ if not. In an undirected network $a_{ij} = a_{ji}$, and in a weighted one $a_{ij}$ holds the weight.
+- A **walk** is any trip along ties, revisits allowed. A **path** is a trip that never revisits a person.
+- The **distance** $d(i, j)$ is the number of steps on the shortest path from $i$ to $j$.
+- $\sigma_{st}$ (read "sigma s t") is the number of shortest paths from $s$ to $t$, and $\sigma_{st}(v)$ is how many of those pass through $v$.
 
 Every definition below gets checked against one network small enough to do on paper: a triangle A, B, C with a tail running from C to D to E.
 
@@ -57,6 +77,10 @@ A = \begin{pmatrix}
 \end{pmatrix}.
 $$
 
+::: {.callout-tip title="In plain words"}
+The matrix is a lookup table for ties. Read row A, the first row: $0, 1, 1, 0, 0$ means A has no tie to A, a tie to B, a tie to C, and no tie to D or E. Row C reads $1, 1, 0, 1, 0$: C is tied to A, B and D. Because ties here are mutual, the grid is a mirror image of itself across the diagonal.
+:::
+
 A and B have exactly the same neighbors, so they are interchangeable, and any sensible measure must give them the same score. That is a free check on every table that follows.
 
 ## Degree: activity
@@ -67,13 +91,21 @@ Degree measures *activity* or *exposure*: how many people a person can reach in 
 
 ### Degree, formally
 
-For an undirected network,
+Degree answers one question: how many ties does person $i$ have, and what share of the most they could have is that? For an undirected network,
 
 $$
 k_i = \sum_{j} a_{ij}, \qquad k_i^{\text{norm}} = \frac{k_i}{n - 1}.
 $$
 
+::: {.callout-tip title="In plain words"}
+$k_i$ (say "k sub i") is the degree of person $i$. The big sigma $\sum_j$ means "add up over every other person $j$", and $a_{ij}$ is 1 if $i$ and $j$ are tied and 0 if not, so the sum just counts $i$'s ties. The second formula divides by $n - 1$, which is everyone else, to turn the count into a share. In the triangle-with-a-tail network, C is tied to A, B and D, so $k_C = 3$ and the share is $3/4 = 0.75$ (worked by hand). In the friendship network Dev's count is 6 and the share is $6/9 = 0.67$.
+:::
+
 In a directed network the two sums come apart: **out-degree** $k_i^{\text{out}} = \sum_j a_{ij}$ counts ties sent, and **in-degree** $k_i^{\text{in}} = \sum_j a_{ji}$ counts ties received. Every undirected tie has two ends, so the degrees always add up to twice the number of ties, $\sum_i k_i = 2m$: 36 in the friendship network (18 ties) and 10 in the five-node network (5 ties). If your total is odd, something is wrong with the data. In a directed network the in-degrees and the out-degrees each add up to $m$. On the five-node network the degrees are 2, 2, 3, 2, 1.
+
+::: {.callout-tip title="In plain words"}
+Out-degree counts the ties a person sends and in-degree counts the ties they receive. The statement $\sum_i k_i = 2m$ says "if you add up everyone's degree, you get twice the number of ties", because every tie has two ends and each end is counted once. Check it on the five-node network: $2 + 2 + 3 + 2 + 1 = 10$, and there are 5 ties. If your own total comes out odd, a tie was recorded wrongly.
+:::
 
 ### When ties have a direction
 
@@ -86,6 +118,12 @@ Network analysts use the word **prestige** for what in-degree captures when the 
 ### When ties differ in strength
 
 Counting ties treats a close friend and a nodding acquaintance as the same. If your data carry strengths, you can sum them instead, which gives **strength** (sometimes called weighted degree). That keeps information, but it also mixes two things, how many ties someone has and how strong they are, so that a person with many weak ties can look like a person with a few strong ones. Opsahl and colleagues [@opsahl2010node] proposed a way to blend the two with a tuning parameter, so you can decide how much each should count. Formally, strength is $s_i = \sum_j w_{ij}$, and Opsahl's blend is $k_i^{1-\alpha} s_i^{\alpha}$, which is degree at $\alpha = 0$ and strength at $\alpha = 1$. @sec-signed-and-valued works it through on the karate club, where member 26 has three ties but a strength of 14.
+
+::: {.callout-tip title="In plain words"}
+$s_i$ is strength: add up the weights on all of person $i$'s ties instead of counting the ties. Opsahl's blend multiplies two things, degree raised to the power $1 - \alpha$ and strength raised to the power $\alpha$, where $\alpha$ (alpha) is a dial you set from 0 to 1. At 0 the strength drops out and you get plain degree; at 1 the degree drops out and you get plain strength. Karate club member 26 has 3 ties and a strength of 14, so the blend is 3 at $\alpha = 0$, 14 at $\alpha = 1$, and $\sqrt{3 \times 14} = \sqrt{42} \approx 6.5$ halfway at $\alpha = 0.5$ (worked by hand).
+:::
+
+The code below counts each person's ties in the friendship network. Look for Dev, the person with the most friends, and for how the R, Python and Rust tabs agree.
 
 ::: {.panel-tabset group="language"}
 
@@ -233,15 +271,21 @@ Degree is a *count*, so it's easy to read, and it's worth being specific about w
 
 ## Closeness: independence
 
-Closeness asks how near a person is to everyone else. Take the length of the shortest route from the person to each other person (we'll define these routes properly in @sec-paths-and-cohesion), add the lengths up, and flip it so that a smaller total gives a larger score. A common way to write this, for a network of $n$ people, is
+Closeness asks how near a person is to everyone else. Think of a town square: a shop on the square is a short walk from everybody, while one on the edge of town takes a long trip for most customers. Take the length of the shortest route from the person to each other person (we'll define these routes properly in @sec-paths-and-cohesion), add the lengths up, and flip it so that a smaller total gives a larger score. A common way to write this, for a network of $n$ people, is the formula below. It answers the question: how close is person $i$, on average, to everybody else?
 
 $$
 \text{closeness}(i) = \frac{n - 1}{\sum_{j \neq i} d(i, j)},
 $$
 
-where $d(i, j)$ is the number of steps on the shortest route from $i$ to $j$. A score of 1 would mean you're one step from everybody. The sum $\sum_{j \neq i} d(i, j)$ is called the **farness**, and closeness is its inverse, multiplied by $n - 1$ so that the score runs from 0 to 1 whatever the size of the network. (Without the $n - 1$, the raw $1 / \sum_j d(i, j)$ shrinks as networks grow, which is why tools disagree about whether to include it.) The idea goes back to Sabidussi [@sabidussi1966centrality] and is part of Freeman's "independence" intuition: if you're near everyone, you don't depend on anyone in particular to reach the rest.
+::: {.callout-tip title="In plain words"}
+Start from the inside. $d(i, j)$ is the number of steps from person $i$ to person $j$. The sum $\sum_{j \neq i}$ means "add this up for every person $j$ other than $i$", so the bottom of the fraction is the total number of steps from $i$ to everyone: the farness. Closeness is $n - 1$ divided by that total. If $i$ is one step from all $n - 1$ others, the total is $n - 1$ and the score is exactly 1. In the triangle-with-a-tail network, C is 1, 1, 1 and 2 steps from A, B, D and E, a total of 5, so closeness is $4 / 5 = 0.800$. The far end of the tail, E, has a total of 9, so $4 / 9 = 0.444$ (both match the table later in this chapter).
+:::
+
+where $d(i, j)$ is the number of steps on the shortest route from $i$ to $j$. A score of 1 would mean you're one step from everybody. The sum $\sum_{j \neq i} d(i, j)$ is called the **farness**, and closeness is its inverse, multiplied by $n - 1$ so that the score runs from 0 to 1 whatever the size of the network. Without the $n - 1$, the raw $1 / \sum_j d(i, j)$ shrinks as networks grow, which is why tools disagree about whether to include it. The idea goes back to Sabidussi [@sabidussi1966centrality] and is part of Freeman's "independence" intuition: if you're near everyone, you don't depend on anyone in particular to reach the rest.
 
 There's a catch. If the network has pieces that aren't connected, the distance to someone in another piece is undefined, and the formula breaks. People handle that in different ways. One popular fix is **harmonic centrality**, which adds up the *reciprocals* of the distances, so an unreachable person simply contributes zero [@marchiori2000harmony]. When your network might not be connected, prefer it, and say so.
+
+The code below scores everyone in the friendship network on closeness. Look for Fay and Gus at the top and Jo, at the far end of the chain, at the bottom.
 
 ::: {.panel-tabset group="language"}
 
@@ -337,6 +381,10 @@ Here's the whole calculation for Jo, so that no number in the table is a mystery
 
 The steps add up to $1 + 2 + 3 + 3 + (5 \times 4) = 29$. With $n - 1 = 9$ other people, closeness is $9 / 29 = 0.310$, matching the table. Now do the same for Fay: she's one step from Ana, Cleo, Dev, Gus and Hana, two from Ben, Eli and Ivo, and three from Jo, so her total is $5 + 6 + 3 = 14$ and her closeness is $9 / 14 = 0.643$.
 
+::: {.callout-tip title="In plain words"}
+This is just the farness sum written out. Jo is 1 step from Ivo, 2 from Hana, 3 from Fay and Gus, and 4 from each of five others: $1 + 2 + 3 + 3 + 20 = 29$. Nine other people divided by 29 steps gives 0.310. Picture it as the average trip: Jo needs about 3.2 steps to reach someone, Fay about 1.6, and closeness is roughly "one over the average trip length".
+:::
+
 Here is the same sum drawn on the network. Every person carries their distance from Jo, and the farther away, the darker the shade (@fig-closeness-from-jo).
 
 ![Closeness for Jo, drawn. Each person is labeled with their distance from Jo; darker means farther. The distances sum to 29, so closeness is 9 / 29 = 0.310.](../figures/closeness-from-jo.svg){#fig-closeness-from-jo fig-alt="The ten-person network. Jo is on the right edge in blue. Each other person shows a number from 1 to 5, the number of steps to Jo, and is shaded darker as the number grows. A side note adds the distances to 29 and gives 9 divided by 29 as 0.310."}
@@ -355,6 +403,10 @@ Closeness needs a distance to everyone. If the network has pieces that don't tou
 - **Average over the reachable** (igraph's behavior when normalized): $r_i / S_i$. It ignores everyone you can't reach.
 - **Wasserman and Faust's fix** [@wasserman1994social]: $\dfrac{r_i}{S_i} \cdot \dfrac{r_i}{n - 1}$. It scales that average by the share of the network you can reach. NetworkX does this by default.
 - **Harmonic centrality** [@marchiori2000harmony]: $\dfrac{1}{n - 1} \sum_{j \neq i} \dfrac{1}{d(i, j)}$, with $1 / \infty = 0$. No special case is needed.
+
+::: {.callout-tip title="In plain words"}
+$r_i$ is the number of other people $i$ can actually reach, and $S_i$ is the total number of steps to those people. The first rule is the average trip to the reachable. The second shrinks that by $r_i / (n - 1)$, the share of the network you can reach, so a tiny island is penalized. Harmonic adds up $1/d$ over everyone, where a person you can't reach counts as $1/\infty = 0$; a close person adds a lot (1 step adds 1) and a far person adds little (4 steps adds a quarter). Try the island pair F and G below, who each reach one of the six other people, one step away. Average over the reachable: $1/1 = 1.000$. Wasserman and Faust: $1 \times 1/6 = 0.167$. Harmonic: $(1/1)/6 = 0.167$.
+:::
 
 To see the difference, add a separate pair, F and G, to the five-node network.
 
@@ -460,6 +512,8 @@ In a directed network distances have a direction too. **Out-closeness** uses pat
 
 Betweenness asks something different. For every pair of *other* people, how often does the shortest route between them pass through this person? If a person lies on many such routes, a lot of what flows through the network passes through them, and they can slow it down, speed it up or reshape it. This is Freeman's "control" [@freeman1977set].
 
+Think of a bridge or a mountain pass. Traffic between two valleys has no choice but to cross it, however few houses stand next to it.
+
 @fig-betweenness-paths shows it with the friendship network. Every shortest route from Jo to anyone else goes through Ivo and then through Hana.
 
 ![Betweenness is about routes. Every shortest route from Jo to anyone else passes through Ivo and Hana, so they sit in between even though neither has many ties.](../figures/betweenness-paths.svg){#fig-betweenness-paths fig-alt="A ten-node network. Thick orange lines mark the shortest routes starting at the node Jo: Jo to Ivo, Ivo to Hana, then Hana to the two nodes Fay and Gus, and on from them to the rest. Thin gray lines mark ties not on those routes."}
@@ -467,6 +521,8 @@ Betweenness asks something different. For every pair of *other* people, how ofte
 Hana's betweenness is high not because she has many friends but because she holds the only bridge. If you read @sec-foundations you'll recognize the shape: it's the same structure as a weak tie that links two clusters, or a broker spanning a structural hole. Betweenness is the number that tells you how much a person plays that role.
 
 Two practical notes. First, the straightforward way to compute betweenness is slow on big networks, because it needs the shortest routes between every pair. Brandes found a much faster method [@brandes2001faster], and nearly every modern tool uses it. Second, if there are several equally short routes between two people, each gets a share of the credit, which is why you'll see fractional scores, like Ana's 0.8, in the table later in this chapter.
+
+The code below counts, for every person in the friendship network, the shortest routes between other pairs that pass through them. Look for Hana far ahead of everyone and Jo at 0.
 
 ::: {.panel-tabset group="language"}
 
@@ -567,15 +623,23 @@ When two routes are equally short, they share the credit. If a ring had two equa
 
 ### Betweenness, formally
 
-For a node $v$,
+The formula answers one question: out of all the trips between other people, how many of the shortest ones go through $v$? For a node $v$,
 
 $$
 C_B(v) = \sum_{s \neq v \neq t} \frac{\sigma_{st}(v)}{\sigma_{st}}.
 $$
 
+::: {.callout-tip title="In plain words"}
+$C_B(v)$ is the betweenness of $v$. The sum runs over every pair of other people, $s$ and $t$ (the condition $s \neq v \neq t$ just says neither of them is $v$). For each pair, the fraction is "of all the shortest routes from $s$ to $t$, what share go through $v$?". If $v$ is on every one, the fraction is 1; if there are two equally short routes and $v$ is on one, it is $1/2$; if $v$ is on none, it is 0. In the five-person line, Cy sits on the only shortest route for four pairs (Ann with Di, Ann with Ed, Bo with Di, Bo with Ed), so the score is $1 + 1 + 1 + 1 = 4$, which matches the hand count above.
+:::
+
 Each pair $s, t$ contributes the share of its shortest paths that run through $v$: 1 if $v$ is on all of them, 1/2 if it is on half. In an undirected network the pair $\{s, t\}$ counts once; in a directed one $(s, t)$ and $(t, s)$ are different pairs and both count. A pair with no path between them contributes nothing, so betweenness runs happily on a disconnected network.
 
 **Normalizing.** The most any node can score is the number of pairs that don't include it: $(n - 1)(n - 2) / 2$ in an undirected network and $(n - 1)(n - 2)$ in a directed one. Dividing by it gives a share between 0 and 1, "the share of all pairs of other people whose shortest paths run through $v$". That is the 52 percent we quoted for the Medici (47.5 of 91 pairs). Tools differ on whether they normalize by default: knappnet reports the raw count unless you ask, and NetworkX normalizes unless you ask.
+
+::: {.callout-tip title="In plain words"}
+The most a person can score is when they sit between every pair of the other people. With $n - 1$ other people there are $(n-1)(n-2)/2$ pairs of them, so that is the ceiling in an undirected network. Dividing by it gives a share from 0 to 1. For the Medici, 15 families leave $14 \times 13 / 2 = 91$ pairs, and $47.5 / 91 = 0.52$. In the friendship network, 10 people leave $9 \times 8 / 2 = 36$ pairs, so Hana's 14 is a share of $14 / 36 \approx 0.39$ (worked by hand).
+:::
 
 **Endpoints.** Some definitions also credit a node for the pairs it belongs to, since it is trivially on its own routes. That adds $n - 1$ to every node in a connected network, so it cannot change the order within one network, but it does change the numbers and any comparison of shares [@brandes2008variants]. NetworkX offers it as `endpoints=True`. The size table later in this chapter prints both versions.
 
@@ -584,6 +648,12 @@ Each pair $s, t$ contributes the share of its shortest paths that run through $v
 $$
 \delta_s(v) = \sum_{w \,:\, v \in P_s(w)} \frac{\sigma_{sv}}{\sigma_{sw}} \bigl(1 + \delta_s(w)\bigr),
 $$
+
+::: {.callout-tip title="In plain words"}
+This is the hard part of the chapter. It explains how a computer gets everyone's betweenness quickly. On a first read you can skip to the next heading, and you'll still have the pair-by-pair idea, which is all you need to interpret the scores.
+
+For those who want it: $\delta_s(v)$ (delta) is "how much of the traffic that starts at $s$ passes through $v$". You compute it by working backward from the farthest people. The sum is over every node $w$ that sits one step beyond $v$ on a shortest route from $s$. The fraction $\sigma_{sv} / \sigma_{sw}$ is the share of the shortest routes to $w$ that go through $v$. The $(1 + \delta_s(w))$ is $w$ itself, plus everything that lies further out beyond $w$. In the table's E row, A and B are each reached through D and then C, so C gets $1 \times (1 + 0)$ for A and the same for B, a dependency of 2. D is on the way to C, so it gets $1 \times (1 + 2) = 3$.
+:::
 
 where $P_s(w)$ lists the nodes just before $w$ on shortest paths from $s$. Add the dependencies over all sources and halve them for an undirected network: $C_B(v) = \tfrac{1}{2} \sum_s \delta_s(v)$. The cost is about $n \times m$ steps, not one search per pair. Here are the dependencies on the five-node network, one row per source.
 
@@ -597,7 +667,7 @@ where $P_s(w)$ lists the nodes just before $w$ on shortest paths from $s$. Add t
 | Sum | 0 | 0 | 8 | 6 | 0 |
 | Half | 0 | 0 | 4 | 3 | 0 |
 
-Read the E row. From E the shortest paths to A and to B both run D, C, so C lies on two paths (dependency 2). D lies on those two paths and on the path to C itself, which makes 3. The halved sums, 4 for C and 3 for D, are the betweenness scores that the five-node code later in the chapter prints, and they match the pair-by-pair count you can do on paper: C sits between A and D, A and E, B and D, B and E, and D sits between A and E, B and E, C and E.
+Here is the E row in words. From E the shortest paths to A and to B both run D, C, so C lies on two paths (dependency 2). D lies on those two paths and on the path to C itself, which makes 3. The halved sums, 4 for C and 3 for D, are the betweenness scores that the five-node code later in the chapter prints, and they match the pair-by-pair count you can do on paper: C sits between A and D, A and E, B and D, B and E, and D sits between A and E, B and E, C and E.
 
 ### How to read betweenness
 
@@ -609,6 +679,8 @@ Read the E row. From E the shortest paths to A and to B both run D, C, so C lies
 ### Directed and weighted betweenness
 
 In a directed network routes follow the arrows, so the pair $(s, t)$ is not the pair $(t, s)$, and some pairs have a route one way and none the other. In a weighted network the question is what a weight means. Shortest-path code treats a weight as a *distance* (larger is farther). A strength, like the karate club's count of contexts (larger is closer), is the opposite, and if you read strength as distance the code routes around your best ties. The karate club shows how much that matters. The three readings below use the same 78 ties.
+
+The code below scores the karate club three ways: ignoring the weights, treating them as distances, and treating them as strengths. Look at who is in the top five under each reading.
 
 ::: {.panel-tabset group="language"}
 
@@ -751,13 +823,15 @@ When you write the result down, give the number, the share it represents, its ra
 
 The first three measures all count something about *you*. The fourth family says that isn't enough: being connected to well-connected people should count for more than being connected to peripheral ones.
 
-**Eigenvector centrality** makes that idea precise. A person's score is proportional to the sum of the scores of their contacts. That sounds circular, and it is, but the circle has a stable solution, which a computer finds by repeating the calculation until the scores stop changing. The idea comes from Bonacich [@bonacich1972factoring]. In the friendship network, Dev and the people near him score high, while Ivo and Jo at the far end score near zero, even though Ivo has two friends. His friends aren't well connected.
+Think of a school: being friends with the popular students can make you more visible than having many friends nobody has heard of. **Eigenvector centrality** makes that idea precise. A person's score is proportional to the sum of the scores of their contacts. That sounds circular, and it is, but the circle has a stable solution, which a computer finds by repeating the calculation until the scores stop changing. The idea comes from Bonacich [@bonacich1972factoring]. In the friendship network, Dev and the people near him score high, while Ivo and Jo at the far end score near zero, even though Ivo has two friends. His friends aren't well connected.
 
 Several close relatives are worth knowing by name.
 
 - **Katz centrality** [@katz1953new] counts every route out of a person, not just the shortest, but gives longer routes a smaller weight, so nearby people count more. It also gives everyone a small baseline, which helps when some people have no ties pointing at them.
 - **PageRank** [@brin1998anatomy] is the idea behind early web search. Imagine a person clicking links at random, and now and then jumping to a random page. How often do they land on each page? That's the score. It is close in spirit to Katz.
 - **Bonacich power** [@bonacich1987power] adds a twist with a tuning number. With a positive setting, being tied to central people raises your score, as in eigenvector centrality. With a negative setting, being tied to *weak* people raises it. That sounds odd, until you think about bargaining: someone who has many options and whose partners have few has the upper hand. The same structure can mean prestige in one setting and power in another, which is a good reminder to think about what your tie means.
+
+The code below finds the eigenvector score for everyone in the friendship network. Look for Dev on top and for how low Ivo sits despite having two friends.
 
 ::: {.panel-tabset group="language"}
 
@@ -855,6 +929,10 @@ Four people: Ann, Bo and Cy are all friends with each other, and Di is friends o
 
 After round 1, each score is just the person's degree (Cy has 3 friends, Di has 1). In round 2, scores include who the friends are: Ann is friends with Bo and Cy, who both scored well, so Ann catches up with Cy. The scores keep adjusting a little each round and settle where Cy is on top, Ann and Bo a bit behind, and Di well behind. A computer does this in a blink for thousands of people. The settled numbers are what "eigenvector centrality" is.
 
+::: {.callout-tip title="In plain words"}
+The passing game is the formula you'll meet in a moment, done in slow motion. Round 1: Cy has three friends, each scoring 1, so Cy's new total is 3, and Ann's is $1 + 1 = 2$. After rescaling so the top is 1, Cy is $3/3 = 1.00$ and Ann is $2/3 = 0.67$ (this matches the table). Round 2 repeats the sum with the new scores: Ann gets $0.67 + 1.00 = 1.67$ (from Bo and Cy) and Cy gets $0.67 + 0.67 + 0.33 = 1.67$, so after rescaling both are 1.00, and Di, with $1.00$ before rescaling, is $1.00/1.67 = 0.60$. A few more rounds and the scores stop moving.
+:::
+
 You can watch the passing game happen on a tiny network in @fig-eigen-rounds.
 
 ![Eigenvector centrality as a passing game. Everyone starts at 1; each round, a person's new score is the sum of their neighbors' scores, rescaled so the top is 1. The scores settle: C is the best connected, D the least.](../figures/eigen-rounds.svg){#fig-eigen-rounds fig-alt="Four copies of a triangle A, B, C with a tail D attached to C. Dots grow or shrink with scores written beneath. At the start all are 1. After two rounds C is 1, A and B are 1, D is 0.6. Settled, C is 1.00, A and B 0.85 and D 0.46."}
@@ -868,17 +946,27 @@ You can watch the passing game happen on a tiny network in @fig-eigen-rounds.
 
 ### The family, formally
 
-**Eigenvector centrality.** "Proportional to the sum of my contacts' scores" is
+This section writes the family of ideas as formulas. It is the most mathematical part of the chapter. On a first read you can skip to "Five nodes, all the measures", and you'll still have the hand example above and the plain-words boxes below.
+
+**Eigenvector centrality.** The rule "my score is proportional to the sum of my contacts' scores" is
 
 $$
 x_i = \frac{1}{\lambda} \sum_j a_{ij}\, x_j, \qquad\text{that is,}\qquad A x = \lambda x.
 $$
 
+::: {.callout-tip title="In plain words"}
+$x_i$ is person $i$'s score. The sum adds up the scores $x_j$ of everyone $j$ who is tied to $i$ (the $a_{ij}$ switches each person on or off). The Greek letter $\lambda$ (lambda) is a scaling number that makes the two sides match. The second form, $A x = \lambda x$, says the same thing for everybody at once: multiply the grid of ties by the list of scores, and you get the same list back, just stretched by $\lambda$. On the four-person example (Ann, Bo, Cy, Di), the settled scores are 0.85, 0.85, 1.00 and 0.46. Cy's friends add up to $0.85 + 0.85 + 0.46 = 2.16$, which is $\lambda \times 1.00$, and Ann's friends add up to $0.85 + 1.00 = 1.85$, which is $\lambda \times 0.85$. So $\lambda$ is about 2.2 both ways (worked by hand; the tiny gap is rounding).
+:::
+
 Among the solutions we want the *leading* eigenvector, the one that goes with the largest eigenvalue $\lambda$. For a connected undirected network the Perron-Frobenius theorem says this vector can be chosen with every entry positive and is unique up to scale. That is why the scale is a free choice (top score 1, or length 1) and why a table in either scale is the same table. A computer finds it with the passing game from the hand example: start from all ones, multiply by $A$, rescale, repeat.
 
-It breaks in three ways. On a **disconnected** network the score lives on the piece with the largest eigenvalue and the other pieces get zero, or the tool refuses: NetworkX's `eigenvector_centrality_numpy` raised an error on the disconnected networks in the stress test below, so that tab takes the leading eigenvector straight from the matrix. In a **directed** network you use incoming ties, $x_i = \lambda^{-1} \sum_j a_{ji} x_j$, and you need the network to be strongly connected for a unique answer; a network with no cycles at all, such as a pure chain of command, has no positive eigenvalue and gives every person a score of zero. And on a network with one dense core and a long tail, the score collapses onto the core.
+::: {.callout-tip title="In plain words"}
+An "eigenvector" is a list of scores that comes back as itself, only stretched, when you apply the rule. There can be several such lists, and the "leading" one is the one with the biggest stretch. The theorem's message is reassuring: for a connected network there is one sensible all-positive ranking, so nobody has to choose between competing answers. The scale (top score 1, or length 1) is only a choice of units, like measuring in meters or feet.
+:::
 
-**Katz.** Eigenvector centrality listens to walks of unlimited length, so it hears mainly the densest region. Katz damps walks by their length:
+It breaks in three ways. On a **disconnected** network the score lives on the piece with the largest eigenvalue and the other pieces get zero, or the tool refuses: NetworkX's `eigenvector_centrality_numpy` raised an error on the disconnected networks in the stress test below, so that tab takes the leading eigenvector straight from the matrix. In a **directed** network you use incoming ties, $x_i = \lambda^{-1} \sum_j a_{ji} x_j$, and you need the network to be **strongly connected** (everyone can reach everyone else by following the arrows) for a unique answer; a network with no cycles at all, such as a pure chain of command, has no positive eigenvalue and gives every person a score of zero. And on a network with one dense core and a long tail, the score collapses onto the core.
+
+**Katz.** Eigenvector centrality listens to walks of unlimited length, so it hears mainly the densest region. Katz asks the same question as eigenvector centrality, but turns down the volume on faraway people. Katz damps walks by their length:
 
 $$
 x_i = \alpha \sum_j a_{ji}\, x_j + \beta
@@ -887,25 +975,43 @@ x = \beta\,(I - \alpha A^{\mathsf T})^{-1} \mathbf{1}
   = \beta\bigl(\mathbf{1} + \alpha A^{\mathsf T}\mathbf{1} + \alpha^2 (A^{\mathsf T})^2 \mathbf{1} + \cdots\bigr).
 $$
 
+::: {.callout-tip title="In plain words"}
+Read the first form aloud: "your score is a baseline $\beta$ (beta) plus $\alpha$ (alpha) times the sum of the scores of the people who point to you". The $a_{ji}$ is 1 when $j$ points to $i$. The fancy matrix form, with $(I - \alpha A^{\mathsf T})^{-1}$, is shorthand for the same thing worked out all the way: everyone's baseline, plus $\alpha$ times the ties pointing at you, plus $\alpha^2$ times the walks of two steps, and so on, each longer walk counting less. $\mathbf{1}$ is a list of ones. A concrete check from the five-node network, with $\alpha = 0.1$ and $\beta = 1$: A is tied to B and C, whose scores are 1.264 and 1.378, so $x_A = 1 + 0.1 \times (1.264 + 1.378) = 1.264$. E is tied only to D (1.250), so $x_E = 1 + 0.1 \times 1.250 = 1.125$.
+:::
+
 The number $\alpha$ is a discount per step (a walk of length $\ell$ counts $\alpha^{\ell}$) and $\beta$ is a baseline that everyone gets. The series converges only if $\alpha < 1 / \lambda_1$, where $\lambda_1$ is the largest eigenvalue of $A$. A small $\alpha$ makes Katz look like degree, because only the shortest walks matter, and as $\alpha$ approaches $1 / \lambda_1$ it turns into eigenvector centrality. Katz's own index leaves out the walks of length zero; NetworkX and igraph keep them as the baseline $\beta$, and so do we.
 
-**PageRank.** Picture a walker who follows a random outgoing tie with probability $d$ (the damping, usually 0.85) and otherwise jumps to a node chosen uniformly. The long-run share of time at node $i$ is
+::: {.callout-tip title="In plain words"}
+The discount $\alpha$ says how fast faraway people fade: a person three steps away counts $\alpha^3$, which is 0.001 when $\alpha$ is 0.1. The ceiling $1/\lambda_1$ keeps the sum from blowing up. For the five-node network $\lambda_1$ is about 2.21, so $\alpha$ has to stay below $1/2.21 \approx 0.45$ (worked by hand), and our 0.1 is comfortably safe.
+:::
+
+**PageRank.** This one starts from a story instead of a sum. Picture a walker who follows a random outgoing tie with probability $d$ (the damping, usually 0.85) and otherwise jumps to a node chosen uniformly. The long-run share of time at node $i$ is
 
 $$
 p_i = \frac{1 - d}{n} + d \sum_j \frac{a_{ji}}{k_j^{\text{out}}}\, p_j.
 $$
 
+::: {.callout-tip title="In plain words"}
+$p_i$ is the share of time the walker spends at person $i$. The first part, $(1 - d)/n$, is the chance of arriving there by a random jump: with $d = 0.85$ and 5 people, $0.15/5 = 0.03$. The second part adds up, over every $j$ who points at $i$, the score $p_j$ that $j$ hands on, divided by $k_j^{\text{out}}$, the number of people $j$ points at. In the five-node network, C is pointed at by A, B and D, who each have two ties, so each hands over half of its score: $0.03 + 0.85 \times (0.192/2 + 0.192/2 + 0.213/2) \approx 0.28$, matching the printed value.
+:::
+
 Each person passes their score on in equal parts to the people they point at, so a tie from someone who points at three people is worth more than a tie from someone who points at three hundred. People with no outgoing ties (dangling nodes) jump anywhere. The scores add up to 1. Unlike eigenvector centrality, PageRank is defined for every network, which is why it suits a web full of dead ends. On an undirected network it is close to degree.
 
-**Bonacich power.** Bonacich's family writes the score as
+**Bonacich power.** This family has a dial that can make ties to strong people either help or hurt. Bonacich's family writes the score as
 
 $$
 c = \alpha\,(I - \beta A)^{-1} A\,\mathbf{1},
 $$
 
+::: {.callout-tip title="In plain words"}
+$A\mathbf{1}$ is each person's degree (the grid of ties times a list of ones adds up each row). The matrix inverse is shorthand for a series: your degree, plus $\beta$ times your contacts' degrees, plus $\beta^2$ times theirs, and so on. So $\beta$ is the weight on "who your contacts know". At $\beta = 0$ only your own degree counts. At $\beta = 0.3$, in the example below, Pat scores 1.71 and Quinn and Rory 1.24. At $\beta = -0.3$, a connection to a well-placed person pulls you down, and Quinn, who is tied to the best-placed person, falls to $-0.11$.
+:::
+
 where $\alpha$ is only a scaling constant (here the scores are scaled so that their squares add up to $n$) and $\beta$ decides what a tie to a well-placed person *does*. At $\beta = 0$ the score is degree. With $\beta > 0$, being tied to high scorers raises yours: status, as in eigenvector centrality. With $\beta < 0$, being tied to high scorers lowers yours, and being tied to low scorers raises it. For the series to converge, $|\beta|$ has to stay below $1 / \lambda_1$.
 
 Why would a negative sign ever make sense? Bonacich's paper [@bonacich1987power] is usually cited for bargaining and exchange networks, where a person with many partners who have no other options is in a strong position: their partners need them more than they need any one partner. The network below has that shape. Pat has three partners who have nobody else, Quinn is tied to Pat and Rory, and Rory has two partners of their own with nobody else.
+
+The code below scores the eight people at three settings of $\beta$. Look at how Pat, Quinn and Rory swap places when $\beta$ goes negative.
 
 ::: {.panel-tabset group="language"}
 
@@ -1026,7 +1132,9 @@ Here is the chapter's whole toolkit on the one network small enough to check by 
 | D | 2 | A 2, B 2, C 1, E 1 | 6 | 0.667 | 3.00 | 0.750 | A-E, B-E, C-E: 3 |
 | E | 1 | A 3, B 3, C 2, D 1 | 9 | 0.444 | 2.17 | 0.542 | no pair |
 
-The other three measures aren't sums, but you can check the printed numbers against their own rules. For eigenvector centrality the rule is $\lambda x_i = \sum_j a_{ij} x_j$: at C, $0.824 + 0.824 + 0.567 = 2.215$, which is $\lambda$ times C's score of 1, and at A, $0.824 + 1 = 1.824$, which is $\lambda$ times 0.824, so $\lambda \approx 2.21$ both ways. For Katz with $\alpha = 0.1$ the rule is $x_i = 1 + 0.1 \sum_j a_{ij} x_j$: $x_A = 1 + 0.1(1.264 + 1.378) = 1.264$ and $x_E = 1 + 0.1 \times 1.250 = 1.125$. For PageRank the scores add up to 1, and C's is $0.15/5 + 0.85\,(0.192/2 + 0.192/2 + 0.213/2) \approx 0.28$.
+The other three measures aren't sums, but you can check the printed numbers against their own rules. Don't worry if the arithmetic looks fiddly: the point is just that each score is built from the neighbors' scores, and the printed numbers obey that rule. For eigenvector centrality the rule is $\lambda x_i = \sum_j a_{ij} x_j$: at C, $0.824 + 0.824 + 0.567 = 2.215$, which is $\lambda$ times C's score of 1, and at A, $0.824 + 1 = 1.824$, which is $\lambda$ times 0.824, so $\lambda \approx 2.21$ both ways. For Katz with $\alpha = 0.1$ the rule is $x_i = 1 + 0.1 \sum_j a_{ij} x_j$: $x_A = 1 + 0.1(1.264 + 1.378) = 1.264$ and $x_E = 1 + 0.1 \times 1.250 = 1.125$. For PageRank the scores add up to 1, and C's is $0.15/5 + 0.85\,(0.192/2 + 0.192/2 + 0.213/2) \approx 0.28$.
+
+The code below puts every measure side by side for the five-node network. Look for C leading every column and for A and B matching each other.
 
 ::: {.panel-tabset group="language"}
 
@@ -1145,6 +1253,8 @@ C leads every column, and A and B tie everywhere, as they must. Below C the meas
 
 ### At a glance: definitions, ranges and conventions
 
+You don't need to memorize this table. It's a lookup for when you meet a symbol, and every formula in it was explained in words above.
+
 | Measure | Definition | Range | Needs one piece? | Directed form |
 | --- | --- | --- | --- | --- |
 | Degree | $k_i = \sum_j a_{ij}$ | 0 to $n - 1$ | No | in and out |
@@ -1159,6 +1269,8 @@ C leads every column, and A and B tie everywhere, as they must. Below C the meas
 ## Size, normalization and what you can compare
 
 Raw scores aren't on a common scale, and the way to see it is to stretch the same shape. Take a line of $n$ people and look at the person in the middle. Their degree is always 2, and they are always the most central person in the line, and yet every score about them changes as $n$ grows.
+
+The code below grows a path of people from 5 to 101 and prints the middle person's scores. Look at how each column moves as the line gets longer.
 
 ::: {.panel-tabset group="language"}
 
@@ -1249,11 +1361,17 @@ for k in [5usize, 11, 51, 101] {
 
 Read down the columns. Raw betweenness grows like the square of $n$: the middle of 101 people sits between 2,500 pairs, which is exactly $((n-1)/2)^2$. Closeness shrinks like $4/(n + 1)$ and the degree share like $2/(n - 1)$. The betweenness *share* settles near one half, since the middle person of any long line sits between about half of all pairs of the others (@fig-centrality-size). Three things follow. Never compare raw scores across networks of different sizes. Normalizing repairs the arithmetic but not the meaning: a closeness of 0.04 in a line of 100 and in a ring of a thousand is not the same fact, because the shapes differ. And a score of 8 from one tool and 4 from another can be the same network, as the endpoints column shows. Compare within a network (ranks, shares), or against a random network of the same size and degrees (@sec-tests-and-null-models), and say how you normalized.
 
+::: {.callout-tip title="In plain words"}
+The three little formulas say how each score drifts as a line of $n$ people gets longer. The middle person sits between $((n-1)/2)^2$ pairs: with 101 people that is $(100/2)^2 = 2{,}500$. Their closeness is $4/(n+1)$, which is $4/102 = 0.039$, and their share of everyone else is $2/(n-1)$, which is $2/100 = 0.020$. The person doesn't get less central as the line grows, but the raw numbers grow or shrink with size anyway.
+:::
+
 ![The middle person of a line of n people. The share of shortest routes they sit between settles near one half, while closeness and the degree share fall toward zero.](../figures/centrality-size.svg){#fig-centrality-size fig-alt="A line chart against the number of people in the line, from 3 to 101 on a log scale. The betweenness share starts at 1 for 3 people and falls to 0.505 at 101. Closeness falls from 1 at 3 people to 0.039 at 101. The degree share falls from 1 at 3 people to 0.020 at 101."}
 
 ## Where each measure fails
 
 Every measure is right about the question it asks and silent about the rest. Two small shapes make the silences visible.
+
+The code below builds a star and a two-group network with a connector, and prints every measure for the key people. Look for which measures notice the connector and which don't.
 
 ::: {.panel-tabset group="language"}
 
@@ -1427,6 +1545,8 @@ The data are small: 15 families and 20 marriages. A tie between two families mea
 
 @fig-florentine-intro is the network we will measure. Notice that the Medici are in the middle, but they are not obviously bigger than anyone else yet; the figure only shows who is married to whom.
 
+The code below loads the marriage network and measures every family. Look at the Medici's row against the next-highest families.
+
 ::: {.panel-tabset group="language"}
 
 ## R
@@ -1591,6 +1711,8 @@ David Krackhardt asked the 21 managers of a small manufacturing firm a few simpl
 
 The same 21 managers carry three different networks (@fig-krackhardt-layers). The advice network is dense, friendship is sparser, and the reporting lines form a tree with the CEO at the top. We will measure each in turn.
 
+The code below reads all three networks and counts, for each manager, how many people name them in each relation. Look at the top three managers in each.
+
 ::: {.panel-tabset group="language"}
 
 ## R
@@ -1743,6 +1865,8 @@ Notice also what we did *not* do: we only counted people who named each manager 
 ### How much do the measures disagree on real data?
 
 The measures answer different questions, but how far apart are their answers on real networks? Here are Spearman rank correlations, where 1 means two measures put people in exactly the same order and 0 means no relation. For the directed advice network, degree and closeness mean being sought out (in-degree, and paths arriving at a manager).
+
+The code below computes five scores for each network and prints how well they agree. Look for the pair of measures with the lowest number, since that is the pair that tells you different things.
 
 ::: {.panel-tabset group="language"}
 
@@ -1911,6 +2035,8 @@ In the marriage network all five orders are broadly alike (degree against PageRa
 ### Stress test: drop ties and see who moves
 
 This is the second of the three quick checks, done properly: drop a random tenth of the ties, recompute everything, and compare with the original. For each measure the table gives two numbers: the average Spearman correlation between the original order and the new one, and the share of runs in which the person who topped the original list is still at the top (a tie for first counts). Each language draws its own random ties, so the three tabs agree closely but not digit for digit; the numbers below are from the Rust tab.
+
+The code below drops ties at random 500 times and reports two numbers per measure. Look for which measure's top person changes most often.
 
 ::: {.panel-tabset group="language"}
 
@@ -2082,7 +2208,7 @@ Dropping ties tests only for ties that are *missing*. It cannot find ties that w
 
 ## From people to networks: centralization
 
-So far we've scored people. Sometimes you want a score for the whole network: is influence concentrated in a few hands, or spread out? **Centralization** answers that. Take a centrality measure, find the person with the highest score, and add up how far everyone else falls below them. Then divide by the largest total that sum could be for a network of that size [@freeman1978centrality]. The result runs from 0 (everyone is equal) to 1 (one person holds everything, like the hub of a star).
+So far we've scored people. Sometimes you want a score for the whole network: is influence concentrated in a few hands, or spread out? **Centralization** answers that. Think of it as a test of how lopsided the group is. Take a centrality measure, find the person with the highest score, and add up how far everyone else falls below them. Then divide by the largest total that sum could be for a network of that size [@freeman1978centrality]. The result runs from 0 (everyone is equal) to 1 (one person holds everything, like the hub of a star).
 
 ![Centralization summarizes a whole network: how far the most central person stands above everyone else, compared with the most extreme case.](../figures/centralization.svg){#fig-centralization fig-alt="Three ten-node networks side by side. A star with one hub joined to nine others is labeled 1.00. The friendship network with one slightly larger hub is labeled 0.33. A ring in which everyone has two ties is labeled 0.00."}
 
@@ -2090,7 +2216,7 @@ For degree, the friendship network comes out at 0.33: Dev stands above the other
 
 ### A convention that changes the number
 
-Here's a good example of why we write down our choices. The default setting in the engine used by this book counts self-loops as possible, and it divides by a maximum that allows for them. For the friendship network, which has no self-loops, that gives 0.267. Switch loops off and you get Freeman's classic 0.333. Same network, same measure, two correct answers under two conventions. Both are in the code below, and neither is wrong. What would be wrong is to compare one tool's number with another's without checking. Each function documents its convention, and the differences between well-known tools are recorded rather than hidden.
+Here's a good example of why we write down our choices. The code below computes degree centralization twice, with self-loops allowed and not allowed. Look at the two numbers. The default setting in the engine used by this book counts self-loops (a person tied to themselves) as possible, and it divides by a maximum that allows for them. For the friendship network, which has no self-loops, that gives 0.267. Switch loops off and you get Freeman's classic 0.333. Same network, same measure, two correct answers under two conventions. Both are in the code below, and neither is wrong. What would be wrong is to compare one tool's number with another's without checking. Each function documents its convention, and the differences between well-known tools are recorded rather than hidden.
 
 ::: {.panel-tabset group="language"}
 
@@ -2159,13 +2285,17 @@ The same network gets two answers, and neither is a mistake. The second is the n
 
 ### Freeman's general form, and what a network-level score says
 
-For any centrality $c$, with $c^*$ the highest score in the network,
+The formula answers: how far below the top person does everyone else sit, compared with the most lopsided network possible? For any centrality $c$, with $c^*$ the highest score in the network,
 
 $$
 C = \frac{\sum_i \bigl(c^* - c_i\bigr)}{\max \sum_i \bigl(c^* - c_i\bigr)},
 $$
 
-where the denominator is the same sum in the most centralized network of the same size, which for degree, closeness and betweenness is the star [@freeman1978centrality]. For degree that maximum is $(n-1)(n-2)$. For betweenness with raw scores it is $(n-1)^2(n-2)/2$, and for normalized closeness it is $(n-1)(n-2)/(2n-3)$. The Python tab uses exactly these, so it is a check on the library, not a copy of it.
+::: {.callout-tip title="In plain words"}
+$c_i$ is person $i$'s score and $c^*$ (c star) is the highest score in the network. The top of the fraction adds up the gaps $c^* - c_i$ between the leader and everyone else, so it is zero when everyone ties. The bottom is the same sum for a star, the most lopsided shape, so the result lands between 0 and 1. For degree in a star of five people, the hub has 4 and the others 1, so the gaps are $3 + 3 + 3 + 3 = 12$; the star's maximum is $(n-1)(n-2) = 12$, so the score is $12/12 = 1.00$. In a path of five the degrees are 1, 2, 2, 2, 1, the gaps are 1, 0, 0, 0, 1, and the score is $2/12 = 0.167$. For the friendship network, the leader has 6, the 36 total degrees leave gaps adding to $60 - 36 = 24$, and the maximum for ten people is $9 \times 8 = 72$, so $24/72 = 0.333$, the number quoted above.
+:::
+
+where the denominator is the same sum in the most centralized network of the same size, which for degree, closeness and betweenness is the star [@freeman1978centrality]. The code below also writes these maximums out by hand, so it checks the library instead of copying it. For degree that maximum is $(n-1)(n-2)$. For betweenness with raw scores it is $(n-1)^2(n-2)/2$, and for normalized closeness it is $(n-1)(n-2)/(2n-3)$. The Python tab uses exactly these, so it is a check on the library, not a copy of it.
 
 ::: {.panel-tabset group="language"}
 
@@ -2337,14 +2467,14 @@ Differences we saw between tools, using the same networks:
 ## Worked answers
 
 1. Ivo is tied to Hana and Jo. Every shortest route that starts at Jo and ends at someone other than Ivo passes through Ivo: Jo with Hana, Fay, Gus, Ana, Ben, Cleo, Dev and Eli, which is 8 pairs, so Ivo's betweenness is 8. Jo scores 0 because Jo is an end of every route Jo is on; to count for betweenness a person has to be *between* two others.
-2. In a star of five (hub plus four) the hub has degree 4 and betweenness $\binom{4}{2} = 6$, and the four others have degree 1 and betweenness 0. In a path of five the degrees are 1, 2, 2, 2, 1 and the betweenness scores 0, 3, 4, 3, 0. The star is more centralized on both: degree centralization is 1 against $2/12 = 0.167$, and betweenness centralization is 1 against $10/24 = 0.417$.
+2. The star is more centralized than the path under both measures, because everything in a star runs through its hub. In a star of five (hub plus four) the hub has degree 4 and betweenness $\binom{4}{2} = 6$, and the four others have degree 1 and betweenness 0. In a path of five the degrees are 1, 2, 2, 2, 1 and the betweenness scores 0, 3, 4, 3, 0. The star is more centralized on both: degree centralization is 1 against $2/12 = 0.167$, and betweenness centralization is 1 against $10/24 = 0.417$.
 3. There is no single right answer, which is the point. Rumors spread along every route at once, and through people who are chatty, so degree, or eigenvector or Katz if you care about who hears from well-placed people, fits better than betweenness, which assumes one shortest route. A formal announcement goes along the reporting chart, so a directed measure on the chart (in the reporting network, out-closeness from the top) fits better, and who is central in the informal network matters less.
-4. For the five-person advice network, treated as directed, in-degree is 2, 1, 4, 0, 0 and out-degree is 2, 1, 1, 2, 1 for Ana, Ben, Chloe, Dev, Eli. Chloe leads on in-degree, on in-direction harmonic closeness, on eigenvector centrality (Dev and Eli score 0 because nobody goes to them) and on PageRank. Ana and Chloe tie on betweenness at 3 each. Dev and Ana tie for the highest out-degree at 2, and Dev has the highest out-direction harmonic closeness. So yes: Chloe leads on several, and the leaders on the "sending" side (Dev) are different people from the leaders on the "receiving" side.
+4. Different people lead on sending and on receiving. For the five-person advice network, treated as directed, in-degree is 2, 1, 4, 0, 0 and out-degree is 2, 1, 1, 2, 1 for Ana, Ben, Chloe, Dev, Eli. Chloe leads on in-degree, on in-direction harmonic closeness, on eigenvector centrality (Dev and Eli score 0 because nobody goes to them) and on PageRank. Ana and Chloe tie on betweenness at 3 each. Dev and Ana tie for the highest out-degree at 2, and Dev has the highest out-direction harmonic closeness. So yes: Chloe leads on several, and the leaders on the "sending" side (Dev) are different people from the leaders on the "receiving" side.
 5. The Medici have the highest eigenvector centrality (scaled to 1). The Strozzi come second at about 0.83, then the Ridolfi and Tornabuoni. By betweenness the order after the Medici is the Guadagni, Albizzi and Salviati, so the Strozzi, who are tied to well-connected families, rank high on one measure and nowhere in the top four of the other.
 6. Manager 15 asks the most people, all 20 others; manager 2, the most sought out, goes to only 3 people. The most active asker and the most sought out are different people.
 7. What the number says: Hana lies on more shortest routes between other pairs of people on the team than anyone else, so word passing between parts of the team most often passes through her. What it doesn't say: that she controls or uses that position, that the team's real work flows by shortest routes, or that she matters more than someone with a rare skill; and "most important" is a judgment that needs evidence beyond the ties.
-8. The degrees become A 3, B 2, C 3, D 3, E 1. The betweenness scores become A 1, B 0, C 1, D 3, E 0. C's betweenness falls from 4 to 1, the largest change: with the new tie, B has two equally short routes to D (through C and through A), and two to E, so C and A split the credit. D stays at 3 because every route from A, B and C to E must still pass through D.
-9. The friendship network is not strongly connected, so the leading eigenvector exists but is zero for everyone outside the dominant strongly connected piece, and tools will warn you. In my own run of 500 draws the average rank correlations ran from about 0.90 (harmonic) to 0.96 (PageRank), and the top person stayed on top in about 70 percent of runs by eigenvector centrality, in about 83 to 84 percent by harmonic and PageRank, and in all of them by betweenness (manager 17 leads by a wide margin). Your numbers will differ a little with the seed.
+8. C loses the most, because the new tie gives routes a way around C. The degrees become A 3, B 2, C 3, D 3, E 1. The betweenness scores become A 1, B 0, C 1, D 3, E 0. C's betweenness falls from 4 to 1, the largest change: with the new tie, B has two equally short routes to D (through C and through A), and two to E, so C and A split the credit. D stays at 3 because every route from A, B and C to E must still pass through D.
+9. Not everyone in the friendship network can reach everyone else by following the arrows, so eigenvector centrality is zero for part of it and the least trustworthy of the five. In more detail, the network is not strongly connected, so the leading eigenvector exists but is zero for everyone outside the dominant strongly connected piece, and tools will warn you. In my own run of 500 draws the average rank correlations ran from about 0.90 (harmonic) to 0.96 (PageRank), and the top person stayed on top in about 70 percent of runs by eigenvector centrality, in about 83 to 84 percent by harmonic and PageRank, and in all of them by betweenness (manager 17 leads by a wide margin). Your numbers will differ a little with the seed.
 10. PageRank shows that a lot of replies, weighted by how widely replied-to the repliers are, arrive at this account. It doesn't show influence in the sense of changing what people think or do, since replies include arguments, spam and automated accounts, and a reply network records attention, not agreement. Two checks: look at who the replies come from and whether a few accounts supply most of them (a coordinated group can inflate a score), and rerun after dropping a tenth of the ties and with different damping values (0.5 and 0.95) to see whether the account stays on top.
 :::
 
