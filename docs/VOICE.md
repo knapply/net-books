@@ -97,3 +97,15 @@ background can follow the whole text.
   Output does not have to look like the Python or Rust output; it has to be easy to read.
   Native pipe `|>` is fine for one or two steps; no loops written out for show, no `print()`
   or `cat()`.
+
+## Animations (standing, 18 November 2026)
+
+An animation is for an idea where watching the change teaches more than a still can. See docs/ANIMATION.md for how to add one.
+
+- One sentence in the text before the figure says what to watch. Nobody should need a formula to follow it.
+- The caption says what to look for in one or two sentences, like any figure caption. The `fig-alt` says what the still
+  shows and how the picture changes from left to right.
+- Each frame's text is one short, plain sentence in the book's voice ("Everyone one step from Jo lights up: that's
+  distance 1."). No jargon the text has not already introduced, no em dashes.
+- Use the book's own examples and names, so the reader already knows the cast.
+- The numbers come from knappnet. If it cannot compute them yet, leave a `TODO(animation)` stub; never draw by hand.
