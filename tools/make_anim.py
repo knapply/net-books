@@ -40,9 +40,17 @@ def encode(scene):
     """scene: dict with w, h, id, ms, nodes[(name,x,y)], edges, panel, states [(nodes, edges, m, text)], still."""
     prev_n = [dict(DEFAULT_NODE) for _ in scene["nodes"]]
     prev_e = [dict(DEFAULT_EDGE) for _ in scene["edges"]]
+    prev_p = [(r1(x), r1(y)) for _, x, y in scene["nodes"]]
     frames = []
-    for nodes, edges, m, text in scene["states"]:
+    for st in scene["states"]:
+        nodes, edges, m, text = st[:4]
         f = {"t": text}
+        if len(st) > 4 and st[4] is not None:  # optional fifth element: a position (x, y) for every node
+            now = [(r1(x), r1(y)) for x, y in st[4]]
+            dp = {str(i): list(q) for i, (q, p) in enumerate(zip(now, prev_p)) if q != p}
+            if dp:
+                f["p"] = dp
+            prev_p = now
         dn = {str(i): {k: v for k, v in s.items() if p.get(k) != v} for i, (s, p) in enumerate(zip(nodes, prev_n))}
         dn = {i: d for i, d in dn.items() if d}
         de = {str(i): {k: v for k, v in s.items() if p.get(k) != v} for i, (s, p) in enumerate(zip(edges, prev_e))}
@@ -72,7 +80,9 @@ def filmstrip(scene, labels, title, desc, show=None):
     gx, gy = min(xs), min(ys)
     for k, fi in enumerate(idx):
         ox, oy = 20 + (k % 2) * pw, 20 + (k // 2) * 310
-        nodes, edges, m, _ = scene["states"][fi]
+        nodes, edges, m, _ = scene["states"][fi][:4]
+        if len(scene["states"][fi]) > 4 and scene["states"][fi][4] is not None:
+            pos = list(scene["states"][fi][4])  # this frame's own positions (layouts that move)
         c.rect(ox, oy, pw - 20, ph, fill="none", stroke=FAINT, sw=1, rx=8)
         c.text(ox + 14, oy + 24, labels[k], size=14, anchor="start", weight="700")
         mp = [(ox + 40 + (x - gx) * scale, oy + 54 + (y - gy) * scale) for x, y in pos]
