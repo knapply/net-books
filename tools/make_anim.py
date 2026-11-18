@@ -209,6 +209,7 @@ def eigen():
 
 
 BUILDERS = {"bfs-expansion": bfs, "eigen-converge": eigen}
+sys.modules.setdefault("make_anim", sys.modules[__name__]); from anim_scenes import discover; BUILDERS.update(discover())  # noqa: E402
 
 
 def main() -> int:
