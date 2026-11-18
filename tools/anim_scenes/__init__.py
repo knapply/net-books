@@ -8,5 +8,7 @@ import pkgutil
 def discover():
     out = {}
     for m in sorted(pkgutil.iter_modules(__path__), key=lambda m: m.name):
+        if m.name.startswith("_"):  # helpers, not scenes
+            continue
         out.update(importlib.import_module(f"{__name__}.{m.name}").BUILDERS)
     return out
