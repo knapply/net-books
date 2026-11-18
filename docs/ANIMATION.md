@@ -26,10 +26,15 @@ every `img[src$="-still.svg"]`, and when one is within 400 px of the screen it f
 and puts it after the image. The image stays in the page, hidden on screen and shown (with the player hidden) when printing.
 If the JSON cannot be fetched the image just stays.
 
-Scenes added after the pilot live one per module in `tools/anim_scenes/<name>.py` (each defines `ID` and `build(M)`, where `M` is
-`tools/make_anim.py`; `anim_scenes.load_all` registers them) and their engine runs in `tools/anim_data/src/bin/<id>.rs`, so two people
-adding scenes never edit the same file. A scene may set `"dir": True` (arrows), `"positions"` (per-frame node positions, for layouts
-that settle) and `"compact": True` (a smaller still for networks of 30 or more people).
+Scenes added after the pilot live one per module in `tools/anim_scenes/<name>.py` and their engine runs in
+`tools/anim_data/src/bin/<id>.rs`, so two people adding scenes never edit the same file. A module defines
+`BUILDERS = {id: builder}`; `anim_scenes.discover()` (called once from `make_anim.py`) collects every module whose name does not
+start with an underscore. A builder imports `make_anim` inside the function to reuse `encode`, `load`, `layout`, `filmstrip` and the
+palette, and returns `(scene, still_svg)`. Optional scene keys: `"dir": True` (arrows) and `"compact": True` (a smaller still for
+networks of 30 or more people). A state is `(nodes, edges, panel_values, caption)`; add a fifth element, a position `(x, y)` for
+every node, when the layout moves between frames (the player moves the dots, and the still draws each frame where it was).
+`anim_scenes/_strip.py` has `lean_filmstrip`, a variant of the still that puts all ties of one style into one path, for pictures
+with a hundred or more ties.
 
 ## Where the script lives
 
