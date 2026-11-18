@@ -9,6 +9,11 @@ friendship network (the book's usual edge list).
 | bfs-expansion.frames.json | `traversal::frontier::compute_bfs_levels` from Jo (index 9) | the distance of every person; step k shows everyone within k steps |
 | eigen-converge.frames.json | `metrics::nx_power::compute_katz` with alpha 1, beta 0, unscaled, `max_iter` 1, started from the previous round | round k of the passing game, one call per round (unscaled, so these are walk counts; the animation rescales each round so the top is 1) |
 | eigen-converge.frames.json (`settled`) | `metrics::eigenvector::compute_eigenvector_centrality`, default options | the scores the rounds settle on |
+| betweenness-routes.frames.json | `metrics::betweenness::compute_betweenness_from_sources` with one source per call (unnormalized, pairs counted once), distances from `compute_bfs_levels`; the sum over sources is checked against `compute_betweenness` | one starting person: what their shortest routes add to everyone's score |
+| pagerank-settle.frames.json | `metrics::nx_power::compute_pagerank` (damping 0.85), `max_iter` 1 and a tolerance too large to fail, started from the previous round; settled: `metrics::spectral::compute_pagerank` | round k of the passing game, one call per round |
+| kcore-peel.frames.json | `metrics::cores::compute_coreness` on the karate club (`data/karate/edges.csv`) | nothing is stepped by the engine: `make_anim.py` replays the peel (remove everyone below the bar, repeat) and asserts that every person leaves at the bar their engine core number says |
+| louvain-levels.frames.json, leiden-levels.frames.json | `metrics::louvain_nx::find_louvain_communities` and `metrics::leiden_nx::find_leiden_communities` (the engine's ports that return every level), resolution 1, Python-style generator seeded with 1; modularity of each level from `metrics::community::compute_modularity` | one level: the partition after that pass (the last Leiden level repeats, so the animation drops it) |
+| small-world-rewiring.frames.json | `generate::sample_small_world(30, 4, p, 1, seed 1)` for p = 0, 0.05, 0.1, 0.2, 0.4, 0.7, 1; `compute_average_clustering` and `compute_mean_distance` | one value of p. The generator makes a fresh draw for each p, so a later picture is not the earlier one plus more rewiring |
 | swap-chain.frames.json | `metrics::rewiring::run_double_edge_swap` on the Florentine marriages, seed 1, k = 0 to 10 one at a time, then 12 to 60; degrees from `compute_degree` | k accepted swaps, one call per k (same seed, so each result extends the last) |
 | ergm-steps.frames.json | `ergm::Chain::step` on the karate club from the real network, seed 1, coefficients from `fit_mcmle`; statistics from `Chain::statistics` | one accepted Metropolis-Hastings change (the engine reports accepted or refused for every proposal) |
 | saom-steps.frames.json | `saom::simulate_period`, office network, outdegree -2, reciprocity 1.5, seed 1, one run, rate swept from 0 to 3 in steps of 0.002 | one change opportunity: the engine draws the same sequence for a seed at any rate, so a larger rate gives a longer prefix, and `ministeps` says how many opportunities it holds. The engine does not say who acted when nothing changed |
@@ -35,3 +40,8 @@ each call stop after a single step. `make_anim.py` checks that the last round an
     cd ../.. && python3 tools/make_anim.py
 
 The committed files were made on the btower bench runner (knappnet commit recorded in `PROVENANCE.txt` beside them).
+
+The Louvain and Leiden programs need the 625 integers of `random.Random(1).getstate()[1]` (the engine ports draw from a
+Python-style generator): `python3 -c "import random,json;print(json.dumps(random.Random(1).getstate()[1]))" > mt1.json`, then
+`community-levels OUT_DIR mt1.json`, run from the book root so it can read `books/sna/data/karate/edges.csv`.
+`PROVENANCE-centrality-communities.txt` records the btower run that made these six files.

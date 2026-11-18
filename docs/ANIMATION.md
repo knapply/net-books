@@ -34,7 +34,8 @@ palette, and returns `(scene, still_svg)`. Optional scene keys: `"dir": True` (a
 networks of 30 or more people). A state is `(nodes, edges, panel_values, caption)`; add a fifth element, a position `(x, y)` for
 every node, when the layout moves between frames (the player moves the dots, and the still draws each frame where it was).
 `anim_scenes/_strip.py` has `lean_filmstrip`, a variant of the still that puts all ties of one style into one path, for pictures
-with a hundred or more ties.
+with a hundred or more ties. `anim_scenes/compact.py` is a similar strip that also takes `tag=` (a function giving the text under each
+dot) and fits the picture to the frame; the betweenness, PageRank, k-core, community and rewiring scenes use it. It holds no scene.
 
 ## Where the script lives
 
