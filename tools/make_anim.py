@@ -65,7 +65,7 @@ def encode(scene):
         prev_n, prev_e = nodes, edges
     doc = {"v": 1, "id": scene["id"], "w": scene["w"], "h": scene["h"], "ms": scene["ms"],
            "nodes": [{"id": n, "x": r1(x), "y": r1(y)} for n, x, y in scene["nodes"]],
-           "edges": [list(e) for e in scene["edges"]], "dir": False, "panel": scene["panel"],
+           "edges": [list(e) for e in scene["edges"]], "dir": bool(scene.get("dir")), "panel": scene["panel"],
            "frames": frames, "still": scene["still"]}
     return json.dumps(doc, separators=(",", ":"), ensure_ascii=False) + "\n"
 
@@ -76,7 +76,8 @@ def filmstrip(scene, labels, title, desc, show=None):
     idx = scene["still"]
     c = Canvas(960, 30 + 310 * ((len(idx) + 1) // 2), title, desc)
     pos = [(x, y) for _, x, y in scene["nodes"]]
-    xs, ys = [p[0] for p in pos], [p[1] for p in pos]
+    allp = [q for st in scene["states"] if len(st) > 4 and st[4] is not None for q in st[4]] or pos
+    xs, ys = [p[0] for p in allp], [p[1] for p in allp]
     gx, gy = min(xs), min(ys)
     for k, fi in enumerate(idx):
         ox, oy = 20 + (k % 2) * pw, 20 + (k // 2) * 310
@@ -86,8 +87,32 @@ def filmstrip(scene, labels, title, desc, show=None):
         c.rect(ox, oy, pw - 20, ph, fill="none", stroke=FAINT, sw=1, rx=8)
         c.text(ox + 14, oy + 24, labels[k], size=14, anchor="start", weight="700")
         mp = [(ox + 40 + (x - gx) * scale, oy + 54 + (y - gy) * scale) for x, y in pos]
+        if scene.get("compact"):  # big networks: edges and dots grouped by style so the picture stays small
+            paths, dots, rings = {}, {}, []
+            for (a, b), e in zip(scene["edges"], edges):
+                if e["k"] != "dim":
+                    paths.setdefault((edge_color(e["k"]), round(e["w"] * 0.9, 1)), []).append(
+                        f"M{mp[a][0]:.0f} {mp[a][1]:.0f}L{mp[b][0]:.0f} {mp[b][1]:.0f}")
+            for (col, w), d in paths.items():
+                c.add(f'<path d="{"".join(d)}" fill="none" stroke="{col}" stroke-width="{w}"/>')
+            for i, nd in enumerate(nodes):
+                dots.setdefault((nd["f"], round(nd["r"] * scale, 1)), []).append(i)
+                if nd["ring"]:
+                    rings.append(i)
+            for (role, r), ids in dots.items():
+                fill, stroke = NODE[role]
+                c.add(f'<g fill="{fill}" stroke="{stroke}" stroke-width="1.6">'
+                      + "".join(f'<circle cx="{mp[i][0]:.0f}" cy="{mp[i][1]:.0f}" r="{r}"/>' for i in ids) + "</g>")
+            if rings:
+                c.add(f'<g fill="none" stroke="{RED}" stroke-width="2">'
+                      + "".join(f'<circle cx="{mp[i][0]:.0f}" cy="{mp[i][1]:.0f}" r="{nodes[i]["r"] * scale + 4:.1f}"/>' for i in rings) + "</g>")
+            for i, nd in enumerate(nodes):
+                tag = scene["nodes"][i][0] if not show else show(i, m)
+                if tag:
+                    c.text(mp[i][0], mp[i][1] + nd["r"] * scale + 13, tag, size=11, fill=MUTED)
+            continue
         for (a, b), e in zip(scene["edges"], edges):
-            c.edge(mp[a], mp[b], ra=0, rb=0, width=e["w"] * (0.9 if e["w"] < 2 else 1), color=edge_color(e["k"]))
+            c.edge(mp[a], mp[b], ra=0, rb=nodes[b]["r"] * scale if scene.get("dir") else 0, directed=bool(scene.get("dir")), width=e["w"] * (0.9 if e["w"] < 2 else 1), color=edge_color(e["k"]))
         for i, nd in enumerate(nodes):
             fill, stroke = NODE[nd["f"]]
             r = nd["r"] * scale

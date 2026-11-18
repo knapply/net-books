@@ -26,6 +26,11 @@ every `img[src$="-still.svg"]`, and when one is within 400 px of the screen it f
 and puts it after the image. The image stays in the page, hidden on screen and shown (with the player hidden) when printing.
 If the JSON cannot be fetched the image just stays.
 
+Scenes added after the pilot live one per module in `tools/anim_scenes/<name>.py` (each defines `ID` and `build(M)`, where `M` is
+`tools/make_anim.py`; `anim_scenes.load_all` registers them) and their engine runs in `tools/anim_data/src/bin/<id>.rs`, so two people
+adding scenes never edit the same file. A scene may set `"dir": True` (arrows), `"positions"` (per-frame node positions, for layouts
+that settle) and `"compact": True` (a smaller still for networks of 30 or more people).
+
 ## Where the script lives
 
 `shared/js/netanim.js` is the one source (vanilla, no libraries, 6 KB budget). `tools/new_chapters.py` inlines it into every page

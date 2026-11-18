@@ -60,7 +60,7 @@ def main() -> int:
 
 
 def run(b, url, stills, shots):
-    ctx = b.new_context(viewport={"width": 1000, "height": 1500})
+    ctx = b.new_context(viewport={"width": 1000, "height": 700 * max(2, len(stills))})
     pg = ctx.new_page()
     errors = []
     pg.on("pageerror", lambda e: errors.append(str(e)))
@@ -129,7 +129,7 @@ def run(b, url, stills, shots):
     ctx.close()
 
     # reduced motion: no autoplay, instant changes
-    ctx = b.new_context(viewport={"width": 1000, "height": 1500}, reduced_motion="reduce")
+    ctx = b.new_context(viewport={"width": 1000, "height": 700 * max(2, len(stills))}, reduced_motion="reduce")
     pg = ctx.new_page()
     pg.goto(url)
     pg.wait_for_selector(".na", timeout=5000)
