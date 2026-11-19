@@ -255,9 +255,10 @@ def edge_mid(pos, a, b, off=0.0):
     return ((x1 + x2) / 2, (y1 + y2) / 2)
 
 
-def weight_tag(c, pos, a, b, text, size=11):
-    """A small white label with the edge's weight at its midpoint."""
-    x, y = edge_mid(pos, a, b)
+def weight_tag(c, pos, a, b, text, size=11, frac=0.5):
+    """A small white label with the edge's weight, a fraction of the way from a to b (the middle by default)."""
+    x = pos[a][0] + (pos[b][0] - pos[a][0]) * frac
+    y = pos[a][1] + (pos[b][1] - pos[a][1]) * frac
     w = 7 * len(str(text)) + 6
     c.add(f'<rect x="{x - w / 2:.1f}" y="{y - 9:.1f}" width="{w}" height="18" rx="9" fill="{PAPER}" stroke="{FAINT}" stroke-width="1"/>')
     c.text(x, y + 4, str(text), size=size, fill=INK, weight="600")

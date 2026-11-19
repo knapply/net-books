@@ -59,7 +59,7 @@ def hops_vs_minutes():
                                                     "label": K.NAMES[i][0], "label_fill": PAPER if i in (0, eli) else INK},
                  edge=estyle, r=19, size=13)
     for k, (a, b) in enumerate(K.EDGES):
-        K.weight_tag(c, pos, a, b, K.MINUTES[k])
+        K.weight_tag(c, pos, a, b, K.MINUTES[k], frac={(1, 6): 0.28, (3, 4): 0.62, (2, 5): 0.35, (0, 3): 0.4}.get((a, b), 0.5))
     for i, p in enumerate(pos):
         c.text(p[0], p[1] + 34, K.NAMES[i], size=11, fill=MUTED)
     c.rect(60, 414, 18, 8, fill=ORANGE, stroke=ORANGE)
@@ -242,7 +242,7 @@ def astar_explored():
         assert float(eng["wall"]["astar_length"]) == al == dl, "engine A* length differs from the reference"
     assert al == dl
     c = Canvas(900, 380, "A* looks at fewer places than Dijkstra", "Two grids of streets with a wall; the places each search looked at are shaded and the route is drawn.")
-    cell = 38
+    cell = 31
     for p, (title, done, path) in enumerate((("Dijkstra: looks in every direction", dd, dp), ("A*: leans toward the goal", ad, ap))):
         x0, y0 = 40 + p * 450, 66
         c.text(x0 + w * cell / 2 - cell / 2 + 4, 36, f"{title} ({len(done)} places)", size=14.5, weight="700")
