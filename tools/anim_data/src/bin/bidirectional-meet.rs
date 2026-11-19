@@ -43,11 +43,11 @@ fn main() -> Result<(), knappnet::Error> {
     let (len, path) = find_bidirectional_path(&pg, s, t)?.expect("connected");
     let mut one = Searcher::new(w * h);
     one.run(&pg, &[s], SearchOptions { target: Some(t), ..Default::default() })?;
-    // 2. A 9 by 7 grid with a wall between columns 3 and 4 (rows 1 to 6 closed, the gap is in row 0).
-    let (w2, h2) = (9usize, 7usize);
-    let (g2, edges2) = grid(w2, h2, &|r, c, _, c2| c == 3 && c2 == 4 && r >= 1);
+    // 2. A 13 by 7 grid with a short wall between columns 6 and 7 (rows 2 to 4 closed), start and goal in the middle row.
+    let (w2, h2) = (13usize, 7usize);
+    let (g2, edges2) = grid(w2, h2, &|r, c, _, c2| c == 6 && c2 == 7 && (2..=4).contains(&r));
     let pg2 = PathGraph::new(&g2, PathGraphOptions::default())?;
-    let (s2, t2) = ((5 * w2 + 1) as u32, (5 * w2 + 7) as u32);
+    let (s2, t2) = ((3 * w2 + 1) as u32, (3 * w2 + w2 - 2) as u32);
     let heur: Vec<f64> = (0..w2 * h2)
         .map(|v| {
             let (r, c) = ((v / w2) as f64, (v % w2) as f64);
