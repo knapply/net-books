@@ -15,7 +15,7 @@ use knappnet::weights::WeightKind;
 use knappnet::Graph;
 
 /// Minutes between friends, in the order of `EDGES`.
-const MINUTES: [f64; 18] = [4.0, 2.0, 9.0, 7.0, 3.0, 6.0, 10.0, 5.0, 8.0, 2.0, 4.0, 7.0, 3.0, 6.0, 5.0, 2.0, 4.0, 3.0];
+const MINUTES: [f64; 18] = [6.0, 2.0, 9.0, 8.0, 3.0, 6.0, 10.0, 5.0, 8.0, 2.0, 4.0, 7.0, 3.0, 6.0, 5.0, 2.0, 4.0, 3.0];
 const SOURCE: u32 = 0; // Ana
 
 fn tree_json(pg: &PathGraph, source: u32) -> Result<String, knappnet::Error> {
