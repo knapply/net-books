@@ -1925,20 +1925,32 @@ for _name in ["fig_classic", "fig_two_mode", "fig_multilayer", "fig_time", "fig_
         pass
 
 
+# Algorithms-book figure modules are named fig_alg_*.py and found automatically; their figures go to books/algorithms/figures.
+BOOK_OF = {}
+for _path in sorted(Path(__file__).resolve().parent.glob("fig_alg_*.py")):
+    _mod = importlib.import_module(_path.stem)
+    FIGURES.update(_mod.FIGURES)
+    BOOK_OF.update({fid: "algorithms" for fid in _mod.FIGURES})
+
+
 def main() -> int:
-    OUT.mkdir(parents=True, exist_ok=True)
-    registry = []
+    books = {}
     for fid, fn in FIGURES.items():
         canvas, meta = fn()
-        (OUT / f"{fid}.svg").write_text(canvas.svg())
-        registry.append({"id": f"fig-{fid}", "file": f"figures/{fid}.svg", "width": canvas.w,
-                         "height": canvas.h, **meta})
-    (OUT / "figures.json").write_text(json.dumps({"schema": "net-books/figures/1", "figures": registry},
-                                                 indent=2, ensure_ascii=False) + "\n")
+        book = BOOK_OF.get(fid, "sna")
+        out = OUT if book == "sna" else OUT.parent.parent / book / "figures"
+        out.mkdir(parents=True, exist_ok=True)
+        (out / f"{fid}.svg").write_text(canvas.svg())
+        books.setdefault(out, []).append({"id": f"fig-{fid}", "file": f"figures/{fid}.svg", "width": canvas.w,
+                                          "height": canvas.h, **meta})
+    for out, registry in books.items():
+        (out / "figures.json").write_text(json.dumps({"schema": "net-books/figures/1", "figures": registry},
+                                                     indent=2, ensure_ascii=False) + "\n")
+    registry = [f for r in books.values() for f in r]
     if "--snippets" in sys.argv:
         for f in registry:
             print(f"ch{f['chapter']}: ![{f['caption']}](../{f['file']}){{#{f['id']} fig-alt=\"{f['alt']}\"}}\n")
-    print(f"wrote {len(registry)} figures to {OUT}")
+    print(f"wrote {len(registry)} figures")
     return 0
 
 

@@ -130,8 +130,8 @@ def layout(names, edges):
     return [(n, p[0], p[1]) for n, p in zip(names, pos)]
 
 
-def load(aid):
-    return json.loads((DATA / f"{aid}.frames.json").read_text())
+def load(aid, book="sna"):
+    return json.loads((ROOT / "books" / book / "data" / "anim" / f"{aid}.frames.json").read_text())
 
 
 def join(words):
@@ -248,12 +248,13 @@ sys.modules.setdefault("make_anim", sys.modules[__name__]); from anim_scenes imp
 
 
 def main() -> int:
-    OUT.mkdir(parents=True, exist_ok=True)
     for aid, fn in BUILDERS.items():
         scene, still = fn()
-        (OUT / f"{aid}.json").write_text(encode(scene))
-        (OUT / f"{aid}-still.svg").write_text(still)
-        print(f"{aid}: {(OUT / (aid + '.json')).stat().st_size} B json, {(OUT / (aid + '-still.svg')).stat().st_size} B still")
+        out = ROOT / "books" / scene.get("book", "sna") / "figures" / "anim"  # a scene may set "book" (default sna)
+        out.mkdir(parents=True, exist_ok=True)
+        (out / f"{aid}.json").write_text(encode(scene))
+        (out / f"{aid}-still.svg").write_text(still)
+        print(f"{aid}: {(out / (aid + '.json')).stat().st_size} B json, {(out / (aid + '-still.svg')).stat().st_size} B still")
     return 0
 
 

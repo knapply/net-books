@@ -15,7 +15,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parent.parent
-ANIM = ROOT / "books" / "sna" / "figures" / "anim"
+ANIM = [ROOT / "books" / b / "figures" / "anim" for b in ("sna", "algorithms")]
 fails: list[str] = []
 
 
@@ -27,7 +27,7 @@ def check(cond, msg):
 
 def page_html(stills):
     figs = "\n".join(
-        f'<figure><img src="/books/sna/figures/anim/{s}" alt="Alt text for {s}" width="960" height="640"></figure>'
+        f'<figure><img src="/{s}" alt="Alt text for {s}" width="960" height="640"></figure>'
         for s in stills)
     return ('<!doctype html><meta charset="utf-8"><title>harness</title><link rel="icon" href="data:,"><body style="margin:0;padding:8px;max-width:900px">'
             f'{figs}<script src="/shared/js/netanim.js" defer></script></body>')
@@ -36,7 +36,7 @@ def page_html(stills):
 def main() -> int:
     shots = Path(sys.argv[sys.argv.index("--shots") + 1]) if "--shots" in sys.argv else None
     exe = sys.argv[sys.argv.index("--browser") + 1] if "--browser" in sys.argv else shutil.which("chromium") or shutil.which("google-chrome")
-    stills = sorted(p.name for p in ANIM.glob("*-still.svg"))
+    stills = sorted(str(p.relative_to(ROOT)) for d in ANIM for p in d.glob("*-still.svg"))
     harness = ROOT / "tools" / "_anim_harness.html"
     harness.write_text(page_html(stills))
     class Quiet(http.server.SimpleHTTPRequestHandler):
