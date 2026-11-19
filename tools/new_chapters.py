@@ -25,6 +25,8 @@ def renumber(path: Path) -> None:
     number so written text follows the chapter (matching on the slug)."""
     if path.exists():
         return
+    if path.parent.name == "appendices" or "-" not in path.name:
+        return
     slug = path.name.split("-", 1)[1]
     for old in path.parent.glob(f"[0-9][0-9]-{slug}") if path.parent.exists() else []:
         old.rename(path)
