@@ -19,7 +19,8 @@ is built from this repository and published with GitHub Pages.
 
 | Book | Folder | Status |
 | --- | --- | --- |
-| Social Network Analysis (R, Python, Rust) | `books/sna/` | skeleton |
+| Social Network Analysis (R, Python, Rust) | `books/sna/` | in progress |
+| Graph and Network Algorithms | `books/algorithms/` | skeleton |
 
 Author: Brendan Knapp. License: CC BY-NC-ND 4.0 (see `LICENSE.md`).
 
