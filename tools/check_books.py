@@ -122,7 +122,8 @@ def check_book(book: Path, keys: set[str]) -> int:
                 problems.append(f"{name}: figure {m.group(1)} needs fig-alt text")
     return len(files)
 
-ANIM_JS_BUDGET, ANIM_JSON_BUDGET, ANIM_STILL_BUDGET = 6 * 1024, 40 * 1024, 25 * 1024
+ANIM_JS_BUDGET, ANIM_JSON_BUDGET, ANIM_STILL_BUDGET = 6 * 1024, 40 * 1024, 100 * 1024
+ANIM_STILL_GZIP_BUDGET = 8 * 1024  # stills are repetitive SVG; what readers download is the gzip size
 FILL_ROLES = {"base", "src", "reach", "hot", "dim", "a", "b", "c", "d", "e"}
 BANNED = re.compile(r"\b(generated|AI|artificial intelligence|Claude|model-made)\b", re.I)
 
@@ -153,6 +154,11 @@ def check_anim(book: Path) -> int:
                 continue
             if still.stat().st_size > ANIM_STILL_BUDGET:
                 problems.append(f"{name}: {rel} is {still.stat().st_size} bytes, budget {ANIM_STILL_BUDGET}")
+            else:
+                import gzip
+                zipped = len(gzip.compress(still.read_bytes(), 9))
+                if zipped > ANIM_STILL_GZIP_BUDGET:
+                    problems.append(f"{name}: {rel} is {zipped} bytes gzipped, budget {ANIM_STILL_GZIP_BUDGET}")
             if not data.exists():
                 problems.append(f"{name}: {rel} has no matching {data.name}")
                 continue

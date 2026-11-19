@@ -76,7 +76,7 @@ strings joined on one line). `line` is reserved in the schema and not drawn yet.
 
 ## Budgets
 
-Script 6 KB. Each JSON 40 KB. Each still 25 KB. `check_books.py` enforces these, that every still has `fig-alt`, a matching JSON
+Script 6 KB. Each JSON 40 KB. Each still 8 KB after gzip (what readers download; raw size at most 100 KB). `check_books.py` enforces these, that every still has `fig-alt`, a matching JSON
 that follows the schema, no em dashes, and none of the words generated or AI in captions or frame text.
 
 ## Stubs
