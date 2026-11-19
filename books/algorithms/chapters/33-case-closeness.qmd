@@ -39,6 +39,20 @@ That's the whole case study. We'll treat it like a careful kitchen experiment: s
 
 A is the yardstick. Every other version is measured against it, and every other version's answers are compared with it.
 
+## Words for measuring
+
+A few measuring words come up again and again in this chapter. They're worth pinning down, because sloppy use of them is how most misleading speed-up claims happen.
+
+| Word | What it means here |
+|---|---|
+| time | wall-clock time from start to finish of one full run, the time you'd wait, including any graph shrinking |
+| speed-up | the baseline's time divided by the version's time; "59x" means 59 times less waiting |
+| thread | one stream of work the processor runs; here 2, one per core |
+| searches per pass, or width | how many breadth-first searches share one pass over the network; here 512 |
+| peak memory | the most physical memory the program held at any moment (the operating system's "peak resident set size") |
+| estimated | computed from a sample and scaled up, not run in full |
+| exact | the same bits as the baseline, for every person |
+
 ## The test graphs
 
 Five graphs, chosen to cover different shapes. They're all made by random models, which you can think of as recipes for networks with a given flavor:
@@ -110,6 +124,23 @@ Reading the ladder from the top:
 ::: {.callout-tip title="How to read a log scale"}
 Several pictures in this chapter use a **log scale**: each grid line is a fixed *multiple* of the one before (1, 2, 5, 10, 20, 50, ...) instead of a fixed step. That lets 0.87 seconds and 51.3 seconds sit on one picture without the small bar vanishing. The thing to read is distance: equal gaps mean equal ratios. The gap from A to C on the ladder is about as wide as from 1 second to 28 seconds, because C is about 28 times faster.
 :::
+
+### Breaking the 59x down
+
+Speed-ups from separate changes multiply. Here's the small Chung-Lu ladder as a chain of ratios:
+
+| From | To | Change | Ratio |
+|---|---|---|---|
+| A, 51.3 s | C without counters, 3.75 s | share passes, 512 searches each | 13.7x |
+| C without counters, 3.75 s | C, 1.86 s | bit-plane counters | 2.0x |
+| C, 1.86 s | D, 0.87 s | shrink the graph, weight the counters, batch by nearness | 2.1x |
+| A, 51.3 s | D, 0.87 s | all of the above | $13.7 \times 2.0 \times 2.1 \approx 59$x |
+
+::: {.callout-tip title="In plain words"}
+Each row says "this change, applied on top of everything above it, made the run this many times faster". Because each step divides the time, the overall gain is the product of the steps, not the sum. That's also why a modest-sounding 2x matters: two of them make 4x.
+:::
+
+The order of the chain matters for how credit is shared out. Shrinking the graph *first* (A to B) bought only 1.4x, while shrinking *after* sharing passes (C to D) bought 2.1x. Neither number is "the" value of shrinking; each is its value in a particular context. When you read a speed-up table elsewhere, check what each step was applied on top of.
 
 ### Every graph, every version
 
