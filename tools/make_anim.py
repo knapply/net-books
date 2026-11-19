@@ -249,7 +249,11 @@ sys.modules.setdefault("make_anim", sys.modules[__name__]); from anim_scenes imp
 
 def main() -> int:
     for aid, fn in BUILDERS.items():
-        scene, still = fn()
+        try:
+            scene, still = fn()
+        except FileNotFoundError as err:  # raw engine data not generated yet: leave this animation for later
+            print(f"{aid}: skipped, raw data missing ({err.filename})")
+            continue
         out = ROOT / "books" / scene.get("book", "sna") / "figures" / "anim"  # a scene may set "book" (default sna)
         out.mkdir(parents=True, exist_ok=True)
         (out / f"{aid}.json").write_text(encode(scene))
